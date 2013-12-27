@@ -1,0 +1,51 @@
+from v1.2 of python-trials:
+==========================
+
+In antenna_array.py, 
+
+(*) member function F() replaced with temporal_F() in class
+PolInfo does not return any values. Accordingly changed the calls to member
+function in __init__(), and update().
+(*) Renamed attribute pos in class Antenna, AntennaPair and AntennaArray to
+location
+(*) Introduced rotation matrix to convert from an individual antenna frame to 
+local ENU coordinates in __init__() and update() in Antenna class
+(*) Updated the call in Antenna class member function update() to PolInfo member
+function update() 
+(*) Added attribute 'latitude' to Antenna class
+(*) Changed X and Y polarizations to P1 and P2 respectively to avoind confusion 
+with x and y spatial coordinates
+(*) Changed __init__() in PolInfo to different defaults
+(*) Changed __init__() in Antenna to different defaults and added some data 
+validation. 
+(*) Added save method to class Antenna
+(*) Changed gridding weights input type to Antenna class member function update.
+(*) renamed spaxis() to spectax() and changed default of shift from True to 
+False
+(*) Making all time-series FFT shifted to have frequencies in sorted order by
+setting shift=True
+(*) Antenna class update() member function provides scaling, no scaling or 
+explicit options for updating gridding information along frequency channels.
+(*) AntennaArray class update() member function can add, remove, or update. The
+updates should be provided as a list of dictionaries which will be passed to the
+update() member function of individual antenna instances. 
+(*) Verbose functionality added to update() member functions in Antenna and 
+AntennaArray classes
+(*) Added blc and trc attributes to Antenna class for antenna's grid occupation
+in __init__() and their estimates in update() member function
+(*) Renamed attributes ants_xmin_P1, grid_xmin_P1, etc. in terms of blc and trc
+in AntennaArray class
+(*) Added grid attributes for both polarizations
+(*) Added polarization inputs to gridding methods
+(*) Gridding occurs only based on unflagged antennas
+(*) Information about individual antenna's influence on grid is stored in the 
+form of a dictionary in the antenna's attributes gridinfo_P1 and gridinfo_P2
+(*) Incremental gridding features added for addition, removal, and 
+modifications of antennas
+(*) Renamed function parameter 'spacing' in grid() to 'uvspacing'
+(*) Added docstrings for all the functions and class member functions
+(*) save() member functions in classes Antenna and AntennaArray need to be 
+developed. 
+
+Added a python script MOFF_testing.py for preliminary testing of modules 
+developed for MOFF
