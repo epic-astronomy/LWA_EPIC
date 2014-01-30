@@ -1,3 +1,44 @@
+from v1.0 of MOFF:
+=================
+
+In antenna_array.py, 
+
+(*) Moved functions XC() and spectax() to the DSP module. Changed the module
+prefix in the calling sequence accordingly
+(*) Added attribute timestamp to Class AntennaArray
+(*) Added method antenna_positions() in AntennaArray class to return a
+dictionary containing antenna labels and a corresponding 3-column numpy array
+of antenna locations either in random or sorted order based on the antenna
+labels.
+(*) Added a save() method in AntennaArray class to write contents of the
+instance to disk
+(*) Added a save() method in Antenna class to write contents of the instance
+to disk
+(*) In class method temporal_F() of class PolInfo, the time sequence is 
+doubled in length by zero padding before the channelization using FFT
+(*) In class method channels() of class Antenna, the frequency channels are now
+computed with twice the length of time sequence and same time resolution to be
+consistent with changes in temporal_F() method in class PolInfo.
+(*) Added a new class Image to handle imaging data and associated operations.
+(*) Class Image currently has the following member functions: __init__(), 
+imagr() and save().
+(*) __init__() of class Image can take in an instance of AntennaArray class or
+a FITS file written by the save() method of AntennaArray class
+(*) imagr() of class Image performs imaging operations on the antenna array 
+grid information to produce a holographic image (complex, voltage)
+(*) save() of class Image writes the image information to a FITS file on disk
+
+Created a new module named sim_observe. 
+
+(*) It consists of two functions, namely, stochastic_E_spectrum() and
+stochastic_E_timeseries(). 
+(*) stochastic_E_spectrum() computes random electric field spectra. Docstring
+included.
+(*) stochastic_E_timeseries() computes random electric field timeseries.
+Docstring included.
+
+
+--------------------------------------------------------------------------------
 from v1.2 of python-trials:
 ==========================
 

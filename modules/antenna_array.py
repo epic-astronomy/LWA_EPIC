@@ -1,92 +1,9 @@
 import numpy as NP
 import scipy.constants as FCNST
+from astropy.io import fits
 import my_DSP_modules as DSP
 import geometry as GEOM
 import my_gridding_modules as GRD
-
-################################################################################
-
-def XC(inp1, inp2=None):
-    """
-    ----------------------------------------------------------------------------
-    Cross-correlate two sequences.
-
-    Inputs:
-
-    inp1:    [list or numpy array] First sequence.
-
-    inp2:    [list or numpy array] If not given, auto-correlation of inp1 is
-             returned.
-
-    Output:  The correlation of input sequences inp1 and inp2. The output is of 
-             length len(inp1)+len(inp2)-1 zero padded to the nearest power of 2 
-             and shifted to be identical to a Fourier transform based estimate.
-    
-    ----------------------------------------------------------------------------
-    """
-
-    try:
-        inp1
-    except NameError:
-        raise NameError('inp1 not defined. Aborting XC().')
-
-    if not isinstance(inp1, (list, tuple, NP.ndarray, int, float, complex)):
-        raise TypeError('inp1 is of the wrong data type. Check inputs again. Aborting XC().')
-
-    inp1 = NP.asarray(inp1)
-
-    if inp2 is None:
-        inp2 = inp1
-    elif not isinstance(inp2, (list, tuple, int, float, complex, NP.ndarray)):
-        raise TypeError('inp2 has incompatible data type. Verify inputs. Aborting XC().')
-
-    inp2 = NP.asarray(inp1)
-
-    zero_pad_length = 2**NP.ceil(NP.log2(len(inp1)+len(inp2)-1))-(len(inp1)+len(inp2)-1)
-
-    return NP.roll(NP.append(NP.correlate(inp1, inp2, mode='full'), NP.zeros(zero_pad_length)), -(len(inp2)-1))   # zero pad and shift to ensure identical results as FX() operation
-
-################################################################################  
-
-def spectax(length, resolution=1.0, shift=True, use_real=False):
-    """
-    ----------------------------------------------------------------------------
-    Determine the spectral axis after a Fourier Transform
-
-    Inputs:
-
-    length     [Scalar] Positive integer specifying the length of sequence which is
-               to be Fourier transformed
-
-    resolution [Scalar] Positive value for resolution in the sequence before
-               Fourier Transform
-
-    Keyword Inputs:
-
-    use_real   [Boolean] If true, the input sequence is assumed to consist only
-               of real values and the spectral axis is computed accordingly. 
-               Default = False
-
-    shift      [Boolean] If true, the spectral axis values are shifted 
-               cooresponding to a fftshift. Default = True
-
-    Output:
-
-    Spectral axis for an input sequence of given length and resolution.
-    ----------------------------------------------------------------------------
-    """
-    
-    try:
-        length
-    except NameError:
-        raise NameError('Input length not defined. Aborting spectax().')
-        
-    if not isinstance(resolution, (int, float)):
-        raise TypeError('Input resolution must be a positive scalar integer or floating point number. Aborting spectax().')
-    elif resolution < 0.0:
-        raise ValueError('Input resolution must be positive. Aborting spectax().')
-
-    return DSP.spectral_axis(length, resolution, shift, use_real)
 
 #####################################################################  
 
@@ -160,7 +77,9 @@ class PolInfo:
 
         """
         ------------------------------------------------------------------------
-        Perform a Fourier transform of an Electric field time series
+        Perform a Fourier transform of an Electric field time series after 
+        doubling the length of the sequence with zero padding (in order to be 
+        identical to what would be obtained from a XF oepration)
 
         Keyword Input(s):
 
@@ -175,13 +94,21 @@ class PolInfo:
         """
 
         if pol is None:
-            self.Ef_P1 = DSP.FT1D(self.Et_P1, ax=0, use_real=False, shift=True)
-            self.Ef_P2 = DSP.FT1D(self.Et_P2, ax=0, use_real=False, shift=True)
+            Et_P1 = NP.pad(self.Et_P1, (0,len(self.Et_P1)), 'constant',
+                           constant_values=(0,0))
+            Et_P2 = NP.pad(self.Et_P2, (0,len(self.Et_P2)), 'constant',
+                           constant_values=(0,0))
+            self.Ef_P1 = DSP.FT1D(Et_P1, ax=0, use_real=False, shift=True)
+            self.Ef_P2 = DSP.FT1D(Et_P2, ax=0, use_real=False, shift=True)
         elif pol in ['P1','p1','P2','p2','x','X','y','Y']:
             if pol in ['P1','p1','x','X']:
-                self.Ef_P1 = DSP.FT1D(self.Et_P1, ax=0, use_real=False, shift=True)
+                Et_P1 = NP.pad(self.Et_P1, (0,len(self.Et_P1)), 'constant',
+                               constant_values=(0,0))
+                self.Ef_P1 = DSP.FT1D(Et_P1, ax=0, use_real=False, shift=True)
             else:
-                self.Ef_P2 = DSP.FT1D(self.Et_P2, ax=0, use_real=False, shift=True)
+                Et_P2 = NP.pad(self.Et_P2, (0,len(self.Et_P2)), 'constant',
+                               constant_values=(0,0))
+                self.Ef_P2 = DSP.FT1D(Et_P2, ax=0, use_real=False, shift=True)
         else:
             raise ValueError('Polarization string unrecognized. Verify inputs. Aborting PolInfo.temporal_F()')
 
@@ -431,7 +358,9 @@ class Antenna:
     def channels(self):
         """
         ------------------------------------------------------------------------
-        Computes the frequency channels from a temporal Fourier Transform  
+        Computes the frequency channels from a temporal Fourier Transform 
+        assuming the temporal sequence has doubled in length with zero 
+        padding while maintaining the time resolution.
 
         Output(s):
 
@@ -440,7 +369,7 @@ class Antenna:
         ------------------------------------------------------------------------
         """
 
-        return spectax(len(self.t), self.t[1]-self.t[0], shift=True)
+        return DSP.spectax(2*len(self.t), self.t[1]-self.t[0], shift=True)
 
     #################################################################################
 
@@ -617,16 +546,149 @@ class Antenna:
         if verbose:
             print 'Updated antenna {0}.'.format(self.label)
 
+#############################################################################
 
-    def save(self):
+    def save(self, antfile, pol=None, tabtype='BinTableHDU', overwrite=False,
+             verbose=True):
 
         """
-        ----------------------------------------------------------------------------
-        Saves the antenna information to disk. Needs serious development. 
+        -------------------------------------------------------------------------
+        Saves the antenna information to disk. 
+
+        Input:
+
+        antfile     [string] antenna filename with full path. Will be appended 
+                    with antenna label and '.fits' extension
+
+        Keyword Input(s):
+
+        pol         [string] indicates which polarization information to be 
+                    saved. Allowed values are 'P1', 'P2' or None (default). If 
+                    None, information on both polarizations are saved.
+
+        tabtype     [string] indicates table type for one of the extensions in 
+                    the FITS file. Allowed values are 'BinTableHDU' and 
+                    'TableHDU' for binary ascii tables respectively. Default is
+                    'BinTableHDU'.
+
+        overwrite   [boolean] True indicates overwrite even if a file already 
+                    exists. Default = False (does not overwrite)
+
+        verbose     [boolean] If True (default), prints diagnostic and progress
+                    messages. If False, suppress printing such messages.
         ----------------------------------------------------------------------------
         """
 
-        pass
+        try:
+            antfile
+        except NameError:
+            raise NameError('No filename provided. Aborting Antenna.save().')
+
+        filename = antfile + '.' + self.label + '.fits'
+
+        if verbose:
+            print '\nSaving information about antenna {0}...'.format(self.label)
+            
+        hdulist = []
+        hdulist += [fits.PrimaryHDU()]
+        hdulist[0].header['label'] = (self.label, 'Antenna label')
+        hdulist[0].header['latitude'] = (self.latitude, 'Latitude of Antenna')
+        hdulist[0].header['East'] = (self.location.x, 'Location of Antenna along local EAST')
+        hdulist[0].header['North'] = (self.location.y, 'Location of Antenna along local NORTH')
+        hdulist[0].header['Up'] = (self.location.z, 'Location of Antenna along local UP')
+        hdulist[0].header['f0'] = (self.f0, 'Center frequency (Hz)')
+        hdulist[0].header['tobs'] = (self.timestamp, 'Timestamp associated with observation.')
+        hdulist[0].header.set('EXTNAME', 'Antenna ({0})'.format(self.label))
+
+        if verbose:
+            print '\tCreated a primary HDU.'
+
+        cols = []
+        cols += [fits.Column(name='time_sequence', format='D', array=self.t)]
+        cols += [fits.Column(name='frequency', format='D', array=self.f)]
+        columns = fits.ColDefs(cols, tbtype=tabtype)
+        tbhdu = fits.new_table(columns)
+        tbhdu.header.set('EXTNAME', 'GENERAL INFO')
+        hdulist += [tbhdu]
+
+        if (pol is None) or (pol == 'P1'):
+            if verbose:
+                print '\tWorking on polarization P1...'
+                print '\t\tWorking on weights information...'
+            cols = []
+            for i in range(len(self.wts_P1)):
+                if verbose:
+                    print '\t\t\tProcessing channel # {0}'.format(i)
+                cols += [fits.Column(name='wtspos[{0:0d}]'.format(i), format='2D()', array=self.wtspos_P1[0])]
+                cols += [fits.Column(name='wts[{0:0d}]'.format(i), format='M()', array=self.wts_P1[0])]
+            columns = fits.ColDefs(cols, tbtype=tabtype)
+            tbhdu = fits.new_table(columns)
+            tbhdu.header.set('EXTNAME', 'wtsinfo_P1')
+            tbhdu.header.set('X_BLC', self.blc_P1[0,0])
+            tbhdu.header.set('Y_BLC', self.blc_P1[0,1])
+            tbhdu.header.set('X_TRC', self.trc_P1[0,0])
+            tbhdu.header.set('Y_TRC', self.trc_P1[0,1])
+            hdulist += [tbhdu]
+            if verbose:
+                print '\t\tCreated separate extension HDU {0} with weights information'.format(tbhdu.header['EXTNAME'])
+                print '\t\tWorking on gridding information...'
+
+            cols = []
+            for i in range(len(self.f)):
+                if verbose:
+                    print '\t\t\tProcessing channel # {0}'.format(i)
+                cols += [fits.Column(name='gridxy[{0:0d}]'.format(i), format='2D()', array=NP.asarray(self.gridinfo_P1[i]['gridxy_ind']))]
+                cols += [fits.Column(name='illumination[{0:0d}]'.format(i), format='M()', array=self.gridinfo_P1[i]['illumination'])]
+                cols += [fits.Column(name='Ef[{0:0d}]'.format(i), format='M()', array=self.gridinfo_P1[i]['Ef'])]
+            columns = fits.ColDefs(cols, tbtype=tabtype)
+            tbhdu = fits.new_table(columns)
+            tbhdu.header.set('EXTNAME', 'gridinfo_P1')
+            hdulist += [tbhdu]
+            if verbose:
+                print '\t\tCreated separate extension HDU {0} with weights information'.format(tbhdu.header['EXTNAME'])
+
+        if (pol is None) or (pol == 'P2'):
+            if verbose:
+                print '\tWorking on polarization P2...'
+                print '\t\tWorking on weights information...'
+            cols = []
+            for i in range(len(self.wts_P2)):
+                if verbose:
+                    print '\t\t\tProcessing channel # {0}'.format(i)
+                cols += [fits.Column(name='wtspos[{0:0d}]'.format(i), format='2D()', array=self.wtspos_P2[0])]
+                cols += [fits.Column(name='wts[{0:0d}]'.format(i), format='M()', array=self.wts_P2[0])]
+            columns = fits.ColDefs(cols, tbtype=tabtype)
+            tbhdu = fits.new_table(columns)
+            tbhdu.header.set('EXTNAME', 'wtsinfo_P2')
+            tbhdu.header.set('X_BLC', self.blc_P2[0,0])
+            tbhdu.header.set('Y_BLC', self.blc_P2[0,1])
+            tbhdu.header.set('X_TRC', self.trc_P2[0,0])
+            tbhdu.header.set('Y_TRC', self.trc_P2[0,1])
+            hdulist += [tbhdu]
+            if verbose:
+                print '\t\tCreated separate extension HDU {0} with weights information'.format(tbhdu.header['EXTNAME'])
+                print '\t\tWorking on gridding information...'
+
+            cols = []
+            for i in range(len(self.f)):
+                if verbose:
+                    print '\t\t\tProcessing channel # {0}'.format(i)
+                cols += [fits.Column(name='gridxy[{0:0d}]'.format(i), format='2D()', array=NP.asarray(self.gridinfo_P2[i]['gridxy_ind']))]
+                cols += [fits.Column(name='illumination[{0:0d}]'.format(i), format='M()', array=self.gridinfo_P2[i]['illumination'])]
+                cols += [fits.Column(name='Ef[{0:0d}]'.format(i), format='M()', array=self.gridinfo_P2[i]['Ef'])]
+            columns = fits.ColDefs(cols, tbtype=tabtype)
+            tbhdu = fits.new_table(columns)
+            tbhdu.header.set('EXTNAME', 'gridinfo_P2')
+            hdulist += [tbhdu]
+            if verbose:
+                print '\t\tCreated separate extension HDU {0} with weights information'.format(tbhdu.header['EXTNAME'])
+
+        hdu = fits.HDUList(hdulist)
+        hdu.writeto(filename, clobber=overwrite)
+
+        if verbose:
+            print '\tNow writing FITS file to disk:\n\t\t{0}'.format(filename)
+            print '\tData for antenna {0} written successfully to FITS file on disk:\n\t\t{1}\n'.format(self.label, filename)
 
 #####################################################################  
 
@@ -635,10 +697,10 @@ class AntennaPair(Antenna):
         self.A1, self.A2 = A1, A2
         self.label = A1.label+'-'+A2.label
         self.location = A1.location-A2.location
-        self.Et = XC(self.A1.Et, self.A2.Et)
+        self.Et = DSP.XC(self.A1.Et, self.A2.Et)
         # self.t = (A1.t[1]-A1.t[0])*NP.asarray(range(0,len(self.Et)))
         self.Ef = DSP.FT1D(self.Et, ax=0, use_real=False, shift=False)
-        self.f = spectax(len(self.Et), resolution=A1.t[1]-A1.t[0])
+        self.f = DSP.spectax(len(self.Et), resolution=A1.t[1]-A1.t[0])
         self.t = NP.fft.fftfreq(len(self.Ef),self.f[1]-self.f[0])        
         self.mode = 'XF'
     
@@ -647,7 +709,7 @@ class AntennaPair(Antenna):
 
     def XF(self):
         self.Ef = DSP.FT1D(self.Et, ax=0, use_real=False, shift=False)
-        self.f = spectax(len(self.Et), resolution=self.t[1]-self.t[0])
+        self.f = DSP.spectax(len(self.Et), resolution=self.t[1]-self.t[0])
         self.mode = 'XF'
 
     def FX(self):
@@ -655,13 +717,14 @@ class AntennaPair(Antenna):
         zero_pad_length1 = 2**NP.ceil(NP.log2(len(self.A1.Et)+len(self.A2.Et)-1))-len(self.A1.Et)   # zero pad length for first sequence
         zero_pad_length2 = 2**NP.ceil(NP.log2(len(self.A1.Et)+len(self.A2.Et)-1))-len(self.A2.Et)   # zero pad length for second sequence
         self.Ef = DSP.FT1D(NP.append(self.A1.Et, NP.zeros(zero_pad_length1)), ax=0, use_real=False, shift=False)*NP.conj(DSP.FT1D(NP.append(self.A2.Et, NP.zeros(zero_pad_length2)), ax=0, use_real=False, shift=False))  # product of FT
-        self.f = spectax(int(2**NP.ceil(NP.log2(len(self.A1.Et)+len(self.A2.Et)-1))), resolution=self.A1.t[1]-self.A1.t[0])
+        self.f = DSP.spectax(int(2**NP.ceil(NP.log2(len(self.A1.Et)+len(self.A2.Et)-1))), resolution=self.A1.t[1]-self.A1.t[0])
         self.mode = 'FX'
         self.t = NP.fft.fftfreq(len(self.Ef),self.f[1]-self.f[0])
 
 ################################################################################
 
 class AntennaArray:
+
     """
     ----------------------------------------------------------------------------
     Class to manage collective information on a group of antennas.
@@ -766,14 +829,14 @@ class AntennaArray:
     update():         Updates the antenna array instance with newer attribute
                       values
                       
-    save():           Saves the antenna array information to disk. Needs serious 
-                      development. 
+    save():           Saves the antenna array information to disk. 
 
     Read the member function docstrings for details.
     ----------------------------------------------------------------------------
     """
 
     def __init__(self):
+
         """
         ------------------------------------------------------------------------
         Initialize the AntennaArray Class which manages information about an 
@@ -805,6 +868,7 @@ class AntennaArray:
         self.grid_Ef_P2 = None
         self.f = None
         self.f0 = None
+        self.timestamp = None
         
     ################################################################################# 
 
@@ -1019,6 +1083,26 @@ class AntennaArray:
 
     ################################################################################# 
 
+    def antenna_positions(self, sort=False):
+        
+        if not isinstance(sort, bool):
+            raise TypeError('sort keyword has to be a Boolean value.')
+
+        if sort:
+            xyz = NP.asarray([[self.antennas[label].location.x, self.antennas[label].location.y, self.antennas[label].location.z] for label in sorted(self.antennas.keys())])
+            labels = sorted(self.antennas.keys())
+        else:
+            xyz = NP.asarray([[self.antennas[label].location.x, self.antennas[label].location.y, self.antennas[label].location.z] for label in self.antennas.keys()])
+            labels = self.antennas.keys()
+
+        outdict = {}
+        outdict['antennas'] = labels
+        outdict['positions'] = xyz
+
+        return outdict
+
+    ################################################################################# 
+
     def grid(self, uvspacing=0.5, xypad=None, pow2=True, pol=None):
 
         """
@@ -1052,6 +1136,9 @@ class AntennaArray:
 
         if self.f0 is None:
             self.f0 = self.antennas.itervalues().next().f0
+
+        if self.timestamp is None:
+            self.timestamp = self.antennas.itervalues().next().timestamp
 
         # if not isinstance(wavelength, NP.ndarray) and not isinstance(wavelength, list) and not isinstance(wavelength, (int,float)):
         #     raise TypeError('wavelength must be a scalar, list or numpy array.')
@@ -1602,7 +1689,7 @@ class AntennaArray:
             else:
                 raise TypeError('ants must be an instance of AntennaArray, a dictionary of Antenna instances, a list of Antenna instances, an Antenna instance, or a list of antenna labels.')
 
-    ##################################################################################        
+    ##################################################################################
 
     def update(self, updates=None, verbose=False):
 
@@ -1759,17 +1846,661 @@ class AntennaArray:
                 else:
                     raise ValueError('Update action should be set to "add", "remove" or "modify".')
 
-#############################################################################
+    #############################################################################
 
-    def save(self):
+    def save(self, gridfile, pol=None, tabtype='BinTableHDU', antenna_save=True, 
+             antfile=None, overwrite=False, verbose=True):
 
         """
-        ----------------------------------------------------------------------------
-        Saves the antenna array information to disk. Needs serious development. 
-        ----------------------------------------------------------------------------
+        -------------------------------------------------------------------------
+        Saves the antenna array information to disk. 
+
+        Input:
+
+        gridfile     [string] grid filename with full path. Will be appended 
+                     with '.fits' extension
+
+        Keyword Input(s):
+
+        pol          [string] indicates which polarization information to be 
+                     saved. Allowed values are 'P1', 'P2' or None (default). If 
+                     None, information on both polarizations are saved.
+                     
+        tabtype      [string] indicates table type for one of the extensions in 
+                     the FITS file. Allowed values are 'BinTableHDU' and 
+                     'TableHDU' for binary ascii tables respectively. Default is
+                     'BinTableHDU'.
+
+        antenna_save [boolean] indicates if information on individual antennas is
+                     to be saved. If True (default), individual antenna
+                     information is saved into filename given by antfile. If
+                     False, only grid information is saved.
+
+        antfile      [string] Filename to save the antenna information to. This 
+                     is appended with the antenna label and '.fits' extension. 
+                     If not provided, gridfile is used as the basename. antfile 
+                     is used only if antenna_save is set to True.
+
+        overwrite    [boolean] True indicates overwrite even if a file already 
+                     exists. Default = False (does not overwrite)
+                     
+        verbose      [boolean] If True (default), prints diagnostic and progress
+                     messages. If False, suppress printing such messages.
+        -------------------------------------------------------------------------
         """
 
-        pass
+        try:
+            gridfile
+        except NameError:
+            raise NameError('No filename provided. Aborting AntennaArray.save().')
 
-#############################################################################
+        filename = gridfile + '.fits'
+
+        if verbose:
+            print '\nSaving antenna array information...'
+            
+        hdulist = []
+        hdulist += [fits.PrimaryHDU()]
+        hdulist[0].header['f0'] = (self.f0, 'Center frequency (Hz)')
+        hdulist[0].header['tobs'] = (self.timestamp, 'Timestamp associated with observation.')
+        hdulist[0].header['EXTNAME'] = 'PRIMARY'
+
+        if verbose:
+            print '\tCreated a primary HDU.'
+
+        antpos_info = self.antenna_positions(sort=True)
+        cols = []
+        cols += [fits.Column(name='Antenna', format='8A', array=NP.asarray(antpos_info['antennas']))]
+        cols += [fits.Column(name='Position', format='3D', array=antpos_info['positions'])]
+        columns = fits.ColDefs(cols, tbtype=tabtype)
+        tbhdu = fits.new_table(columns)
+        tbhdu.header.set('EXTNAME', 'Antenna Positions')
+        hdulist += [tbhdu]
+        if verbose:
+            print '\tCreated an extension in Binary table format for antenna positions.'
+
+        hdulist += [fits.ImageHDU(self.f, name='FREQ')]
+        if verbose:
+            print '\t\tCreated an extension HDU of {0:0d} frequency channels'.format(len(self.f))
+
+        if (pol is None) or (pol == 'P1'):
+            if verbose:
+                print '\tWorking on polarization P1...'
+            if self.gridx_P1 is not None:
+                hdulist += [fits.ImageHDU(self.gridx_P1, name='gridx_P1')]
+                if verbose:
+                    print '\t\tCreated an extension HDU of x-coordinates of grid of size: {0[0]}x{0[1]}'.format(self.gridx_P1.shape)
+            if self.gridy_P1 is not None:
+                hdulist += [fits.ImageHDU(self.gridy_P1, name='gridy_P1')]
+                if verbose:
+                    print '\t\tCreated an extension HDU of y-coordinates of grid of size: {0[0]}x{0[1]}'.format(self.gridy_P1.shape)
+            if self.grid_illumination_P1 is not None:
+                hdulist += [fits.ImageHDU(self.grid_illumination_P1.real, name='grid_illumination_P1_real')]
+                hdulist += [fits.ImageHDU(self.grid_illumination_P1.imag, name='grid_illumination_P1_imag')]
+                if verbose:
+                    print "\t\tCreated separate extension HDUs of grid's illumination pattern \n\t\t\twith size {0[0]}x{0[1]}x{0[2]} for real and imaginary parts.".format(self.grid_illumination_P1.shape)
+            if self.grid_Ef_P1 is not None:
+                hdulist += [fits.ImageHDU(self.grid_Ef_P1.real, name='grid_Ef_P1_real')]
+                hdulist += [fits.ImageHDU(self.grid_Ef_P1.imag, name='grid_Ef_P1_imag')]
+                if verbose:
+                    print "\t\tCreated separate extension HDUs of grid's Electric field spectra of \n\t\t\tsize {0[0]}x{0[1]}x{0[2]} for real and imaginary parts.".format(self.grid_Ef_P1.shape)
+
+        if (pol is None) or (pol == 'P2'):
+            if verbose:
+                print '\tWorking on polarization P2...'
+            if self.gridx_P2 is not None:
+                hdulist += [fits.ImageHDU(self.gridx_P2, name='gridx_P2')]
+                if verbose:
+                    print '\t\tCreated an extension HDU of x-coordinates of grid of size: {0[0]}x{0[1]}'.format(self.gridx_P2.shape)
+            if self.gridy_P2 is not None:
+                hdulist += [fits.ImageHDU(self.gridy_P2, name='gridy_P2')]
+                if verbose:
+                    print '\t\tCreated an extension HDU of y-coordinates of grid of size: {0[0]}x{0[1]}'.format(self.gridy_P2.shape)
+            if self.grid_illumination_P2 is not None:
+                hdulist += [fits.ImageHDU(self.grid_illumination_P2.real, name='grid_illumination_P2_real')]
+                hdulist += [fits.ImageHDU(self.grid_illumination_P2.imag, name='grid_illumination_P2_imag')]
+                if verbose:
+                    print "\t\tCreated separate extension HDUs of grid's illumination pattern \n\t\t\twith size {0[0]}x{0[1]}x{0[2]} for real and imaginary parts.".format(self.grid_illumination_P2.shape)
+            if self.grid_Ef_P2 is not None:
+                hdulist += [fits.ImageHDU(self.grid_Ef_P2.real, name='grid_Ef_P2_real')]
+                hdulist += [fits.ImageHDU(self.grid_Ef_P2.imag, name='grid_Ef_P2_imag')]
+                if verbose:
+                    print "\t\tCreated separate extension HDUs of grid's Electric field spectra of \n\t\t\tsize {0[0]}x{0[1]}x{0[2]} for real and imaginary parts.".format(self.grid_Ef_P2.shape)
+
+        if verbose:
+            print '\tNow writing FITS file to disk:\n\t\t{0}'.format(filename)
+
+        hdu = fits.HDUList(hdulist)
+        hdu.writeto(filename, clobber=overwrite)
+
+        if verbose:
+            print '\tGridding data written successfully to FITS file on disk:\n\t\t{0}\n'.format(filename)
+
+        if antenna_save:
+            if antfile is None:
+                antfile = gridfile
+            for label in self.antennas:
+                if verbose:
+                    print 'Now calling save() method of antenna {0}...'.format(label)
+                self.antennas[label].save(antfile, tabtype=tabtype,
+                                          overwrite=overwrite, verbose=verbose)
+            if verbose:
+                print 'Successfully completed save() operation.'
+
+#################################################################################
         
+class Image:
+
+    """
+    -----------------------------------------------------------------------------
+    Class to manage image information and processing pertaining to the class 
+    holding antenna array information.
+
+    Attributes:
+
+    timestamp:  [Scalar] String or float representing the timestamp for the 
+                current attributes
+
+    f:          [vector] Frequency channels (in Hz)
+
+    f0:         [Scalar] Positive value for the center frequency in Hz.
+
+    gridx_P1     [Numpy array] x-locations of the grid lattice for P1 polarization
+
+    gridy_P1     [Numpy array] y-locations of the grid lattice for P1 polarization
+
+    gridx_P2     [Numpy array] x-locations of the grid lattice for P2 polarization
+
+    gridy_P2     [Numpy array] y-locations of the grid lattice for P2 polarization
+
+    grid_illuminaton_P1
+                 [Numpy array] Electric field illumination for P1 polarization 
+                 on the grid. Could be complex. Same size as the grid
+
+    grid_illuminaton_P2
+                 [Numpy array] Electric field illumination for P2 polarization 
+                 on the grid. Could be complex. Same size as the grid
+
+    grid_Ef_P1   [Numpy array] Complex Electric field of polarization P1 
+                 projected on the grid. 
+
+    grid_Ef_P2   [Numpy array] Complex Electric field of polarization P2 
+                 projected on the grid. 
+    
+    holograph_PB_P1
+                 [Numpy array] Complex holographic electric field pattern on sky
+                 for polarization P1. Obtained by inverse fourier transforming 
+                 grid_illumination_P1. It is 3-dimensional (third dimension is 
+                 the frequency axis)
+
+    holograph_P1 [Numpy array] Complex holographic image cube for polarization P1
+                 obtained by inverse fourier transforming Ef_P1
+
+    PB_P1        [Numpy array] Power pattern of the antenna obtained by squaring
+                 the absolute value of holograph_PB_P1. It is 3-dimensional 
+                 (third dimension is the frequency axis)
+
+    lf_P1        [Numpy array] 3D grid of l-axis in the direction cosines 
+                 coordinate system corresponding to polarization P1, the third 
+                 axis being along frequency.
+
+    mf_P1        [Numpy array] 3D grid of m-axis in the direction cosines 
+                 coordinate system corresponding to polarization P1, the third 
+                 axis being along frequency.
+
+    img_P1       [Numpy array] 3D image cube obtained by squaring the absolute 
+                 value of holograph_P1. The third dimension is along frequency.
+
+    holograph_PB_P2
+                 [Numpy array] Complex holographic electric field pattern on sky
+                 for polarization P2. Obtained by inverse fourier transforming 
+                 grid_illumination_P2. It is 3-dimensional (third dimension is 
+                 the frequency axis)
+
+    holograph_P2 [Numpy array] Complex holographic image cube for polarization P2
+                 obtained by inverse fourier transforming Ef_P2
+
+    PB_P2        [Numpy array] Power pattern of the antenna obtained by squaring
+                 the absolute value of holograph_PB_P2. It is 3-dimensional 
+                 (third dimension is the frequency axis)
+
+    lf_P2        [Numpy array] 3D grid of l-axis in the direction cosines 
+                 coordinate system corresponding to polarization P2, the third 
+                 axis being along frequency.
+
+    mf_P2        [Numpy array] 3D grid of m-axis in the direction cosines 
+                 coordinate system corresponding to polarization P2, the third 
+                 axis being along frequency.
+
+    img_P2       [Numpy array] 3D image cube obtained by squaring the absolute 
+                 value of holograph_P2. The third dimension is along frequency.
+
+    Member Functions:
+
+    __init__()   Initializes an instance of class Image which manages information
+                 and processing of images from data obtained by an antenna array.
+                 It can be initialized either by values in an instance of class 
+                 AntennaArray, by values in a fits file containing information
+                 about the antenna array, or to defaults.
+
+    imagr()      Imaging engine that performs inverse fourier transforms of 
+                 appropriate electric field quantities associated with the 
+                 antenna array.
+
+    save()       Saves the image information to disk
+
+    Read the member function docstrings for more details
+    -----------------------------------------------------------------------------
+    """
+
+    def __init__(self, f0=None, f=None, pol=None, antenna_array=None,
+                 infile=None, timestamp=None, verbose=True):
+        
+        """
+        -------------------------------------------------------------------------
+        Initializes an instance of class Image which manages information and
+        processing of images from data obtained by an antenna array. It can be
+        initialized either by values in an instance of class AntennaArray, by
+        values in a fits file containing information about the antenna array, or
+        to defaults.
+
+        Class attributes initialized are:
+        timestamp, f, f0, gridx_P1, gridy_P1, grid_illumination_P1, grid_Ef_P1, 
+        holograph_P1, holograph_PB_P1, img_P1, PB_P1, lf_P1, mf_P1, gridx_P1,
+        gridy_P1, grid_illumination_P1, grid_Ef_P1, holograph_P1,
+        holograph_PB_P1, img_P1, PB_P1, lf_P1, and mf_P1
+
+        Read docstring of class Image for details on these attributes.
+        -------------------------------------------------------------------------
+        """
+
+        if verbose:
+            print '\nInitializing an instance of class Image...\n'
+            print '\tVerifying for compatible arguments...'
+
+        if timestamp is not None:
+            self.timestamp = timestamp
+            if verbose:
+                print '\t\tInitialized time stamp.'
+
+        if f0 is not None:
+            self.f0 = f0
+            if verbose:
+                print '\t\tInitialized center frequency.'
+
+        if f is not None:
+            self.f = NP.asarray(f)
+            if verbose:
+                print '\t\tInitialized frequency channels.'
+
+        if (infile is None) and (antenna_array is None):
+            self.gridx_P1 = None
+            self.gridy_P1 = None
+            self.grid_illumination_P1 = None
+            self.grid_Ef_P1 = None
+            self.holograph_P1 = None
+            self.holograph_PB_P1 = None
+            self.img_P1 = None
+            self.PB_P1 = None
+            self.lf_P1 = None
+            self.mf_P1 = None
+
+            self.gridx_P2 = None
+            self.gridy_P2 = None
+            self.grid_illumination_P2 = None
+            self.grid_Ef_P2 = None
+            self.holograph_P2 = None
+            self.holograph_PB_P2 = None
+            self.img_P2 = None
+            self.PB_P2 = None
+            self.lf_P2 = None
+            self.mf_P2 = None
+        
+            if verbose:
+                print '\t\tInitialized gridx_P1, gridy_P1, grid_illumination_P1, and grid_Ef_P1'
+                print '\t\tInitialized lf_P1, mf_P1, holograph_PB_P1, PB_P1, holograph_P1, and img_P1'
+                print '\t\tInitialized gridx_P2, gridy_P2, grid_illumination_P2, and grid_Ef_P2'
+                print '\t\tInitialized lf_P2, mf_P2, holograph_PB_P2, PB_P2, holograph_P2, and img_P2'
+
+        if (infile is not None) and (antenna_array is not None):
+            raise ValueError('Both gridded data file and antenna array informtion are specified. One and only one of these should be specified. Cannot initialize an instance of class Image.')     
+
+        if verbose:
+            print '\tArguments verified for initialization.'
+
+        if infile is not None:
+            if verbose:
+                print '\tInitializing from input file...'
+
+            try:
+                hdulist = fits.open(infile)
+            except IOError:
+                raise IOError('File not found. Image instance not initialized.')
+            except EOFError:
+                raise EOFError('EOF encountered. File cannot be read. Image instance not initialized.')
+            else:
+                extnames = [hdu.header['EXTNAME'] for hdu in hdulist]
+                if verbose:
+                    print '\t\tFITS file opened successfully. The extensions have been read.'
+
+                if 'FREQ' in extnames:
+                    self.f = hdulist['FREQ'].data
+                    if verbose:
+                        print '\t\t\tInitialized frequency channels.'
+                else:
+                    raise KeyError('Frequency information unavailable in the input file.')
+
+                if 'f0' in hdulist[0].header:
+                    self.f0 = hdulist[0].header['f0']
+                    if verbose:
+                        print '\t\t\tInitialized center frequency to {0} Hz from FITS header.'.format(self.f0)
+                else:
+                    self.f0 = self.f[int(len(self.f)/2)]
+                    if verbose:
+                        print '\t\t\tNo center frequency found in FITS header. Setting it to \n\t\t\t\tthe center of frequency channels: {0} Hz'.format(self.f0)
+
+                if 'tobs' in hdulist[0].header:
+                    self.timestamp = hdulist[0].header['tobs']
+                    if verbose:
+                        print '\t\t\tInitialized time stamp.'
+
+                if (pol is None) or (pol == 'P1'):
+                    if verbose:
+                        print '\n\t\t\tWorking on polarization P1...'
+
+                    if ('GRIDX_P1' not in extnames) or ('GRIDY_P1' not in extnames) or ('GRID_ILLUMINATION_P1_REAL' not in extnames) or ('GRID_ILLUMINATION_P1_IMAG' not in extnames) or ('GRID_EF_P1_REAL' not in extnames) or ('GRID_EF_P1_IMAG' not in extnames):
+                        raise KeyError('One or more pieces of gridding information is missing in the input file for polarization P1. Verify the file contains appropriate data.')
+
+                    self.gridx_P1 = hdulist['GRIDX_P1'].data
+                    self.gridy_P1 = hdulist['GRIDY_P1'].data
+                    self.grid_illumination_P1 = hdulist['GRID_ILLUMINATION_P1_REAL'].data + 1j * hdulist['GRID_ILLUMINATION_P1_IMAG'].data
+                    self.grid_Ef_P1 = hdulist['GRID_EF_P1_REAL'].data + 1j * hdulist['GRID_EF_P1_IMAG'].data
+                    self.holograph_P1 = None
+                    self.img_P1 = None
+                    self.holograph_PB_P1 = None
+                    self.PB_P1 = None
+                    self.lf_P1 = None
+                    self.mf_P1 = None
+                    if verbose:
+                        print '\t\t\tInitialized gridx_P1, gridy_P1, grid_illumination_P1, and grid_Ef_P1'
+                        print '\t\t\tInitialized lf_P1, mf_P1, holograph_PB_P1, PB_P1, holograph_P1, and img_P1'
+
+                if (pol is None) or (pol == 'P2'):
+                    if verbose:
+                        print '\n\t\t\tWorking on polarization P2...'
+
+                    if ('GRIDX_P2' not in extnames) or ('GRIDY_P2' not in extnames) or ('GRID_ILLUMINATION_P2_REAL' not in extnames) or ('GRID_ILLUMINATION_P2_IMAG' not in extnames) or ('GRID_EF_P2_REAL' not in extnames) or ('GRID_EF_P2_IMAG' not in extnames):
+                        raise KeyError('One or more pieces of gridding information is missing in the input file for polarization P2. Verify the file contains appropriate data.')
+
+                    self.gridx_P2 = hdulist['GRIDX_P2'].data
+                    self.gridy_P2 = hdulist['GRIDY_P2'].data
+                    self.grid_illumination_P2 = hdulist['GRID_ILLUMINATION_P2_REAL'].data + 1j * hdulist['GRID_ILLUMINATION_P2_IMAG'].data
+                    self.grid_Ef_P2 = hdulist['GRID_EF_P2_REAL'].data + 1j * hdulist['GRID_EF_P2_IMAG'].data
+                    self.holograph_P2 = None
+                    self.img_P2 = None
+                    self.holograph_PB_P2 = None
+                    self.PB_P2 = None
+                    self.lf_P2 = None
+                    self.mf_P2 = None
+                    if verbose:
+                        print '\t\t\tInitialized gridx_P2, gridy_P2, grid_illumination_P2, and grid_Ef_P2'
+                        print '\t\t\tInitialized lf_P2, mf_P2, holograph_PB_P2, PB_P2, holograph_P2, and img_P2'
+
+            hdulist.close()
+            if verbose:
+                print '\t\tClosed input FITS file.'
+
+        if antenna_array is not None:
+            if verbose:
+                print '\tInitializing from an instance of class AntennaArray...'
+
+            if isinstance(antenna_array, AntennaArray):
+                self.f = antenna_array.f
+                if verbose:
+                    print '\t\tInitialized frequency channels.'
+
+                self.f0 = antenna_array.f0
+                if verbose:
+                    print '\t\tInitialized center frequency to {0} Hz from antenna array info.'.format(self.f0)
+
+                self.timestamp = antenna_array.timestamp
+                if verbose:
+                    print '\t\tInitialized time stamp to {0} from antenna array info.'.format(self.timestamp)
+            
+                if (pol is None) or (pol == 'P1'):
+                    if verbose:
+                        print '\n\t\tWorking on polarization P1...'
+                    self.gridx_P1 = antenna_array.gridx_P1
+                    self.gridy_P1 = antenna_array.gridy_P1
+                    self.grid_illumination_P1 = antenna_array.grid_illumination_P1
+                    self.grid_Ef_P1 = antenna_array.grid_Ef_P1
+                    self.holograph_P1 = None
+                    self.img_P1 = None
+                    self.holograph_PB_P1 = None
+                    self.PB_P1 = None
+                    self.lf_P1 = None
+                    self.mf_P1 = None
+                    if verbose:
+                        print '\t\tInitialized gridx_P1, gridy_P1, grid_illumination_P1, and grid_Ef_P1.'
+                        print '\t\tInitialized lf_P1, mf_P1, holograph_PB_P1, PB_P1, holograph_P1, and img_P1'
+
+                if (pol is None) or (pol == 'P2'):
+                    if verbose:
+                        print '\n\t\tWorking on polarization P2...'
+                    self.gridx_P2 = antenna_array.gridx_P2
+                    self.gridy_P2 = antenna_array.gridy_P2
+                    self.grid_illumination_P2 = antenna_array.grid_illumination_P2
+                    self.grid_Ef_P2 = antenna_array.grid_Ef_P2
+                    self.holograph_P2 = None
+                    self.img_P2 = None
+                    self.holograph_PB_P2 = None
+                    self.PB_P2 = None
+                    self.lf_P2 = None
+                    self.mf_P2 = None
+                    if verbose:
+                        print '\t\tInitialized gridx_P2, gridy_P2, grid_illumination_P2, and grid_Ef_P2.'
+                        print '\t\tInitialized lf_P2, mf_P2, holograph_PB_P2, PB_P2, holograph_P2, and img_P2'
+
+            else:
+                raise TypeError('antenna_array is not an instance of class AntennaArray. Cannot initiate instance of class Image.')
+
+        if verbose:
+            print '\nSuccessfully initialized an instance of class Image\n'
+
+    #############################################################################
+
+    def imagr(self, pol=None, verbose=True):
+
+        """
+        -------------------------------------------------------------------------
+        Imaging engine that performs inverse fourier transforms of appropriate
+        electric field quantities associated with the antenna array.
+
+        Keyword Inputs:
+
+        pol       [string] indicates which polarization information to be 
+                  imaged. Allowed values are 'P1', 'P2' or None (default). If 
+                  None, both polarizations are imaged.
+
+        verbose   [boolean] If True (default), prints diagnostic and progress
+                  messages. If False, suppress printing such messages.
+        -------------------------------------------------------------------------
+        """
+
+        if verbose:
+            print '\nPreparing to image...\n'
+
+        if self.f is None:
+            raise ValueError('Frequency channels have not been initialized. Cannot proceed with imaging.')
+
+        if (pol is None) or (pol == 'P1'):
+            
+            if verbose:
+                print '\tWorking on polarization P1...'
+
+            grid_shape = self.grid_Ef_P1.shape
+            if verbose:
+                print '\t\tPreparing to zero pad and Inverse Fourier Transform...'
+
+            self.holograph_P1 = NP.fft.ifftshift(NP.fft.ifft2(NP.pad(self.grid_Ef_P1, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1)))
+            if verbose:
+                print '\t\tComputed complex holographic voltage image from antenna array.'
+
+            self.holograph_PB_P1 = NP.fft.ifftshift(NP.fft.ifft2(NP.pad(self.grid_illumination_P1, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1)))
+            if verbose:
+                print '\t\tComputed complex holographic voltage pattern of antenna array.'
+
+            dx = self.gridx_P1[0,1] - self.gridx_P1[0,0]
+            dy = self.gridy_P1[1,0] - self.gridy_P1[0,0]
+            self.lf_P1 = NP.outer(NP.fft.ifftshift(NP.fft.fftfreq(2*grid_shape[1], dx)), FCNST.c/self.f)
+            self.mf_P1 = NP.outer(NP.fft.ifftshift(NP.fft.fftfreq(2*grid_shape[0], dy)), FCNST.c/self.f)
+            if verbose:
+                print '\t\tComputed the direction cosine coordinates for the image.'
+            grid_lf_P1 = NP.repeat(NP.expand_dims(self.lf_P1, axis=0), self.mf_P1.shape[0], axis=0)
+            grid_mf_P1 = NP.repeat(NP.expand_dims(self.mf_P1, axis=1), self.lf_P1.shape[0], axis=1)
+            nan_ind = grid_lf_P1**2 + grid_mf_P1**2 > 1.0
+            self.holograph_P1[nan_ind] = NP.nan
+            self.holograph_PB_P1[nan_ind] = NP.nan
+            if verbose:
+                print '\t\tImage pixels corresponding to invalid direction cosine coordinates flagged as NAN.'
+
+        if (pol is None) or (pol == 'P2'):
+
+            if verbose:
+                print '\tWorking on polarization P2...'
+
+            grid_shape = self.grid_Ef_P2.shape
+            if verbose:
+                print '\t\tPreparing to zero pad and Inverse Fourier Transform...'
+
+            self.holograph_P2 = NP.fft.ifftshift(NP.fft.ifft2(NP.pad(self.grid_Ef_P2, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1)))
+            if verbose:
+                print '\t\tComputed complex holographic voltage image from antenna array.'
+
+            self.holograph_PB_P2 = NP.fft.ifftshift(NP.fft.ifft2(NP.pad(self.grid_illumination_P2, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1)))
+            if verbose:
+                print '\t\tComputed complex holographic voltage pattern of antenna array.'
+
+            dx = self.gridx_P2[0,1] - self.gridx_P2[0,0]
+            dy = self.gridy_P2[1,0] - self.gridy_P2[0,0]
+            self.lf_P2 = NP.outer(NP.fft.ifftshift(NP.fft.fftfreq(2*grid_shape[1], dx)), FCNST.c/self.f)
+            self.mf_P2 = NP.outer(NP.fft.ifftshift(NP.fft.fftfreq(2*grid_shape[0], dy)), FCNST.c/self.f)
+            if verbose:
+                print '\t\tComputed the direction cosine coordinates for the image.'
+            grid_lf_P2 = NP.repeat(NP.expand_dims(self.lf_P2, axis=0), self.mf_P2.shape[0], axis=0)
+            grid_mf_P2 = NP.repeat(NP.expand_dims(self.mf_P2, axis=1), self.lf_P2.shape[0], axis=1)
+            nan_ind = grid_lf_P2**2 + grid_mf_P2**2 > 1.0
+            self.holograph_P2[nan_ind] = NP.nan
+            self.holograph_PB_P2[nan_ind] = NP.nan
+            if verbose:
+                print '\t\tImage pixels corresponding to invalid direction cosine coordinates (if any) \n\t\t\thave been flagged as NAN.'
+                print '\nImaging completed successfully.\n'
+
+    #############################################################################
+        
+    def save(self, imgfile, pol=None, overwrite=False, verbose=True):
+
+        """
+        -------------------------------------------------------------------------
+        Saves the image information to disk.
+
+        Input:
+
+        imgfile     [string] Image filename with full path. Will be appended 
+                     with '.fits' extension
+
+        Keyword Input(s):
+
+        pol          [string] indicates which polarization information to be 
+                     saved. Allowed values are 'P1', 'P2' or None (default). If 
+                     None, information on both polarizations are saved.
+                     
+        overwrite    [boolean] True indicates overwrite even if a file already 
+                     exists. Default = False (does not overwrite)
+                     
+        verbose      [boolean] If True (default), prints diagnostic and progress
+                     messages. If False, suppress printing such messages.
+        -------------------------------------------------------------------------
+        """
+
+        try:
+            imgfile
+        except NameError:
+            raise NameError('No filename provided. Aborting Image.save()')
+
+        filename = imgfile + '.fits'
+
+        if verbose:
+            print '\nSaving image information...'
+            
+        hdulst = []
+        hdulst += [fits.PrimaryHDU()]
+        hdulst[0].header['f0'] = (self.f0, 'Center frequency (Hz)')
+        hdulst[0].header['tobs'] = (self.timestamp, 'Timestamp associated with observation.')
+        hdulst[0].header['EXTNAME'] = 'PRIMARY'
+
+        if verbose:
+            print '\tCreated a primary HDU.'
+
+        hdulst += [fits.ImageHDU(self.f, name='FREQ')]
+        if verbose:
+            print '\t\tCreated an extension HDU of {0:0d} frequency channels'.format(len(self.f))
+
+        if (pol is None) or (pol == 'P1'):
+            if verbose:
+                print '\tWorking on polarization P1...'
+
+            if self.lf_P1 is not None:
+                hdulst += [fits.ImageHDU(self.lf_P1, name='grid_lf_P1')]
+                if verbose:
+                    print '\t\tCreated an extension HDU of l-coordinates of grid of size: {0[0]} \n\t\t\tfor each of the {0[1]} frequency channels'.format(self.lf_P1.shape)
+            if self.mf_P1 is not None:
+                hdulst += [fits.ImageHDU(self.mf_P1, name='grid_mf_P1')]
+                if verbose:
+                    print '\t\tCreated an extension HDU of m-coordinates of grid of size: {0[0]} \n\t\t\tfor each of the {0[1]} frequency channels'.format(self.mf_P1.shape)
+
+            if self.holograph_PB_P1 is not None:
+                hdulst += [fits.ImageHDU(self.holograph_PB_P1.real, name='holograph_PB_P1_real')]
+                hdulst += [fits.ImageHDU(self.holograph_PB_P1.imag, name='holograph_PB_P1_imag')]
+                if verbose:
+                    print "\t\tCreated separate extension HDUs of grid's voltage reception pattern spectra\n\t\t\twith size {0[0]}x{0[1]}x{0[2]} for real and imaginary parts.".format(self.holograph_PB_P1.shape)
+            if self.holograph_P1 is not None:
+                hdulst += [fits.ImageHDU(self.holograph_P1.real, name='holograph_P1_real')]
+                hdulst += [fits.ImageHDU(self.holograph_P1.imag, name='holograph_P1_imag')]
+                if verbose:
+                    print "\t\tCreated separate extension HDUs of grid's voltage holograph spectra of \n\t\t\tsize {0[0]}x{0[1]}x{0[2]} for real and imaginary parts.".format(self.holograph_P1.shape)
+
+        if (pol is None) or (pol == 'P2'):
+            if verbose:
+                print '\tWorking on polarization P2...'
+
+            if self.lf_P2 is not None:
+                hdulst += [fits.ImageHDU(self.lf_P2, name='grid_lf_P2')]
+                if verbose:
+                    print '\t\tCreated an extension HDU of l-coordinates of grid of size: {0[0]} \n\t\t\tfor each of the {0[1]} frequency channels'.format(self.lf_P2.shape)
+            if self.mf_P2 is not None:
+                hdulst += [fits.ImageHDU(self.mf_P2, name='grid_mf_P2')]
+                if verbose:
+                    print '\t\tCreated an extension HDU of m-coordinates of grid of size: {0[0]} \n\t\t\tfor each of the {0[1]} frequency channels'.format(self.mf_P2.shape)
+
+            if self.holograph_PB_P2 is not None:
+                hdulst += [fits.ImageHDU(self.holograph_PB_P2.real, name='holograph_PB_P2_real')]
+                hdulst += [fits.ImageHDU(self.holograph_PB_P2.imag, name='holograph_PB_P2_imag')]
+                if verbose:
+                    print "\t\tCreated separate extension HDUs of grid's voltage reception pattern spectra\n\t\t\twith size {0[0]}x{0[1]}x{0[2]} for real and imaginary parts.".format(self.holograph_PB_P2.shape)
+            if self.holograph_P2 is not None:
+                hdulst += [fits.ImageHDU(self.holograph_P2.real, name='holograph_P2_real')]
+                hdulst += [fits.ImageHDU(self.holograph_P2.imag, name='holograph_P2_imag')]
+                if verbose:
+                    print "\t\tCreated separate extension HDUs of grid's voltage holograph spectra of \n\t\t\tsize {0[0]}x{0[1]}x{0[2]} for real and imaginary parts.".format(self.holograph_P2.shape)
+
+        if verbose:
+            print '\tNow writing FITS file to disk:\n\t\t{0}'.format(filename)
+
+        hdu = fits.HDUList(hdulst)
+        hdu.writeto(filename, clobber=overwrite)
+
+        if verbose:
+            print '\tImage information written successfully to FITS file on disk:\n\t\t{0}\n'.format(filename)
+
+    #############################################################################
