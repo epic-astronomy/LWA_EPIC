@@ -1,3 +1,13 @@
+from v1.01 of MOFF:
+==================
+
+In sim_observe.py,
+
+(*) Created new function monochromatic_E_spectrum() and
+monochromatic_E_timeseries() which produce a monochromatic electric field
+spectrum and time-series respectively.
+
+--------------------------------------------------------------------------------
 from v1.0 of MOFF:
 =================
 
