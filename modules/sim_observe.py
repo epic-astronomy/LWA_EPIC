@@ -2,13 +2,12 @@ import numpy as NP
 import my_DSP_modules as DSP
 import geometry as GEOM
 import scipy.constants as FCNST
-import ipdb as PDB
 
 #############################################################################
 
 def stochastic_E_spectrum(freq_center, nchan, channel_width, flux_ref=1.0,
                           freq_ref=None, spectral_index=0.0, skypos=None, 
-                          antpos=[0.0,0.0,0.0], verbose=True):
+                          ref_point=None, antpos=[0.0,0.0,0.0], verbose=True):
 
     """
     ----------------------------------------------------------------------------
@@ -57,9 +56,15 @@ def stochastic_E_spectrum(freq_center, nchan, channel_width, flux_ref=1.0,
                      one  source is specified by flux_ref and skypos is not
                      specified, skypos defaults to the zenith (0.0, 0.0, 1.0)
 
+    ref_point        [3-element list, tuple, or numpy vector] Point on sky used
+                     as a phase reference. Same units as skypos (which is
+                     direction cosines and must satisfy rules of direction
+                     cosines). If None provided, it defaults to zenith
+                     (0.0, 0.0, 1.0)
+
     antpos           [list, tuple, list of lists, list of tuples, numpy array]
-                     Antenna positions of sources provided along local ENU axes. 
-                     It should be a3-element list, a 3-element tuple, a list of 
+                     Antenna positions provided along local ENU axes. 
+                     It should be a 3-element list, a 3-element tuple, a list of 
                      3-element lists, list of 3-element tuples, or a 3-column 
                      numpy array. Each 3-element entity corresponds to an
                      antenna position. If not specified, antpos by default is 
@@ -184,11 +189,26 @@ def stochastic_E_spectrum(freq_center, nchan, channel_width, flux_ref=1.0,
     elif nsrc < skypos.shape[0]:
         skypos = skypos[:nsrc,:]
 
+    if ref_point is None:
+        ref_point = NP.asarray([0.0, 0.0, 1.0]).reshape(1,-1)
+    elif isinstance(ref_point, (list, tuple, NP.ndarray)):
+        ref_point = NP.asarray(ref_point).reshape(1,-1)
+    else:
+        raise TypeError('Reference position must be a list, tuple or numpy array.')
+
+    if ref_point.size != 3:
+        raise ValueError('Reference position must be a 3-element list, tuple or numpy array of direction cosines.')
+
     eps = 1.0e-10
     if NP.any(NP.abs(skypos) > 1.0):
         raise ValueError('Some direction cosine values have absolute values greater than unity.')
     elif NP.any(NP.abs(1.0-NP.sqrt(NP.sum(skypos**2,axis=1))) > eps):
         raise ValueError('Some sky positions specified in direction cosines do not have unit magnitude by at least {0:.1e}.'.format(eps))
+
+    if NP.any(NP.abs(ref_point) > 1.0):
+        raise ValueError('Direction cosines in reference position cannot exceed unit magnitude.')
+    elif NP.abs(1.0-NP.sqrt(NP.sum(ref_point**2))) > eps:
+        raise ValueError('Unit vector denoting reference position in direction cosine units must have unit magnitude.')
 
     if nsrc == 1:
         freq_ref = NP.asarray(freq_ref[0]).reshape(-1)
@@ -238,27 +258,26 @@ def stochastic_E_spectrum(freq_center, nchan, channel_width, flux_ref=1.0,
 
     center_channel = int(NP.floor(0.5*nchan))
     freqs = freq_center + channel_width * (NP.arange(nchan) - center_channel)
-    alpha_matrix_2D = NP.repeat( spectral_index.reshape(-1,1), nchan, axis=1)
-    freq_matrix_2D = NP.repeat( freqs.reshape(1,-1), nsrc, axis=0) 
-    freq_ratio_matrix_2D = freq_matrix_2D / NP.repeat(freq_ref.reshape(-1,1), nchan, axis=1)
-    flux_matrix_2D = NP.repeat(flux_ref.reshape(-1,1),nchan,axis=1) * (freq_ratio_matrix_2D ** alpha_matrix_2D)
-    sigma_matrix_2D = NP.sqrt(flux_matrix_2D)
-    Ef_amp_2D = sigma_matrix_2D * NP.random.normal(loc=0.0, scale=1.0, size=(nsrc,nchan))
-    Ef_phase_2D = NP.e**(1j*NP.random.uniform(low=0.0, high=2*NP.pi, size=(nsrc,nchan)))
-    Ef_matrix_2D =  Ef_amp_2D * Ef_phase_2D
+    alpha = spectral_index.reshape(-1,1)
+    freqs = freqs.reshape(1,-1)
+    freq_ratio = freqs / freq_ref.reshape(-1,1)
+    fluxes = flux_ref.reshape(-1,1) * (freq_ratio ** alpha)
+    sigmas = NP.sqrt(fluxes)
+    Ef_amp = sigmas * NP.random.normal(loc=0.0, scale=1.0, size=(nsrc,nchan))
+    Ef_phase = NP.exp(1j*NP.random.uniform(low=0.0, high=2*NP.pi, size=(nsrc,nchan)))
+    # Ef_phase = 1.0
+    Ef = Ef_amp * Ef_phase
 
-    Ef_matrix_3D = NP.repeat(NP.expand_dims(Ef_matrix_2D, axis=2), nant, axis=2)
-    skypos_dot_antpos_3D = NP.repeat(NP.expand_dims(NP.dot(skypos, antpos.T), axis=1), nchan, axis=1)
-    k_dot_r_phase_3D = 2.0*NP.pi*(NP.repeat(NP.expand_dims(freq_matrix_2D,axis=2),nant,axis=2)/FCNST.c) * skypos_dot_antpos_3D
-    Ef_3D = Ef_matrix_3D * NP.e**(-1j*k_dot_r_phase_3D)
-    Ef_2D = NP.sum(Ef_3D, axis=0)
+    Ef = Ef[:,:,NP.newaxis]
+    skypos_dot_antpos = NP.dot(skypos-ref_point, antpos.T)
+    k_dot_r_phase = 2.0 * NP.pi * freqs[:,:,NP.newaxis] / FCNST.c * skypos_dot_antpos[:,NP.newaxis,:]
+    Ef = Ef * NP.exp(1j * k_dot_r_phase)
+    Ef = NP.sum(Ef, axis=0)
     if verbose:
         print '\tPerformed linear superposition of electric fields from source(s).'
     dictout = {}
-    dictout['f'] = freqs
-    # dictout['Ef_amp'] = Ef_amp_2D
-    # dictout['Ef_phase'] = Ef_phase_2D
-    dictout['Ef'] = Ef_2D
+    dictout['f'] = freqs.ravel()
+    dictout['Ef'] = Ef
     dictout['antpos'] = antpos
 
     if verbose:
@@ -270,7 +289,8 @@ def stochastic_E_spectrum(freq_center, nchan, channel_width, flux_ref=1.0,
 
 def stochastic_E_timeseries(freq_center, nchan, channel_width, flux_ref=1.0,
                             freq_ref=None, spectral_index=0.0, skypos=None, 
-                            antpos=[0.0,0.0,0.0], spectrum=True, verbose=True):
+                            ref_point=None, antpos=[0.0,0.0,0.0], spectrum=True,
+                            tshift=True, verbose=True):
 
     """
     -----------------------------------------------------------------------------
@@ -320,9 +340,15 @@ def stochastic_E_timeseries(freq_center, nchan, channel_width, flux_ref=1.0,
                      one  source is specified by flux_ref and skypos is not
                      specified, skypos defaults to the zenith (0.0, 0.0, 1.0)
 
+    ref_point        [3-element list, tuple, or numpy vector] Point on sky used
+                     as a phase reference. Same units as skypos (which is
+                     direction cosines and must satisfy rules of direction
+                     cosines). If None provided, it defaults to zenith
+                     (0.0, 0.0, 1.0)
+
     antpos           [list, tuple, list of lists, list of tuples, numpy array]
-                     Antenna positions of sources provided along local ENU axes. 
-                     It should be a3-element list, a 3-element tuple, a list of 
+                     Antenna positions provided along local ENU axes. 
+                     It should be a 3-element list, a 3-element tuple, a list of 
                      3-element lists, list of 3-element tuples, or a 3-column 
                      numpy array. Each 3-element entity corresponds to an
                      antenna position. If not specified, antpos by default is 
@@ -357,6 +383,24 @@ def stochastic_E_timeseries(freq_center, nchan, channel_width, flux_ref=1.0,
                                   channels in the spectrum and nant is the number 
                                   of antennas. Set only if keyword input spectrum
                                   is set to True
+                      'tres'      [numpy vector] Residual delays after removal of 
+                                  delays that are integral multiples of delay in 
+                                  a bin of the timeseries, in the process of 
+                                  phasing of antennas. It is computed only if the 
+                                  input parameter 'tshift' is set to True. Length
+                                  of the vector is equal to the number of
+                                  antennas. If 'tshift' is set to False, the key
+                                  'tres' is set to None
+                       'tshift'   [numpy vector] if input parameter 'tshift' is
+                                  set to True, this key 'tshift' in the output
+                                  dictionary holds number of bins by which the
+                                  timeseries of antennas have been shifted 
+                                  (positive values indicate delay of tiemseries
+                                  and negative values indicate advacing of
+                                  timeseries). The size of this vector equals the
+                                  number of antennas. If input parameter 'tshift'
+                                  is set to False, the value in this key 'tshift' 
+                                  is set to None.
 
     -----------------------------------------------------------------------------
     """
@@ -364,31 +408,62 @@ def stochastic_E_timeseries(freq_center, nchan, channel_width, flux_ref=1.0,
     if verbose:
         print '\nExecuting stochastic_E_timeseries()...'
 
+    if ref_point is None:
+        ref_point = NP.asarray([0.0, 0.0, 1.0]).reshape(1,-1)
+    elif isinstance(ref_point, (list, tuple, NP.ndarray)):
+        ref_point = NP.asarray(ref_point).reshape(1,-1)
+    else:
+        raise TypeError('Reference position must be a list, tuple or numpy array.')
+
+    if ref_point.size != 3:
+        raise ValueError('Reference position must be a 3-element list, tuple or numpy array of direction cosines.')
+
+    eps = 1.0e-10
+    if NP.any(NP.abs(ref_point) > 1.0):
+        raise ValueError('Direction cosines in reference position cannot exceed unit magnitude.')
+    elif NP.abs(1.0-NP.sqrt(NP.sum(ref_point**2))) > eps:
+        raise ValueError('Unit vector denoting reference position in direction cosine units must have unit magnitude.')
+
     if verbose:
         print '\tCalling stochastic_E_spectrum() to compute stochastic electric \n\t\tfield spectra...'
 
-    spectrum_info = stochastic_E_spectrum(freq_center, nchan, channel_width,
-                                          flux_ref, freq_ref, spectral_index,
-                                          skypos, antpos, verbose)
-
+    if tshift:
+        spectrum_info = stochastic_E_spectrum(freq_center, nchan, channel_width,
+                                              flux_ref, freq_ref, spectral_index,
+                                              skypos=skypos, antpos=antpos,
+                                              verbose=verbose)
+    else:
+        spectrum_info = stochastic_E_spectrum(freq_center, nchan, channel_width,
+                                              flux_ref, freq_ref, spectral_index,
+                                              skypos=skypos, antpos=antpos,
+                                              ref_point=ref_point, verbose=verbose)
+        
     if verbose:
         print '\tContinuing to execute stochastic_E_timeseries()...'
         print '\tComputing timeseries from spectrum using inverse FFT.'
 
-    Ef_2D_shifted = NP.fft.ifftshift(spectrum_info['Ef'], axes=0)
-    Et_2D = NP.fft.ifft(Ef_2D_shifted, axis=0)
+    Ef_shifted = NP.fft.ifftshift(spectrum_info['Ef'], axes=0)
+    Et = NP.fft.ifft(Ef_shifted, axis=0)
     f = spectrum_info['f']
     t = NP.fft.fftshift(NP.fft.fftfreq(nchan, f[1]-f[0]))
     t = t - NP.amin(t)
 
     dictout = {}
     dictout['t'] = t
-    dictout['Et'] = Et_2D
     dictout['antpos'] = spectrum_info['antpos']
     if spectrum:
         dictout['f'] = spectrum_info['f']
         dictout['Ef'] = spectrum_info['Ef']
-    
+    if tshift:
+        td = NP.dot(ref_point, antpos.T)/FCNST.c
+        tdbins_shift = NP.round(td/(t[1]-t[0]))
+        td_residual = td - tdbins_shift * (t[1] - t[0])
+        dictout['tres'] = td_residual
+        dictout['tshift'] = tdbins_shift
+        for i in xrange(Et.shape[1]):
+            Et[:,i] = NP.roll(Et[:,i], tdbins_shift)
+    dictout['Et'] = Et
+   
     if verbose:
         print 'stochastic_E_timeseries() executed successfully.\n'
 
@@ -397,7 +472,7 @@ def stochastic_E_timeseries(freq_center, nchan, channel_width, flux_ref=1.0,
 #################################################################################
 
 def monochromatic_E_spectrum(freq, flux_ref=1.0, freq_ref=None, 
-                             spectral_index=0.0, skypos=None,
+                             spectral_index=0.0, skypos=None, ref_point=None,
                              antpos=[0.0,0.0,0.0], verbose=True):
 
     """
@@ -445,9 +520,15 @@ def monochromatic_E_spectrum(freq, flux_ref=1.0, freq_ref=None,
                      one  source is specified by flux_ref and skypos is not
                      specified, skypos defaults to the zenith (0.0, 0.0, 1.0)
 
+    ref_point        [3-element list, tuple, or numpy vector] Point on sky used
+                     as a phase reference. Same units as skypos (which is
+                     direction cosines and must satisfy rules of direction
+                     cosines). If None provided, it defaults to zenith
+                     (0.0, 0.0, 1.0)
+
     antpos           [list, tuple, list of lists, list of tuples, numpy array]
-                     Antenna positions of sources provided along local ENU axes. 
-                     It should be a3-element list, a 3-element tuple, a list of 
+                     Antenna positions provided along local ENU axes. 
+                     It should be a 3-element list, a 3-element tuple, a list of 
                      3-element lists, list of 3-element tuples, or a 3-column 
                      numpy array. Each 3-element entity corresponds to an
                      antenna position. If not specified, antpos by default is 
@@ -463,9 +544,7 @@ def monochromatic_E_spectrum(freq, flux_ref=1.0, freq_ref=None,
                                 spectrum of size nchan
                      'Ef'       [complex numpy array] 1 x nant numpy array 
                                 consisting of complex monochromatic electric 
-                                field spectra. nchan is the number of channels 
-                                in the spectrum and nant is the number of
-                                antennas.
+                                field spectra. nant is the number of antennas.
                      'antpos'   [numpy array] 3-column array of antenna
                                 positions (same as the input argument antpos)
 
@@ -554,6 +633,16 @@ def monochromatic_E_spectrum(freq, flux_ref=1.0, freq_ref=None,
     else:
         raise TypeError('Sky position (skypos) must be a three-element list or tuple, list of lists or list of tuples with each of the inner lists or tuples holding three elements, or a three-column numpy array.')
             
+    if ref_point is None:
+        ref_point = NP.asarray([0.0, 0.0, 1.0]).reshape(1,-1)
+    elif isinstance(ref_point, (list, tuple, NP.ndarray)):
+        ref_point = NP.asarray(ref_point).reshape(1,-1)
+    else:
+        raise TypeError('Reference position must be a list, tuple or numpy array.')
+
+    if ref_point.size != 3:
+        raise ValueError('Reference position must be a 3-element list, tuple or numpy array of direction cosines.')
+
     if nsrc > skypos.shape[0]:
         raise ValueError('Sky positions must be provided for each of source flux densities.')
     elif nsrc < skypos.shape[0]:
@@ -564,6 +653,11 @@ def monochromatic_E_spectrum(freq, flux_ref=1.0, freq_ref=None,
         raise ValueError('Some direction cosine values have absolute values greater than unity.')
     elif NP.any(NP.abs(1.0-NP.sqrt(NP.sum(skypos**2,axis=1))) > eps):
         raise ValueError('Some sky positions specified in direction cosines do not have unit magnitude by at least {0:.1e}.'.format(eps))
+
+    if NP.any(NP.abs(ref_point) > 1.0):
+        raise ValueError('Direction cosines in reference position cannot exceed unit magnitude.')
+    elif NP.abs(1.0-NP.sqrt(NP.sum(ref_point**2))) > eps:
+        raise ValueError('Unit vector denoting reference position in direction cosine units must have unit magnitude.')
 
     if nsrc == 1:
         freq_ref = NP.asarray(freq_ref[0]).reshape(-1)
@@ -615,15 +709,14 @@ def monochromatic_E_spectrum(freq, flux_ref=1.0, freq_ref=None,
     alpha = spectral_index.reshape(-1)
     freq_ratio = freq / freq_ref
     flux = flux_ref * (freq_ratio ** alpha)
-    sigma = NP.sqrt(flux)
+    sigma = NP.sqrt(flux).reshape(-1,1)
     Ef_amp = sigma
-    Ef_phase = 0.0
+    Ef_phase = NP.random.uniform(low=0.0, high=2*NP.pi, size=(nsrc,nchan))
     Ef_sky =  Ef_amp * NP.exp(1j * Ef_phase)
-    Ef_sky = Ef_sky.reshape(-1,1)
     Ef_matrix = NP.repeat(Ef_sky, nant, axis=1)
-    skypos_dot_antpos = NP.dot(skypos, antpos.T)
+    skypos_dot_antpos = NP.dot(skypos-ref_point, antpos.T)
     k_dot_r_phase = 2.0 * NP.pi * (freq/FCNST.c) * skypos_dot_antpos
-    Ef_2D = NP.repeat(Ef_sky, nant, axis=1) * NP.exp(-1j*k_dot_r_phase)
+    Ef_2D = Ef_sky * NP.exp(1j * k_dot_r_phase)
     Ef = NP.sum(Ef_2D, axis=0)
     if verbose:
         print '\tPerformed linear superposition of electric fields from source(s).'
@@ -640,8 +733,9 @@ def monochromatic_E_spectrum(freq, flux_ref=1.0, freq_ref=None,
 #################################################################################
 
 def monochromatic_E_timeseries(freq_center, nchan, channel_width, flux_ref=1.0,
-                            freq_ref=None, spectral_index=0.0, skypos=None, 
-                            antpos=[0.0,0.0,0.0], spectrum=True, verbose=True):
+                               freq_ref=None, spectral_index=0.0, skypos=None, 
+                               ref_point=None, antpos=[0.0,0.0,0.0],
+                               spectrum=True, verbose=True):
 
     """
     -----------------------------------------------------------------------------
@@ -691,9 +785,15 @@ def monochromatic_E_timeseries(freq_center, nchan, channel_width, flux_ref=1.0,
                      one  source is specified by flux_ref and skypos is not
                      specified, skypos defaults to the zenith (0.0, 0.0, 1.0)
 
+    ref_point        [3-element list, tuple, or numpy vector] Point on sky used
+                     as a phase reference. Same units as skypos (which is
+                     direction cosines and must satisfy rules of direction
+                     cosines). If None provided, it defaults to zenith
+                     (0.0, 0.0, 1.0)
+
     antpos           [list, tuple, list of lists, list of tuples, numpy array]
-                     Antenna positions of sources provided along local ENU axes. 
-                     It should be a3-element list, a 3-element tuple, a list of 
+                     Antenna positions provided along local ENU axes. 
+                     It should be a 3-element list, a 3-element tuple, a list of 
                      3-element lists, list of 3-element tuples, or a 3-column 
                      numpy array. Each 3-element entity corresponds to an
                      antenna position. If not specified, antpos by default is 
@@ -739,8 +839,9 @@ def monochromatic_E_timeseries(freq_center, nchan, channel_width, flux_ref=1.0,
         print '\tCalling monochromatic_E_spectrum() to compute monochromatic electric \n\t\tfield spectra...'
 
     spectrum_info = monochromatic_E_spectrum(freq_center, flux_ref, freq_ref, 
-                                             spectral_index, skypos, antpos,
-                                             verbose)
+                                             spectral_index, skypos=skypos,
+                                             ref_point=ref_point, antpos=antpos,
+                                             verbose=verbose)
 
     if verbose:
         print '\tContinuing to execute monochromatic_E_timeseries()...'

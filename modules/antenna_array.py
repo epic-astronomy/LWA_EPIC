@@ -4,6 +4,7 @@ from astropy.io import fits
 import my_DSP_modules as DSP
 import geometry as GEOM
 import my_gridding_modules as GRD
+import lookup_operations as LKP
 
 #####################################################################  
 
@@ -192,12 +193,14 @@ class Antenna:
     wtspos_P1:  [List of 2-column numpy arrays] Each 2-column numpy array is the 
                 position of the gridding weights for a corresponding frequency 
                 channel for polarization P1. The size of the list must be the 
-                as wts_P1 and the number of channels. See wtspos_P1_scale.
+                as wts_P1 and the number of channels. See wtspos_P1_scale. Units
+                are in number of wavelengths.
 
     wtspos_P2:  [List of 2-column numpy arrays] Each 2-column numpy array is the 
                 position of the gridding weights for a corresponding frequency 
                 channel for polarization P2. The size of the list must be the 
-                as wts_P2 and the number of channels. See wtspos_P2_scale.
+                as wts_P2 and the number of channels. See wtspos_P2_scale. Units
+                are in number of wavelengths.
 
     wtspos_P1_scale [None or 'scale'] If None, numpy vectors in wts_P1 and 
                     wtspos_P1 are provided for each frequency channel. If set to
@@ -399,33 +402,61 @@ class Antenna:
         location   [instance of class GEOM.Point] Local ENU coordinates of the
                    antenna
 
-        wtsinfo_P1 [List of Tuples] Length of the list is equal to the number of 
-                   frequency channels or one (equivalent to setting
-                   wtspos_P1_scale to 'scale'.). Each tuple consists of three 
-                   quantities in the following order:
+        wtsinfo_P1 [List of dictionaries] Length of list is equal to the number
+                   of frequency channels or one (equivalent to setting
+                   wtspos_P1_scale to 'scale'.). The list is indexed by 
+                   the frequency channel number. Each element in the list
+                   consists of a dictionarycorresponding to that frequency
+                   channel. Each dictionary consists of three items with the
+                   following keys in no particular order:
 
-                   wtspos_P1   [2-column Numpy array] x- and y- positions for the
-                               gridding weights. It is recommended that sufficient
-                               padding is provided in wtspos_P1 and wts_P1
-                   wts_P1      [Numpy array] Complex gridding weights. Size is
-                               equal to the number of rows in wtspos_P1 above
-                   orientation [scalar] Orientation (in radians) of the wtspos_P1 
+                   wtspos      [2-column Numpy array, optional] u- and v- 
+                               positions for the gridding weights. Units
+                               are in number of wavelengths. It is 
+                               recommended that sufficient padding is provided in 
+                               wtspos and wts
+                   wts         [Numpy array] Complex gridding weights. Size is
+                               equal to the number of rows in wtspos above
+                   orientation [scalar] Orientation (in radians) of the wtspos 
                                coordinate system relative to the local ENU 
                                coordinate system. It is measured North of East. 
-                   
-        wtsinfo_P2 [List of Tuples] Length of the list is equal to the number of 
-                   frequency channels or one (equivalent to setting
-                   wtspos_P2_scale to 'scale'.). Each tuple consists of three 
-                   quantities in the following order:
+                   lookup      [string] If set, refers to a file location
+                               containing the wtspos and wts information above as
+                               columns (x-loc [float], y-loc [float], wts
+                               [real], wts[imag if any]). If set, wtspos and wts 
+                               information are obtained from this lookup table 
+                               and the wtspos and wts keywords in the dictionary
+                               are ignored. Note that wtspos values are obtained
+                               after dividing x- and y-loc lookup values by the
+                               wavelength
 
-                   wtspos_P2   [2-column Numpy array] x- and y- positions for the
-                               gridding weights. It is recommended that sufficient
-                               padding is provided in wtspos_P1 and wts_P1
-                   wts_P2      [Numpy array] Complex gridding weights. Size is
-                               equal to the number of rows in wtspos_P2 above
-                   orientation [scalar] Orientation (in radians) of the wtspos_P2 
+        wtsinfo_P2 [List of dictionaries] Length of list is equal to the number
+                   of frequency channels or one (equivalent to setting
+                   wtspos_P2_scale to 'scale'.). The list is indexed by 
+                   the frequency channel number. Each element in the list
+                   consists of a dictionarycorresponding to that frequency
+                   channel. Each dictionary consists of three items with the
+                   following keys in no particular order:
+
+                   wtspos      [2-column Numpy array, optional] u- and v- 
+                               positions for the gridding weights. Units
+                               are in number of wavelengths. It is 
+                               recommended that sufficient padding is provided in 
+                               wtspos and wts
+                   wts         [Numpy array] Complex gridding weights. Size is
+                               equal to the number of rows in wtspos above
+                   orientation [scalar] Orientation (in radians) of the wtspos 
                                coordinate system relative to the local ENU 
                                coordinate system. It is measured North of East. 
+                   lookup      [string] If set, refers to a file location
+                               containing the wtspos and wts information above as
+                               columns (x-loc [float], y-loc [float], wts
+                               [real], wts[imag if any]). If set, wtspos and wts 
+                               information are obtained from this lookup table 
+                               and the wtspos and wts keywords in the dictionary
+                               are ignored. Note that wtspos values are obtained
+                               after dividing x- and y-loc lookup values by the
+                               wavelength
 
         flag_P1    [Boolean] Flag for polarization P1 for the antenna
 
@@ -469,12 +500,22 @@ class Antenna:
             angles = []
             if len(wtsinfo_P1) == len(self.f):
                 self.wtspos_P1_scale = None
-                self.wts_P1 += [wtsinfo[1] for wtsinfo in wtsinfo_P1]
-                angles += [wtsinfo[2] for wtsinfo in wtsinfo_P1]
+                # self.wts_P1 += [wtsinfo[1] for wtsinfo in wtsinfo_P1]
+                angles += [wtsinfo['orientation'] for wtsinfo in wtsinfo_P1]
                 for i in range(len(self.f)):
                     rotation_matrix = NP.asarray([[NP.cos(-angles[i]),  NP.sin(-angles[i])],
                                                   [-NP.sin(-angles[i]), NP.cos(-angles[i])]])
-                    self.wtspos_P1 += [ NP.dot(NP.asarray(wtsinfo_P1[i][0]), rotation_matrix.T) ]
+                    if ('lookup' not in wtsinfo_P1[i]) or (wtsinfo_P1[i]['lookup'] is None):
+                        self.wts_P1 += [wtsinfo_P1[i]['wts']]
+                        wtspos = wtsinfo_P1[i]['wtspos']
+                    else:
+                        lookupdata = LKP.read_lookup(wtsinfo_P1[i]['lookup'])
+                        wtspos = NP.hstack((lookupdata[0].reshape(-1,1),lookupdata[1].reshape(-1,1))) * (self.f[i]/FCNST.c)
+                        self.wts_P1 += [lookupdata[2]]
+                        # lookupdata = NP.loadtxt(wtsinfo_P1[i]['lookup'], usecols=(1,2,3), dtype=(NP.float, NP.float, NP.complex))
+                        # wtspos = NP.hstack((lookupdata[:,0].reshape(-1,1), lookupdata[:,1].reshape(-1,1)))
+                        # self.wts_P1 += [lookupdata[:,2]]
+                    self.wtspos_P1 += [ NP.dot(NP.asarray(wtspos), rotation_matrix.T) ]
                 self.blc_P1 = NP.repeat(NP.asarray([self.location.x, self.location.y]).reshape(1,-1),len(self.f),axis=0) - NP.abs(NP.asarray([NP.amin((FCNST.c/self.f[i])*self.wtspos_P1[i],0) for i in range(len(self.f))]))
                 self.trc_P1 = NP.repeat(NP.asarray([self.location.x, self.location.y]).reshape(1,-1),len(self.f),axis=0) + NP.abs(NP.asarray([NP.amax((FCNST.c/self.f[i])*self.wtspos_P1[i],0) for i in range(len(self.f))]))
             elif len(wtsinfo_P1) == 1:
@@ -482,11 +523,20 @@ class Antenna:
                     self.wtspos_P1_scale = 'scale'
                     if ref_freq is None:
                         ref_freq = self.f0
-                    self.wts_P1 += [ wtsinfo_P1[0][1] ]
-                    angles = wtsinfo_P1[0][2]
+                    angles = wtsinfo_P1[0]['orientation']
                     rotation_matrix = NP.asarray([[NP.cos(-angles),  NP.sin(-angles)],
                                                   [-NP.sin(-angles), NP.cos(-angles)]])
-                    self.wtspos_P1 += [ (self.f[0]/ref_freq) * NP.dot(NP.asarray(wtsinfo_P1[0][0]), rotation_matrix.T) ]
+                    if ('lookup' not in wtsinfo_P1[0]) or (wtsinfo_P1[0]['lookup'] is None):
+                        self.wts_P1 += [ wtsinfo_P1[0]['wts'] ]
+                        wtspos = wtsinfo_P1[0]['wtspos']
+                    else:
+                        lookupdata = LKP.read_lookup(wtsinfo_P1[0]['lookup'])
+                        wtspos = NP.hstack((lookupdata[0].reshape(-1,1),lookupdata[1].reshape(-1,1))) * (ref_freq/FCNST.c)
+                        self.wts_P1 += [lookupdata[2]]
+                        # lookupdata = NP.loadtxt(wtsinfo_P1[0]['lookup'], usecols=(1,2,3), dtype=(NP.float, NP.float, NP.complex))
+                        # wtspos = NP.hstack((lookupdata[:,0].reshape(-1,1), lookupdata[:,1].reshape(-1,1)))
+                        # self.wts_P1 += [lookupdata[:,2]]
+                    self.wtspos_P1 += [ (self.f[0]/ref_freq) * NP.dot(NP.asarray(wtspos), rotation_matrix.T) ]
                 # elif gridfunc_freq == 'noscale':
                 #     self.wtspos_P1_scale = 'noscale'
                 #     self.wts_P1 += [ wtsinfo_P1[1] ]
@@ -509,12 +559,22 @@ class Antenna:
             angles = []
             if len(wtsinfo_P2) == len(self.f):
                 self.wtspos_P2_scale = None
-                self.wts_P2 += [wtsinfo[1] for wtsinfo in wtsinfo_P2]
-                angles += [wtsinfo[2] for wtsinfo in wtsinfo_P2]
+                # self.wts_P2 += [wtsinfo[1] for wtsinfo in wtsinfo_P2]
+                angles += [wtsinfo['orientation'] for wtsinfo in wtsinfo_P2]
                 for i in range(len(self.f)):
                     rotation_matrix = NP.asarray([[NP.cos(-angles[i]),  NP.sin(-angles[i])],
                                                   [-NP.sin(-angles[i]), NP.cos(-angles[i])]])
-                    self.wtspos_P2 += [ NP.dot(NP.asarray(wtsinfo_P2[i][0]), rotation_matrix.T) ]
+                    if ('lookup' not in wtsinfo_P2[i]) or (wtsinfo_P2[i]['lookup'] is None):
+                        self.wts_P2 += [wtsinfo_P2[i]['wts']]
+                        wtspos = wtsinfo_P2[i]['wtspos']
+                    else:
+                        lookupdata = LKP.read_lookup(wtsinfo_P2[i]['lookup'])
+                        wtspos = NP.hstack((lookupdata[0].reshape(-1,1),lookupdata[1].reshape(-1,1))) * (self.f[i]/FCNST.c)
+                        self.wts_P2 += [lookupdata[2]]
+                        # lookupdata = NP.loadtxt(wtsinfo_P2[i]['lookup'], usecols=(1,2,3), dtype=(NP.float, NP.float, NP.complex))
+                        # wtspos = NP.hstack((lookupdata[:,0].reshape(-1,1), lookupdata[:,1].reshape(-1,1)))
+                        # self.wts_P2 += [lookupdata[:,2]]
+                    self.wtspos_P2 += [ NP.dot(NP.asarray(wtspos), rotation_matrix.T) ]
                 self.blc_P2 = NP.repeat(NP.asarray([self.location.x, self.location.y]).reshape(1,-1),len(self.f),axis=0) - NP.abs(NP.asarray([NP.amin((FCNST.c/self.f[i])*self.wtspos_P2[i],0) for i in range(len(self.f))]))
                 self.trc_P2 = NP.repeat(NP.asarray([self.location.x, self.location.y]).reshape(1,-1),len(self.f),axis=0) + NP.abs(NP.asarray([NP.amax((FCNST.c/self.f[i])*self.wtspos_P2[i],0) for i in range(len(self.f))]))
             elif len(wtsinfo_P2) == 1:
@@ -522,11 +582,20 @@ class Antenna:
                     self.wtspos_P2_scale = 'scale'
                     if ref_freq is None:
                         ref_freq = self.f0
-                    self.wts_P2 += [ wtsinfo_P2[0][1] ]
-                    angles = wtsinfo_P2[0][2]
+                    angles = wtsinfo_P2[0]['orientation']
                     rotation_matrix = NP.asarray([[NP.cos(-angles),  NP.sin(-angles)],
                                                   [-NP.sin(-angles), NP.cos(-angles)]])
-                    self.wtspos_P2 += [ (self.f[0]/ref_freq) * NP.dot(NP.asarray(wtsinfo_P2[0][0]), rotation_matrix.T) ]
+                    if ('lookup' not in wtsinfo_P2[0]) or (wtsinfo_P2[0]['lookup'] is None):
+                        self.wts_P2 += [ wtsinfo_P2[0]['wts'] ]
+                        wtspos = wtsinfo_P2[0]['wtspos']
+                    else:
+                        lookupdata = LKP.read_lookup(wtsinfo_P2[0]['lookup'])
+                        wtspos = NP.hstack((lookupdata[0].reshape(-1,1),lookupdata[1].reshape(-1,1))) * (ref_freq/FCNST.c)
+                        self.wts_P2 += [lookupdata[2]]
+                        # lookupdata = NP.loadtxt(wtsinfo_P2[0]['lookup'], usecols=(1,2,3), dtype=(NP.float, NP.float, NP.complex))
+                        # wtspos = NP.hstack((lookupdata[:,0].reshape(-1,1), lookupdata[:,1].reshape(-1,1)))
+                        # self.wts_P2 += [lookupdata[:,2]]
+                    self.wtspos_P2 += [ (self.f[0]/ref_freq) * NP.dot(NP.asarray(wtspos), rotation_matrix.T) ]
                 # elif gridfunc_freq == 'noscale':
                 #     self.wtspos_P2_scale = 'noscale'
                 #     self.wts_P2 += [ wtsinfo_P2[1] ]
@@ -546,7 +615,7 @@ class Antenna:
         if verbose:
             print 'Updated antenna {0}.'.format(self.label)
 
-#############################################################################
+    #############################################################################
 
     def save(self, antfile, pol=None, tabtype='BinTableHDU', overwrite=False,
              verbose=True):
@@ -1177,7 +1246,8 @@ class AntennaArray:
 
     #################################################################################
 
-    def grid_convolve(self, pol=None, ants=None, unconvolve_existing=False): 
+    def grid_convolve(self, pol=None, ants=None, unconvolve_existing=False,
+                      normalize=False, method='NN', distNN=NP.inf): 
 
         """
         ----------------------------------------------------------------------------
@@ -1213,6 +1283,26 @@ class AntennaArray:
                    antenna instances specified are already found to be held in the
                    instance of class AntennaArray, the code will stop raising an
                    error indicating the gridding oepration cannot proceed. 
+
+        normalize  [Boolean] Default = False. If set to True, the gridded weights
+                   are divided by the sum of weights so that the gridded weights add
+                   up to unity. 
+
+        method     [string] The gridding method to be used in applying the antenna
+                   weights on to the antenna array grid. Accepted values are 'NN'
+                   (nearest neighbour - default), 'CS' (cubic spline), or 'BL'
+                   (Bi-linear). In case of applying grid weights by 'NN' method, an
+                   optional distance upper bound for the nearest neighbour can be 
+                   provided in the parameter distNN to prune the search and make it
+                   efficient
+
+        distNN     [scalar] A positive value indicating the upper bound on distance
+                   to the nearest neighbour in the gridding process. It has units of
+                   distance, the same units as the antenna attribute location and 
+                   antenna array attribute gridx_P1 and gridy_P1. Default is NP.inf
+                   (infinite distance). It will be internally converted to have same
+                   units as antenna attributes wtspos_P1 and wtspos_P2 (units in 
+                   number of wavelengths)
         ----------------------------------------------------------------------------
         """
 
@@ -1243,45 +1333,80 @@ class AntennaArray:
                     for key in ants:
                         if not ants[key].pol.flag_P1:
                             for i in range(len(self.f)):
-                                if ants[key].wtspos_P1_scale is None: 
-                                    grid_illumination_P1 = GRD.conv_grid2d(ants[key].location.x * (self.f[i]/FCNST.c),
-                                                                           ants[key].location.y * (self.f[i]/FCNST.c),
-                                                                           ants[key].wtspos_P1[i][:,0],
-                                                                           ants[key].wtspos_P1[i][:,1],
-                                                                           ants[key].wts_P1[i],
-                                                                           self.gridx_P1 * (self.f[i]/FCNST.c),
-                                                                           self.gridy_P1 * (self.f[i]/FCNST.c),
-                                                                           method='CS')
-                                    grid_illumination_P1 = grid_illumination_P1.reshape(self.gridx_P1.shape) / NP.sum(grid_illumination_P1)
-                                    roi_ind = NP.where(NP.abs(grid_illumination_P1) >= eps)
-                                elif ants[key].wtspos_P1_scale == 'scale':
-                                    if i == 0: # Determine some parameters only for zeroth channel if scaling is set
-                                        grid_illumination_P1 = GRD.conv_grid2d(ants[key].location.x * (self.f[0]/FCNST.c),
-                                                                               ants[key].location.y * (self.f[0]/FCNST.c),
-                                                                               ants[key].wtspos_P1[0][:,0],
-                                                                               ants[key].wtspos_P1[0][:,1],
-                                                                               ants[key].wts_P1[0],
-                                                                               self.gridx_P1 * (self.f[0]/FCNST.c),
-                                                                               self.gridy_P1 * (self.f[0]/FCNST.c),
-                                                                               method='CS')
-                                        grid_illumination_P1 = grid_illumination_P1.reshape(self.gridx_P1.shape) / NP.sum(grid_illumination_P1)
-                                        roi_ind = NP.where(NP.abs(grid_illumination_P1) >= eps)
-                                else:
-                                    raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
+                                if method == 'NN':
+                                    if ants[key].wtspos_P1_scale is None: 
+                                        ibind, nnval = LKP.lookup(ants[key].wtspos_P1[i][:,0] + ants[key].location.x * (self.f[i]/FCNST.c),
+                                                                  ants[key].wtspos_P1[i][:,1] + ants[key].location.y * (self.f[i]/FCNST.c),
+                                                                  ants[key].wts_P1[i], self.gridx_P1*self.f[i]/FCNST.c,
+                                                                  self.gridy_P1*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                                                  remove_oob=True)[:2]
+                                        roi_ind = NP.unravel_index(ibind, self.gridx_P1.shape)
+                                        if normalize:
+                                            nnval /= NP.sum(nnval)
+                                    elif ants[key].wtspos_P1_scale == 'scale':
+                                        if i == 0: # Determine some parameters only for zeroth channel if scaling is set
+                                            ibind, nnval = LKP.lookup(ants[key].wtspos_P1[0][:,0]+ants[key].location.x*(self.f[0]/FCNST.c),
+                                                                      ants[key].wtspos_P1[0][:,1]+ants[key].location.y*(self.f[0]/FCNST.c),
+                                                                      ants[key].wts_P1[0], self.gridx_P1*self.f[0]/FCNST.c,
+                                                                      self.gridy_P1*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                                                      remove_oob=True)[:2]
+                                            roi_ind = NP.unravel_index(ibind, self.gridx_P1.shape)
+                                            if normalize:
+                                                nnval /= NP.sum(nnval)
+                                    else:
+                                        raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
 
-                                self.grid_illumination_P1[:,:,i] += grid_illumination_P1
-                                self.grid_Ef_P1[:,:,i] += ants[key].pol.Ef_P1[i] * grid_illumination_P1
+                                    self.grid_illumination_P1[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += nnval
+                                    self.grid_Ef_P1[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += ants[key].pol.Ef_P1[i] * nnval
+                                else:
+                                    if ants[key].wtspos_P1_scale is None: 
+                                        grid_illumination_P1 = GRD.conv_grid2d(ants[key].location.x * (self.f[i]/FCNST.c),
+                                                                               ants[key].location.y * (self.f[i]/FCNST.c),
+                                                                               ants[key].wtspos_P1[i][:,0],
+                                                                               ants[key].wtspos_P1[i][:,1],
+                                                                               ants[key].wts_P1[i],
+                                                                               self.gridx_P1 * (self.f[i]/FCNST.c),
+                                                                               self.gridy_P1 * (self.f[i]/FCNST.c),
+                                                                               method=method)
+                                        grid_illumination_P1 = grid_illumination_P1.reshape(self.gridx_P1.shape)
+                                        if normalize:
+                                            grid_illumination_P1 = grid_illumination_P1 / NP.sum(grid_illumination_P1)
+                                        roi_ind = NP.where(NP.abs(grid_illumination_P1) >= eps)
+                                    elif ants[key].wtspos_P1_scale == 'scale':
+                                        if i == 0: # Determine some parameters only for zeroth channel if scaling is set
+                                            grid_illumination_P1 = GRD.conv_grid2d(ants[key].location.x * (self.f[0]/FCNST.c),
+                                                                                   ants[key].location.y * (self.f[0]/FCNST.c),
+                                                                                   ants[key].wtspos_P1[0][:,0],
+                                                                                   ants[key].wtspos_P1[0][:,1],
+                                                                                   ants[key].wts_P1[0],
+                                                                                   self.gridx_P1 * (self.f[0]/FCNST.c),
+                                                                                   self.gridy_P1 * (self.f[0]/FCNST.c),
+                                                                                   method=method)
+                                            grid_illumination_P1 = grid_illumination_P1.reshape(self.gridx_P1.shape)
+                                            if normalize:
+                                                grid_illumination_P1 = grid_illumination_P1 / NP.sum(grid_illumination_P1)
+                                            roi_ind = NP.where(NP.abs(grid_illumination_P1) >= eps)
+                                    else:
+                                        raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
+
+                                    self.grid_illumination_P1[:,:,i] += grid_illumination_P1
+                                    self.grid_Ef_P1[:,:,i] += ants[key].pol.Ef_P1[i] * grid_illumination_P1
+
                                 if key in self.antennas:
                                     if i not in self.antennas[key].gridinfo_P1:
                                         self.antennas[key].gridinfo_P1 = {} # Create an empty dictionary for each channel to hold grid info
                                     self.antennas[key].gridinfo_P1[i]['f'] = self.f[i]
                                     self.antennas[key].gridinfo_P1[i]['flag'] = False
                                     self.antennas[key].gridinfo_P1[i]['gridxy_ind'] = zip(*roi_ind)
-                                    self.antennas[key].gridinfo_P1[i]['illumination'] = grid_illumination_P1[roi_ind]
-                                    self.antennas[key].gridinfo_P1[i]['Ef'] = ants[key].pol.Ef_P1[i] * grid_illumination_P1[roi_ind]
                                     self.antennas[key].wtspos_P1_scale = ants[key].wtspos_P1_scale
-                elif isinstance(ants, list):
+                                    if method == 'NN':
+                                        self.antennas[key].gridinfo_P1[i]['illumination'] = nnval
+                                        self.antennas[key].gridinfo_P1[i]['Ef'] = ants[key].pol.Ef_P1[i] * nnval
+                                    else:
+                                        self.antennas[key].gridinfo_P1[i]['illumination'] = grid_illumination_P1[roi_ind]
+                                        self.antennas[key].gridinfo_P1[i]['Ef'] = ants[key].pol.Ef_P1[i] * grid_illumination_P1[roi_ind]
 
+                elif isinstance(ants, list):
                     # Check if these antennas are new or old and compatible
                     for key in range(len(ants)): 
                         if isinstance(ants[key], Antenna): # required if ants is a dictionary and not instance of AntennaArray
@@ -1299,43 +1424,78 @@ class AntennaArray:
                     for key in range(len(ants)):
                         if not ants[key].pol.flag_P1:
                             for i in range(len(self.f)):
-                                if ants[key].wtspos_P1_scale is None:
-                                    grid_illumination_P1 = GRD.conv_grid2d(ants[key].location.x * (self.f[i]/FCNST.c),
-                                                                           ants[key].location.y * (self.f[i]/FCNST.c),
-                                                                           ants[key].wtspos_P1[i][:,0],
-                                                                           ants[key].wtspos_P1[i][:,1],
-                                                                           ants[key].wts_P1[i],
-                                                                           self.gridx_P1 * (self.f[i]/FCNST.c),
-                                                                           self.gridy_P1 * (self.f[i]/FCNST.c),
-                                                                           method='CS')
-                                    grid_illumination_P1 = grid_illumination_P1.reshape(self.gridx_P1.shape) / NP.sum(grid_illumination_P1)
-                                    roi_ind = NP.where(NP.abs(grid_illumination_P1) >= eps)
-                                elif ants[key].wtspos_P1_scale == 'scale':
-                                    if i == 0: # Determine some parameters only for zeroth channel if scaling is set
-                                        grid_illumination_P1 = GRD.conv_grid2d(ants[key].location.x * (self.f[0]/FCNST.c),
-                                                                               ants[key].location.y * (self.f[0]/FCNST.c),
-                                                                               ants[key].wtspos_P1[0][:,0],
-                                                                               ants[key].wtspos_P1[0][:,1],
-                                                                               ants[key].wts_P1[0],
-                                                                               self.gridx_P1 * (self.f[0]/FCNST.c),
-                                                                               self.gridy_P1 * (self.f[0]/FCNST.c),
-                                                                               method='CS')
-                                        grid_illumination_P1 = grid_illumination_P1.reshape(self.gridx_P1.shape) / NP.sum(grid_illumination_P1)
-                                        roi_ind = NP.where(NP.abs(grid_illumination_P1) >= eps)
-                                else:
-                                    raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
+                                if method == 'NN':
+                                    if ants[key].wtspos_P1_scale is None: 
+                                        ibind, nnval = LKP.lookup(ants[key].wtspos_P1[i][:,0] + ants[key].location.x * (self.f[i]/FCNST.c),
+                                                                  ants[key].wtspos_P1[i][:,1] + ants[key].location.y * (self.f[i]/FCNST.c),
+                                                                  ants[key].wts_P1[i], self.gridx_P1*self.f[i]/FCNST.c,
+                                                                  self.gridy_P1*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                                                  remove_oob=True)[:2]
+                                        roi_ind = NP.unravel_index(ibind, self.gridx_P1.shape)
+                                        if normalize:
+                                            nnval /= NP.sum(nnval)
+                                    elif ants[key].wtspos_P1_scale == 'scale':
+                                        if i == 0: # Determine some parameters only for zeroth channel if scaling is set
+                                            ibind, nnval = LKP.lookup(ants[key].wtspos_P1[0][:,0]+ants[key].location.x*(self.f[0]/FCNST.c),
+                                                                      ants[key].wtspos_P1[0][:,1]+ants[key].location.y*(self.f[0]/FCNST.c),
+                                                                      ants[key].wts_P1[0], self.gridx_P1*self.f[0]/FCNST.c,
+                                                                      self.gridy_P1*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                                                      remove_oob=True)[:2]
+                                            roi_ind = NP.unravel_index(ibind, self.gridx_P1.shape)
+                                            if normalize:
+                                                nnval /= NP.sum(nnval)
+                                    else:
+                                        raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
 
-                                self.grid_illumination_P1[:,:,i] += grid_illumination_P1
-                                self.grid_Ef_P1[:,:,i] += ants[key].pol.Ef_P1[i] * grid_illumination_P1
+                                    self.grid_illumination_P1[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += nnval
+                                    self.grid_Ef_P1[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += ants[key].pol.Ef_P1[i] * nnval
+                                else:
+                                    if ants[key].wtspos_P1_scale is None:
+                                        grid_illumination_P1 = GRD.conv_grid2d(ants[key].location.x * (self.f[i]/FCNST.c),
+                                                                               ants[key].location.y * (self.f[i]/FCNST.c),
+                                                                               ants[key].wtspos_P1[i][:,0],
+                                                                               ants[key].wtspos_P1[i][:,1],
+                                                                               ants[key].wts_P1[i],
+                                                                               self.gridx_P1 * (self.f[i]/FCNST.c),
+                                                                               self.gridy_P1 * (self.f[i]/FCNST.c),
+                                                                               method=method)
+                                        grid_illumination_P1 = grid_illumination_P1.reshape(self.gridx_P1.shape)
+                                        if normalize:
+                                            grid_illumination_P1 = grid_illumination_P1 / NP.sum(grid_illumination_P1)
+                                        roi_ind = NP.where(NP.abs(grid_illumination_P1) >= eps)
+                                    elif ants[key].wtspos_P1_scale == 'scale':
+                                        if i == 0: # Determine some parameters only for zeroth channel if scaling is set
+                                            grid_illumination_P1 = GRD.conv_grid2d(ants[key].location.x * (self.f[0]/FCNST.c),
+                                                                                   ants[key].location.y * (self.f[0]/FCNST.c),
+                                                                                   ants[key].wtspos_P1[0][:,0],
+                                                                                   ants[key].wtspos_P1[0][:,1],
+                                                                                   ants[key].wts_P1[0],
+                                                                                   self.gridx_P1 * (self.f[0]/FCNST.c),
+                                                                                   self.gridy_P1 * (self.f[0]/FCNST.c),
+                                                                                   method=method)
+                                            grid_illumination_P1 = grid_illumination_P1.reshape(self.gridx_P1.shape)
+                                            if normalize:
+                                                grid_illumination_P1 = grid_illumination_P1 / NP.sum(grid_illumination_P1)
+                                            roi_ind = NP.where(NP.abs(grid_illumination_P1) >= eps)
+                                    else:
+                                        raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
+
+                                    self.grid_illumination_P1[:,:,i] += grid_illumination_P1
+                                    self.grid_Ef_P1[:,:,i] += ants[key].pol.Ef_P1[i] * grid_illumination_P1
+
                                 if ants[key].label in self.antennas:
                                     if i not in self.antennas[key].gridinfo_P1:
                                         self.antennas[key].gridinfo_P1 = {} # Create an empty dictionary for each channel to hold grid info
                                     self.antennas[ants[key].label].gridinfo_P1[i]['f'] = self.f[i]
                                     self.antennas[ants[key].label].gridinfo_P1[i]['flag'] = False
                                     self.antennas[ants[key].label].gridinfo_P1[i]['gridxy_ind'] = zip(*roi_ind)
-                                    self.antennas[ants[key].label].gridinfo_P1[i]['illumination'] = grid_illumination_P1[roi_ind]
-                                    self.antennas[ants[key].label].gridinfo_P1[i]['Ef'] = ants[key].pol.Ef_P1[i] * grid_illumination_P1[roi_ind] 
                                     self.antennas[key].wtspos_P1_scale = ants[key].wtspos_P1_scale
+                                    if method == 'NN':
+                                        self.antennas[ants[key].label].gridinfo_P1[i]['illumination'] = nnval
+                                        self.antennas[ants[key].label].gridinfo_P1[i]['Ef'] = ants[key].pol.Ef_P1[i] * nnval
+                                    else:
+                                        self.antennas[ants[key].label].gridinfo_P1[i]['illumination'] = grid_illumination_P1[roi_ind]
+                                        self.antennas[ants[key].label].gridinfo_P1[i]['Ef'] = ants[key].pol.Ef_P1[i] * grid_illumination_P1[roi_ind] 
                 else:
                     raise TypeError('ants must be an instance of AntennaArray, a dictionary of Antenna instances, a list of Antenna instances or an Antenna instance.')
 
@@ -1347,46 +1507,80 @@ class AntennaArray:
                                                      dtype=NP.complex_)
                 self.grid_Ef_P1 = NP.zeros((self.gridx_P1.shape[0],
                                             self.gridx_P1.shape[1],
-                                            len(self.f)),
-                                           dtype=NP.complex_)
+                                            len(self.f)), dtype=NP.complex_)
 
                 for key in self.antennas:
                     if not self.antennas[key].pol.flag_P1:
                         for i in range(len(self.f)):
-                            if self.antennas[key].wtspos_P1_scale is None:
-                                grid_illumination_P1 = GRD.conv_grid2d(self.antennas[key].location.x * (self.f[i]/FCNST.c),
-                                                                       self.antennas[key].location.y * (self.f[i]/FCNST.c),
-                                                                       self.antennas[key].wtspos_P1[i][:,0],
-                                                                       self.antennas[key].wtspos_P1[i][:,1],
-                                                                       self.antennas[key].wts_P1[i],
-                                                                       self.gridx_P1 * (self.f[i]/FCNST.c),
-                                                                       self.gridy_P1 * (self.f[i]/FCNST.c),
-                                                                       method='CS')
-                                grid_illumination_P1 = grid_illumination_P1.reshape(self.gridx_P1.shape) / NP.sum(grid_illumination_P1)
-                                roi_ind = NP.where(NP.abs(grid_illumination_P1) >= eps)
-                            elif self.antennas[key].wtspos_P1_scale == 'scale':
-                                if i == 0:
-                                    grid_illumination_P1 = GRD.conv_grid2d(self.antennas[key].location.x * (self.f[0]/FCNST.c),
-                                                                           self.antennas[key].location.y * (self.f[0]/FCNST.c),
-                                                                           self.antennas[key].wtspos_P1[0][:,0],
-                                                                           self.antennas[key].wtspos_P1[0][:,1],
-                                                                           self.antennas[key].wts_P1[0],
-                                                                           self.gridx_P1 * (self.f[0]/FCNST.c),
-                                                                           self.gridy_P1 * (self.f[0]/FCNST.c),
-                                                                           method='CS')
-                                    grid_illumination_P1 = grid_illumination_P1.reshape(self.gridx_P1.shape) / NP.sum(grid_illumination_P1)
-                                    roi_ind = NP.where(NP.abs(grid_illumination_P1) >= eps)
+                            if method == 'NN':
+                                if self.antennas[key].wtspos_P1_scale is None: 
+                                    ibind, nnval = LKP.lookup(self.antennas[key].wtspos_P1[i][:,0]+self.antennas[key].location.x*(self.f[i]/FCNST.c),
+                                                              self.antennas[key].wtspos_P1[i][:,1]+self.antennas[key].location.y*(self.f[i]/FCNST.c),
+                                                              self.antennas[key].wts_P1[i], self.gridx_P1*self.f[i]/FCNST.c,
+                                                              self.gridy_P1*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                                              remove_oob=True)[:2]
+                                    roi_ind = NP.unravel_index(ibind, self.gridx_P1.shape)
+                                    if normalize:
+                                        nnval /= NP.sum(nnval)
+                                elif self.antennas[key].wtspos_P1_scale == 'scale':
+                                    if i == 0: # Determine some parameters only for zeroth channel if scaling is set
+                                        ibind, nnval = LKP.lookup(self.antennas[key].wtspos_P1[0][:,0]+self.antennas[key].location.x*(self.f[0]/FCNST.c),
+                                                                  self.antennas[key].wtspos_P1[0][:,1]+self.antennas[key].location.y*(self.f[0]/FCNST.c),
+                                                                  self.antennas[key].wts_P1[0], self.gridx_P1*self.f[0]/FCNST.c,
+                                                                  self.gridy_P1*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                                                  remove_oob=True)[:2]
+                                        roi_ind = NP.unravel_index(ibind, self.gridx_P1.shape)
+                                        if normalize:
+                                            nnval /= NP.sum(nnval)
+                                else:
+                                    raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
+
+                                self.grid_illumination_P1[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += nnval
+                                self.grid_Ef_P1[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += self.antennas[key].pol.Ef_P1[i] * nnval
                             else:
-                                raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
+                                if self.antennas[key].wtspos_P1_scale is None:
+                                    grid_illumination_P1 = GRD.conv_grid2d(self.antennas[key].location.x * (self.f[i]/FCNST.c),
+                                                                           self.antennas[key].location.y * (self.f[i]/FCNST.c),
+                                                                           self.antennas[key].wtspos_P1[i][:,0],
+                                                                           self.antennas[key].wtspos_P1[i][:,1],
+                                                                           self.antennas[key].wts_P1[i],
+                                                                           self.gridx_P1 * (self.f[i]/FCNST.c),
+                                                                           self.gridy_P1 * (self.f[i]/FCNST.c),
+                                                                           method=method)
+                                    grid_illumination_P1 = grid_illumination_P1.reshape(self.gridx_P1.shape)
+                                    if normalize:
+                                        grid_illumination_P1 = grid_illumination_P1 / NP.sum(grid_illumination_P1)
+                                    roi_ind = NP.where(NP.abs(grid_illumination_P1) >= eps)
+                                elif self.antennas[key].wtspos_P1_scale == 'scale':
+                                    if i == 0:
+                                        grid_illumination_P1 = GRD.conv_grid2d(self.antennas[key].location.x * (self.f[0]/FCNST.c),
+                                                                               self.antennas[key].location.y * (self.f[0]/FCNST.c),
+                                                                               self.antennas[key].wtspos_P1[0][:,0],
+                                                                               self.antennas[key].wtspos_P1[0][:,1],
+                                                                               self.antennas[key].wts_P1[0],
+                                                                               self.gridx_P1 * (self.f[0]/FCNST.c),
+                                                                               self.gridy_P1 * (self.f[0]/FCNST.c),
+                                                                               method=method)
+                                        grid_illumination_P1 = grid_illumination_P1.reshape(self.gridx_P1.shape)
+                                        if normalize:
+                                            grid_illumination_P1 = grid_illumination_P1 / NP.sum(grid_illumination_P1)
+                                        roi_ind = NP.where(NP.abs(grid_illumination_P1) >= eps)
+                                else:
+                                    raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
                                 
-                            self.grid_illumination_P1[:,:,i] += grid_illumination_P1
-                            self.grid_Ef_P1[:,:,i] += self.antennas[key].pol.Ef_P1[i] * grid_illumination_P1
+                                self.grid_illumination_P1[:,:,i] += grid_illumination_P1
+                                self.grid_Ef_P1[:,:,i] += self.antennas[key].pol.Ef_P1[i] * grid_illumination_P1
+
                             self.antennas[key].gridinfo_P1[i] = {} # Create a nested dictionary to hold channel info
                             self.antennas[key].gridinfo_P1[i]['f'] = self.f[i]
                             self.antennas[key].gridinfo_P1[i]['flag'] = False
                             self.antennas[key].gridinfo_P1[i]['gridxy_ind'] = zip(*roi_ind)
-                            self.antennas[key].gridinfo_P1[i]['illumination'] = grid_illumination_P1[roi_ind]
-                            self.antennas[key].gridinfo_P1[i]['Ef'] = self.antennas[key].pol.Ef_P1[i] * grid_illumination_P1[roi_ind]
+                            if method == 'NN':
+                                self.antennas[key].gridinfo_P1[i]['illumination'] = nnval
+                                self.antennas[key].gridinfo_P1[i]['Ef'] = self.antennas[key].pol.Ef_P1[i] * nnval  
+                            else:
+                                self.antennas[key].gridinfo_P1[i]['illumination'] = grid_illumination_P1[roi_ind]
+                                self.antennas[key].gridinfo_P1[i]['Ef'] = self.antennas[key].pol.Ef_P1[i] * grid_illumination_P1[roi_ind]
 
         if (pol is None) or (pol == 'P2'):
 
@@ -1413,46 +1607,80 @@ class AntennaArray:
                     for key in ants:
                         if not ants[key].pol.flag_P2:
                             for i in range(len(self.f)):
-                                if ants[key].wtspos_P2_scale is None: 
-                                    grid_illumination_P2 = GRD.conv_grid2d(ants[key].location.x * (self.f[i]/FCNST.c),
-                                                                           ants[key].location.y * (self.f[i]/FCNST.c),
-                                                                           ants[key].wtspos_P2[i][:,0],
-                                                                           ants[key].wtspos_P2[i][:,1],
-                                                                           ants[key].wts_P2[i],
-                                                                           self.gridx_P2 * (self.f[i]/FCNST.c),
-                                                                           self.gridy_P2 * (self.f[i]/FCNST.c),
-                                                                           method='CS')
-                                    grid_illumination_P2 = grid_illumination_P2.reshape(self.gridx_P2.shape) / NP.sum(grid_illumination_P2)
-                                    roi_ind = NP.where(NP.abs(grid_illumination_P2) >= eps)
-                                elif ants[key].wtspos_P2_scale == 'scale':
-                                    if i == 0: # Determine some parameters only for zeroth channel if scaling is set
-                                        grid_illumination_P2 = GRD.conv_grid2d(ants[key].location.x * (self.f[0]/FCNST.c),
-                                                                               ants[key].location.y * (self.f[0]/FCNST.c),
-                                                                               ants[key].wtspos_P2[0][:,0],
-                                                                               ants[key].wtspos_P2[0][:,1],
-                                                                               ants[key].wts_P2[0],
-                                                                               self.gridx_P2 * (self.f[0]/FCNST.c),
-                                                                               self.gridy_P2 * (self.f[0]/FCNST.c),
-                                                                               method='CS')
-                                        grid_illumination_P2 = grid_illumination_P2.reshape(self.gridx_P2.shape) / NP.sum(grid_illumination_P2)
-                                        roi_ind = NP.where(NP.abs(grid_illumination_P2) >= eps)
-                                else:
-                                    raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
+                                if method == 'NN':
+                                    if ants[key].wtspos_P2_scale is None: 
+                                        ibind, nnval = LKP.lookup(ants[key].wtspos_P2[i][:,0] + ants[key].location.x * (self.f[i]/FCNST.c),
+                                                                  ants[key].wtspos_P2[i][:,1] + ants[key].location.y * (self.f[i]/FCNST.c),
+                                                                  ants[key].wts_P2[i], self.gridx_P2*self.f[i]/FCNST.c,
+                                                                  self.gridy_P2*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                                                  remove_oob=True)[:2]
+                                        roi_ind = NP.unravel_index(ibind, self.gridx_P2.shape)
+                                        if normalize:
+                                            nnval /= NP.sum(nnval)
+                                    elif ants[key].wtspos_P2_scale == 'scale':
+                                        if i == 0: # Determine some parameters only for zeroth channel if scaling is set
+                                            ibind, nnval = LKP.lookup(ants[key].wtspos_P2[0][:,0]+ants[key].location.x*(self.f[0]/FCNST.c),
+                                                                      ants[key].wtspos_P2[0][:,1]+ants[key].location.y*(self.f[0]/FCNST.c),
+                                                                      ants[key].wts_P2[0], self.gridx_P2*self.f[0]/FCNST.c,
+                                                                      self.gridy_P2*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                                                      remove_oob=True)[:2]
+                                            roi_ind = NP.unravel_index(ibind, self.gridx_P2.shape)
+                                            if normalize:
+                                                nnval /= NP.sum(nnval)
+                                    else:
+                                        raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
 
-                                self.grid_illumination_P2[:,:,i] += grid_illumination_P2
-                                self.grid_Ef_P2[:,:,i] += ants[key].pol.Ef_P2[i] * grid_illumination_P2
+                                    self.grid_illumination_P2[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += nnval
+                                    self.grid_Ef_P2[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += ants[key].pol.Ef_P2[i] * nnval
+                                else:
+                                    if ants[key].wtspos_P2_scale is None: 
+                                        grid_illumination_P2 = GRD.conv_grid2d(ants[key].location.x * (self.f[i]/FCNST.c),
+                                                                               ants[key].location.y * (self.f[i]/FCNST.c),
+                                                                               ants[key].wtspos_P2[i][:,0],
+                                                                               ants[key].wtspos_P2[i][:,1],
+                                                                               ants[key].wts_P2[i],
+                                                                               self.gridx_P2 * (self.f[i]/FCNST.c),
+                                                                               self.gridy_P2 * (self.f[i]/FCNST.c),
+                                                                               method=method)
+                                        grid_illumination_P2 = grid_illumination_P2.reshape(self.gridx_P2.shape)
+                                        if normalize:
+                                            grid_illumination_P2 = grid_illumination_P2 / NP.sum(grid_illumination_P2)
+                                        roi_ind = NP.where(NP.abs(grid_illumination_P2) >= eps)
+                                    elif ants[key].wtspos_P2_scale == 'scale':
+                                        if i == 0: # Determine some parameters only for zeroth channel if scaling is set
+                                            grid_illumination_P2 = GRD.conv_grid2d(ants[key].location.x * (self.f[0]/FCNST.c),
+                                                                                   ants[key].location.y * (self.f[0]/FCNST.c),
+                                                                                   ants[key].wtspos_P2[0][:,0],
+                                                                                   ants[key].wtspos_P2[0][:,1],
+                                                                                   ants[key].wts_P2[0],
+                                                                                   self.gridx_P2 * (self.f[0]/FCNST.c),
+                                                                                   self.gridy_P2 * (self.f[0]/FCNST.c),
+                                                                                   method=method)
+                                            grid_illumination_P2 = grid_illumination_P2.reshape(self.gridx_P2.shape)
+                                            if normalize:
+                                                grid_illumination_P2 = grid_illumination_P2 / NP.sum(grid_illumination_P2)
+                                            roi_ind = NP.where(NP.abs(grid_illumination_P2) >= eps)
+                                    else:
+                                        raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
+
+                                    self.grid_illumination_P2[:,:,i] += grid_illumination_P2
+                                    self.grid_Ef_P2[:,:,i] += ants[key].pol.Ef_P2[i] * grid_illumination_P2
+
                                 if key in self.antennas:
                                     if i not in self.antennas[key].gridinfo_P2:
                                         self.antennas[key].gridinfo_P2 = {} # Create an empty dictionary for each channel to hold grid info
                                     self.antennas[key].gridinfo_P2[i]['f'] = self.f[i]
                                     self.antennas[key].gridinfo_P2[i]['flag'] = False
                                     self.antennas[key].gridinfo_P2[i]['gridxy_ind'] = zip(*roi_ind)
-                                    self.antennas[key].gridinfo_P2[i]['illumination'] = grid_illumination_P2[roi_ind]
-                                    self.antennas[key].gridinfo_P2[i]['Ef'] = ants[key].pol.Ef_P2[i] * grid_illumination_P2[roi_ind]
                                     self.antennas[key].wtspos_P2_scale = ants[key].wtspos_P2_scale
+                                    if method == 'NN':
+                                        self.antennas[key].gridinfo_P2[i]['illumination'] = nnval
+                                        self.antennas[key].gridinfo_P2[i]['Ef'] = ants[key].pol.Ef_P2[i] * nnval
+                                    else:
+                                        self.antennas[key].gridinfo_P2[i]['illumination'] = grid_illumination_P2[roi_ind]
+                                        self.antennas[key].gridinfo_P2[i]['Ef'] = ants[key].pol.Ef_P2[i] * grid_illumination_P2[roi_ind]
 
                 elif isinstance(ants, list):
-
                     # Check if these antennas are new or old and compatible
                     for key in range(len(ants)): 
                         if isinstance(ants[key], Antenna): # required if ants is a dictionary and not instance of AntennaArray
@@ -1470,43 +1698,78 @@ class AntennaArray:
                     for key in range(len(ants)):
                         if not ants[key].pol.flag_P2:
                             for i in range(len(self.f)):
-                                if ants[key].wtspos_P2_scale is None:
-                                    grid_illumination_P2 = GRD.conv_grid2d(ants[key].location.x * (self.f[i]/FCNST.c),
-                                                                           ants[key].location.y * (self.f[i]/FCNST.c),
-                                                                           ants[key].wtspos_P2[i][:,0],
-                                                                           ants[key].wtspos_P2[i][:,1],
-                                                                           ants[key].wts_P2[i],
-                                                                           self.gridx_P2 * (self.f[i]/FCNST.c),
-                                                                           self.gridy_P2 * (self.f[i]/FCNST.c),
-                                                                           method='CS')
-                                    grid_illumination_P2 = grid_illumination_P2.reshape(self.gridx_P2.shape) / NP.sum(grid_illumination_P2)
-                                    roi_ind = NP.where(NP.abs(grid_illumination_P2) >= eps)
-                                elif ants[key].wtspos_P2_scale == 'scale':
-                                    if i == 0: # Determine some parameters only for zeroth channel if scaling is set
-                                        grid_illumination_P2 = GRD.conv_grid2d(ants[key].location.x * (self.f[0]/FCNST.c),
-                                                                               ants[key].location.y * (self.f[0]/FCNST.c),
-                                                                               ants[key].wtspos_P2[0][:,0],
-                                                                               ants[key].wtspos_P2[0][:,1],
-                                                                               ants[key].wts_P2[0],
-                                                                               self.gridx_P2 * (self.f[0]/FCNST.c),
-                                                                               self.gridy_P2 * (self.f[0]/FCNST.c),
-                                                                               method='CS')
-                                        grid_illumination_P2 = grid_illumination_P2.reshape(self.gridx_P2.shape) / NP.sum(grid_illumination_P2)
-                                        roi_ind = NP.where(NP.abs(grid_illumination_P2) >= eps)
-                                else:
-                                    raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
+                                if method == 'NN':
+                                    if ants[key].wtspos_P2_scale is None: 
+                                        ibind, nnval = LKP.lookup(ants[key].wtspos_P2[i][:,0] + ants[key].location.x * (self.f[i]/FCNST.c),
+                                                                  ants[key].wtspos_P2[i][:,1] + ants[key].location.y * (self.f[i]/FCNST.c),
+                                                                  ants[key].wts_P2[i], self.gridx_P2*self.f[i]/FCNST.c,
+                                                                  self.gridy_P2*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                                                  remove_oob=True)[:2]
+                                        roi_ind = NP.unravel_index(ibind, self.gridx_P2.shape)
+                                        if normalize:
+                                            nnval /= NP.sum(nnval)
+                                    elif ants[key].wtspos_P2_scale == 'scale':
+                                        if i == 0: # Determine some parameters only for zeroth channel if scaling is set
+                                            ibind, nnval = LKP.lookup(ants[key].wtspos_P2[0][:,0]+ants[key].location.x*(self.f[0]/FCNST.c),
+                                                                      ants[key].wtspos_P2[0][:,1]+ants[key].location.y*(self.f[0]/FCNST.c),
+                                                                      ants[key].wts_P2[0], self.gridx_P2*self.f[0]/FCNST.c,
+                                                                      self.gridy_P2*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                                                      remove_oob=True)[:2]
+                                            roi_ind = NP.unravel_index(ibind, self.gridx_P2.shape)
+                                            if normalize:
+                                                nnval /= NP.sum(nnval)
+                                    else:
+                                        raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
 
-                                self.grid_illumination_P2[:,:,i] += grid_illumination_P2
-                                self.grid_Ef_P2[:,:,i] += ants[key].pol.Ef_P2[i] * grid_illumination_P2
+                                    self.grid_illumination_P2[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += nnval
+                                    self.grid_Ef_P2[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += ants[key].pol.Ef_P2[i] * nnval
+                                else:
+                                    if ants[key].wtspos_P2_scale is None:
+                                        grid_illumination_P2 = GRD.conv_grid2d(ants[key].location.x * (self.f[i]/FCNST.c),
+                                                                               ants[key].location.y * (self.f[i]/FCNST.c),
+                                                                               ants[key].wtspos_P2[i][:,0],
+                                                                               ants[key].wtspos_P2[i][:,1],
+                                                                               ants[key].wts_P2[i],
+                                                                               self.gridx_P2 * (self.f[i]/FCNST.c),
+                                                                               self.gridy_P2 * (self.f[i]/FCNST.c),
+                                                                               method=method)
+                                        grid_illumination_P2 = grid_illumination_P2.reshape(self.gridx_P2.shape)
+                                        if normalize:
+                                            grid_illumination_P2 = grid_illumination_P2 / NP.sum(grid_illumination_P2)
+                                        roi_ind = NP.where(NP.abs(grid_illumination_P2) >= eps)
+                                    elif ants[key].wtspos_P2_scale == 'scale':
+                                        if i == 0: # Determine some parameters only for zeroth channel if scaling is set
+                                            grid_illumination_P2 = GRD.conv_grid2d(ants[key].location.x * (self.f[0]/FCNST.c),
+                                                                                   ants[key].location.y * (self.f[0]/FCNST.c),
+                                                                                   ants[key].wtspos_P2[0][:,0],
+                                                                                   ants[key].wtspos_P2[0][:,1],
+                                                                                   ants[key].wts_P2[0],
+                                                                                   self.gridx_P2 * (self.f[0]/FCNST.c),
+                                                                                   self.gridy_P2 * (self.f[0]/FCNST.c),
+                                                                                   method=method)
+                                            grid_illumination_P2 = grid_illumination_P2.reshape(self.gridx_P2.shape)
+                                            if normalize:
+                                                grid_illumination_P2 = grid_illumination_P2 / NP.sum(grid_illumination_P2)
+                                            roi_ind = NP.where(NP.abs(grid_illumination_P2) >= eps)
+                                    else:
+                                        raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
+
+                                    self.grid_illumination_P2[:,:,i] += grid_illumination_P2
+                                    self.grid_Ef_P2[:,:,i] += ants[key].pol.Ef_P2[i] * grid_illumination_P2
+
                                 if ants[key].label in self.antennas:
                                     if i not in self.antennas[key].gridinfo_P2:
                                         self.antennas[key].gridinfo_P2 = {} # Create an empty dictionary for each channel to hold grid info
                                     self.antennas[ants[key].label].gridinfo_P2[i]['f'] = self.f[i]
                                     self.antennas[ants[key].label].gridinfo_P2[i]['flag'] = False
                                     self.antennas[ants[key].label].gridinfo_P2[i]['gridxy_ind'] = zip(*roi_ind)
-                                    self.antennas[ants[key].label].gridinfo_P2[i]['illumination'] = grid_illumination_P2[roi_ind]
-                                    self.antennas[ants[key].label].gridinfo_P2[i]['Ef'] = ants[key].pol.Ef_P2[i] * grid_illumination_P2[roi_ind] 
                                     self.antennas[key].wtspos_P2_scale = ants[key].wtspos_P2_scale
+                                    if method == 'NN':
+                                        self.antennas[ants[key].label].gridinfo_P2[i]['illumination'] = nnval
+                                        self.antennas[ants[key].label].gridinfo_P2[i]['Ef'] = ants[key].pol.Ef_P2[i] * nnval
+                                    else:
+                                        self.antennas[ants[key].label].gridinfo_P2[i]['illumination'] = grid_illumination_P2[roi_ind]
+                                        self.antennas[ants[key].label].gridinfo_P2[i]['Ef'] = ants[key].pol.Ef_P2[i] * grid_illumination_P2[roi_ind] 
                 else:
                     raise TypeError('ants must be an instance of AntennaArray, a dictionary of Antenna instances, a list of Antenna instances or an Antenna instance.')
 
@@ -1518,46 +1781,80 @@ class AntennaArray:
                                                      dtype=NP.complex_)
                 self.grid_Ef_P2 = NP.zeros((self.gridx_P2.shape[0],
                                             self.gridx_P2.shape[1],
-                                            len(self.f)),
-                                           dtype=NP.complex_)
+                                            len(self.f)), dtype=NP.complex_)
 
                 for key in self.antennas:
                     if not self.antennas[key].pol.flag_P2:
                         for i in range(len(self.f)):
-                            if self.antennas[key].wtspos_P2_scale is None:
-                                grid_illumination_P2 = GRD.conv_grid2d(self.antennas[key].location.x * (self.f[i]/FCNST.c),
-                                                                       self.antennas[key].location.y * (self.f[i]/FCNST.c),
-                                                                       self.antennas[key].wtspos_P2[i][:,0],
-                                                                       self.antennas[key].wtspos_P2[i][:,1],
-                                                                       self.antennas[key].wts_P2[i],
-                                                                       self.gridx_P2 * (self.f[i]/FCNST.c),
-                                                                       self.gridy_P2 * (self.f[i]/FCNST.c),
-                                                                       method='CS')
-                                grid_illumination_P2 = grid_illumination_P2.reshape(self.gridx_P2.shape) / NP.sum(grid_illumination_P2)
-                                roi_ind = NP.where(NP.abs(grid_illumination_P2) >= eps)
-                            elif self.antennas[key].wtspos_P2_scale == 'scale':
-                                if i == 0:
-                                    grid_illumination_P2 = GRD.conv_grid2d(self.antennas[key].location.x * (self.f[0]/FCNST.c),
-                                                                           self.antennas[key].location.y * (self.f[0]/FCNST.c),
-                                                                           self.antennas[key].wtspos_P2[0][:,0],
-                                                                           self.antennas[key].wtspos_P2[0][:,1],
-                                                                           self.antennas[key].wts_P2[0],
-                                                                           self.gridx_P2 * (self.f[0]/FCNST.c),
-                                                                           self.gridy_P2 * (self.f[0]/FCNST.c),
-                                                                           method='CS')
-                                    grid_illumination_P2 = grid_illumination_P2.reshape(self.gridx_P2.shape) / NP.sum(grid_illumination_P2)
-                                    roi_ind = NP.where(NP.abs(grid_illumination_P2) >= eps)
-                            else:
-                                raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
+                            if method == 'NN':
+                                if self.antennas[key].wtspos_P2_scale is None: 
+                                    ibind, nnval = LKP.lookup(self.antennas[key].wtspos_P2[i][:,0]+self.antennas[key].location.x*(self.f[i]/FCNST.c),
+                                                              self.antennas[key].wtspos_P2[i][:,1]+self.antennas[key].location.y*(self.f[i]/FCNST.c),
+                                                              self.antennas[key].wts_P2[i], self.gridx_P2*self.f[i]/FCNST.c,
+                                                              self.gridy_P2*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                                              remove_oob=True)[:2]
+                                    roi_ind = NP.unravel_index(ibind, self.gridx_P2.shape)
+                                    if normalize:
+                                        nnval /= NP.sum(nnval)
+                                elif self.antennas[key].wtspos_P2_scale == 'scale':
+                                    if i == 0: # Determine some parameters only for zeroth channel if scaling is set
+                                        ibind, nnval = LKP.lookup(self.antennas[key].wtspos_P2[0][:,0]+self.antennas[key].location.x*(self.f[0]/FCNST.c),
+                                                                  self.antennas[key].wtspos_P2[0][:,1]+self.antennas[key].location.y*(self.f[0]/FCNST.c),
+                                                                  self.antennas[key].wts_P2[0], self.gridx_P2*self.f[0]/FCNST.c,
+                                                                  self.gridy_P2*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                                                  remove_oob=True)[:2]
+                                        roi_ind = NP.unravel_index(ibind, self.gridx_P2.shape)
+                                        if normalize:
+                                            nnval /= NP.sum(nnval)
+                                else:
+                                    raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
 
-                            self.grid_illumination_P2[:,:,i] += grid_illumination_P2
-                            self.grid_Ef_P2[:,:,i] += self.antennas[key].pol.Ef_P2[i] * grid_illumination_P2
+                                self.grid_illumination_P2[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += nnval
+                                self.grid_Ef_P2[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += self.antennas[key].pol.Ef_P2[i] * nnval
+                            else:
+                                if self.antennas[key].wtspos_P2_scale is None:
+                                    grid_illumination_P2 = GRD.conv_grid2d(self.antennas[key].location.x * (self.f[i]/FCNST.c),
+                                                                           self.antennas[key].location.y * (self.f[i]/FCNST.c),
+                                                                           self.antennas[key].wtspos_P2[i][:,0],
+                                                                           self.antennas[key].wtspos_P2[i][:,1],
+                                                                           self.antennas[key].wts_P2[i],
+                                                                           self.gridx_P2 * (self.f[i]/FCNST.c),
+                                                                           self.gridy_P2 * (self.f[i]/FCNST.c),
+                                                                           method=method)
+                                    grid_illumination_P2 = grid_illumination_P2.reshape(self.gridx_P2.shape)
+                                    if normalize:
+                                        grid_illumination_P2 = grid_illumination_P2 / NP.sum(grid_illumination_P2)
+                                    roi_ind = NP.where(NP.abs(grid_illumination_P2) >= eps)
+                                elif self.antennas[key].wtspos_P2_scale == 'scale':
+                                    if i == 0:
+                                        grid_illumination_P2 = GRD.conv_grid2d(self.antennas[key].location.x * (self.f[0]/FCNST.c),
+                                                                               self.antennas[key].location.y * (self.f[0]/FCNST.c),
+                                                                               self.antennas[key].wtspos_P2[0][:,0],
+                                                                               self.antennas[key].wtspos_P2[0][:,1],
+                                                                               self.antennas[key].wts_P2[0],
+                                                                               self.gridx_P2 * (self.f[0]/FCNST.c),
+                                                                               self.gridy_P2 * (self.f[0]/FCNST.c),
+                                                                               method=method)
+                                        grid_illumination_P2 = grid_illumination_P2.reshape(self.gridx_P2.shape)
+                                        if normalize:
+                                            grid_illumination_P2 = grid_illumination_P2 / NP.sum(grid_illumination_P2)
+                                        roi_ind = NP.where(NP.abs(grid_illumination_P2) >= eps)
+                                else:
+                                    raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
+                                
+                                self.grid_illumination_P2[:,:,i] += grid_illumination_P2
+                                self.grid_Ef_P2[:,:,i] += self.antennas[key].pol.Ef_P2[i] * grid_illumination_P2
+
                             self.antennas[key].gridinfo_P2[i] = {} # Create a nested dictionary to hold channel info
                             self.antennas[key].gridinfo_P2[i]['f'] = self.f[i]
                             self.antennas[key].gridinfo_P2[i]['flag'] = False
                             self.antennas[key].gridinfo_P2[i]['gridxy_ind'] = zip(*roi_ind)
-                            self.antennas[key].gridinfo_P2[i]['illumination'] = grid_illumination_P2[roi_ind]
-                            self.antennas[key].gridinfo_P2[i]['Ef'] = self.antennas[key].pol.Ef_P2[i] * grid_illumination_P2[roi_ind]
+                            if method == 'NN':
+                                self.antennas[key].gridinfo_P2[i]['illumination'] = nnval
+                                self.antennas[key].gridinfo_P2[i]['Ef'] = self.antennas[key].pol.Ef_P2[i] * nnval  
+                            else:
+                                self.antennas[key].gridinfo_P2[i]['illumination'] = grid_illumination_P2[roi_ind]
+                                self.antennas[key].gridinfo_P2[i]['Ef'] = self.antennas[key].pol.Ef_P2[i] * grid_illumination_P2[roi_ind]
 
     ################################################################################
 
@@ -1743,14 +2040,14 @@ class AntennaArray:
                                   location in the local ENU coordinate system. Is
                                   used only if set and if 'action' key value is set
                                   to 'modify'. Default = None.
-                    'wtsinfo_P1'  [Optional. List of Tuples] See description in 
-                                  Antenna class member function update(). Is used 
-                                  only if set and if 'action' key value is set to
-                                  'modify'. Default = None.
-                    'wtsinfo_P2'  [Optional. List of Tuples] See description in 
-                                  Antenna class member function update(). Is used 
-                                  only if set and if 'action' key value is set to
-                                  'modify'. Default = None.
+                    'wtsinfo_P1'  [Optional. List of dictionaries] See 
+                                  description in Antenna class member function 
+                                  update(). Is used only if set and if 'action' 
+                                  key value is set to 'modify'. Default = None.
+                    'wtsinfo_P2'  [Optional. List of dictionaries] See 
+                                  description in Antenna class member function 
+                                  update(). Is used only if set and if 'action' 
+                                  key value is set to 'modify'. Default = None.
                     'flag_P1'     [Optional. Boolean] Flagging status update for
                                   polarization P1 of the antenna. If set to True, 
                                   polarization P1 measurements of the antenna will
@@ -1783,7 +2080,22 @@ class AntennaArray:
                                   Used only when action key is set to 'modify'. If 
                                   not provided, then the previous value remains in
                                   effect. Default = None.
-
+                    'norm_wts'    [Optional. Boolean] Default = False. If set to
+                                  True, the gridded weights are divided by the sum
+                                  of weights so that the gridded weights add up to
+                                  unity. This is used only when grid_action keyword
+                                  is set when action keyword is set to 'add' or 
+                                  'modify'
+                    'gridmethod'  [Optional. String] Indicates gridding method. It
+                                  accepts the following values 'NN' (nearest 
+                                  neighbour), 'BL' (Bi-linear interpolation), and
+                                  'CS' (Cubic Spline interpolation). Default = 'NN'
+                    'distNN'      [Optional. Scalar] Indicates the upper bound on
+                                  distance for a nearest neighbour search if the
+                                  value of 'gridmethod' is set to 'NN'. The units 
+                                  are of physical distance, the same as what is used
+                                  for antenna locations. Default = NP.inf
+        
         verbose     [Boolean] Default = False. If set to True, prints some 
                     diagnotic or progress messages.
 
@@ -1840,9 +2152,12 @@ class AntennaArray:
                         if 'gridfunc_freq' not in dictitem: dictitem['gridfunc_freq']=None
                         if 'ref_freq' not in dictitem: dictitem['ref_freq']=None
                         if 'pol_type' not in dictitem: dictitem['pol_type']=None
+                        if 'norm_wts' not in dictitem: dictitem['norm_wts']=False
+                        if 'gridmethod' not in dictitem: dictitem['gridmethod']='NN'
+                        if 'distNN' not in dictitem: dictitem['distNN']=NP.inf
                         self.antennas[dictitem['label']].update(dictitem['label'], dictitem['Et_P1'], dictitem['Et_P2'], dictitem['t'], dictitem['timestamp'], dictitem['location'], dictitem['wtsinfo_P1'], dictitem['wtsinfo_P2'], dictitem['flag_P1'], dictitem['flag_P2'], dictitem['gridfunc_freq'], dictitem['ref_freq'], dictitem['pol_type'], verbose)
                         if 'gric_action' in dictitem:
-                            self.grid_convolve(pol=dictitem['gridpol'], ants=dictitem['antenna'], unconvolve_existing=True)
+                            self.grid_convolve(pol=dictitem['gridpol'], ants=dictitem['antenna'], unconvolve_existing=True, normalize=dictitem['norm_wts'], method=dictitem['gridmethod'], distNN=dictitem['distNN'])
                 else:
                     raise ValueError('Update action should be set to "add", "remove" or "modify".')
 
@@ -2342,18 +2657,18 @@ class Image:
             if verbose:
                 print '\t\tPreparing to zero pad and Inverse Fourier Transform...'
 
-            self.holograph_P1 = NP.fft.ifftshift(NP.fft.ifft2(NP.pad(self.grid_Ef_P1, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1)))
+            self.holograph_P1 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_Ef_P1, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1)))
             if verbose:
                 print '\t\tComputed complex holographic voltage image from antenna array.'
 
-            self.holograph_PB_P1 = NP.fft.ifftshift(NP.fft.ifft2(NP.pad(self.grid_illumination_P1, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1)))
+            self.holograph_PB_P1 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_illumination_P1, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1)))
             if verbose:
                 print '\t\tComputed complex holographic voltage pattern of antenna array.'
 
             dx = self.gridx_P1[0,1] - self.gridx_P1[0,0]
             dy = self.gridy_P1[1,0] - self.gridy_P1[0,0]
-            self.lf_P1 = NP.outer(NP.fft.ifftshift(NP.fft.fftfreq(2*grid_shape[1], dx)), FCNST.c/self.f)
-            self.mf_P1 = NP.outer(NP.fft.ifftshift(NP.fft.fftfreq(2*grid_shape[0], dy)), FCNST.c/self.f)
+            self.lf_P1 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[1], dx)), FCNST.c/self.f)
+            self.mf_P1 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[0], dy)), FCNST.c/self.f)
             if verbose:
                 print '\t\tComputed the direction cosine coordinates for the image.'
             grid_lf_P1 = NP.repeat(NP.expand_dims(self.lf_P1, axis=0), self.mf_P1.shape[0], axis=0)
@@ -2373,18 +2688,18 @@ class Image:
             if verbose:
                 print '\t\tPreparing to zero pad and Inverse Fourier Transform...'
 
-            self.holograph_P2 = NP.fft.ifftshift(NP.fft.ifft2(NP.pad(self.grid_Ef_P2, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1)))
+            self.holograph_P2 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_Ef_P2, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1)))
             if verbose:
                 print '\t\tComputed complex holographic voltage image from antenna array.'
 
-            self.holograph_PB_P2 = NP.fft.ifftshift(NP.fft.ifft2(NP.pad(self.grid_illumination_P2, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1)))
+            self.holograph_PB_P2 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_illumination_P2, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1)))
             if verbose:
                 print '\t\tComputed complex holographic voltage pattern of antenna array.'
 
             dx = self.gridx_P2[0,1] - self.gridx_P2[0,0]
             dy = self.gridy_P2[1,0] - self.gridy_P2[0,0]
-            self.lf_P2 = NP.outer(NP.fft.ifftshift(NP.fft.fftfreq(2*grid_shape[1], dx)), FCNST.c/self.f)
-            self.mf_P2 = NP.outer(NP.fft.ifftshift(NP.fft.fftfreq(2*grid_shape[0], dy)), FCNST.c/self.f)
+            self.lf_P2 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[1], dx)), FCNST.c/self.f)
+            self.mf_P2 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[0], dy)), FCNST.c/self.f)
             if verbose:
                 print '\t\tComputed the direction cosine coordinates for the image.'
             grid_lf_P2 = NP.repeat(NP.expand_dims(self.lf_P2, axis=0), self.mf_P2.shape[0], axis=0)

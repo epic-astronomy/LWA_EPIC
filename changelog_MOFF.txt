@@ -1,3 +1,103 @@
+from v1.02 of MOFF:
+==================
+
+In antenna_array.py,
+
+(*) Imported the lookup_operations module to handle lookup operations
+(*) Modified input parameters to member function update() in class Antenna so 
+that weight positions and weights can be passed as input parameters directly or
+indirectly through a lookup table. The data type of input parameters wtsinfo_P1 
+and wtsinfo_P2 have been changed from a list of tuples to a list of dictionaries.
+(*) Changed docstring in member function update() of class AntennaArray to 
+indicate that wtsinfo_P1 and wtsinfo_P2 are list of dictionaries rather than a
+list of tuples as used before.
+(*) Added a boolean input parameter named normalize in member function 
+grid_convolve() of class AntennaArray, which if set to True will normalize the
+gridded weights such that the sum of the gridded weights for each antenna will
+equal unity. Otherwise, no such normalization is performed. Changed docstring of
+member function grid_convolve() of class AntennaArray accordingly. 
+(*) In member function update() of class AntennaArray, the dictionary consisting
+of updates now includes a keyword named norm_wts which is a Boolean value that
+indicates if normalizing of grid weights is to be performed inside
+grid_convolve() when grid_action keyword is set when action keyword is set to 
+'add' or 'modify'. Changed docstring of member function update() of class 
+AntennaArray accordingly.
+(*) Explicitly specified in all the relevant docstrings that wtspos, wtspos_P1,
+and wtspos_P2 both as variables and attributes of class Antenna are in units of
+number of wavelengths and remove any ambiguity that they could be in units of
+physical distance
+(*) Added an input parameter named method to member function grid_convolve() of
+class AntennaArray which indicates the gridding method to be used. Accordingly
+changed use of method from being restricted to 'CS' to whatever value is given
+in method
+(*) Added an input parameter named distNN to member function grid_convolve() of
+class AntennaArray which indicates the upper bound to distance while searching
+for nearest neighbours.
+(*) Modified grid_convolve() member function of class AntennaArray to use 
+nearest neaighbor or other interpolation strategies in applying the antenna 
+weights to the grid. The nearest neighbor gridding makes use of the lookup
+modules while other algorithms makes use of the gridding modules
+(*) In member function update() of class AntennaArray, modified the call to its
+member function grid_convolve() such that gridding method and distance upper
+bound in case of nearest neighbor gridding are also passed.
+
+In sim_observe.py,
+
+(*) Made minor changes to docstrings in the description of input parameter antpos
+in various functions.
+(*) Modified stochastic_E_spectrum() to take advantage of numpy array
+broadcasting
+(*) Added a new input parameter ref_point to stochastic_E_spectrum() which 
+denotes the phase reference on the sky
+(*) Added a new input parameter ref_point to stochastic_E_timeseries() which 
+denotes the phase reference on the sky and internal calling sequence to function
+stochastic_E_spectrum() updated accordingly
+(*) Inconsequentially changed internal variable names in both functions 
+stochastic_E_spectrum() and stochastic_E_timeseries() to be consistent with
+the implementation of numpy array broadcasting rules
+(*) Added a new input parameter ref_point to monochromatic_E_spectrum() which 
+denotes the phase reference on the sky
+(*) Added a new input parameter ref_point to monochromatic_E_timeseries() which 
+denotes the phase reference on the sky and internal calling sequence to function
+monochromatic_E_spectrum() updated accordingly
+(*) Added a new input parameter tshift (boolean) to stochastic_E_timeseries()
+to indicate if phasing of the antennas is to be achieved by shifting of time bins
+for different antennas. If not set to True, the phasing is achieved directly in
+the frequency domain and transformed to time domain. If set to True, the time
+series for each antenna is shifted by integral number of time bins that achieves
+the closest amount of phase difference and the residual delay is returned which
+can be applied later to the data in frequency domain.
+(*) Body of stochastic_E_timeseries() modified to apply the phase reference 
+either directly in the frequency domain or in time domain through delay bin
+shifts and residual delay phase in frequency domain.
+(*) Dictionary output of stochastic_E_timeseries() now contains a key named
+'tres' which consists of residual delays (non-integral part) one per antenna.
+(*) Dictionary output of stochastic_E_timeseries() now contains a key named
+'tshift which consists of integral number of bins by which the the original 
+timeseries of antennas have been shifted.
+(*) In function stochastic_E_spectrum(), changed the sign convention of the 
+complex exponent arising out of k(.)r such that an antenna at a negative 
+location receives the signal after a lag while an antenna with a positive
+location receives the signal in advance.
+(*) In function monochromatic_E_spectrum(), changed the sign convention of the 
+complex exponent arising out of k(.)r such that an antenna at a negative 
+location receives the signal after a lag while an antenna with a positive
+location receives the signal in advance.
+(*) Corresponding to the change in sign convention, the member function imagr()
+in class Image now uses FFT and FFT shifts instead of IFFT and IFFT shifts
+to compute the images
+(*) In monochromatic_E_spectrum(), added random phases from sources
+(*) In monochromatic_E_spectrum(), modified few lines to take advantage of numpy
+array broadcasting
+
+(*) Created a new module named lookup_operations.py
+
+In lookup_operations.py,
+
+(*) Created functions gen_lookup(), read_lookup(), and lookup() to generate,
+read, and perform nearest neighbour lookup respectively.
+
+---------------------------------------------------------------------------------
 from v1.01 of MOFF:
 ==================
 
