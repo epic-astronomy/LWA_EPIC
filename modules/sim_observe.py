@@ -263,9 +263,13 @@ def stochastic_E_spectrum(freq_center, nchan, channel_width, flux_ref=1.0,
     freq_ratio = freqs / freq_ref.reshape(-1,1)
     fluxes = flux_ref.reshape(-1,1) * (freq_ratio ** alpha)
     sigmas = NP.sqrt(fluxes)
-    Ef_amp = sigmas * NP.random.normal(loc=0.0, scale=1.0, size=(nsrc,nchan))
-    Ef_phase = NP.exp(1j*NP.random.uniform(low=0.0, high=2*NP.pi, size=(nsrc,nchan)))
-    # Ef_phase = 1.0
+    Ef_amp = sigmas/NP.sqrt(2) * (NP.random.normal(loc=0.0, scale=1.0, size=(nsrc,nchan)) + 1j * NP.random.normal(loc=0.0, scale=1.0, size=(nsrc,nchan)))
+    # Ef_amp = sigmas * NP.random.normal(loc=0.0, scale=1.0, size=(nsrc,nchan))
+    # print Ef_amp
+    # Ef_amp = sigmas * NP.ones((nsrc,nchan))
+    # Ef_phase = NP.exp(1j*NP.random.uniform(low=0.0, high=2*NP.pi, size=(nsrc,nchan)))
+    # Ef_phase = NP.exp(1j*NP.random.uniform(low=0.0, high=2*NP.pi, size=1))
+    Ef_phase = 1.0
     Ef = Ef_amp * Ef_phase
 
     Ef = Ef[:,:,NP.newaxis]
@@ -383,7 +387,7 @@ def stochastic_E_timeseries(freq_center, nchan, channel_width, flux_ref=1.0,
                                   channels in the spectrum and nant is the number 
                                   of antennas. Set only if keyword input spectrum
                                   is set to True
-                      'tres'      [numpy vector] Residual delays after removal of 
+                     'tres'       [numpy vector] Residual delays after removal of 
                                   delays that are integral multiples of delay in 
                                   a bin of the timeseries, in the process of 
                                   phasing of antennas. It is computed only if the 
@@ -391,7 +395,7 @@ def stochastic_E_timeseries(freq_center, nchan, channel_width, flux_ref=1.0,
                                   of the vector is equal to the number of
                                   antennas. If 'tshift' is set to False, the key
                                   'tres' is set to None
-                       'tshift'   [numpy vector] if input parameter 'tshift' is
+                     'tshift'     [numpy vector] if input parameter 'tshift' is
                                   set to True, this key 'tshift' in the output
                                   dictionary holds number of bins by which the
                                   timeseries of antennas have been shifted 

@@ -1,3 +1,49 @@
+From v1.03 of MOFF:
+==================
+
+In lookup_operations.py,
+
+(*) in function lookup(), distNN was not initialized when remove_oob is False.
+Now it is initialized.
+
+Moved module lookup_operations.py from MOFF to general repository
+
+In antenna_array.py,
+
+(*) Normalized the holographic images by the sum of weights in each frequency
+slice of the grid illumination pattern
+(*) In member function temporal_F() of class PolInfo, use keyword inverse=False
+to make it clear it is not inverse fourier transform
+(*) Added a new member function delay_compensation() to class PolInfo that 
+compensates for uncorrected delays by applying a phase correction to the
+fourier transformed electric fields.
+(*) Added input parameters delaydict_P1 and delaydict_P2 to member function
+update() of class PolInfo and also a call to member function delay_compensation()
+if delay compensation is to be applied. Updated docstring accordingly. 
+(*) Added input parameters delaydict_P1 and delaydict_P2 to member function
+update() of class Antenna and also in the call to member function update() of
+object pol belonging to class PolInfo if delay compensation is to be applied.
+Updated docstring accordingly. 
+(*) Added input parameters delaydict_P1 and delaydict_P2 to member function
+update() of class AntennaArray and also in the call to member function update() 
+of object belonging to class Antenna if delay compensation is to be applied.
+Updated docstring accordingly. 
+(*) Added docstring to member function antenna_positions() of class 
+AntennaArray which wasn't included earlier.
+(*) Added to docstring of class AntennaArray the presence of member function
+antenna_positions() which wasn't included earlier.
+(*) In member function update() of class AntennaArray, included defaults (to 
+None) for dictionary containing delay information. 
+(*) In member function update() of class AntennaArray, earlier the attributes of
+only the individual antenna instances were getting updated. Now modified it to
+also update some of the attributes of AntennaArray instance such as timestamp.
+This is done by making the input parameter 'updates' a dictionary with primary 
+keys being 'antenna_array' and 'antenna'. The former is a dictionary consisting 
+of updates to AntennaArray instance while the latter is a dictionary consisting
+of a list of dictionaries one for each antenna instance to be updated. Changed
+docstring accordingly.
+
+---------------------------------------------------------------------------------
 from v1.02 of MOFF:
 ==================
 

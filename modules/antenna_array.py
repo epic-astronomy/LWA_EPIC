@@ -5,8 +5,9 @@ import my_DSP_modules as DSP
 import geometry as GEOM
 import my_gridding_modules as GRD
 import lookup_operations as LKP
+import ipdb as PDB
 
-#####################################################################  
+#################################################################################  
 
 class PolInfo:
 
@@ -16,21 +17,22 @@ class PolInfo:
 
     Attributes:
 
-    Et_P1:   A complex vector representing a time series of electric field
+    Et_P1:   A complex numpy vector representing a time series of electric field
              for polarization P1
 
-    Et_P2:   A complex vector representing a time series of electric field
+    Et_P2:   A complex numpy vector representing a time series of electric field
              for polarization P2 which is orthogonal to P1
         
-    flag_P1: Boolean value. True means P1 is to be flagged. Default = False
+    flag_P1: [Boolean] True means P1 is to be flagged. Default = False
 
-    flag_P2: Boolean value. True means P2 is to be flagged. Default = False
+    flag_P2: [Boolean] True means P2 is to be flagged. Default = False
 
-    pol_type: 'Linear' or 'Circular' polarization
+    pol_type: [string] Type of polarization. Accepted values are 'Linear' or
+              'Circular' 
 
-    Ef_P1:   A complex vector representing the Fourier transform of Et_P1
+    Ef_P1:   A complex numpy vector representing the Fourier transform of Et_P1
 
-    Ef_P2:   A complex vector representing the Fourier transform of Et_P2
+    Ef_P2:   A complex numpy vector representing the Fourier transform of Et_P2
 
     Member functions:
 
@@ -42,6 +44,10 @@ class PolInfo:
 
     update():      Routine to update the Electric field and flag information.
     
+    delay_compensation():
+                   Routine to apply delay compensation to Electric field spectra 
+                   through additional phase.
+
     Read the member function docstrings for details. 
     ----------------------------------------------------------------------------
     """
@@ -99,23 +105,129 @@ class PolInfo:
                            constant_values=(0,0))
             Et_P2 = NP.pad(self.Et_P2, (0,len(self.Et_P2)), 'constant',
                            constant_values=(0,0))
-            self.Ef_P1 = DSP.FT1D(Et_P1, ax=0, use_real=False, shift=True)
-            self.Ef_P2 = DSP.FT1D(Et_P2, ax=0, use_real=False, shift=True)
+            self.Ef_P1 = DSP.FT1D(Et_P1, ax=0, use_real=False, inverse=False, shift=True)
+            self.Ef_P2 = DSP.FT1D(Et_P2, ax=0, use_real=False, inverse=False, shift=True)
         elif pol in ['P1','p1','P2','p2','x','X','y','Y']:
             if pol in ['P1','p1','x','X']:
                 Et_P1 = NP.pad(self.Et_P1, (0,len(self.Et_P1)), 'constant',
                                constant_values=(0,0))
-                self.Ef_P1 = DSP.FT1D(Et_P1, ax=0, use_real=False, shift=True)
+                self.Ef_P1 = DSP.FT1D(Et_P1, ax=0, use_real=False, inverse=False, shift=True)
             else:
                 Et_P2 = NP.pad(self.Et_P2, (0,len(self.Et_P2)), 'constant',
                                constant_values=(0,0))
-                self.Ef_P2 = DSP.FT1D(Et_P2, ax=0, use_real=False, shift=True)
+                self.Ef_P2 = DSP.FT1D(Et_P2, ax=0, use_real=False, inverse=False, shift=True)
         else:
             raise ValueError('Polarization string unrecognized. Verify inputs. Aborting PolInfo.temporal_F()')
 
     ############################################################################
 
-    def update(self, Et_P1=None, Et_P2=None, flag_P1=False, flag_P2=False, pol_type='Linear'):
+    def delay_compensation(self, delaydict=None):
+        
+        """
+        -------------------------------------------------------------------------
+        Routine to apply delay compensation to Electric field spectra through
+        additional phase.
+
+        Keyword input(s):
+
+        delaydict   [dictionary] contains the following keys:
+                    'pol': string specifying the polarization for which delay 
+                           compensation is to be applied. Accepted values are
+                           'x', 'X', 'p1', 'P1', 'y', 'Y', 'p2', and 'P2'. No
+                           default.
+                    'frequencies': scalar, list or numpy vector specifying the 
+                           frequencie(s) (in Hz) for which delays are specified. 
+                           If a scalar is specified, the delays are assumed to be
+                           frequency independent and the delays are assumed to be
+                           valid for all frequencies. If a vector is specified, 
+                           it must be of same size as the delays and as the 
+                           number of samples in the electric field timeseries. 
+                           These frequencies are assumed to match those of the 
+                           electric field spectrum. No default.
+                    'delays': list or numpy vector specifying the delays (in 
+                           seconds) at the respective frequencies which are to be 
+                           compensated through additional phase in the electric 
+                           field spectrum. Must be of same size as frequencies 
+                           and the size of the electric field timeseries. No
+                           default.
+                    'fftshifted': boolean scalar indicating if the frequencies 
+                           provided have already been fft-shifted. If True 
+                           (default), the frequencies are assumed to have been 
+                           fft-shifted. Otherwise, they have to be fft-shifted
+                           before applying the delay compensation to rightly 
+                           align with the fft-shifted electric field spectrum
+                           computed in member function temporal_F().
+
+        -------------------------------------------------------------------------
+        """
+
+        if delaydict is None:
+            raise NameError('Delay information must be supplied for delay correction in the dictionary delaydict.')
+
+       
+        if delaydict['pol'] is None:
+            raise KeyError('Key "pol" indicating polarization not found in delaydict holding delay information.')
+
+        if delaydict['pol'] not in ['x', 'X', 'p1', 'P1', 'y', 'Y', 'p2', 'P2']:
+            raise ValueError('Invalid value for "pol" keywrod in delaydict.')
+
+        if 'delays' in delaydict:
+            if NP.asarray(delaydict['delays']).size == 1:
+                if delaydict['pol'] in ['x', 'X', 'p1', 'P1']:
+                    delays = delaydict['delays'] + NP.zeros(self.Et_P1.size)
+                else:
+                    delays = delaydict['delays'] + NP.zeros(self.Et_P2.size)
+            else:
+                if delaydict['pol'] in ['x', 'X', 'p1', 'P1']:
+                    if (NP.asarray(delaydict['delays']).size != self.Et_P1.size):
+                        raise IndexError('Size of delays in delaydict must be equal to 1 or match that of the timeseries.')
+                    else:
+                        delays = NP.asarray(delaydict['delays']).ravel()
+                else:
+                    if (NP.asarray(delaydict['delays']).size != self.Et_P2.size):
+                        raise IndexError('Size of delays in delaydict must be equal to 1 or match that of the timeseries.')
+                    else:
+                        delays = NP.asarray(delaydict['delays']).ravel()
+        else:
+            if delaydict['pol'] in ['x', 'X', 'p1', 'P1']:
+                delays = NP.zeros(self.Et_P1.size)
+            else:
+                delays = NP.zeros(self.Et_P2.size)
+            
+        if 'frequencies' not in delaydict:
+            raise KeyError('Key "frequencies" not found in dictionary delaydict holding delay information.')
+        else:
+            frequencies = NP.asarray(delaydict['frequencies']).ravel()
+
+        if delaydict['pol'] in ['x', 'X', 'p1', 'P1']:
+            if frequencies.size != self.Et_P1.size:
+                raise IndexError('Size of frequencies must match that of the Electric field time series.')
+        else:
+            if frequencies.size != self.Et_P2.size:
+                raise IndexError('Size of frequencies must match that of the Electric field time series.')
+        
+        temp_phases = 2 * NP.pi * delays * frequencies
+
+        # Convert phases to fft-shifted arrangement based on key "fftshifted" in delaydict
+        if 'fftshifted' in delaydict:
+            if delaydict['fftshifted'] is not None:
+                if not delaydict['fftshifted']:
+                    temp_phases = NP.fft.fftshift(temp_phases)  
+
+        # Expand the size to account for the fact that the Fourier transform of the timeseries is obtained after zero padding
+        phases = NP.empty(2*frequencies.size) 
+        phases[0::2] = temp_phases
+        phases[1::2] = temp_phases
+
+        if delaydict['pol'] in ['x', 'X', 'p1', 'P1']:
+            self.Ef_P1 *= NP.exp(1j * phases)
+        else:
+            self.Ef_P2 *= NP.exp(1j * phases)
+
+    ############################################################################
+
+    def update(self, Et_P1=None, Et_P2=None, flag_P1=False, flag_P2=False,
+               delaydict_P1=None, delaydict_P2=None, pol_type='Linear'):
 
         """
         ------------------------------------------------------------------------
@@ -129,10 +241,24 @@ class PolInfo:
         Et_P2:         [Complex vector] The new electric field time series in 
                        polarization P2 that will replace the current attribute
 
-        flag_P1:       The new flag for polarization P1
+        flag_P1:       [boolean] flag update for polarization P1
 
-        flag_P2:       The new flag for polarization P2
+        flag_P2:       [boolean] flag update for polarization P2
                         
+        delaydict_P1:  Dictionary containing information on delay compensation
+                       to be applied to the fourier transformed electric fields
+                       for polarization P1. Default is None (no delay
+                       compensation to be applied). Refer to the docstring of
+                       member function delay_compensation() of class PolInfo
+                       for more details.
+
+        delaydict_P2:  Dictionary containing information on delay compensation
+                       to be applied to the fourier transformed electric fields
+                       for polarization P2. Default is None (no delay
+                       compensation to be applied). Refer to the docstring of
+                       member function delay_compensation() of class PolInfo
+                       for more details.
+
         pol_type:      'Linear' or 'Circular' polarization
         ------------------------------------------------------------------------
         """
@@ -140,10 +266,20 @@ class PolInfo:
         if Et_P1 is not None:
             self.Et_P1 = NP.asarray(Et_P1)
             self.temporal_F(pol='X')
-
+              
         if Et_P2 is not None:
             self.Et_P2 = NP.asarray(Et_P2)
             self.temporal_F(pol='Y')
+
+        if delaydict_P1 is not None:
+            if 'pol' not in delaydict_P1:
+                delaydict_P1['pol'] = 'P1'
+            self.delay_compensation(delaydict=delaydict_P1)
+
+        if delaydict_P2 is not None:
+            if 'pol' not in delaydict_P2:
+                delaydict_P2['pol'] = 'P2'
+            self.delay_compensation(delaydict=delaydict_P2)
 
         if flag_P1 is not None: self.flag_P1 = flag_P1
         if flag_P2 is not None: self.flag_P2 = flag_P2
@@ -378,10 +514,11 @@ class Antenna:
 
     def update(self, label=None, Et_P1=None, Et_P2=None, t=None, timestamp=None,
                location=None, wtsinfo_P1=None, wtsinfo_P2=None, flag_P1=None,
-               flag_P2=None, gridfunc_freq=None, ref_freq=None, pol_type='Linear',
+               flag_P2=None, gridfunc_freq=None, delaydict_P1=None,
+               delaydict_P2=None, ref_freq=None, pol_type='Linear',
                verbose=False):
         """
-        ------------------------------------------------------------------------
+        -------------------------------------------------------------------------
         Routine to update all or some of the antenna information 
 
         Inputs:
@@ -462,11 +599,25 @@ class Antenna:
 
         flag_P2    [Boolean] Flag for polarization P2 for the antenna
 
+        delaydict_P1: Dictionary containing information on delay compensation
+                   to be applied to the fourier transformed electric fields
+                   for polarization P1. Default is None (no delay
+                   compensation to be applied). Refer to the docstring of
+                   member function delay_compensation() of class PolInfo
+                   for more details.
+
+        delaydict_P2: Dictionary containing information on delay compensation
+                   to be applied to the fourier transformed electric fields
+                   for polarization P2. Default is None (no delay
+                   compensation to be applied). Refer to the docstring of
+                   member function delay_compensation() of class PolInfo
+                   for more details.
+
         gridfunc_freq [String scalar] If set to None (not provided) or to 'scale'
-                      assumes that wtspos_P1 and wtspos_P2 are given for a
-                      reference frequency which need to be scaled for the frequency
-                      channels. Will be ignored if the wtsinfo_P1 and wtsinfo_P2 
-                      have sizes equal to the number of frequency channels.
+                   assumes that wtspos_P1 and wtspos_P2 are given for a
+                   reference frequency which need to be scaled for the frequency
+                   channels. Will be ignored if the wtsinfo_P1 and wtsinfo_P2 
+                   have sizes equal to the number of frequency channels.
 
         ref_freq   [Scalar] Positive value (in Hz) of reference frequency (used
                    if gridfunc_freq is set to None or 'scale') at which
@@ -491,8 +642,8 @@ class Antenna:
             self.t = t
             self.f = self.f0 + self.channels()           
 
-        if (flag_P1 is not None) or (flag_P2 is not None) or (Et_P1 is not None) or (Et_P2 is not None):
-            self.pol.update(Et_P1, Et_P2, flag_P1, flag_P2, pol_type)
+        if (flag_P1 is not None) or (flag_P2 is not None) or (Et_P1 is not None) or (Et_P2 is not None) or (delaydict_P1 is not None) or (delaydict_P2 is not None):
+            self.pol.update(Et_P1=Et_P1, Et_P2=Et_P2, flag_P1=flag_P1, flag_P2=flag_P2, delaydict_P1=delaydict_P1, delaydict_P2=delaydict_P2, pol_type=pol_type)
 
         if wtsinfo_P1 is not None:
             self.wtspos_P1 = []
@@ -1154,6 +1305,28 @@ class AntennaArray:
 
     def antenna_positions(self, sort=False):
         
+        """
+        ----------------------------------------------------------------------------
+        Routine to return the antenna label and position information (sorted by
+        antenna label if specified)
+
+        Keyword Inputs:
+
+        sort     [boolean] If True, returned antenna information is sorted by
+                 antenna labels. Default = False.
+
+        Output:
+
+        outdict  [dictionary] Output consists of a dictionary with the following 
+                 keys and information:
+                 'antennas': Contains a numpy array of strings of antenna labels
+                 'positions': positions of antennas
+
+                 If input parameter sort is set to True, the antenna labels and 
+                 positions are sorted by antenna labels.
+        ----------------------------------------------------------------------------
+        """
+
         if not isinstance(sort, bool):
             raise TypeError('sort keyword has to be a Boolean value.')
 
@@ -1991,175 +2164,261 @@ class AntennaArray:
     def update(self, updates=None, verbose=False):
 
         """
-        ----------------------------------------------------------------------------
-        Updates the antenna array instance with newer attribute values. Can also be
-        used to add and/or remove antennas with/without affecting the existing grid.
+        -------------------------------------------------------------------------
+        Updates the antenna array instance with newer attribute values. Can also 
+        be used to add and/or remove antennas with/without affecting the existing
+        grid.
 
         Inputs:
 
-        updates     [Dictionary] Consists of information updates. One of the keys is
-                    'label' which indicates an antenna label. If absent, the code
-                    execution stops by throwing an exception. The other optional
-                    keys and the information they hold are listed below:
-                    'action'      [String scalar] Indicates the type of update
-                                  operation. 'add' adds the Antenna instance
-                                  to the AntennaArray instance. 'remove' removes the
-                                  antenna from teh antenna array instance. 'modify' 
-                                  modifies the antenna attributes in the antenna 
-                                  array instance. This key has to be set. No default.
-                    'grid_action' [Boolean] If set to True, will apply the grdding
-                                  operations (grid(), grid_convolve(), and 
-                                  grid_unconvolve()) appropriately according to the
-                                  value of the 'action' key. If set to None or
-                                  False, gridding effects will remain unchanged.
-                                  Default=None=False.
-                    'antenna'     [instance of class Antenna] Updated Antenna
-                                  class instance. Can work for action key 'remove' 
-                                  even if not set (=None) or set to an empty
-                                  string '' as long as 'label' key is specified. 
-                    'gridpol'     [Optional. String scalar] Initiates the specified
-                                  action on polarization 'P1' or 'P2'. Can be set
-                                  to 'P1' or 'P2'. If not provided (=None), then 
-                                  the specified action applies to both polarizations.
-                                  Default = None.
-                    'Et_P1'       [Optional. Numpy array] Complex Electric field 
-                                  time series in polarization P1. Is used only if 
-                                  set and if 'action' key value is set to 'modify'.
-                                  Default = None.
-                    'Et_P2'       [Optional. Numpy array] Complex Electric field 
-                                  time series in polarization P2. Is used only if 
-                                  set and if 'action' key value is set to 'modify'.
-                                  Default = None.
-                    't'           [Optional. Numpy array] Time axis of the time 
-                                  series. Is used only if set and if 'action' key
-                                  value is set to 'modify'. Default = None.
-                    'timestamp'   [Optional. Scalar] Unique identifier of the time 
-                                  series. Is used only if set and if 'action' key
-                                  value is set to 'modify'. Default = None.
-                    'location'    [Optional. instance of GEOM.Point class] Antenna
-                                  location in the local ENU coordinate system. Is
-                                  used only if set and if 'action' key value is set
-                                  to 'modify'. Default = None.
-                    'wtsinfo_P1'  [Optional. List of dictionaries] See 
-                                  description in Antenna class member function 
-                                  update(). Is used only if set and if 'action' 
-                                  key value is set to 'modify'. Default = None.
-                    'wtsinfo_P2'  [Optional. List of dictionaries] See 
-                                  description in Antenna class member function 
-                                  update(). Is used only if set and if 'action' 
-                                  key value is set to 'modify'. Default = None.
-                    'flag_P1'     [Optional. Boolean] Flagging status update for
-                                  polarization P1 of the antenna. If set to True, 
-                                  polarization P1 measurements of the antenna will
-                                  be flagged. If not set (=None), the previous or
-                                  default flag status will continue to apply. If set 
-                                  to False, the antenna status will be updated to 
-                                  become unflagged. Default = None.
-                    'flag_P2'     [Optional. Boolean] Flagging status update for
-                                  polarization P2 of the antenna. If set to True, 
-                                  polarization P2 measurements of the antenna will
-                                  be flagged. If not set (=None), the previous or
-                                  default flag status will continue to apply. If set 
-                                  to False, the antenna status will be updated to 
-                                  become unflagged. Default = None.
-                    'gridfunc_freq'
-                                  [Optional. String scalar] Read the description of
-                                  inputs to Antenna class member function update().
-                                  If set to None (not provided), this attribute is
-                                  determined based on the size of wtspos_P1 and 
-                                  wtspos_P2. It is applicable only when 'action'
-                                  key is set to 'modify'. Default = None.
-                    'ref_freq'    [Optional. Scalar] Positive value (in Hz) of
-                                  reference frequency (used if gridfunc_freq is
-                                  set to 'scale') at which wtspos_P1 and wtspos_P2
-                                  in wtsinfo_P1 and wtsinfo_P2, respectively, are
-                                  provided. If set to None, the referene frequency
-                                  already set in antenna array instance remains
-                                  unchanged. Default = None.
-                    'pol_type'    [Optional. String scalar] 'Linear' or 'Circular'.
-                                  Used only when action key is set to 'modify'. If 
-                                  not provided, then the previous value remains in
-                                  effect. Default = None.
-                    'norm_wts'    [Optional. Boolean] Default = False. If set to
-                                  True, the gridded weights are divided by the sum
-                                  of weights so that the gridded weights add up to
-                                  unity. This is used only when grid_action keyword
-                                  is set when action keyword is set to 'add' or 
-                                  'modify'
-                    'gridmethod'  [Optional. String] Indicates gridding method. It
-                                  accepts the following values 'NN' (nearest 
-                                  neighbour), 'BL' (Bi-linear interpolation), and
-                                  'CS' (Cubic Spline interpolation). Default = 'NN'
-                    'distNN'      [Optional. Scalar] Indicates the upper bound on
-                                  distance for a nearest neighbour search if the
-                                  value of 'gridmethod' is set to 'NN'. The units 
-                                  are of physical distance, the same as what is used
-                                  for antenna locations. Default = NP.inf
+        updates     [Dictionary] Consists of information updates under the
+                    following principal keys:
+                    'antenna_array': Consists of updates for the AntennaArray
+                                instance. This is a dictionary which consists of
+                                the following keys:
+                                'timestamp': Unique identifier of the time
+                                       series. It is optional to set this to a
+                                       scalar. If not given, no change is made to 
+                                       the existing timestamp attribute
+                    'antenna':  Holds a dictionary consisting of updates for 
+                                individual antennas. One of the keys is 'label' 
+                                which indicates an antenna label. If absent, the 
+                                code execution stops by throwing an exception. 
+                                The other optional keys and the information they
+                                hold are listed below:
+                                'action'      [String scalar] Indicates the type 
+                                              of update operation. 'add' adds the 
+                                              Antenna instance to the 
+                                              AntennaArray instance. 'remove' 
+                                              removes the antenna from the
+                                              antenna array instance. 'modify'
+                                              modifies the antenna attributes in 
+                                              the antenna array instance. This 
+                                              key has to be set. No default.
+                                'grid_action' [Boolean] If set to True, will 
+                                              apply the grdding operations 
+                                              (grid(), grid_convolve(), and 
+                                              grid_unconvolve()) appropriately 
+                                              according to the value of the 
+                                              'action' key. If set to None or 
+                                              False, gridding effects will remain
+                                              unchanged. Default=None(=False).
+                                'antenna'     [instance of class Antenna] Updated 
+                                              Antenna class instance. Can work 
+                                              for action key 'remove' even if not 
+                                              set (=None) or set to an empty 
+                                              string '' as long as 'label' key is 
+                                              specified. 
+                                'gridpol'     [Optional. String scalar] Initiates 
+                                              the specified action on 
+                                              polarization 'P1' or 'P2'. Can be 
+                                              set to 'P1' or 'P2'. If not 
+                                              provided (=None), then the 
+                                              specified action applies to both
+                                              polarizations. Default = None.
+                                'Et_P1'       [Optional. Numpy array] Complex 
+                                              Electric field time series in 
+                                              polarization P1. Is used only if 
+                                              set and if 'action' key value is 
+                                              set to 'modify'. Default = None.
+                                'Et_P2'       [Optional. Numpy array] Complex 
+                                              Electric field time series in 
+                                              polarization P2. Is used only if 
+                                              set and if 'action' key value is 
+                                              set to 'modify'. Default = None.
+                                't'           [Optional. Numpy array] Time axis 
+                                              of the time series. Is used only 
+                                              if set and if 'action' key value is
+                                              set to 'modify'. Default = None.
+                                'timestamp'   [Optional. Scalar] Unique 
+                                              identifier of the time series. Is 
+                                              used only if set and if 'action' 
+                                              key value is set to 'modify'.
+                                              Default = None.
+                                'location'    [Optional. instance of GEOM.Point
+                                              class] 
+                                              Antenna location in the local ENU 
+                                              coordinate system. Used only if 
+                                              set and if 'action' key value is 
+                                              set to 'modify'. Default = None.
+                                'wtsinfo_P1'  [Optional. List of dictionaries] 
+                                              See description in Antenna class 
+                                              member function update(). Is used 
+                                              only if set and if 'action' key 
+                                              value is set to 'modify'.
+                                              Default = None.
+                                'wtsinfo_P2'  [Optional. List of dictionaries] 
+                                              See description in Antenna class 
+                                              member function update(). Is used 
+                                              only if set and if 'action' key 
+                                              value is set to 'modify'.
+                                              Default = None.
+                                'flag_P1'     [Optional. Boolean] Flagging status 
+                                              update for polarization P1 of the 
+                                              antenna. If True, polarization P1 
+                                              measurements of the antenna will be
+                                              flagged. If not set (=None), the 
+                                              previous or default flag status 
+                                              will continue to apply. If set to 
+                                              False, the antenna status will be
+                                              updated to become unflagged.
+                                              Default = None.
+                                'flag_P2'     [Optional. Boolean] Flagging status 
+                                              update for polarization P2 of the 
+                                              antenna. If True, polarization P2 
+                                              measurements of the antenna will be
+                                              flagged. If not set (=None), the 
+                                              previous or default flag status 
+                                              will continue to apply. If set to 
+                                              False, the antenna status will be
+                                              updated to become unflagged.
+                                              Default = None.
+                                'gridfunc_freq'
+                                              [Optional. String scalar] Read the 
+                                              description of inputs to Antenna 
+                                              class member function update(). If 
+                                              set to None (not provided), this
+                                              attribute is determined based on 
+                                              the size of wtspos_P1 and wtspos_P2. 
+                                              It is applicable only when 'action' 
+                                              key is set to 'modify'. 
+                                              Default = None.
+                                'delaydict_P1'
+                                              Dictionary containing information 
+                                              on delay compensation to be applied 
+                                              to the fourier transformed electric 
+                                              fields for polarization P1. Default
+                                              is None (no delay compensation to 
+                                              be applied). Refer to the docstring 
+                                              of member function
+                                              delay_compensation() of class 
+                                              PolInfo for more details.
+                                'delaydict_P2'
+                                              Dictionary containing information 
+                                              on delay compensation to be applied 
+                                              to the fourier transformed electric 
+                                              fields for polarization P2. Default
+                                              is None (no delay compensation to 
+                                              be applied). Refer to the docstring 
+                                              of member function
+                                              delay_compensation() of class 
+                                              PolInfo for more details.
+                                'ref_freq'    [Optional. Scalar] Positive value 
+                                              (in Hz) of reference frequency 
+                                              (used if gridfunc_freq is set to
+                                              'scale') at which wtspos_P1 and 
+                                              wtspos_P2 in wtsinfo_P1 and 
+                                              wtsinfo_P2, respectively, are 
+                                              provided. If set to None, the 
+                                              reference frequency already set in
+                                              antenna array instance remains
+                                              unchanged. Default = None.
+                                'pol_type'    [Optional. String scalar] 'Linear' 
+                                              or 'Circular'. Used only when 
+                                              action key is set to 'modify'. If 
+                                              not provided, then the previous
+                                              value remains in effect.
+                                              Default = None.
+                                'norm_wts'    [Optional. Boolean] Default=False. 
+                                              If set to True, the gridded weights 
+                                              are divided by the sum of weights 
+                                              so that the gridded weights add up 
+                                              to unity. This is used only when
+                                              grid_action keyword is set when
+                                              action keyword is set to 'add' or
+                                              'modify'
+                                'gridmethod'  [Optional. String] Indicates 
+                                              gridding method. It accepts the 
+                                              following values 'NN' (nearest 
+                                              neighbour), 'BL' (Bi-linear
+                                              interpolation), and'CS' (Cubic
+                                              Spline interpolation). Default='NN'
+                                'distNN'      [Optional. Scalar] Indicates the 
+                                              upper bound on distance for a 
+                                              nearest neighbour search if the 
+                                              value of 'gridmethod' is set to
+                                              'NN'. The units are of physical
+                                              distance, the same as what is 
+                                              used for antenna locations.
+                                              Default = NP.inf
         
         verbose     [Boolean] Default = False. If set to True, prints some 
                     diagnotic or progress messages.
 
-        ----------------------------------------------------------------------------
+        -------------------------------------------------------------------------
         """
 
         if updates is not None:
-            if not isinstance(updates, list):
-                updates = [updates]
-            for dictitem in updates:
-                if not isinstance(dictitem, dict):
-                    raise TypeError('Updates to {0} instance should be provided in the form of a list of dictionaries.'.format(self.__class__.__name__))
-                elif 'label' not in dictitem:
-                    raise KeyError('No antenna label specified in the dictionary item to be updated.')
+            if not isinstance(updates, dict):
+                raise TypeError('Input parameter updates must be a dictionary')
 
-                if 'action' not in dictitem:
-                    raise KeyError('No action specified for update. Action key should be set to "add", "remove" or "modify".')
-                elif dictitem['action'] == 'add':
-                    if dictitem['label'] in self.antennas:
-                        if verbose:
-                            print 'Antenna {0} for adding already exists in current instance of {1}. Skipping over to the next item to be updated.'.format(dictitem['label'], self.__class__.__name__)
+            if 'antenna_array' in updates:
+                if not isinstance(updates['antenna_array'], dict):
+                    raise TypeError('Input parameter in updates for antenna array must be a dictionary with key "antenna_array"')
+                
+                if 'timestamp' in updates['antenna_array']:
+                    self.timestamp = updates['antenna_array']['timestamp']
+
+            if 'antenna' in updates:
+                if not isinstance(updates['antenna'], list):
+                    updates['antenna'] = [updates['antenna']]
+                for dictitem in updates['antenna']:
+                    if not isinstance(dictitem, dict):
+                        raise TypeError('Updates to {0} instance should be provided in the form of a list of dictionaries.'.format(self.__class__.__name__))
+                    elif 'label' not in dictitem:
+                        raise KeyError('No antenna label specified in the dictionary item to be updated.')
+    
+                    if 'action' not in dictitem:
+                        raise KeyError('No action specified for update. Action key should be set to "add", "remove" or "modify".')
+                    elif dictitem['action'] == 'add':
+                        if dictitem['label'] in self.antennas:
+                            if verbose:
+                                print 'Antenna {0} for adding already exists in current instance of {1}. Skipping over to the next item to be updated.'.format(dictitem['label'], self.__class__.__name__)
+                        else:
+                            if verbose:
+                                print 'Adding antenna {0}...'.format(dictitem['label'])
+                            self.add_antennas(dictitem['antenna'])
+                            if 'grid_action' in dictitem:
+                                self.grid_convolve(pol=dictitem['gridpol'], ants=dictitem['antenna'], unconvolve_existing=False)
+                    elif dictitem['action'] == 'remove':
+                        if dictitem['label'] not in self.antennas:
+                            if verbose:
+                                print 'Antenna {0} for removal not found in current instance of {1}. Skipping over to the next item to be updated.'.format(dictitem['label'], self.__class__.__name__) 
+                        else:
+                            if verbose:
+                                print 'Removing antenna {0}...'.format(dictitem['label'])
+                            if 'grid_action' in dictitem:
+                                self.grid_unconvolve(dictitem['label'], dictitem['gridpol'])
+                            self.remove_antennas(dictitem['label'])
+                    elif dictitem['action'] == 'modify':
+                        if dictitem['label'] not in self.antennas:
+                            if verbose:
+                                print 'Antenna {0} for modification not found in current instance of {1}. Skipping over to the next item to be updated.'.format(dictitem['label'], self.__class__.__name__)
+                        else:
+                            if verbose:
+                                print 'Modifying antenna {0}...'.format(dictitem['label'])
+                            if 'Et_P1' not in dictitem: dictitem['Et_P1']=None
+                            if 'Et_P2' not in dictitem: dictitem['Et_P2']=None
+                            if 't' not in dictitem: dictitem['t']=None
+                            if 'timestamp' not in dictitem: dictitem['timestamp']=None
+                            if 'location' not in dictitem: dictitem['location']=None
+                            if 'wtsinfo_P1' not in dictitem: dictitem['wtsinfo_P1']=None
+                            if 'wtsinfo_P2' not in dictitem: dictitem['wtsinfo_P2']=None
+                            if 'flag_P1' not in dictitem: dictitem['flag_P1']=None
+                            if 'flag_P2' not in dictitem: dictitem['flag_P2']=None
+                            if 'gridfunc_freq' not in dictitem: dictitem['gridfunc_freq']=None
+                            if 'ref_freq' not in dictitem: dictitem['ref_freq']=None
+                            if 'pol_type' not in dictitem: dictitem['pol_type']=None
+                            if 'norm_wts' not in dictitem: dictitem['norm_wts']=False
+                            if 'gridmethod' not in dictitem: dictitem['gridmethod']='NN'
+                            if 'distNN' not in dictitem: dictitem['distNN']=NP.inf
+                            if 'delaydict_P1' not in dictitem: dictitem['delaydict_P1']=None
+                            if 'delaydict_P2' not in dictitem: dictitem['delaydict_P2']=None
+                            self.antennas[dictitem['label']].update(dictitem['label'], dictitem['Et_P1'], dictitem['Et_P2'], dictitem['t'], dictitem['timestamp'], dictitem['location'], dictitem['wtsinfo_P1'], dictitem['wtsinfo_P2'], dictitem['flag_P1'], dictitem['flag_P2'], dictitem['gridfunc_freq'], dictitem['delaydict_P1'], dictitem['delaydict_P2'], dictitem['ref_freq'], dictitem['pol_type'], verbose)
+                            if 'gric_action' in dictitem:
+                                self.grid_convolve(pol=dictitem['gridpol'], ants=dictitem['antenna'], unconvolve_existing=True, normalize=dictitem['norm_wts'], method=dictitem['gridmethod'], distNN=dictitem['distNN'])
                     else:
-                        if verbose:
-                            print 'Adding antenna {0}...'.format(dictitem['label'])
-                        self.add_antennas(dictitem['antenna'])
-                        if 'grid_action' in dictitem:
-                            self.grid_convolve(pol=dictitem['gridpol'], ants=dictitem['antenna'], unconvolve_existing=False)
-                elif dictitem['action'] == 'remove':
-                    if dictitem['label'] not in self.antennas:
-                        if verbose:
-                            print 'Antenna {0} for removal not found in current instance of {1}. Skipping over to the next item to be updated.'.format(dictitem['label'], self.__class__.__name__) 
-                    else:
-                        if verbose:
-                            print 'Removing antenna {0}...'.format(dictitem['label'])
-                        if 'grid_action' in dictitem:
-                            self.grid_unconvolve(dictitem['label'], dictitem['gridpol'])
-                        self.remove_antennas(dictitem['label'])
-                elif dictitem['action'] == 'modify':
-                    if dictitem['label'] not in self.antennas:
-                        if verbose:
-                            print 'Antenna {0} for modification not found in current instance of {1}. Skipping over to the next item to be updated.'.format(dictitem['label'], self.__class__.__name__)
-                    else:
-                        if verbose:
-                            print 'Modifying antenna {0}...'.format(dictitem['label'])
-                        if 'Et_P1' not in dictitem: dictitem['Et_P1']=None
-                        if 'Et_P2' not in dictitem: dictitem['Et_P2']=None
-                        if 't' not in dictitem: dictitem['t']=None
-                        if 'timestamp' not in dictitem: dictitem['timestamp']=None
-                        if 'location' not in dictitem: dictitem['location']=None
-                        if 'wtsinfo_P1' not in dictitem: dictitem['wtsinfo_P1']=None
-                        if 'wtsinfo_P2' not in dictitem: dictitem['wtsinfo_P2']=None
-                        if 'flag_P1' not in dictitem: dictitem['flag_P1']=None
-                        if 'flag_P2' not in dictitem: dictitem['flag_P2']=None
-                        if 'gridfunc_freq' not in dictitem: dictitem['gridfunc_freq']=None
-                        if 'ref_freq' not in dictitem: dictitem['ref_freq']=None
-                        if 'pol_type' not in dictitem: dictitem['pol_type']=None
-                        if 'norm_wts' not in dictitem: dictitem['norm_wts']=False
-                        if 'gridmethod' not in dictitem: dictitem['gridmethod']='NN'
-                        if 'distNN' not in dictitem: dictitem['distNN']=NP.inf
-                        self.antennas[dictitem['label']].update(dictitem['label'], dictitem['Et_P1'], dictitem['Et_P2'], dictitem['t'], dictitem['timestamp'], dictitem['location'], dictitem['wtsinfo_P1'], dictitem['wtsinfo_P2'], dictitem['flag_P1'], dictitem['flag_P2'], dictitem['gridfunc_freq'], dictitem['ref_freq'], dictitem['pol_type'], verbose)
-                        if 'gric_action' in dictitem:
-                            self.grid_convolve(pol=dictitem['gridpol'], ants=dictitem['antenna'], unconvolve_existing=True, normalize=dictitem['norm_wts'], method=dictitem['gridmethod'], distNN=dictitem['distNN'])
-                else:
-                    raise ValueError('Update action should be set to "add", "remove" or "modify".')
+                        raise ValueError('Update action should be set to "add", "remove" or "modify".')
 
     #############################################################################
 
@@ -2657,11 +2916,13 @@ class Image:
             if verbose:
                 print '\t\tPreparing to zero pad and Inverse Fourier Transform...'
 
-            self.holograph_P1 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_Ef_P1, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1)))
+            sum_wts = NP.sum(self.grid_illumination_P1, axis=(0,1))
+
+            self.holograph_P1 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_Ef_P1, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
             if verbose:
                 print '\t\tComputed complex holographic voltage image from antenna array.'
 
-            self.holograph_PB_P1 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_illumination_P1, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1)))
+            self.holograph_PB_P1 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_illumination_P1, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
             if verbose:
                 print '\t\tComputed complex holographic voltage pattern of antenna array.'
 
@@ -2688,11 +2949,13 @@ class Image:
             if verbose:
                 print '\t\tPreparing to zero pad and Inverse Fourier Transform...'
 
-            self.holograph_P2 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_Ef_P2, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1)))
+            sum_wts = NP.sum(self.grid_illumination_P1, axis=(0,1))
+
+            self.holograph_P2 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_Ef_P2, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
             if verbose:
                 print '\t\tComputed complex holographic voltage image from antenna array.'
 
-            self.holograph_PB_P2 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_illumination_P2, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1)))
+            self.holograph_PB_P2 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_illumination_P2, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
             if verbose:
                 print '\t\tComputed complex holographic voltage pattern of antenna array.'
 
