@@ -1420,7 +1420,7 @@ class AntennaArray:
     #################################################################################
 
     def grid_convolve(self, pol=None, ants=None, unconvolve_existing=False,
-                      normalize=False, method='NN', distNN=NP.inf): 
+                      normalize=False, method='NN', distNN=NP.inf, tol=None, maxNN=None): 
 
         """
         ----------------------------------------------------------------------------
@@ -1476,6 +1476,19 @@ class AntennaArray:
                    (infinite distance). It will be internally converted to have same
                    units as antenna attributes wtspos_P1 and wtspos_P2 (units in 
                    number of wavelengths)
+
+        maxNN      [scalar] A positive value indicating maximum number of input 
+                   locations in the antenna grid to be assigned. Default = None. 
+                   If set to None, all the antenna array grid elements specified 
+                   are assigned values for each antenna. For instance, to have only 
+                   one antenna array grid element to be populated per antenna, use
+                   maxNN=1. 
+
+        tol        [scalar] If set, only lookup data with abs(val) > tol will be 
+                   considered for nearest neighbour lookup. Default = None implies 
+                   all lookup values will be considered for nearest neighbour 
+                   determination. tol is to be interpreted as a minimum value 
+                   considered as significant in the lookup table. 
         ----------------------------------------------------------------------------
         """
 
@@ -1512,7 +1525,7 @@ class AntennaArray:
                                                                   ants[key].wtspos_P1[i][:,1] + ants[key].location.y * (self.f[i]/FCNST.c),
                                                                   ants[key].wts_P1[i], self.gridx_P1*self.f[i]/FCNST.c,
                                                                   self.gridy_P1*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
-                                                                  remove_oob=True)[:2]
+                                                                  remove_oob=True, tol=tol, maxNN=1)[:2]
                                         roi_ind = NP.unravel_index(ibind, self.gridx_P1.shape)
                                         if normalize:
                                             nnval /= NP.sum(nnval)
@@ -1522,7 +1535,7 @@ class AntennaArray:
                                                                       ants[key].wtspos_P1[0][:,1]+ants[key].location.y*(self.f[0]/FCNST.c),
                                                                       ants[key].wts_P1[0], self.gridx_P1*self.f[0]/FCNST.c,
                                                                       self.gridy_P1*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
-                                                                      remove_oob=True)[:2]
+                                                                      remove_oob=True, tol=tol, maxNN=1)[:2]
                                             roi_ind = NP.unravel_index(ibind, self.gridx_P1.shape)
                                             if normalize:
                                                 nnval /= NP.sum(nnval)
@@ -1603,7 +1616,7 @@ class AntennaArray:
                                                                   ants[key].wtspos_P1[i][:,1] + ants[key].location.y * (self.f[i]/FCNST.c),
                                                                   ants[key].wts_P1[i], self.gridx_P1*self.f[i]/FCNST.c,
                                                                   self.gridy_P1*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
-                                                                  remove_oob=True)[:2]
+                                                                  remove_oob=True, tol=tol, maxNN=1)[:2]
                                         roi_ind = NP.unravel_index(ibind, self.gridx_P1.shape)
                                         if normalize:
                                             nnval /= NP.sum(nnval)
@@ -1613,7 +1626,7 @@ class AntennaArray:
                                                                       ants[key].wtspos_P1[0][:,1]+ants[key].location.y*(self.f[0]/FCNST.c),
                                                                       ants[key].wts_P1[0], self.gridx_P1*self.f[0]/FCNST.c,
                                                                       self.gridy_P1*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
-                                                                      remove_oob=True)[:2]
+                                                                      remove_oob=True, tol=tol, maxNN=1)[:2]
                                             roi_ind = NP.unravel_index(ibind, self.gridx_P1.shape)
                                             if normalize:
                                                 nnval /= NP.sum(nnval)
@@ -1691,7 +1704,7 @@ class AntennaArray:
                                                               self.antennas[key].wtspos_P1[i][:,1]+self.antennas[key].location.y*(self.f[i]/FCNST.c),
                                                               self.antennas[key].wts_P1[i], self.gridx_P1*self.f[i]/FCNST.c,
                                                               self.gridy_P1*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
-                                                              remove_oob=True)[:2]
+                                                              remove_oob=True, tol=tol, maxNN=1)[:2]
                                     roi_ind = NP.unravel_index(ibind, self.gridx_P1.shape)
                                     if normalize:
                                         nnval /= NP.sum(nnval)
@@ -1701,7 +1714,7 @@ class AntennaArray:
                                                                   self.antennas[key].wtspos_P1[0][:,1]+self.antennas[key].location.y*(self.f[0]/FCNST.c),
                                                                   self.antennas[key].wts_P1[0], self.gridx_P1*self.f[0]/FCNST.c,
                                                                   self.gridy_P1*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
-                                                                  remove_oob=True)[:2]
+                                                                  remove_oob=True, tol=tol, maxNN=1)[:2]
                                         roi_ind = NP.unravel_index(ibind, self.gridx_P1.shape)
                                         if normalize:
                                             nnval /= NP.sum(nnval)
@@ -1786,7 +1799,7 @@ class AntennaArray:
                                                                   ants[key].wtspos_P2[i][:,1] + ants[key].location.y * (self.f[i]/FCNST.c),
                                                                   ants[key].wts_P2[i], self.gridx_P2*self.f[i]/FCNST.c,
                                                                   self.gridy_P2*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
-                                                                  remove_oob=True)[:2]
+                                                                  remove_oob=True, tol=tol, maxNN=1)[:2]
                                         roi_ind = NP.unravel_index(ibind, self.gridx_P2.shape)
                                         if normalize:
                                             nnval /= NP.sum(nnval)
@@ -1796,7 +1809,7 @@ class AntennaArray:
                                                                       ants[key].wtspos_P2[0][:,1]+ants[key].location.y*(self.f[0]/FCNST.c),
                                                                       ants[key].wts_P2[0], self.gridx_P2*self.f[0]/FCNST.c,
                                                                       self.gridy_P2*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
-                                                                      remove_oob=True)[:2]
+                                                                      remove_oob=True, tol=tol, maxNN=1)[:2]
                                             roi_ind = NP.unravel_index(ibind, self.gridx_P2.shape)
                                             if normalize:
                                                 nnval /= NP.sum(nnval)
@@ -1877,7 +1890,7 @@ class AntennaArray:
                                                                   ants[key].wtspos_P2[i][:,1] + ants[key].location.y * (self.f[i]/FCNST.c),
                                                                   ants[key].wts_P2[i], self.gridx_P2*self.f[i]/FCNST.c,
                                                                   self.gridy_P2*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
-                                                                  remove_oob=True)[:2]
+                                                                  remove_oob=True, tol=tol, maxNN=1)[:2]
                                         roi_ind = NP.unravel_index(ibind, self.gridx_P2.shape)
                                         if normalize:
                                             nnval /= NP.sum(nnval)
@@ -1887,7 +1900,7 @@ class AntennaArray:
                                                                       ants[key].wtspos_P2[0][:,1]+ants[key].location.y*(self.f[0]/FCNST.c),
                                                                       ants[key].wts_P2[0], self.gridx_P2*self.f[0]/FCNST.c,
                                                                       self.gridy_P2*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
-                                                                      remove_oob=True)[:2]
+                                                                      remove_oob=True, tol=tol, maxNN=1)[:2]
                                             roi_ind = NP.unravel_index(ibind, self.gridx_P2.shape)
                                             if normalize:
                                                 nnval /= NP.sum(nnval)
@@ -1965,7 +1978,7 @@ class AntennaArray:
                                                               self.antennas[key].wtspos_P2[i][:,1]+self.antennas[key].location.y*(self.f[i]/FCNST.c),
                                                               self.antennas[key].wts_P2[i], self.gridx_P2*self.f[i]/FCNST.c,
                                                               self.gridy_P2*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
-                                                              remove_oob=True)[:2]
+                                                              remove_oob=True, tol=tol, maxNN=1)[:2]
                                     roi_ind = NP.unravel_index(ibind, self.gridx_P2.shape)
                                     if normalize:
                                         nnval /= NP.sum(nnval)
@@ -1975,7 +1988,7 @@ class AntennaArray:
                                                                   self.antennas[key].wtspos_P2[0][:,1]+self.antennas[key].location.y*(self.f[0]/FCNST.c),
                                                                   self.antennas[key].wts_P2[0], self.gridx_P2*self.f[0]/FCNST.c,
                                                                   self.gridy_P2*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
-                                                                  remove_oob=True)[:2]
+                                                                  remove_oob=True, tol=tol, maxNN=1)[:2]
                                         roi_ind = NP.unravel_index(ibind, self.gridx_P2.shape)
                                         if normalize:
                                             nnval /= NP.sum(nnval)
@@ -2341,7 +2354,27 @@ class AntennaArray:
                                               distance, the same as what is 
                                               used for antenna locations.
                                               Default = NP.inf
-        
+                                'maxNN'       [scalar] A positive value 
+                                              indicating maximum number of input
+                                              locations in the antenna grid to 
+                                              be assigned. Default = None. If 
+                                              set to None, all the antenna array 
+                                              grid elements specified are 
+                                              assigned values for each antenna.
+                                              For instance, to have only one
+                                              antenna array grid element to be
+                                              populated per antenna, use maxNN=1. 
+                                'tol'         [scalar] If set, only lookup data 
+                                              with abs(val) > tol will be
+                                              considered for nearest neighbour 
+                                              lookup. Default = None implies 
+                                              all lookup values will be 
+                                              considered for nearest neighbour
+                                              determination. tol is to be
+                                              interpreted as a minimum value
+                                              considered as significant in the
+                                              lookup table. 
+
         verbose     [Boolean] Default = False. If set to True, prints some 
                     diagnotic or progress messages.
 
@@ -2412,11 +2445,13 @@ class AntennaArray:
                             if 'norm_wts' not in dictitem: dictitem['norm_wts']=False
                             if 'gridmethod' not in dictitem: dictitem['gridmethod']='NN'
                             if 'distNN' not in dictitem: dictitem['distNN']=NP.inf
+                            if 'maxNN' not in dictitem: dictitem['maxNN']=None
+                            if 'tol' not in dictitem: dictitem['tol']=None
                             if 'delaydict_P1' not in dictitem: dictitem['delaydict_P1']=None
                             if 'delaydict_P2' not in dictitem: dictitem['delaydict_P2']=None
                             self.antennas[dictitem['label']].update(dictitem['label'], dictitem['Et_P1'], dictitem['Et_P2'], dictitem['t'], dictitem['timestamp'], dictitem['location'], dictitem['wtsinfo_P1'], dictitem['wtsinfo_P2'], dictitem['flag_P1'], dictitem['flag_P2'], dictitem['gridfunc_freq'], dictitem['delaydict_P1'], dictitem['delaydict_P2'], dictitem['ref_freq'], dictitem['pol_type'], verbose)
                             if 'gric_action' in dictitem:
-                                self.grid_convolve(pol=dictitem['gridpol'], ants=dictitem['antenna'], unconvolve_existing=True, normalize=dictitem['norm_wts'], method=dictitem['gridmethod'], distNN=dictitem['distNN'])
+                                self.grid_convolve(pol=dictitem['gridpol'], ants=dictitem['antenna'], unconvolve_existing=True, normalize=dictitem['norm_wts'], method=dictitem['gridmethod'], distNN=dictitem['distNN'], tol=dictitem['tol'], maxNN=dictitem['maxNN'])
                     else:
                         raise ValueError('Update action should be set to "add", "remove" or "modify".')
 

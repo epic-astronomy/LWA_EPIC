@@ -1,3 +1,13 @@
+From v1.04 of MOFF:
+==================
+
+In antenna_array.py,
+
+(*) Added keyword input maxNN to member functions grid_convolve() of class 
+AntennaArray, and as one of the keys in the update dictionary inside update()
+member function also of class AntennaArray
+
+---------------------------------------------------------------------------------
 From v1.03 of MOFF:
 ==================
 
