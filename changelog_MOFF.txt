@@ -1,3 +1,15 @@
+From v1.06 of MOFF:
+==================
+
+In antenna_array.py,
+
+(*) Changed all occurrences of variable maxNN to maxmatch to indicate it denotes
+maximum number of unique matches between the input locations and lookup table 
+and not the number of nearest neighbors for each input location that needs to be
+assigned. This is in line with the changes made in lookup_operations.py to
+lookup() from v1.08. Changed docstring accordingly.
+
+---------------------------------------------------------------------------------
 From v1.05 of MOFF:
 ==================
 
