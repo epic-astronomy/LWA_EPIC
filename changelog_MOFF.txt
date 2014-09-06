@@ -1,3 +1,14 @@
+From v1.05 of MOFF:
+==================
+
+In antenna_array.py,
+
+(*) Although keyword maxNN was added in the previous version as an input to
+member function grid_convolve(), while passing to lookup operation, it was 
+hard-coded to maxNN=1. Now changed it to maxNN=maxNN so that the appropriate
+value of maxNN may be passed.
+
+---------------------------------------------------------------------------------
 From v1.04 of MOFF:
 ==================
 
