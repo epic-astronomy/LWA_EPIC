@@ -1522,21 +1522,31 @@ class AntennaArray:
                             for i in range(len(self.f)):
                                 if method == 'NN':
                                     if ants[key].wtspos_P1_scale is None: 
-                                        ibind, nnval = LKP.lookup(ants[key].wtspos_P1[i][:,0] + ants[key].location.x * (self.f[i]/FCNST.c),
-                                                                  ants[key].wtspos_P1[i][:,1] + ants[key].location.y * (self.f[i]/FCNST.c),
-                                                                  ants[key].wts_P1[i], self.gridx_P1*self.f[i]/FCNST.c,
-                                                                  self.gridy_P1*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
-                                                                  remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                        reflocs = ants[key].wtspos_P1[i] + (self.f[i]/FCNST.c) * NP.asarray([ants[key].location.x, ants[key].location.y]).reshape(1,-1)
+                                        inplocs = (self.f[i]/FCNST.c) * NP.hstack((self.gridx_P1.reshape(-1,1), self.gridy_P1.reshape(-1,1)))
+                                        ibind, nnval = LKP.lookup_1NN(reflocs, ants[key].wts_P1[i], inplocs,
+                                                                      distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                                                      remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                        # ibind, nnval = LKP.lookup(ants[key].wtspos_P1[i][:,0] + ants[key].location.x * (self.f[i]/FCNST.c),
+                                        #                           ants[key].wtspos_P1[i][:,1] + ants[key].location.y * (self.f[i]/FCNST.c),
+                                        #                           ants[key].wts_P1[i], self.gridx_P1*self.f[i]/FCNST.c,
+                                        #                           self.gridy_P1*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                        #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
                                         roi_ind = NP.unravel_index(ibind, self.gridx_P1.shape)
                                         if normalize:
                                             nnval /= NP.sum(nnval)
                                     elif ants[key].wtspos_P1_scale == 'scale':
                                         if i == 0: # Determine some parameters only for zeroth channel if scaling is set
-                                            ibind, nnval = LKP.lookup(ants[key].wtspos_P1[0][:,0]+ants[key].location.x*(self.f[0]/FCNST.c),
-                                                                      ants[key].wtspos_P1[0][:,1]+ants[key].location.y*(self.f[0]/FCNST.c),
-                                                                      ants[key].wts_P1[0], self.gridx_P1*self.f[0]/FCNST.c,
-                                                                      self.gridy_P1*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
-                                                                      remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                            reflocs = ants[key].wtspos_P1[0] + (self.f[0]/FCNST.c) * NP.asarray([ants[key].location.x, ants[key].location.y]).reshape(1,-1)
+                                            inplocs = (self.f[0]/FCNST.c) * NP.hstack((self.gridx_P1.reshape(-1,1), self.gridy_P1.reshape(-1,1)))
+                                            ibind, nnval = LKP.lookup_1NN(reflocs, ants[key].wts_P1[0], inplocs,
+                                                                          distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                                                          remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                            # ibind, nnval = LKP.lookup(ants[key].wtspos_P1[0][:,0]+ants[key].location.x*(self.f[0]/FCNST.c),
+                                            #                           ants[key].wtspos_P1[0][:,1]+ants[key].location.y*(self.f[0]/FCNST.c),
+                                            #                           ants[key].wts_P1[0], self.gridx_P1*self.f[0]/FCNST.c,
+                                            #                           self.gridy_P1*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                            #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
                                             roi_ind = NP.unravel_index(ibind, self.gridx_P1.shape)
                                             if normalize:
                                                 nnval /= NP.sum(nnval)
@@ -1613,21 +1623,33 @@ class AntennaArray:
                             for i in range(len(self.f)):
                                 if method == 'NN':
                                     if ants[key].wtspos_P1_scale is None: 
-                                        ibind, nnval = LKP.lookup(ants[key].wtspos_P1[i][:,0] + ants[key].location.x * (self.f[i]/FCNST.c),
-                                                                  ants[key].wtspos_P1[i][:,1] + ants[key].location.y * (self.f[i]/FCNST.c),
-                                                                  ants[key].wts_P1[i], self.gridx_P1*self.f[i]/FCNST.c,
-                                                                  self.gridy_P1*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
-                                                                  remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                        reflocs = ants[key].wtspos_P1[i] + (self.f[i]/FCNST.c) * NP.asarray([ants[key].location.x, ants[key].location.y]).reshape(1,-1)
+                                        inplocs = (self.f[i]/FCNST.c) * NP.hstack((self.gridx_P1.reshape(-1,1), self.gridy_P1.reshape(-1,1)))
+                                        ibind, nnval = LKP.lookup_1NN(reflocs, ants[key].wts_P1[i], inplocs,
+                                                                      distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                                                      remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+
+                                        # ibind, nnval = LKP.lookup(ants[key].wtspos_P1[i][:,0] + ants[key].location.x * (self.f[i]/FCNST.c),
+                                        #                           ants[key].wtspos_P1[i][:,1] + ants[key].location.y * (self.f[i]/FCNST.c),
+                                        #                           ants[key].wts_P1[i], self.gridx_P1*self.f[i]/FCNST.c,
+                                        #                           self.gridy_P1*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                        #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
                                         roi_ind = NP.unravel_index(ibind, self.gridx_P1.shape)
                                         if normalize:
                                             nnval /= NP.sum(nnval)
                                     elif ants[key].wtspos_P1_scale == 'scale':
                                         if i == 0: # Determine some parameters only for zeroth channel if scaling is set
-                                            ibind, nnval = LKP.lookup(ants[key].wtspos_P1[0][:,0]+ants[key].location.x*(self.f[0]/FCNST.c),
-                                                                      ants[key].wtspos_P1[0][:,1]+ants[key].location.y*(self.f[0]/FCNST.c),
-                                                                      ants[key].wts_P1[0], self.gridx_P1*self.f[0]/FCNST.c,
-                                                                      self.gridy_P1*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
-                                                                      remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                            reflocs = ants[key].wtspos_P1[0] + (self.f[0]/FCNST.c) * NP.asarray([ants[key].location.x, ants[key].location.y]).reshape(1,-1)
+                                            inplocs = (self.f[0]/FCNST.c) * NP.hstack((self.gridx_P1.reshape(-1,1), self.gridy_P1.reshape(-1,1)))
+                                            ibind, nnval = LKP.lookup_1NN(reflocs, ants[key].wts_P1[0], inplocs,
+                                                                          distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                                                          remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+
+                                            # ibind, nnval = LKP.lookup(ants[key].wtspos_P1[0][:,0]+ants[key].location.x*(self.f[0]/FCNST.c),
+                                            #                           ants[key].wtspos_P1[0][:,1]+ants[key].location.y*(self.f[0]/FCNST.c),
+                                            #                           ants[key].wts_P1[0], self.gridx_P1*self.f[0]/FCNST.c,
+                                            #                           self.gridy_P1*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                            #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
                                             roi_ind = NP.unravel_index(ibind, self.gridx_P1.shape)
                                             if normalize:
                                                 nnval /= NP.sum(nnval)
@@ -1701,21 +1723,32 @@ class AntennaArray:
                         for i in range(len(self.f)):
                             if method == 'NN':
                                 if self.antennas[key].wtspos_P1_scale is None: 
-                                    ibind, nnval = LKP.lookup(self.antennas[key].wtspos_P1[i][:,0]+self.antennas[key].location.x*(self.f[i]/FCNST.c),
-                                                              self.antennas[key].wtspos_P1[i][:,1]+self.antennas[key].location.y*(self.f[i]/FCNST.c),
-                                                              self.antennas[key].wts_P1[i], self.gridx_P1*self.f[i]/FCNST.c,
-                                                              self.gridy_P1*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
-                                                              remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                    reflocs = self.antennas[key].wtspos_P1[i] + (self.f[i]/FCNST.c) * NP.asarray([self.antennas[key].location.x, self.antennas[key].location.y]).reshape(1,-1)
+                                    inplocs = (self.f[i]/FCNST.c) * NP.hstack((self.gridx_P1.reshape(-1,1), self.gridy_P1.reshape(-1,1)))
+                                    ibind, nnval = LKP.lookup_1NN(reflocs, self.antennas[key].wts_P1[i], inplocs,
+                                                                  distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                                                  remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+
+                                    # ibind, nnval = LKP.lookup(self.antennas[key].wtspos_P1[i][:,0]+self.antennas[key].location.x*(self.f[i]/FCNST.c),
+                                    #                           self.antennas[key].wtspos_P1[i][:,1]+self.antennas[key].location.y*(self.f[i]/FCNST.c),
+                                    #                           self.antennas[key].wts_P1[i], self.gridx_P1*self.f[i]/FCNST.c,
+                                    #                           self.gridy_P1*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                    #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
                                     roi_ind = NP.unravel_index(ibind, self.gridx_P1.shape)
                                     if normalize:
                                         nnval /= NP.sum(nnval)
                                 elif self.antennas[key].wtspos_P1_scale == 'scale':
                                     if i == 0: # Determine some parameters only for zeroth channel if scaling is set
-                                        ibind, nnval = LKP.lookup(self.antennas[key].wtspos_P1[0][:,0]+self.antennas[key].location.x*(self.f[0]/FCNST.c),
-                                                                  self.antennas[key].wtspos_P1[0][:,1]+self.antennas[key].location.y*(self.f[0]/FCNST.c),
-                                                                  self.antennas[key].wts_P1[0], self.gridx_P1*self.f[0]/FCNST.c,
-                                                                  self.gridy_P1*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
-                                                                  remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                        reflocs = self.antennas[key].wtspos_P1[0] + (self.f[0]/FCNST.c) * NP.asarray([self.antennas[key].location.x, self.antennas[key].location.y]).reshape(1,-1)
+                                        inplocs = (self.f[0]/FCNST.c) * NP.hstack((self.gridx_P1.reshape(-1,1), self.gridy_P1.reshape(-1,1)))
+                                        ibind, nnval = LKP.lookup_1NN(reflocs, self.antennas[key].wts_P1[0], inplocs,
+                                                                      distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                                                      remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                        # ibind, nnval = LKP.lookup(self.antennas[key].wtspos_P1[0][:,0]+self.antennas[key].location.x*(self.f[0]/FCNST.c),
+                                        #                           self.antennas[key].wtspos_P1[0][:,1]+self.antennas[key].location.y*(self.f[0]/FCNST.c),
+                                        #                           self.antennas[key].wts_P1[0], self.gridx_P1*self.f[0]/FCNST.c,
+                                        #                           self.gridy_P1*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                        #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
                                         roi_ind = NP.unravel_index(ibind, self.gridx_P1.shape)
                                         if normalize:
                                             nnval /= NP.sum(nnval)
@@ -1796,21 +1829,32 @@ class AntennaArray:
                             for i in range(len(self.f)):
                                 if method == 'NN':
                                     if ants[key].wtspos_P2_scale is None: 
-                                        ibind, nnval = LKP.lookup(ants[key].wtspos_P2[i][:,0] + ants[key].location.x * (self.f[i]/FCNST.c),
-                                                                  ants[key].wtspos_P2[i][:,1] + ants[key].location.y * (self.f[i]/FCNST.c),
-                                                                  ants[key].wts_P2[i], self.gridx_P2*self.f[i]/FCNST.c,
-                                                                  self.gridy_P2*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
-                                                                  remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                        reflocs = ants[key].wtspos_P2[i] + (self.f[i]/FCNST.c) * NP.asarray([ants[key].location.x, ants[key].location.y]).reshape(1,-1)
+                                        inplocs = (self.f[i]/FCNST.c) * NP.hstack((self.gridx_P2.reshape(-1,1), self.gridy_P2.reshape(-1,1)))
+                                        ibind, nnval = LKP.lookup_1NN(reflocs, ants[key].wts_P2[i], inplocs,
+                                                                      distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                                                      remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+
+                                        # ibind, nnval = LKP.lookup(ants[key].wtspos_P2[i][:,0] + ants[key].location.x * (self.f[i]/FCNST.c),
+                                        #                           ants[key].wtspos_P2[i][:,1] + ants[key].location.y * (self.f[i]/FCNST.c),
+                                        #                           ants[key].wts_P2[i], self.gridx_P2*self.f[i]/FCNST.c,
+                                        #                           self.gridy_P2*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                        #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
                                         roi_ind = NP.unravel_index(ibind, self.gridx_P2.shape)
                                         if normalize:
                                             nnval /= NP.sum(nnval)
                                     elif ants[key].wtspos_P2_scale == 'scale':
                                         if i == 0: # Determine some parameters only for zeroth channel if scaling is set
-                                            ibind, nnval = LKP.lookup(ants[key].wtspos_P2[0][:,0]+ants[key].location.x*(self.f[0]/FCNST.c),
-                                                                      ants[key].wtspos_P2[0][:,1]+ants[key].location.y*(self.f[0]/FCNST.c),
-                                                                      ants[key].wts_P2[0], self.gridx_P2*self.f[0]/FCNST.c,
-                                                                      self.gridy_P2*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
-                                                                      remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                            reflocs = ants[key].wtspos_P2[0] + (self.f[0]/FCNST.c) * NP.asarray([ants[key].location.x, ants[key].location.y]).reshape(1,-1)
+                                            inplocs = (self.f[0]/FCNST.c) * NP.hstack((self.gridx_P2.reshape(-1,1), self.gridy_P2.reshape(-1,1)))
+                                            ibind, nnval = LKP.lookup_1NN(reflocs, ants[key].wts_P2[0], inplocs,
+                                                                          distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                                                          remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                            # ibind, nnval = LKP.lookup(ants[key].wtspos_P2[0][:,0]+ants[key].location.x*(self.f[0]/FCNST.c),
+                                            #                           ants[key].wtspos_P2[0][:,1]+ants[key].location.y*(self.f[0]/FCNST.c),
+                                            #                           ants[key].wts_P2[0], self.gridx_P2*self.f[0]/FCNST.c,
+                                            #                           self.gridy_P2*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                            #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
                                             roi_ind = NP.unravel_index(ibind, self.gridx_P2.shape)
                                             if normalize:
                                                 nnval /= NP.sum(nnval)
@@ -1887,21 +1931,31 @@ class AntennaArray:
                             for i in range(len(self.f)):
                                 if method == 'NN':
                                     if ants[key].wtspos_P2_scale is None: 
-                                        ibind, nnval = LKP.lookup(ants[key].wtspos_P2[i][:,0] + ants[key].location.x * (self.f[i]/FCNST.c),
-                                                                  ants[key].wtspos_P2[i][:,1] + ants[key].location.y * (self.f[i]/FCNST.c),
-                                                                  ants[key].wts_P2[i], self.gridx_P2*self.f[i]/FCNST.c,
-                                                                  self.gridy_P2*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
-                                                                  remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                        reflocs = ants[key].wtspos_P2[i] + (self.f[i]/FCNST.c) * NP.asarray([ants[key].location.x, ants[key].location.y]).reshape(1,-1)
+                                        inplocs = (self.f[i]/FCNST.c) * NP.hstack((self.gridx_P2.reshape(-1,1), self.gridy_P2.reshape(-1,1)))
+                                        ibind, nnval = LKP.lookup_1NN(reflocs, ants[key].wts_P2[i], inplocs,
+                                                                      distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                                                      remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                        # ibind, nnval = LKP.lookup(ants[key].wtspos_P2[i][:,0] + ants[key].location.x * (self.f[i]/FCNST.c),
+                                        #                           ants[key].wtspos_P2[i][:,1] + ants[key].location.y * (self.f[i]/FCNST.c),
+                                        #                           ants[key].wts_P2[i], self.gridx_P2*self.f[i]/FCNST.c,
+                                        #                           self.gridy_P2*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                        #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
                                         roi_ind = NP.unravel_index(ibind, self.gridx_P2.shape)
                                         if normalize:
                                             nnval /= NP.sum(nnval)
                                     elif ants[key].wtspos_P2_scale == 'scale':
                                         if i == 0: # Determine some parameters only for zeroth channel if scaling is set
-                                            ibind, nnval = LKP.lookup(ants[key].wtspos_P2[0][:,0]+ants[key].location.x*(self.f[0]/FCNST.c),
-                                                                      ants[key].wtspos_P2[0][:,1]+ants[key].location.y*(self.f[0]/FCNST.c),
-                                                                      ants[key].wts_P2[0], self.gridx_P2*self.f[0]/FCNST.c,
-                                                                      self.gridy_P2*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
-                                                                      remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                            reflocs = ants[key].wtspos_P2[0] + (self.f[0]/FCNST.c) * NP.asarray([ants[key].location.x, ants[key].location.y]).reshape(1,-1)
+                                            inplocs = (self.f[0]/FCNST.c) * NP.hstack((self.gridx_P2.reshape(-1,1), self.gridy_P2.reshape(-1,1)))
+                                            ibind, nnval = LKP.lookup_1NN(reflocs, ants[key].wts_P2[0], inplocs,
+                                                                          distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                                                          remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                            # ibind, nnval = LKP.lookup(ants[key].wtspos_P2[0][:,0]+ants[key].location.x*(self.f[0]/FCNST.c),
+                                            #                           ants[key].wtspos_P2[0][:,1]+ants[key].location.y*(self.f[0]/FCNST.c),
+                                            #                           ants[key].wts_P2[0], self.gridx_P2*self.f[0]/FCNST.c,
+                                            #                           self.gridy_P2*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                            #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
                                             roi_ind = NP.unravel_index(ibind, self.gridx_P2.shape)
                                             if normalize:
                                                 nnval /= NP.sum(nnval)
@@ -1975,21 +2029,31 @@ class AntennaArray:
                         for i in range(len(self.f)):
                             if method == 'NN':
                                 if self.antennas[key].wtspos_P2_scale is None: 
-                                    ibind, nnval = LKP.lookup(self.antennas[key].wtspos_P2[i][:,0]+self.antennas[key].location.x*(self.f[i]/FCNST.c),
-                                                              self.antennas[key].wtspos_P2[i][:,1]+self.antennas[key].location.y*(self.f[i]/FCNST.c),
-                                                              self.antennas[key].wts_P2[i], self.gridx_P2*self.f[i]/FCNST.c,
-                                                              self.gridy_P2*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
-                                                              remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                    reflocs = self.antennas[key].wtspos_P2[i] + (self.f[i]/FCNST.c) * NP.asarray([self.antennas[key].location.x, self.antennas[key].location.y]).reshape(1,-1)
+                                    inplocs = (self.f[i]/FCNST.c) * NP.hstack((self.gridx_P2.reshape(-1,1), self.gridy_P2.reshape(-1,1)))
+                                    ibind, nnval = LKP.lookup_1NN(reflocs, self.antennas[key].wts_P2[i], inplocs,
+                                                                  distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                                                  remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                    # ibind, nnval = LKP.lookup(self.antennas[key].wtspos_P2[i][:,0]+self.antennas[key].location.x*(self.f[i]/FCNST.c),
+                                    #                           self.antennas[key].wtspos_P2[i][:,1]+self.antennas[key].location.y*(self.f[i]/FCNST.c),
+                                    #                           self.antennas[key].wts_P2[i], self.gridx_P2*self.f[i]/FCNST.c,
+                                    #                           self.gridy_P2*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                    #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
                                     roi_ind = NP.unravel_index(ibind, self.gridx_P2.shape)
                                     if normalize:
                                         nnval /= NP.sum(nnval)
                                 elif self.antennas[key].wtspos_P2_scale == 'scale':
                                     if i == 0: # Determine some parameters only for zeroth channel if scaling is set
-                                        ibind, nnval = LKP.lookup(self.antennas[key].wtspos_P2[0][:,0]+self.antennas[key].location.x*(self.f[0]/FCNST.c),
-                                                                  self.antennas[key].wtspos_P2[0][:,1]+self.antennas[key].location.y*(self.f[0]/FCNST.c),
-                                                                  self.antennas[key].wts_P2[0], self.gridx_P2*self.f[0]/FCNST.c,
-                                                                  self.gridy_P2*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
-                                                                  remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                        reflocs = self.antennas[key].wtspos_P2[0] + (self.f[0]/FCNST.c) * NP.asarray([self.antennas[key].location.x, self.antennas[key].location.y]).reshape(1,-1)
+                                        inplocs = (self.f[0]/FCNST.c) * NP.hstack((self.gridx_P2.reshape(-1,1), self.gridy_P2.reshape(-1,1)))
+                                        ibind, nnval = LKP.lookup_1NN(reflocs, self.antennas[key].wts_P2[0], inplocs,
+                                                                      distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                                                      remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                        # ibind, nnval = LKP.lookup(self.antennas[key].wtspos_P2[0][:,0]+self.antennas[key].location.x*(self.f[0]/FCNST.c),
+                                        #                           self.antennas[key].wtspos_P2[0][:,1]+self.antennas[key].location.y*(self.f[0]/FCNST.c),
+                                        #                           self.antennas[key].wts_P2[0], self.gridx_P2*self.f[0]/FCNST.c,
+                                        #                           self.gridy_P2*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                        #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
                                         roi_ind = NP.unravel_index(ibind, self.gridx_P2.shape)
                                         if normalize:
                                             nnval /= NP.sum(nnval)

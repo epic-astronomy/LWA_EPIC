@@ -1,3 +1,19 @@
+From v1.06.1 of MOFF:
+====================
+
+Previous changelog should have mentioned variation from v1.06.1 instead of v1.06
+above. Hence just amending the previous commit.
+
+Created a branch lookup_patch to adjust the module to use the newer version of 
+the module lookup_operations espcially in switching the usage from lookup() to
+lookup_1NN()
+
+In antenna_array.py,
+
+(*) Replaced the calls to lookup() with lookup_1NN() and tested certain cases
+with the MWA test script
+
+---------------------------------------------------------------------------------
 From v1.06 of MOFF:
 ==================
 
