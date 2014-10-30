@@ -1,3 +1,14 @@
+From v1.06.2 of MOFF:
+====================
+
+In antenna_array.py,
+
+(*) made small bug fixes in __str__() member function of class AntennaArray
+(*) Created new classes CrossPolInfo, Interferometer and InterferometerArray
+and tested their __init__() member functions while other member functions remain
+to be tested
+(*) Tested grid() member function in class InterferometerArray
+
 From v1.06.1 of MOFF:
 ====================
 
@@ -12,6 +23,9 @@ In antenna_array.py,
 
 (*) Replaced the calls to lookup() with lookup_1NN() and tested certain cases
 with the MWA test script
+(*) Added few comments inside member function update() of class AntennaArray
+(*) Changed a dictionary key from 'antenna' to 'antennas' to avoid ambiguity with
+another similarly named key in member function update() of class AntennaArray
 
 ---------------------------------------------------------------------------------
 From v1.06 of MOFF:

@@ -1096,8 +1096,8 @@ class AntennaArray:
         printstr = '\n-----------------------------------------------------------------'
         printstr += '\n Instance of class "{0}" in module "{1}".\n Holds the following "Antenna" class instances with labels:\n '.format(self.__class__.__name__, self.__module__)
         printstr += '  '.join(sorted(self.antennas.keys()))
-        printstr += '\n Antenna array bounds: blc = [{0[0]}, {0[1]}],\n                       trc = [{1[0]}, {1[1]}]'.format(self.ants_blc_P1, self.ants_trc_P1)
-        printstr += '\n Grid bounds: blc = [{0[0]}, {0[1]}],\n              trc = [{1[0]}, {1[1]}]'.format(self.grid_blc_P1, self.grid_trc_P1)
+        printstr += '\n Antenna array bounds: blc = [{0[0]}, {0[1]}],\n                       trc = [{1[0]}, {1[1]}]'.format(self.ants_blc_P1.ravel(), self.ants_trc_P1.ravel())
+        printstr += '\n Grid bounds: blc = [{0[0]}, {0[1]}],\n              trc = [{1[0]}, {1[1]}]'.format(self.grid_blc_P1.ravel(), self.grid_trc_P1.ravel())
         printstr += '\n-----------------------------------------------------------------'
         return printstr
 
@@ -2258,7 +2258,7 @@ class AntennaArray:
                                        series. It is optional to set this to a
                                        scalar. If not given, no change is made to 
                                        the existing timestamp attribute
-                    'antenna':  Holds a dictionary consisting of updates for 
+                    'antennas': Holds a dictionary consisting of updates for 
                                 individual antennas. One of the keys is 'label' 
                                 which indicates an antenna label. If absent, the 
                                 code execution stops by throwing an exception. 
@@ -2451,17 +2451,17 @@ class AntennaArray:
             if not isinstance(updates, dict):
                 raise TypeError('Input parameter updates must be a dictionary')
 
-            if 'antenna_array' in updates:
+            if 'antenna_array' in updates: # contains updates at 'antenna array' level
                 if not isinstance(updates['antenna_array'], dict):
                     raise TypeError('Input parameter in updates for antenna array must be a dictionary with key "antenna_array"')
                 
                 if 'timestamp' in updates['antenna_array']:
                     self.timestamp = updates['antenna_array']['timestamp']
 
-            if 'antenna' in updates:
-                if not isinstance(updates['antenna'], list):
-                    updates['antenna'] = [updates['antenna']]
-                for dictitem in updates['antenna']:
+            if 'antennas' in updates: # contains updates at level of individual antennas
+                if not isinstance(updates['antennas'], list):
+                    updates['antennas'] = [updates['antennas']]
+                for dictitem in updates['antennas']:
                     if not isinstance(dictitem, dict):
                         raise TypeError('Updates to {0} instance should be provided in the form of a list of dictionaries.'.format(self.__class__.__name__))
                     elif 'label' not in dictitem:
@@ -3182,4 +3182,2075 @@ class Image:
         if verbose:
             print '\tImage information written successfully to FITS file on disk:\n\t\t{0}\n'.format(filename)
 
+#################################################################################
+
+class CrossPolInfo:
+    """
+    ----------------------------------------------------------------------------
+    Class to manage cross polarization products of an interferometer.
+
+    Attributes:
+
+    Et_P1:   A complex numpy vector representing a time series of electric field
+             for polarization P1
+
+    Et_P2:   A complex numpy vector representing a time series of electric field
+             for polarization P2 which is orthogonal to P1
+        
+    flag_P1: [Boolean] True means P1 is to be flagged. Default = False
+
+    flag_P2: [Boolean] True means P2 is to be flagged. Default = False
+
+    pol_type: [string] Type of polarization. Accepted values are 'Linear' or
+              'Circular' 
+
+    Ef_P1:   A complex numpy vector representing the Fourier transform of Et_P1
+
+    Ef_P2:   A complex numpy vector representing the Fourier transform of Et_P2
+
+    Member functions:
+
+    __init__():    Initializes an instance of class PolInfo
+
+    __str__():     Prints a summary of current attributes.
+
+    temporal_F():  Perform a Fourier transform of an Electric field time series
+
+    update():      Routine to update the Electric field and flag information.
+    
+    delay_compensation():
+                   Routine to apply delay compensation to Electric field spectra 
+                   through additional phase.
+
+    Read the member function docstrings for details. 
+    ----------------------------------------------------------------------------
+    """
+
+    def __init__(self):
+        """
+        ------------------------------------------------------------------------
+        Initialize the CrossPolInfo Class which manages polarization information 
+        of an interferometer. 
+
+        Class attributes initialized are:
+        Vt_P11, Vt_P12, Vt_P21, Vt_P22, Vf_P11, Vf_P12, Vf_P21, Vf_P22, flag_P1,
+        flag_P2, pol_type
+     
+        Read docstring of class PolInfo for details on these attributes.
+        ------------------------------------------------------------------------
+        """
+
+        self.Vt_P11 = 0.0
+        self.Vt_P12 = 0.0
+        self.Vt_P21 = 0.0
+        self.Vt_P22 = 0.0
+
+        self.Vf_P11 = 0.0
+        self.Vf_P12 = 0.0
+        self.Vf_P21 = 0.0
+        self.Vf_P22 = 0.0
+
+        self.flag_P11 = False
+        self.flag_P12 = False
+        self.flag_P21 = False
+        self.flag_P22 = False
+
+    ############################################################################ 
+
+    def __str__(self):
+        return ' Instance of class "{0}" in module "{1}" \n flag (P11): {2} \n flag (P12): {3} \n flag (P21): {4} \n flag (P22): {5} '.format(self.__class__.__name__, self.__module__, self.flag_P11, self.flag_P12, self.flag_P21, self.flag_22)
+
+    ############################################################################ 
+
+    
+
+#################################################################################
+
+class Interferometer:
+
+    """
+    ----------------------------------------------------------------------------
+    Class to manage individual 2-element interferometer information.
+
+    Attributes:
+
+    label:      [Scalar] A unique identifier (preferably a string) for the 
+                antenna. 
+
+    latitude:   [Scalar] Latitude of the antenna's location.
+
+    location:   [Instance of GEOM.Point class] The location of the antenna in 
+                local East, North, Up coordinate system.
+
+    timestamp:  [Scalar] String or float representing the timestamp for the 
+                current attributes
+
+    t:          [vector] The time axis for the time series of electric fields
+
+    f:          [vector] Frequency axis obtained by a Fourier Transform of
+                the electric field time series. Same length as attribute t 
+
+    f0:         [Scalar] Positive value for the center frequency in Hz.
+
+    crosspol:   [Instance of class CrossPolInfo] polarization information for the 
+                antenna. Read docstring of class PolInfo for details
+
+    wts_P1:     [List of 1-column Vectors] The gridding weights for antenna in 
+                the local ENU coordinate system under polarization P1. These 
+                could be complex. This is provided as a list of numpy vectors, 
+                where each vector corresponds to a frequency channel. See
+                wtspos_P1_scale.
+
+    wts_P2:     [List of 1-column Vectors] The gridding weights for antenna in 
+                the local ENU coordinate system under polarization P2. These 
+                could be complex. This is provided as a list of numpy vectors, 
+                where each vector corresponds to a frequency channel. See
+                wtspos_P2_scale.
+
+    wtspos_P1:  [List of 2-column numpy arrays] Each 2-column numpy array is the 
+                position of the gridding weights for a corresponding frequency 
+                channel for polarization P1. The size of the list must be the 
+                as wts_P1 and the number of channels. See wtspos_P1_scale. Units
+                are in number of wavelengths.
+
+    wtspos_P2:  [List of 2-column numpy arrays] Each 2-column numpy array is the 
+                position of the gridding weights for a corresponding frequency 
+                channel for polarization P2. The size of the list must be the 
+                as wts_P2 and the number of channels. See wtspos_P2_scale. Units
+                are in number of wavelengths.
+
+    wtspos_P1_scale [None or 'scale'] If None, numpy vectors in wts_P1 and 
+                    wtspos_P1 are provided for each frequency channel. If set to
+                    'scale' wts_P1 and wtspos_P1 contain a list of only one 
+                    numpy array corresponding to a reference frequency. This is
+                    scaled internally to correspond to the first channel.
+                    The gridding positions are correspondingly scaled to all the 
+                    frequency channels.
+
+    wtspos_P2_scale [None or 'scale'] If None, numpy vectors in wts_P2 and 
+                    wtspos_P2 are provided for each frequency channel. If set to
+                    'scale' wts_P2 and wtspos_P2 contain a list of only one 
+                    numpy array corresponding to a reference frequency. This is
+                    scaled internally to correspond to the first channel.
+                    The gridding positions are correspondingly scaled to all the 
+                    frequency channels.
+
+    gridinfo_P1     [Dictionary] Contains gridding information pertaining to the
+                    antenna under polarization P1. It contains keys for each 
+                    frequency channel number. Each of these keys holds another
+                    dictionary. This sub-dictionary consists of the following 
+                    keys which hold the information described below:
+
+                    f:           the frequency [in Hz] corresponding to the channel
+                                 number
+                    flag:        [Boolean] flag for frequency channel. True means
+                                 the frequency channel is to be flagged.
+                    gridxy_ind   [List of tuples] Each tuple holds the index of the
+                                 interpolated position (in local ENU coordinate 
+                                 system) on the grid. 
+                    illumination [Numpy vector] The voltage pattern contributed by
+                                 the antenna at that frequency to the grid. This 
+                                 could contain complex values. 
+                    Ef           [Numpy vector] The voltage seen by the antenna on
+                                 the grid. This could contain complex values. 
+
+    gridinfo_P2     [Dictionary] Contains gridding information pertaining to the
+                    antenna under polarization P2. It contains keys for each 
+                    frequency channel number. Each of these keys holds another
+                    dictionary. This sub-dictionary consists of the following 
+                    keys which hold the information described below:
+
+                    f:           the frequency [in Hz] corresponding to the channel
+                                 number
+                    flag:        [Boolean] flag for frequency channel. True means
+                                 the frequency channel is to be flagged.
+                    gridxy_ind   [List of tuples] Each tuple holds the index of the
+                                 interpolated position (in local ENU coordinate 
+                                 system) on the grid. 
+                    illumination [Numpy vector] The voltage pattern contributed by
+                                 the antenna at that frequency to the grid. This 
+                                 could contain complex values. 
+                    Ef           [Numpy vector] The voltage seen by the antenna on
+                                 the grid. This could contain complex values. 
+    
+    blc_P1          [2-element numpy array] Bottom Left corner where the antenna
+                    contributes non-zero weight to the grid in polarization P1
+
+    trc_P1          [2-element numpy array] Top right corner where the antenna
+                    contributes non-zero weight to the grid in polarization P1
+
+    blc_P2          [2-element numpy array] Bottom Left corner where the antenna
+                    contributes non-zero weight to the grid in polarization P2
+
+    trc_P2          [2-element numpy array] Top right corner where the antenna
+                    contributes non-zero weight to the grid in polarization P2
+
+    Member Functions:
+
+    __init__():      Initializes an instance of class Antenna
+
+    __str__():       Prints a summary of current attributes
+
+    channels():      Computes the frequency channels from a temporal Fourier 
+                     Transform
+
+    update():        Updates the antenna instance with newer attribute values
+
+    save():          Saves the antenna information to disk. Needs serious 
+                     development. 
+
+    Read the member function docstrings for details.
+    ----------------------------------------------------------------------------
+    """
+
+    def __init__(self, antenna1, antenna2, corr_type=None):
+        """
+        ------------------------------------------------------------------------
+        Initialize the Interferometer Class which manages an interferometer's
+        information 
+
+        Class attributes initialized are:
+        label, latitude, location, pol, t, timestamp, f0, f, wts_P1, wts_P2, 
+        wtspos_P1, wtspos_P2, wtspos_P1_scale, wtspos_P2_scale, gridinfo_P1, 
+        gridinfo_P2, blc_P1, trc_P1, blc_P2, trc_P2
+     
+        Read docstring of class Antenna for details on these attributes.
+        ------------------------------------------------------------------------
+        """
+
+        try:
+            antenna1, antenna2
+        except NameError:
+            raise NameError('Two individual antenna instances must be provided.')
+
+        if not isinstance(antenna1, Antenna):
+            raise TypeError('antenna1 not an instance of class Antenna')
+
+        if not isinstance(antenna2, Antenna):
+            raise TypeError('antenna2 not an instance of class Antenna')
+
+        self.A1 = antenna1
+        self.A2 = antenna2
+
+        if (corr_type is None) or (corr_type == 'FX'):
+            self.corr_type = 'FX'
+        elif corr_type == 'XF':
+            self.corr_type = corr_type
+        else:
+            raise ValueError('Invalid correlator type')
+
+        self.corr_type = corr_type
+        
+        self.latitude = 0.5 * (self.A1.latitude + self.A2.latitude) # mean latitude of two antennas
+        self.location = self.A1.location - self.A2.location # Baseline vector
+        if self.A1.f0 != self.A2.f0:
+            raise ValueError('The center frequencies of the two antennas must be identical')
+        self.f0 = self.A1.f0
+
+        self.label = (self.A1.label, self.A2.label)
+        # self.label = self.A1.label + '-' + self.A2.label
+
+        self.t = 0.0
+        self.timestamp = 0.0
+        self.f = self.f0
+        
+        self.crosspol = CrossPolInfo()
+
+        self.wts_P11 = []
+        self.wts_P22 = []
+        self.wts_P12 = []
+        self.wts_P21 = []
+        self.wtspos_P11_scale = None
+        self.wtspos_P22_scale = None
+        self.wtspos_P12_scale = None
+        self.wtspos_P21_scale = None
+        self.wtspos_P11 = []
+        self.wtspos_P22 = []
+        self.wtspos_P12 = []
+        self.wtspos_P21 = []
+        
+        self.gridinfo_P11 = {}
+        self.gridinfo_P22 = {}
+        self.gridinfo_P12 = {}
+        self.gridinfo_P21 = {}
+
+        self.blc = NP.asarray([self.location.x, self.location.y]).reshape(1,-1)
+        self.trc = NP.asarray([self.location.x, self.location.y]).reshape(1,-1)
+
+    #################################################################################
+
+    def __str__(self):
+        return ' Instance of class "{0}" in module "{1}" \n label: ({2[0]}, {2[1]}) \n location: {3}'.format(self.__class__.__name__, self.__module__, self.label, self.location.__str__())
+
+    #################################################################################
+
+    def channels(self):
+
+        """
+        ------------------------------------------------------------------------
+        Computes the frequency channels from a temporal Fourier Transform 
+        assuming the temporal sequence has doubled in length with zero 
+        padding while maintaining the time resolution.
+
+        Output(s):
+
+        Frequencies corresponding to channels obtained by a Fourier Transform
+        of the time series.
+        ------------------------------------------------------------------------
+        """
+
+        return DSP.spectax(self.A1.t.size + self.A2.t.size, resolution=self.A1.t[1]-self.A1.t[0], shift=True)
+
     #############################################################################
+
+    def FX(self):
+
+        """
+        -------------------------------------------------------------------------
+        Computes the visibility spectrum using an FX operation, i.e., Fourier 
+        transform (F) followed by multiplication (X). All four cross
+        polarizations are computed.
+        -------------------------------------------------------------------------
+        """
+
+        self.crosspol.Vf_P11 = self.A1.pol.Ef_P1 * self.A2.pol.Ef_P1.conj()
+        self.crosspol.Vf_P12 = self.A1.pol.Ef_P1 * self.A2.pol.Ef_P2.conj()
+        self.crosspol.Vf_P21 = self.A1.pol.Ef_P2 * self.A2.pol.Ef_P1.conj()
+        self.crosspol.Vf_P22 = self.A1.pol.Ef_P2 * self.A2.pol.Ef_P2.conj()
+
+        self.crosspol.Vt_P11 = DSP.FT1D(NP.fft.fftshift(self.crosspol.Vf_P11), inverse=True, shift=True, verbose=False)
+        self.crosspol.Vt_P12 = DSP.FT1D(NP.fft.fftshift(self.crosspol.Vf_P12), inverse=True, shift=True, verbose=False)
+        self.crosspol.Vt_P21 = DSP.FT1D(NP.fft.fftshift(self.crosspol.Vf_P21), inverse=True, shift=True, verbose=False)
+        self.crosspol.Vt_P22 = DSP.FT1D(NP.fft.fftshift(self.crosspol.Vf_P22), inverse=True, shift=True, verbose=False)
+
+    #############################################################################
+
+    def XF(self):
+
+        """
+        -------------------------------------------------------------------------
+        Computes the visibility spectrum using an XF operation, i.e., Correlation 
+        (X) followed by Fourier transform (X). All four cross polarizations are
+        computed.
+        -------------------------------------------------------------------------
+        """
+
+        self.crosspol.Vt_P11 = DSP.XC(self.A1.pol.Et_P1, self.A2.pol.Et_P1, shift=False)
+        self.crosspol.Vt_P12 = DSP.XC(self.A1.pol.Et_P1, self.A2.pol.Et_P2, shift=False)
+        self.crosspol.Vt_P21 = DSP.XC(self.A1.pol.Et_P2, self.A2.pol.Et_P1, shift=False)
+        self.crosspol.Vt_P22 = DSP.XC(self.A1.pol.Et_P2, self.A2.pol.Et_P2, shift=False)
+
+        self.crosspol.Vf_P11 = DSP.FT1D(NP.fft.ifftshift(self.crosspol.Vt_P11), shift=True, verbose=False)
+        self.crosspol.Vf_P12 = DSP.FT1D(NP.fft.ifftshift(self.crosspol.Vt_P12), shift=True, verbose=False)
+        self.crosspol.Vf_P21 = DSP.FT1D(NP.fft.ifftshift(self.crosspol.Vt_P21), shift=True, verbose=False)
+        self.crosspol.Vf_P22 = DSP.FT1D(NP.fft.ifftshift(self.crosspol.Vt_P22), shift=True, verbose=False)
+
+    #############################################################################
+
+    def update(self, label=None, Et_P1=None, Et_P2=None, t=None, timestamp=None,
+               location=None, wtsinfo_P11=None, wtsinfo_P22=None,
+               wtsinfo_P12=None, wtsinfo_P21=None, flag_P11=None,
+               flag_P2=None, gridfunc_freq=None, delaydict_P1=None,
+               delaydict_P2=None, ref_freq=None, pol_type='Linear',
+               verbose=False, corr_type=None):
+
+        """
+        -------------------------------------------------------------------------
+        Updates the visibility spectrum and timeseries using FX or XF operation.
+        -------------------------------------------------------------------------
+        """
+
+        pass
+
+    #############################################################################
+
+class InterferometerArray:
+
+    def __init__(self, antenna_pairs=None, antenna_array=None):
+
+        self.antenna_array = AntennaArray()
+        self.interferometers = {}
+        self.blc = NP.zeros((4,2))
+        self.trc = NP.zeros((4,2))
+        self.grid_blc = NP.zeros((4,2))
+        self.grid_trc = NP.zeros((4,2))
+        self.gridx, self.gridy = None, None
+        self.grid_illumination_P11 = None
+        self.grid_illumination_P12 = None
+        self.grid_illumination_P21 = None
+        self.grid_illumination_P22 = None
+        self.grid_Vf_P11 = None
+        self.grid_Vf_P12 = None
+        self.grid_Vf_P21 = None
+        self.grid_Vf_P22 = None
+        self.f = None
+        self.f0 = None
+        self.timestamp = None
+
+        if (antenna_array is not None) and (antenna_pairs is not None):
+            raise ValueError('InterferometerArray instance cannot be initialized with both inputs antenna_array and antenna_pairs.')
+
+        if antenna_array is not None:
+            if isinstance(antenna_array, AntennaArray):
+                self.antenna_array = antenna_array
+            else:
+                self.antenna_array = self.antenna_array + antenna_array
+
+            ant_labels = self.antenna_array.antennas.keys()
+            for i in xrange(len(ant_labels)-1):
+                for j in xrange(i+1,len(ant_labels)):
+                    ant_pair = Interferometer(self.antenna_array.antennas[ant_labels[i]], self.antenna_array.antennas[ant_labels[j]])
+                    self.interferometers[ant_pair.label] = ant_pair
+
+        if antenna_pairs is not None:
+            if isinstance(antenna_pairs, Interferometer):
+                self.interferometers[antenna_pairs.label] = antenna_pairs
+            elif isinstance(antenna_pairs, dict):
+                for key,value in antenna_pairs.items():
+                    if isinstance(key, tuple):
+                        if len(key) == 2:
+                            if isinstance(value, Interferometer):
+                                self.interferometers[key] = value
+                            else:
+                                print 'An item found not to be an instance of class Interferometer. Discarding and proceeding ahead.'
+                        else:
+                            print 'Invalid interferometer label found. Discarding and proceeding ahead.'
+                    else:
+                        print 'Invalid interferometer label found. Discarding and proceeding ahead.'
+            elif isinstance(antenna_pairs, list):
+                for value in antenna_pairs:
+                    if isinstance(value, Interferometer):
+                        self.interferometers[value.label] = value
+                    else:
+                        print 'An item found not to be an instance of class Interferometer. Discarding and proceeding ahead.'
+            else:
+                raise TypeError('Input parameter antenna_pairs found to be of compatible type, namely, instance of class Interferometer, list of instances of class Interferometer or dictionary of interferometers.')
+
+            for label, interferometer in self.interferometers.items():
+                if label[0] not in self.antenna_array.antennas:
+                    self.antenna_array = self.antenna_array + interferometer.A1
+                    # self.antenna_array.add_antennas(interferometer.A1)
+                if label[1] not in self.antenna_array.antennas:
+                    self.antenna_array = self.antenna_array + interferometer.A2
+                    # self.antenna_array.add_antennas(interferometer.A2)
+
+    ################################################################################# 
+
+    def __str__(self):
+        printstr = '\n-----------------------------------------------------------------'
+        printstr += '\n Instance of class "{0}" in module "{1}".\n Holds the following "Interferometer" class instances with labels:\n '.format(self.__class__.__name__, self.__module__)
+        printstr += str(self.interferometers.keys()).strip('[]')
+        # printstr += '  '.join(sorted(self.interferometers.keys()))
+        printstr += '\n Interferometer array bounds: blc = [{0[0]}, {0[1]}],\n\ttrc = [{1[0]}, {1[1]}]'.format(self.blc, self.trc)
+        printstr += '\n Grid bounds: blc = [{0[0]}, {0[1]}],\n\ttrc = [{1[0]}, {1[1]}]'.format(self.grid_blc, self.grid_trc)
+        printstr += '\n-----------------------------------------------------------------'
+        return printstr
+
+    ################################################################################# 
+
+    def __add__(self, others):
+
+        """
+        ----------------------------------------------------------------------------
+        Operator overloading for adding interferometer(s)
+    
+        Inputs:
+    
+        others     [Instance of class InterferometerArray, dictionary holding instance(s)
+                   of class Interferometer, list of instances of class Interferometer, or a single
+                   instance of class Interferometer] If a dictionary is provided, the keys
+                   should be the antenna labels and the values should be instances 
+                   of class Interferometer. If a list is provided, it should be a list of 
+                   valid instances of class Interferometer. These instance(s) of class
+                   Interferometer will be added to the existing instance of InterferometerArray
+                   class.
+        ----------------------------------------------------------------------------
+        """
+
+        retval = self
+        if isinstance(others, InterferometerArray):
+            # for k,v in others.interferometers.items():
+            for k,v in others.interferometers.iteritems():
+                if k in retval.interferometers:
+                    print "Interferometer {0} already included in the list of interferometers.".format(k)
+                    print "For updating, use the update() method. Ignoring interferometer {0}".format(k)
+                else:
+                    retval.interferometers[k] = v
+                    print 'Interferometer "{0}" added to the list of interferometers.'.format(k)
+        elif isinstance(others, dict):
+            # for item in others.values():
+            for item in others.itervalues():
+                if isinstance(item, Interferometer):
+                    if item.label in retval.interferometers:
+                        print "Interferometer {0} already included in the list of interferometers.".format(item.label)
+                        print "For updating, use the update() method. Ignoring interferometer {0}".format(item.label)
+                    else:
+                        retval.interferometers[item.label] = item
+                        print 'Interferometer "{0}" added to the list of interferometers.'.format(item.label)
+        elif isinstance(others, list):
+            for i in range(len(others)):
+                if isinstance(others[i], Interferometer):
+                    if others[i].label in retval.interferometers:
+                        print "Interferometer {0} already included in the list of interferometers.".format(others[i].label)
+                        print "For updating, use the update() method. Ignoring interferometer {0}".format(others[i].label)
+                    else:
+                        retval.interferometers[others[i].label] = others[i]
+                        print 'Interferometer "{0}" added to the list of interferometers.'.format(others[i].label)
+                else:
+                    print 'Element \# {0} is not an instance of class Interferometer.'.format(i)
+        elif isinstance(others, Interferometer):
+            if others.label in retval.interferometers:
+                print "Interferometer {0} already included in the list of interferometers.".format(others.label)
+                print "For updating, use the update() method. Ignoring interferometer {0}".format(others[i].label)
+            else:
+                retval.interferometers[others.label] = others
+                print 'Interferometer "{0}" added to the list of interferometers.'.format(others.label)
+        else:
+            print 'Input(s) is/are not instance(s) of class Interferometer.'
+
+        return retval
+
+    ################################################################################# 
+
+    def __radd__(self, others):
+
+        """
+        ----------------------------------------------------------------------------
+        Operator overloading for adding interferometer(s)
+    
+        Inputs:
+    
+        others     [Instance of class InterferometerArray, dictionary holding instance(s)
+                   of class Interferometer, list of instances of class Interferometer, or a single
+                   instance of class Interferometer] If a dictionary is provided, the keys
+                   should be the interferometer labels and the values should be instances 
+                   of class Interferometer. If a list is provided, it should be a list of 
+                   valid instances of class Interferometer. These instance(s) of class
+                   Interferometer will be added to the existing instance of InterferometerArray
+                   class.
+        ----------------------------------------------------------------------------
+        """
+
+        return self.__add__(others)
+
+    ################################################################################# 
+
+    def __sub__(self, others):
+
+        """
+        ----------------------------------------------------------------------------
+        Operator overloading for removing interferometer(s)
+    
+        Inputs:
+    
+        others     [Instance of class InterferometerArray, dictionary holding instance(s)
+                   of class Interferometer, list of instances of class Interferometer, list of
+                   strings containing interferometer labels or a single instance of class
+                   Interferometer] If a dictionary is provided, the keys should be the
+                   interferometer labels and the values should be instances of class
+                   Interferometer. If a list is provided, it should be a list of valid
+                   instances of class Interferometer. These instance(s) of class Interferometer
+                   will be removed from the existing instance of InterferometerArray class.
+        ----------------------------------------------------------------------------
+        """
+
+        retval = self
+        if isinstance(others, dict):
+            for item in others.values():
+                if isinstance(item, Interferometer):
+                    if item.label not in retval.interferometers:
+                        print "Interferometer {0} does not exist in the list of interferometers.".format(item.label)
+                    else:
+                        del retval.interferometers[item.label]
+                        print 'Interferometer "{0}" removed from the list of interferometers.'.format(item.label)
+        elif isinstance(others, list):
+            for i in range(0,len(others)):
+                if isinstance(others[i], str):
+                    if others[i] in retval.interferometers:
+                        del retval.interferometers[others[i]]
+                        print 'Interferometer {0} removed from the list of interferometers.'.format(others[i])
+                elif isinstance(others[i], Interferometer):
+                    if others[i].label in retval.interferometers:
+                        del retval.interferometers[others[i].label]
+                        print 'Interferometer {0} removed from the list of interferometers.'.format(others[i].label)
+                    else:
+                        print "Interferometer {0} does not exist in the list of interferometers.".format(others[i].label)
+                else:
+                    print 'Element \# {0} has no matches in the list of interferometers.'.format(i)                        
+        elif others in retval.interferometers:
+            del retval.interferometers[others]
+            print 'Interferometer "{0}" removed from the list of interferometers.'.format(others)
+        elif isinstance(others, Interferometer):
+            if others.label in retval.interferometers:
+                del retval.interferometers[others.label]
+                print 'Interferometer "{0}" removed from the list of interferometers.'.format(others.label)
+            else:
+                print "Interferometer {0} does not exist in the list of interferometers.".format(others.label)
+        else:
+            print 'No matches found in existing list of interferometers.'
+
+        return retval
+
+    ################################################################################# 
+
+    def add_interferometers(self, A=None):
+
+        """
+        ----------------------------------------------------------------------------
+        Routine to add interferometer(s) to the interferometer array instance. A wrapper for
+        operator overloading __add__() and __radd__()
+    
+        Inputs:
+    
+        A          [Instance of class InterferometerArray, dictionary holding instance(s)
+                   of class Interferometer, list of instances of class Interferometer, or a single
+                   instance of class Interferometer] If a dictionary is provided, the keys
+                   should be the interferometer labels and the values should be instances 
+                   of class Interferometer. If a list is provided, it should be a list of 
+                   valid instances of class Interferometer. These instance(s) of class
+                   Interferometer will be added to the existing instance of InterferometerArray
+                   class.
+        ----------------------------------------------------------------------------
+        """
+
+        if A is None:
+            print 'No interferometer(s) supplied.'
+        elif isinstance(A, (list, Interferometer)):
+            self = self.__add__(A)
+        else:
+            print 'Input(s) is/are not instance(s) of class Interferometer.'
+
+    ################################################################################# 
+
+    def remove_interferometers(self, A=None):
+
+        """
+        ----------------------------------------------------------------------------
+        Routine to remove interferometer(s) from the interferometer array instance. A wrapper for
+        operator overloading __sub__()
+    
+        Inputs:
+    
+        A          [Instance of class InterferometerArray, dictionary holding instance(s)
+                   of class Interferometer, list of instances of class Interferometer, or a single
+                   instance of class Interferometer] If a dictionary is provided, the keys
+                   should be the interferometer labels and the values should be instances 
+                   of class Interferometer. If a list is provided, it should be a list of 
+                   valid instances of class Interferometer. These instance(s) of class
+                   Interferometer will be removed from the existing instance of InterferometerArray
+                   class.
+        ----------------------------------------------------------------------------
+        """
+
+        if A is None:
+            print 'No interferometer specified for removal.'
+        else:
+            self = self.__sub__(A)
+
+    ################################################################################# 
+
+    def baseline_vectors(self, sort=False):
+        
+        """
+        ----------------------------------------------------------------------------
+        Routine to return the interferometer label and baseline vectors (sorted by
+        interferometer label if specified)
+
+        Keyword Inputs:
+
+        sort     [boolean] If True, returned interferometer information is sorted by
+                 interferometer labels. Default = False.
+
+        Output:
+
+        outdict  [dictionary] Output consists of a dictionary with the following 
+                 keys and information:
+                 'interferometers': Contains a numpy array of strings of interferometer labels
+                 'baselines': baseline vectors of interferometers
+
+                 If input parameter sort is set to True, the interferometer labels and 
+                 baseline vectors are sorted by interferometer labels.
+        ----------------------------------------------------------------------------
+        """
+
+        if not isinstance(sort, bool):
+            raise TypeError('sort keyword has to be a Boolean value.')
+
+        if sort:
+            xyz = NP.asarray([[self.interferometers[label].location.x, self.interferometers[label].location.y, self.interferometers[label].location.z] for label in sorted(self.interferometers.keys())])
+            labels = sorted(self.interferometers.keys())
+        else:
+            xyz = NP.asarray([[self.interferometers[label].location.x, self.interferometers[label].location.y, self.interferometers[label].location.z] for label in self.interferometers.keys()])
+            labels = self.interferometers.keys()
+
+        outdict = {}
+        outdict['labels'] = labels
+        outdict['baselines'] = xyz
+
+        return outdict
+
+    ################################################################################# 
+
+    def FX(self):
+        
+        for label in self.interferometers:
+            self.interferometers[label].FX()
+
+    ################################################################################# 
+
+    def XF(self):
+        
+        for label in self.interferometers:
+            self.interferometers[label].XF()
+        
+    ################################################################################# 
+
+    def grid(self, uvspacing=0.5, xypad=None, pow2=True, pol=None):
+        
+        if self.f is None:
+            self.f = self.interferometers.itervalues().next().f
+
+        if self.f0 is None:
+            self.f0 = self.interferometers.itervalues().next().f0
+
+        # if self.timestamp is None:
+        #     self.timestamp = self.interferometers.itervalues().next().timestamp
+
+        wavelength = FCNST.c / self.f
+        min_lambda = NP.min(NP.abs(wavelength))
+
+        # Change itervalues() to values() when porting to Python 3.x
+        # May have to change *blc and *trc with zip(*blc) and zip(*trc) when using Python 3.x
+
+        if (pol is None) or (pol == 'P11') or (pol == 'xx') or (pol == 'XX'):
+            blc_P11 = [[self.interferometers[label].blc[0,0], self.interferometers[label].blc[0,1]] for label in self.interferometers if not self.interferometers[label].crosspol.flag_P11]
+            trc_P11 = [[self.interferometers[label].trc[0,0], self.interferometers[label].trc[0,1]] for label in self.interferometers if not self.interferometers[label].crosspol.flag_P11]
+
+            # self.blc_P11 = NP.asarray(map(min, *blc_P11))
+            # self.trc_P11 = NP.asarray(map(max, *trc_P11))
+
+            self.trc_P11 = NP.amax(NP.abs(NP.asarray(blc_P11)), axis=0).ravel()
+            self.blc_P11 = -1 * self.trc_P11
+
+            self.gridx_P11, self.gridy_P11 = GRD.grid_2d([(self.blc_P11[0], self.trc_P11[0]), (self.blc_P11[1], self.trc_P11[1])], pad=xypad, spacing=uvspacing*min_lambda, pow2=True)
+
+            self.grid_blc_P11 = NP.asarray([self.gridx_P11.min(), self.gridy_P11.min()])
+            self.grid_trc_P11 = NP.asarray([self.gridx_P11.max(), self.gridy_P11.max()])
+
+        if (pol is None) or (pol == 'P12') or (pol == 'xy') or (pol == 'XY'):
+            blc_P12 = [[self.interferometers[label].blc[0,0], self.interferometers[label].blc[0,1]] for label in self.interferometers if not self.interferometers[label].crosspol.flag_P12]
+            trc_P12 = [[self.interferometers[label].trc[0,0], self.interferometers[label].trc[0,1]] for label in self.interferometers if not self.interferometers[label].crosspol.flag_P12]
+
+            # self.blc_P12 = NP.asarray(map(min, *blc_P12))
+            # self.trc_P12 = NP.asarray(map(max, *trc_P12))
+
+            self.trc_P12 = NP.amax(NP.abs(NP.asarray(blc_P12)), axis=0).ravel()
+            self.blc_P12 = -1 * self.trc_P12
+
+            self.gridx_P12, self.gridy_P12 = GRD.grid_2d([(self.blc_P12[0], self.trc_P12[0]), (self.blc_P12[1], self.trc_P12[1])], pad=xypad, spacing=uvspacing*min_lambda, pow2=True)
+
+            self.grid_blc_P12 = NP.asarray([self.gridx_P12.min(), self.gridy_P12.min()])
+            self.grid_trc_P12 = NP.asarray([self.gridx_P12.max(), self.gridy_P12.max()])
+
+        if (pol is None) or (pol == 'P21') or (pol == 'yx') or (pol == 'YX'):
+            blc_P21 = [[self.interferometers[label].blc[0,0], self.interferometers[label].blc[0,1]] for label in self.interferometers if not self.interferometers[label].crosspol.flag_P21]
+            trc_P21 = [[self.interferometers[label].trc[0,0], self.interferometers[label].trc[0,1]] for label in self.interferometers if not self.interferometers[label].crosspol.flag_P21]
+
+            # self.blc_P21 = NP.asarray(map(min, *blc_P21))
+            # self.trc_P21 = NP.asarray(map(max, *trc_P21))
+
+            self.trc_P21 = NP.amax(NP.abs(NP.asarray(blc_P21)), axis=0).ravel()
+            self.blc_P21 = -1 * self.trc_P21
+
+            self.gridx_P21, self.gridy_P21 = GRD.grid_2d([(self.blc_P21[0], self.trc_P21[0]), (self.blc_P21[1], self.trc_P21[1])], pad=xypad, spacing=uvspacing*min_lambda, pow2=True)
+
+            self.grid_blc_P21 = NP.asarray([self.gridx_P21.min(), self.gridy_P21.min()])
+            self.grid_trc_P21 = NP.asarray([self.gridx_P21.max(), self.gridy_P21.max()])
+
+        if (pol is None) or (pol == 'P22') or (pol == 'yy') or (pol == 'YY'):
+            blc_P22 = [[self.interferometers[label].blc[0,0], self.interferometers[label].blc[0,1]] for label in self.interferometers if not self.interferometers[label].crosspol.flag_P22]
+            trc_P22 = [[self.interferometers[label].trc[0,0], self.interferometers[label].trc[0,1]] for label in self.interferometers if not self.interferometers[label].crosspol.flag_P22]
+
+            # self.blc_P22 = NP.asarray(map(min, *blc_P22))
+            # self.trc_P22 = NP.asarray(map(max, *trc_P22))
+
+            self.trc_P22 = NP.amax(NP.abs(NP.asarray(blc_P22)), axis=0).ravel()
+            self.blc_P22 = -1 * self.trc_P22
+
+            self.gridx_P22, self.gridy_P22 = GRD.grid_2d([(self.blc_P22[0], self.trc_P22[0]), (self.blc_P22[1], self.trc_P22[1])], pad=xypad, spacing=uvspacing*min_lambda, pow2=True)
+
+            self.grid_blc_P22 = NP.asarray([self.gridx_P22.min(), self.gridy_P22.min()])
+            self.grid_trc_P22 = NP.asarray([self.gridx_P22.max(), self.gridy_P22.max()])
+
+        PDB.set_trace()
+    ################################################################################# 
+
+    def grid_convolve(self, pol=None, antpairs=None, unconvolve_existing=False,
+                      normalize=False, method='NN', distNN=NP.inf, tol=None,
+                      maxmatch=None): 
+
+        """
+        ----------------------------------------------------------------------------
+        Routine to project the visibility illumination pattern and the visibilities
+        on the grid. It can operate on the entire antenna array or
+        incrementally project the visibilities and illumination patterns from
+        specific antenna pairs on to an already existing grid.
+
+        Inputs:
+
+        pol         [String] The polarization to be gridded. Can be set to 'P1' or
+                    'P2'. If set to None, gridding for both 'P1' and 'P2' is
+                    performed. Default = None
+
+        ants        [instance of class AntennaArray, single instance or list of
+                    instances of class Antenna, or a dictionary holding instances of
+                    of class Antenna] If a dictionary is provided, the keys
+                    should be the antenna labels and the values should be instances 
+                    of class Antenna. If a list is provided, it should be a list of 
+                    valid instances of class Antenna. These instance(s) of class
+                    Antenna will be merged to the existing grid contained in the
+                    instance of AntennaArray class. If ants is not provided (set to
+                    None), the gridding operations will be performed on the entire
+                    set of antennas contained in the instance of class AntennaArray.
+                    Default = None.
+
+        unconvolve_existing
+                   [Boolean] Default = False. If set to True, the effects of
+                   gridding convolution contributed by the antenna(s) specified will
+                   be undone before updating the antenna measurements on the grid,
+                   if the antenna(s) is/are already found to in the set of antennas
+                   held by the instance of AntennaArray. If False and if one or more
+                   antenna instances specified are already found to be held in the
+                   instance of class AntennaArray, the code will stop raising an
+                   error indicating the gridding oepration cannot proceed. 
+
+        normalize  [Boolean] Default = False. If set to True, the gridded weights
+                   are divided by the sum of weights so that the gridded weights add
+                   up to unity. 
+
+        method     [string] The gridding method to be used in applying the antenna
+                   weights on to the antenna array grid. Accepted values are 'NN'
+                   (nearest neighbour - default), 'CS' (cubic spline), or 'BL'
+                   (Bi-linear). In case of applying grid weights by 'NN' method, an
+                   optional distance upper bound for the nearest neighbour can be 
+                   provided in the parameter distNN to prune the search and make it
+                   efficient
+
+        distNN     [scalar] A positive value indicating the upper bound on distance
+                   to the nearest neighbour in the gridding process. It has units of
+                   distance, the same units as the antenna attribute location and 
+                   antenna array attribute gridx_P1 and gridy_P1. Default is NP.inf
+                   (infinite distance). It will be internally converted to have same
+                   units as antenna attributes wtspos_P1 and wtspos_P2 (units in 
+                   number of wavelengths)
+
+        maxmatch   [scalar] A positive value indicating maximum number of input 
+                   locations in the antenna grid to be assigned. Default = None. 
+                   If set to None, all the antenna array grid elements specified 
+                   are assigned values for each antenna. For instance, to have only 
+                   one antenna array grid element to be populated per antenna, use
+                   maxmatch=1. 
+
+        tol        [scalar] If set, only lookup data with abs(val) > tol will be 
+                   considered for nearest neighbour lookup. Default = None implies 
+                   all lookup values will be considered for nearest neighbour 
+                   determination. tol is to be interpreted as a minimum value 
+                   considered as significant in the lookup table. 
+        ----------------------------------------------------------------------------
+        """
+
+        eps = 1.0e-10
+
+        if (pol is None) or (pol == 'P11'):
+
+            if antpairs is not None:
+
+                if isinstance(antpairs, Interferometer):
+                    antpairs = [antpairs]
+
+                if isinstance(antpairs, (dict, InterferometerArray)):
+                    # Check if these interferometers are new or old and compatible
+                    for key in antpairs: 
+                        if isinstance(antpairs[key], Interferometer): # required if antpairs is a dictionary and not instance of InterferometerArray
+                            if key in self.interferometers:
+                                if unconvolve_existing: # Effects on the grid of interferometers already existing must be removed 
+                                    if self.interferometers[key].gridinfo_P11: # if gridding info is not empty
+                                        for i in range(len(self.f)):
+                                            self.grid_unconvolve(antpairs[key].label)
+                                else:
+                                    raise KeyError('Interferometer {0} already found to exist in the dictionary of interferometers but cannot proceed grid_convolve() without unconvolving first.'.format(antpairs[key].label)) 
+                            
+                        else:
+                            del antpairs[key] # remove the dictionary element since it is not an Interferometer instance
+
+                    for key in antpairs:
+                        if not antpairs[key].pol.flag_P11:
+                            for i in range(len(self.f)):
+                                if method == 'NN':
+                                    if antpairs[key].wtspos_P11_scale is None: 
+                                        reflocs = antpairs[key].wtspos_P11[i] + (self.f[i]/FCNST.c) * NP.asarray([antpairs[key].location.x, antpairs[key].location.y]).reshape(1,-1)
+                                        inplocs = (self.f[i]/FCNST.c) * NP.hstack((self.gridx_P11.reshape(-1,1), self.gridy_P11.reshape(-1,1)))
+                                        ibind, nnval = LKP.lookup_1NN(reflocs, antpairs[key].wts_P11[i], inplocs,
+                                                                      distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                                                      remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                        # ibind, nnval = LKP.lookup(antpairs[key].wtspos_P11[i][:,0] + antpairs[key].location.x * (self.f[i]/FCNST.c),
+                                        #                           antpairs[key].wtspos_P11[i][:,1] + antpairs[key].location.y * (self.f[i]/FCNST.c),
+                                        #                           antpairs[key].wts_P11[i], self.gridx_P11*self.f[i]/FCNST.c,
+                                        #                           self.gridy_P11*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                        #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                        roi_ind = NP.unravel_index(ibind, self.gridx_P11.shape)
+                                        if normalize:
+                                            nnval /= NP.sum(nnval)
+                                    elif antpairs[key].wtspos_P11_scale == 'scale':
+                                        if i == 0: # Determine some parameters only for zeroth channel if scaling is set
+                                            reflocs = antpairs[key].wtspos_P11[0] + (self.f[0]/FCNST.c) * NP.asarray([antpairs[key].location.x, antpairs[key].location.y]).reshape(1,-1)
+                                            inplocs = (self.f[0]/FCNST.c) * NP.hstack((self.gridx_P11.reshape(-1,1), self.gridy_P11.reshape(-1,1)))
+                                            ibind, nnval = LKP.lookup_1NN(reflocs, antpairs[key].wts_P11[0], inplocs,
+                                                                          distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                                                          remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                            # ibind, nnval = LKP.lookup(antpairs[key].wtspos_P11[0][:,0]+antpairs[key].location.x*(self.f[0]/FCNST.c),
+                                            #                           antpairs[key].wtspos_P11[0][:,1]+antpairs[key].location.y*(self.f[0]/FCNST.c),
+                                            #                           antpairs[key].wts_P11[0], self.gridx_P11*self.f[0]/FCNST.c,
+                                            #                           self.gridy_P11*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                            #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                            roi_ind = NP.unravel_index(ibind, self.gridx_P11.shape)
+                                            if normalize:
+                                                nnval /= NP.sum(nnval)
+                                    else:
+                                        raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
+
+                                    self.grid_illumination_P11[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += nnval
+                                    self.grid_Vf_P11[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += antpairs[key].pol.Vf_P11[i] * nnval
+                                else:
+                                    if antpairs[key].wtspos_P11_scale is None: 
+                                        grid_illumination_P11 = GRD.conv_grid2d(antpairs[key].location.x * (self.f[i]/FCNST.c),
+                                                                               antpairs[key].location.y * (self.f[i]/FCNST.c),
+                                                                               antpairs[key].wtspos_P11[i][:,0],
+                                                                               antpairs[key].wtspos_P11[i][:,1],
+                                                                               antpairs[key].wts_P11[i],
+                                                                               self.gridx_P11 * (self.f[i]/FCNST.c),
+                                                                               self.gridy_P11 * (self.f[i]/FCNST.c),
+                                                                               method=method)
+                                        grid_illumination_P11 = grid_illumination_P11.reshape(self.gridx_P11.shape)
+                                        if normalize:
+                                            grid_illumination_P11 = grid_illumination_P11 / NP.sum(grid_illumination_P11)
+                                        roi_ind = NP.where(NP.abs(grid_illumination_P11) >= eps)
+                                    elif antpairs[key].wtspos_P11_scale == 'scale':
+                                        if i == 0: # Determine some parameters only for zeroth channel if scaling is set
+                                            grid_illumination_P11 = GRD.conv_grid2d(antpairs[key].location.x * (self.f[0]/FCNST.c),
+                                                                                   antpairs[key].location.y * (self.f[0]/FCNST.c),
+                                                                                   antpairs[key].wtspos_P11[0][:,0],
+                                                                                   antpairs[key].wtspos_P11[0][:,1],
+                                                                                   antpairs[key].wts_P11[0],
+                                                                                   self.gridx_P11 * (self.f[0]/FCNST.c),
+                                                                                   self.gridy_P11 * (self.f[0]/FCNST.c),
+                                                                                   method=method)
+                                            grid_illumination_P11 = grid_illumination_P11.reshape(self.gridx_P11.shape)
+                                            if normalize:
+                                                grid_illumination_P11 = grid_illumination_P11 / NP.sum(grid_illumination_P11)
+                                            roi_ind = NP.where(NP.abs(grid_illumination_P11) >= eps)
+                                    else:
+                                        raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
+
+                                    self.grid_illumination_P11[:,:,i] += grid_illumination_P11
+                                    self.grid_Vf_P11[:,:,i] += antpairs[key].pol.Vf_P11[i] * grid_illumination_P11
+
+                                if key in self.interferometers:
+                                    if i not in self.interferometers[key].gridinfo_P11:
+                                        self.interferometers[key].gridinfo_P11 = {} # Create an empty dictionary for each channel to hold grid info
+                                    self.interferometers[key].gridinfo_P11[i]['f'] = self.f[i]
+                                    self.interferometers[key].gridinfo_P11[i]['flag'] = False
+                                    self.interferometers[key].gridinfo_P11[i]['gridxy_ind'] = zip(*roi_ind)
+                                    self.interferometers[key].wtspos_P11_scale = antpairs[key].wtspos_P11_scale
+                                    if method == 'NN':
+                                        self.interferometers[key].gridinfo_P11[i]['illumination'] = nnval
+                                        self.interferometers[key].gridinfo_P11[i]['Vf'] = antpairs[key].pol.Vf_P11[i] * nnval
+                                    else:
+                                        self.interferometers[key].gridinfo_P11[i]['illumination'] = grid_illumination_P11[roi_ind]
+                                        self.interferometers[key].gridinfo_P11[i]['Vf'] = antpairs[key].pol.Vf_P11[i] * grid_illumination_P11[roi_ind]
+
+                elif isinstance(antpairs, list):
+                    # Check if these interferometers are new or old and compatible
+                    for key in range(len(antpairs)): 
+                        if isinstance(antpairs[key], Interferometer): # required if antpairs is a dictionary and not instance of InterferometerArray
+                            if antpairs[key].label in self.interferometers:
+                                if unconvolve_existing: # Effects on the grid of interferometers already existing must be removed 
+                                    if self.interferometers[antpairs[key].label].gridinfo_P11: # if gridding info is not empty
+                                        for i in range(len(self.f)):
+                                            self.grid_unconvolve(antpairs[key].label)
+                                else:
+                                    raise KeyError('Interferometer {0} already found to exist in the dictionary of interferometers but cannot proceed grid_convolve() without unconvolving first.'.format(antpairs[key].label))
+                            
+                        else:
+                            del antpairs[key] # remove the dictionary element since it is not an Interferometer instance
+
+                    for key in range(len(antpairs)):
+                        if not antpairs[key].pol.flag_P11:
+                            for i in range(len(self.f)):
+                                if method == 'NN':
+                                    if antpairs[key].wtspos_P11_scale is None: 
+                                        reflocs = antpairs[key].wtspos_P11[i] + (self.f[i]/FCNST.c) * NP.asarray([antpairs[key].location.x, antpairs[key].location.y]).reshape(1,-1)
+                                        inplocs = (self.f[i]/FCNST.c) * NP.hstack((self.gridx_P11.reshape(-1,1), self.gridy_P11.reshape(-1,1)))
+                                        ibind, nnval = LKP.lookup_1NN(reflocs, antpairs[key].wts_P11[i], inplocs,
+                                                                      distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                                                      remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+
+                                        # ibind, nnval = LKP.lookup(antpairs[key].wtspos_P11[i][:,0] + antpairs[key].location.x * (self.f[i]/FCNST.c),
+                                        #                           antpairs[key].wtspos_P11[i][:,1] + antpairs[key].location.y * (self.f[i]/FCNST.c),
+                                        #                           antpairs[key].wts_P11[i], self.gridx_P11*self.f[i]/FCNST.c,
+                                        #                           self.gridy_P11*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                        #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                        roi_ind = NP.unravel_index(ibind, self.gridx_P11.shape)
+                                        if normalize:
+                                            nnval /= NP.sum(nnval)
+                                    elif antpairs[key].wtspos_P11_scale == 'scale':
+                                        if i == 0: # Determine some parameters only for zeroth channel if scaling is set
+                                            reflocs = antpairs[key].wtspos_P11[0] + (self.f[0]/FCNST.c) * NP.asarray([antpairs[key].location.x, antpairs[key].location.y]).reshape(1,-1)
+                                            inplocs = (self.f[0]/FCNST.c) * NP.hstack((self.gridx_P11.reshape(-1,1), self.gridy_P11.reshape(-1,1)))
+                                            ibind, nnval = LKP.lookup_1NN(reflocs, antpairs[key].wts_P11[0], inplocs,
+                                                                          distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                                                          remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+
+                                            # ibind, nnval = LKP.lookup(antpairs[key].wtspos_P11[0][:,0]+antpairs[key].location.x*(self.f[0]/FCNST.c),
+                                            #                           antpairs[key].wtspos_P11[0][:,1]+antpairs[key].location.y*(self.f[0]/FCNST.c),
+                                            #                           antpairs[key].wts_P11[0], self.gridx_P11*self.f[0]/FCNST.c,
+                                            #                           self.gridy_P11*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                            #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                            roi_ind = NP.unravel_index(ibind, self.gridx_P11.shape)
+                                            if normalize:
+                                                nnval /= NP.sum(nnval)
+                                    else:
+                                        raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
+
+                                    self.grid_illumination_P11[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += nnval
+                                    self.grid_Vf_P11[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += antpairs[key].pol.Vf_P11[i] * nnval
+                                else:
+                                    if antpairs[key].wtspos_P11_scale is None:
+                                        grid_illumination_P11 = GRD.conv_grid2d(antpairs[key].location.x * (self.f[i]/FCNST.c),
+                                                                               antpairs[key].location.y * (self.f[i]/FCNST.c),
+                                                                               antpairs[key].wtspos_P11[i][:,0],
+                                                                               antpairs[key].wtspos_P11[i][:,1],
+                                                                               antpairs[key].wts_P11[i],
+                                                                               self.gridx_P11 * (self.f[i]/FCNST.c),
+                                                                               self.gridy_P11 * (self.f[i]/FCNST.c),
+                                                                               method=method)
+                                        grid_illumination_P11 = grid_illumination_P11.reshape(self.gridx_P11.shape)
+                                        if normalize:
+                                            grid_illumination_P11 = grid_illumination_P11 / NP.sum(grid_illumination_P11)
+                                        roi_ind = NP.where(NP.abs(grid_illumination_P11) >= eps)
+                                    elif antpairs[key].wtspos_P11_scale == 'scale':
+                                        if i == 0: # Determine some parameters only for zeroth channel if scaling is set
+                                            grid_illumination_P11 = GRD.conv_grid2d(antpairs[key].location.x * (self.f[0]/FCNST.c),
+                                                                                   antpairs[key].location.y * (self.f[0]/FCNST.c),
+                                                                                   antpairs[key].wtspos_P11[0][:,0],
+                                                                                   antpairs[key].wtspos_P11[0][:,1],
+                                                                                   antpairs[key].wts_P11[0],
+                                                                                   self.gridx_P11 * (self.f[0]/FCNST.c),
+                                                                                   self.gridy_P11 * (self.f[0]/FCNST.c),
+                                                                                   method=method)
+                                            grid_illumination_P11 = grid_illumination_P11.reshape(self.gridx_P11.shape)
+                                            if normalize:
+                                                grid_illumination_P11 = grid_illumination_P11 / NP.sum(grid_illumination_P11)
+                                            roi_ind = NP.where(NP.abs(grid_illumination_P11) >= eps)
+                                    else:
+                                        raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
+
+                                    self.grid_illumination_P11[:,:,i] += grid_illumination_P11
+                                    self.grid_Vf_P11[:,:,i] += antpairs[key].pol.Vf_P11[i] * grid_illumination_P11
+
+                                if antpairs[key].label in self.interferometers:
+                                    if i not in self.interferometers[key].gridinfo_P11:
+                                        self.interferometers[key].gridinfo_P11 = {} # Create an empty dictionary for each channel to hold grid info
+                                    self.interferometers[antpairs[key].label].gridinfo_P11[i]['f'] = self.f[i]
+                                    self.interferometers[antpairs[key].label].gridinfo_P11[i]['flag'] = False
+                                    self.interferometers[antpairs[key].label].gridinfo_P11[i]['gridxy_ind'] = zip(*roi_ind)
+                                    self.interferometers[key].wtspos_P11_scale = antpairs[key].wtspos_P11_scale
+                                    if method == 'NN':
+                                        self.interferometers[antpairs[key].label].gridinfo_P11[i]['illumination'] = nnval
+                                        self.interferometers[antpairs[key].label].gridinfo_P11[i]['Vf'] = antpairs[key].pol.Vf_P11[i] * nnval
+                                    else:
+                                        self.interferometers[antpairs[key].label].gridinfo_P11[i]['illumination'] = grid_illumination_P11[roi_ind]
+                                        self.interferometers[antpairs[key].label].gridinfo_P11[i]['Vf'] = antpairs[key].pol.Vf_P11[i] * grid_illumination_P11[roi_ind] 
+                else:
+                    raise TypeError('antpairs must be an instance of InterferometerArray, a dictionary of Interferometer instances, a list of Interferometer instances or an Interferometer instance.')
+
+            else:
+
+                self.grid_illumination_P11 = NP.zeros((self.gridx_P11.shape[0],
+                                                      self.gridx_P11.shape[1],
+                                                      len(self.f)),
+                                                     dtype=NP.complex_)
+                self.grid_Vf_P11 = NP.zeros((self.gridx_P11.shape[0],
+                                            self.gridx_P11.shape[1],
+                                            len(self.f)), dtype=NP.complex_)
+
+                for key in self.interferometers:
+                    if not self.interferometers[key].pol.flag_P11:
+                        for i in range(len(self.f)):
+                            if method == 'NN':
+                                if self.interferometers[key].wtspos_P11_scale is None: 
+                                    reflocs = self.interferometers[key].wtspos_P11[i] + (self.f[i]/FCNST.c) * NP.asarray([self.interferometers[key].location.x, self.interferometers[key].location.y]).reshape(1,-1)
+                                    inplocs = (self.f[i]/FCNST.c) * NP.hstack((self.gridx_P11.reshape(-1,1), self.gridy_P11.reshape(-1,1)))
+                                    ibind, nnval = LKP.lookup_1NN(reflocs, self.interferometers[key].wts_P11[i], inplocs,
+                                                                  distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                                                  remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+
+                                    # ibind, nnval = LKP.lookup(self.interferometers[key].wtspos_P11[i][:,0]+self.interferometers[key].location.x*(self.f[i]/FCNST.c),
+                                    #                           self.interferometers[key].wtspos_P11[i][:,1]+self.interferometers[key].location.y*(self.f[i]/FCNST.c),
+                                    #                           self.interferometers[key].wts_P11[i], self.gridx_P11*self.f[i]/FCNST.c,
+                                    #                           self.gridy_P11*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                    #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                    roi_ind = NP.unravel_index(ibind, self.gridx_P11.shape)
+                                    if normalize:
+                                        nnval /= NP.sum(nnval)
+                                elif self.interferometers[key].wtspos_P11_scale == 'scale':
+                                    if i == 0: # Determine some parameters only for zeroth channel if scaling is set
+                                        reflocs = self.interferometers[key].wtspos_P11[0] + (self.f[0]/FCNST.c) * NP.asarray([self.interferometers[key].location.x, self.interferometers[key].location.y]).reshape(1,-1)
+                                        inplocs = (self.f[0]/FCNST.c) * NP.hstack((self.gridx_P11.reshape(-1,1), self.gridy_P11.reshape(-1,1)))
+                                        ibind, nnval = LKP.lookup_1NN(reflocs, self.interferometers[key].wts_P11[0], inplocs,
+                                                                      distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                                                      remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                        # ibind, nnval = LKP.lookup(self.interferometers[key].wtspos_P11[0][:,0]+self.interferometers[key].location.x*(self.f[0]/FCNST.c),
+                                        #                           self.interferometers[key].wtspos_P11[0][:,1]+self.interferometers[key].location.y*(self.f[0]/FCNST.c),
+                                        #                           self.interferometers[key].wts_P11[0], self.gridx_P11*self.f[0]/FCNST.c,
+                                        #                           self.gridy_P11*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                        #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                        roi_ind = NP.unravel_index(ibind, self.gridx_P11.shape)
+                                        if normalize:
+                                            nnval /= NP.sum(nnval)
+                                else:
+                                    raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
+
+                                self.grid_illumination_P11[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += nnval
+                                self.grid_Vf_P11[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += self.interferometers[key].pol.Vf_P11[i] * nnval
+                            else:
+                                if self.interferometers[key].wtspos_P11_scale is None:
+                                    grid_illumination_P11 = GRD.conv_grid2d(self.interferometers[key].location.x * (self.f[i]/FCNST.c),
+                                                                           self.interferometers[key].location.y * (self.f[i]/FCNST.c),
+                                                                           self.interferometers[key].wtspos_P11[i][:,0],
+                                                                           self.interferometers[key].wtspos_P11[i][:,1],
+                                                                           self.interferometers[key].wts_P11[i],
+                                                                           self.gridx_P11 * (self.f[i]/FCNST.c),
+                                                                           self.gridy_P11 * (self.f[i]/FCNST.c),
+                                                                           method=method)
+                                    grid_illumination_P11 = grid_illumination_P11.reshape(self.gridx_P11.shape)
+                                    if normalize:
+                                        grid_illumination_P11 = grid_illumination_P11 / NP.sum(grid_illumination_P11)
+                                    roi_ind = NP.where(NP.abs(grid_illumination_P11) >= eps)
+                                elif self.interferometers[key].wtspos_P11_scale == 'scale':
+                                    if i == 0:
+                                        grid_illumination_P11 = GRD.conv_grid2d(self.interferometers[key].location.x * (self.f[0]/FCNST.c),
+                                                                               self.interferometers[key].location.y * (self.f[0]/FCNST.c),
+                                                                               self.interferometers[key].wtspos_P11[0][:,0],
+                                                                               self.interferometers[key].wtspos_P11[0][:,1],
+                                                                               self.interferometers[key].wts_P11[0],
+                                                                               self.gridx_P11 * (self.f[0]/FCNST.c),
+                                                                               self.gridy_P11 * (self.f[0]/FCNST.c),
+                                                                               method=method)
+                                        grid_illumination_P11 = grid_illumination_P11.reshape(self.gridx_P11.shape)
+                                        if normalize:
+                                            grid_illumination_P11 = grid_illumination_P11 / NP.sum(grid_illumination_P11)
+                                        roi_ind = NP.where(NP.abs(grid_illumination_P11) >= eps)
+                                else:
+                                    raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
+                                
+                                self.grid_illumination_P11[:,:,i] += grid_illumination_P11
+                                self.grid_Vf_P11[:,:,i] += self.interferometers[key].pol.Vf_P11[i] * grid_illumination_P11
+
+                            self.interferometers[key].gridinfo_P11[i] = {} # Create a nested dictionary to hold channel info
+                            self.interferometers[key].gridinfo_P11[i]['f'] = self.f[i]
+                            self.interferometers[key].gridinfo_P11[i]['flag'] = False
+                            self.interferometers[key].gridinfo_P11[i]['gridxy_ind'] = zip(*roi_ind)
+                            if method == 'NN':
+                                self.interferometers[key].gridinfo_P11[i]['illumination'] = nnval
+                                self.interferometers[key].gridinfo_P11[i]['Vf'] = self.interferometers[key].pol.Vf_P11[i] * nnval  
+                            else:
+                                self.interferometers[key].gridinfo_P11[i]['illumination'] = grid_illumination_P11[roi_ind]
+                                self.interferometers[key].gridinfo_P11[i]['Vf'] = self.interferometers[key].pol.Vf_P11[i] * grid_illumination_P11[roi_ind]
+
+        if (pol is None) or (pol == 'P22'):
+
+            if antpairs is not None:
+
+                if isinstance(antpairs, Interferometer):
+                    antpairs = [antpairs]
+
+                if isinstance(antpairs, (dict, InterferometerArray)):
+                    # Check if these interferometers are new or old and compatible
+                    for key in antpairs: 
+                        if isinstance(antpairs[key], Interferometer): # required if antpairs is a dictionary and not instance of InterferometerArray
+                            if key in self.interferometers:
+                                if unconvolve_existing: # Effects on the grid of interferometers already existing must be removed 
+                                    if self.interferometers[key].gridinfo_P22: # if gridding info is not empty
+                                        for i in range(len(self.f)):
+                                            self.grid_unconvolve(antpairs[key].label)
+                                else:
+                                    raise KeyError('Interferometer {0} already found to exist in the dictionary of interferometers but cannot proceed grid_convolve() without unconvolving first.'.format(antpairs[key].label)) 
+                            
+                        else:
+                            del antpairs[key] # remove the dictionary element since it is not an Interferometer instance
+
+                    for key in antpairs:
+                        if not antpairs[key].pol.flag_P22:
+                            for i in range(len(self.f)):
+                                if method == 'NN':
+                                    if antpairs[key].wtspos_P22_scale is None: 
+                                        reflocs = antpairs[key].wtspos_P22[i] + (self.f[i]/FCNST.c) * NP.asarray([antpairs[key].location.x, antpairs[key].location.y]).reshape(1,-1)
+                                        inplocs = (self.f[i]/FCNST.c) * NP.hstack((self.gridx_P22.reshape(-1,1), self.gridy_P22.reshape(-1,1)))
+                                        ibind, nnval = LKP.lookup_1NN(reflocs, antpairs[key].wts_P22[i], inplocs,
+                                                                      distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                                                      remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                        # ibind, nnval = LKP.lookup(antpairs[key].wtspos_P22[i][:,0] + antpairs[key].location.x * (self.f[i]/FCNST.c),
+                                        #                           antpairs[key].wtspos_P22[i][:,1] + antpairs[key].location.y * (self.f[i]/FCNST.c),
+                                        #                           antpairs[key].wts_P22[i], self.gridx_P22*self.f[i]/FCNST.c,
+                                        #                           self.gridy_P22*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                        #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                        roi_ind = NP.unravel_index(ibind, self.gridx_P22.shape)
+                                        if normalize:
+                                            nnval /= NP.sum(nnval)
+                                    elif antpairs[key].wtspos_P22_scale == 'scale':
+                                        if i == 0: # Determine some parameters only for zeroth channel if scaling is set
+                                            reflocs = antpairs[key].wtspos_P22[0] + (self.f[0]/FCNST.c) * NP.asarray([antpairs[key].location.x, antpairs[key].location.y]).reshape(1,-1)
+                                            inplocs = (self.f[0]/FCNST.c) * NP.hstack((self.gridx_P22.reshape(-1,1), self.gridy_P22.reshape(-1,1)))
+                                            ibind, nnval = LKP.lookup_1NN(reflocs, antpairs[key].wts_P22[0], inplocs,
+                                                                          distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                                                          remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                            # ibind, nnval = LKP.lookup(antpairs[key].wtspos_P22[0][:,0]+antpairs[key].location.x*(self.f[0]/FCNST.c),
+                                            #                           antpairs[key].wtspos_P22[0][:,1]+antpairs[key].location.y*(self.f[0]/FCNST.c),
+                                            #                           antpairs[key].wts_P22[0], self.gridx_P22*self.f[0]/FCNST.c,
+                                            #                           self.gridy_P22*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                            #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                            roi_ind = NP.unravel_index(ibind, self.gridx_P22.shape)
+                                            if normalize:
+                                                nnval /= NP.sum(nnval)
+                                    else:
+                                        raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
+
+                                    self.grid_illumination_P22[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += nnval
+                                    self.grid_Vf_P22[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += antpairs[key].pol.Vf_P22[i] * nnval
+                                else:
+                                    if antpairs[key].wtspos_P22_scale is None: 
+                                        grid_illumination_P22 = GRD.conv_grid2d(antpairs[key].location.x * (self.f[i]/FCNST.c),
+                                                                               antpairs[key].location.y * (self.f[i]/FCNST.c),
+                                                                               antpairs[key].wtspos_P22[i][:,0],
+                                                                               antpairs[key].wtspos_P22[i][:,1],
+                                                                               antpairs[key].wts_P22[i],
+                                                                               self.gridx_P22 * (self.f[i]/FCNST.c),
+                                                                               self.gridy_P22 * (self.f[i]/FCNST.c),
+                                                                               method=method)
+                                        grid_illumination_P22 = grid_illumination_P22.reshape(self.gridx_P22.shape)
+                                        if normalize:
+                                            grid_illumination_P22 = grid_illumination_P22 / NP.sum(grid_illumination_P22)
+                                        roi_ind = NP.where(NP.abs(grid_illumination_P22) >= eps)
+                                    elif antpairs[key].wtspos_P22_scale == 'scale':
+                                        if i == 0: # Determine some parameters only for zeroth channel if scaling is set
+                                            grid_illumination_P22 = GRD.conv_grid2d(antpairs[key].location.x * (self.f[0]/FCNST.c),
+                                                                                   antpairs[key].location.y * (self.f[0]/FCNST.c),
+                                                                                   antpairs[key].wtspos_P22[0][:,0],
+                                                                                   antpairs[key].wtspos_P22[0][:,1],
+                                                                                   antpairs[key].wts_P22[0],
+                                                                                   self.gridx_P22 * (self.f[0]/FCNST.c),
+                                                                                   self.gridy_P22 * (self.f[0]/FCNST.c),
+                                                                                   method=method)
+                                            grid_illumination_P22 = grid_illumination_P22.reshape(self.gridx_P22.shape)
+                                            if normalize:
+                                                grid_illumination_P22 = grid_illumination_P22 / NP.sum(grid_illumination_P22)
+                                            roi_ind = NP.where(NP.abs(grid_illumination_P22) >= eps)
+                                    else:
+                                        raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
+
+                                    self.grid_illumination_P22[:,:,i] += grid_illumination_P22
+                                    self.grid_Vf_P22[:,:,i] += antpairs[key].pol.Vf_P22[i] * grid_illumination_P22
+
+                                if key in self.interferometers:
+                                    if i not in self.interferometers[key].gridinfo_P22:
+                                        self.interferometers[key].gridinfo_P22 = {} # Create an empty dictionary for each channel to hold grid info
+                                    self.interferometers[key].gridinfo_P22[i]['f'] = self.f[i]
+                                    self.interferometers[key].gridinfo_P22[i]['flag'] = False
+                                    self.interferometers[key].gridinfo_P22[i]['gridxy_ind'] = zip(*roi_ind)
+                                    self.interferometers[key].wtspos_P22_scale = antpairs[key].wtspos_P22_scale
+                                    if method == 'NN':
+                                        self.interferometers[key].gridinfo_P22[i]['illumination'] = nnval
+                                        self.interferometers[key].gridinfo_P22[i]['Vf'] = antpairs[key].pol.Vf_P22[i] * nnval
+                                    else:
+                                        self.interferometers[key].gridinfo_P22[i]['illumination'] = grid_illumination_P22[roi_ind]
+                                        self.interferometers[key].gridinfo_P22[i]['Vf'] = antpairs[key].pol.Vf_P22[i] * grid_illumination_P22[roi_ind]
+
+                elif isinstance(antpairs, list):
+                    # Check if these interferometers are new or old and compatible
+                    for key in range(len(antpairs)): 
+                        if isinstance(antpairs[key], Interferometer): # required if antpairs is a dictionary and not instance of InterferometerArray
+                            if antpairs[key].label in self.interferometers:
+                                if unconvolve_existing: # Effects on the grid of interferometers already existing must be removed 
+                                    if self.interferometers[antpairs[key].label].gridinfo_P22: # if gridding info is not empty
+                                        for i in range(len(self.f)):
+                                            self.grid_unconvolve(antpairs[key].label)
+                                else:
+                                    raise KeyError('Interferometer {0} already found to exist in the dictionary of interferometers but cannot proceed grid_convolve() without unconvolving first.'.format(antpairs[key].label))
+                            
+                        else:
+                            del antpairs[key] # remove the dictionary element since it is not an Interferometer instance
+
+                    for key in range(len(antpairs)):
+                        if not antpairs[key].pol.flag_P22:
+                            for i in range(len(self.f)):
+                                if method == 'NN':
+                                    if antpairs[key].wtspos_P22_scale is None: 
+                                        reflocs = antpairs[key].wtspos_P22[i] + (self.f[i]/FCNST.c) * NP.asarray([antpairs[key].location.x, antpairs[key].location.y]).reshape(1,-1)
+                                        inplocs = (self.f[i]/FCNST.c) * NP.hstack((self.gridx_P22.reshape(-1,1), self.gridy_P22.reshape(-1,1)))
+                                        ibind, nnval = LKP.lookup_1NN(reflocs, antpairs[key].wts_P22[i], inplocs,
+                                                                      distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                                                      remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+
+                                        # ibind, nnval = LKP.lookup(antpairs[key].wtspos_P22[i][:,0] + antpairs[key].location.x * (self.f[i]/FCNST.c),
+                                        #                           antpairs[key].wtspos_P22[i][:,1] + antpairs[key].location.y * (self.f[i]/FCNST.c),
+                                        #                           antpairs[key].wts_P22[i], self.gridx_P22*self.f[i]/FCNST.c,
+                                        #                           self.gridy_P22*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                        #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                        roi_ind = NP.unravel_index(ibind, self.gridx_P22.shape)
+                                        if normalize:
+                                            nnval /= NP.sum(nnval)
+                                    elif antpairs[key].wtspos_P22_scale == 'scale':
+                                        if i == 0: # Determine some parameters only for zeroth channel if scaling is set
+                                            reflocs = antpairs[key].wtspos_P22[0] + (self.f[0]/FCNST.c) * NP.asarray([antpairs[key].location.x, antpairs[key].location.y]).reshape(1,-1)
+                                            inplocs = (self.f[0]/FCNST.c) * NP.hstack((self.gridx_P22.reshape(-1,1), self.gridy_P22.reshape(-1,1)))
+                                            ibind, nnval = LKP.lookup_1NN(reflocs, antpairs[key].wts_P22[0], inplocs,
+                                                                          distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                                                          remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+
+                                            # ibind, nnval = LKP.lookup(antpairs[key].wtspos_P22[0][:,0]+antpairs[key].location.x*(self.f[0]/FCNST.c),
+                                            #                           antpairs[key].wtspos_P22[0][:,1]+antpairs[key].location.y*(self.f[0]/FCNST.c),
+                                            #                           antpairs[key].wts_P22[0], self.gridx_P22*self.f[0]/FCNST.c,
+                                            #                           self.gridy_P22*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                            #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                            roi_ind = NP.unravel_index(ibind, self.gridx_P22.shape)
+                                            if normalize:
+                                                nnval /= NP.sum(nnval)
+                                    else:
+                                        raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
+
+                                    self.grid_illumination_P22[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += nnval
+                                    self.grid_Vf_P22[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += antpairs[key].pol.Vf_P22[i] * nnval
+                                else:
+                                    if antpairs[key].wtspos_P22_scale is None:
+                                        grid_illumination_P22 = GRD.conv_grid2d(antpairs[key].location.x * (self.f[i]/FCNST.c),
+                                                                               antpairs[key].location.y * (self.f[i]/FCNST.c),
+                                                                               antpairs[key].wtspos_P22[i][:,0],
+                                                                               antpairs[key].wtspos_P22[i][:,1],
+                                                                               antpairs[key].wts_P22[i],
+                                                                               self.gridx_P22 * (self.f[i]/FCNST.c),
+                                                                               self.gridy_P22 * (self.f[i]/FCNST.c),
+                                                                               method=method)
+                                        grid_illumination_P22 = grid_illumination_P22.reshape(self.gridx_P22.shape)
+                                        if normalize:
+                                            grid_illumination_P22 = grid_illumination_P22 / NP.sum(grid_illumination_P22)
+                                        roi_ind = NP.where(NP.abs(grid_illumination_P22) >= eps)
+                                    elif antpairs[key].wtspos_P22_scale == 'scale':
+                                        if i == 0: # Determine some parameters only for zeroth channel if scaling is set
+                                            grid_illumination_P22 = GRD.conv_grid2d(antpairs[key].location.x * (self.f[0]/FCNST.c),
+                                                                                   antpairs[key].location.y * (self.f[0]/FCNST.c),
+                                                                                   antpairs[key].wtspos_P22[0][:,0],
+                                                                                   antpairs[key].wtspos_P22[0][:,1],
+                                                                                   antpairs[key].wts_P22[0],
+                                                                                   self.gridx_P22 * (self.f[0]/FCNST.c),
+                                                                                   self.gridy_P22 * (self.f[0]/FCNST.c),
+                                                                                   method=method)
+                                            grid_illumination_P22 = grid_illumination_P22.reshape(self.gridx_P22.shape)
+                                            if normalize:
+                                                grid_illumination_P22 = grid_illumination_P22 / NP.sum(grid_illumination_P22)
+                                            roi_ind = NP.where(NP.abs(grid_illumination_P22) >= eps)
+                                    else:
+                                        raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
+
+                                    self.grid_illumination_P22[:,:,i] += grid_illumination_P22
+                                    self.grid_Vf_P22[:,:,i] += antpairs[key].pol.Vf_P22[i] * grid_illumination_P22
+
+                                if antpairs[key].label in self.interferometers:
+                                    if i not in self.interferometers[key].gridinfo_P22:
+                                        self.interferometers[key].gridinfo_P22 = {} # Create an empty dictionary for each channel to hold grid info
+                                    self.interferometers[antpairs[key].label].gridinfo_P22[i]['f'] = self.f[i]
+                                    self.interferometers[antpairs[key].label].gridinfo_P22[i]['flag'] = False
+                                    self.interferometers[antpairs[key].label].gridinfo_P22[i]['gridxy_ind'] = zip(*roi_ind)
+                                    self.interferometers[key].wtspos_P22_scale = antpairs[key].wtspos_P22_scale
+                                    if method == 'NN':
+                                        self.interferometers[antpairs[key].label].gridinfo_P22[i]['illumination'] = nnval
+                                        self.interferometers[antpairs[key].label].gridinfo_P22[i]['Vf'] = antpairs[key].pol.Vf_P22[i] * nnval
+                                    else:
+                                        self.interferometers[antpairs[key].label].gridinfo_P22[i]['illumination'] = grid_illumination_P22[roi_ind]
+                                        self.interferometers[antpairs[key].label].gridinfo_P22[i]['Vf'] = antpairs[key].pol.Vf_P22[i] * grid_illumination_P22[roi_ind] 
+                else:
+                    raise TypeError('antpairs must be an instance of InterferometerArray, a dictionary of Interferometer instances, a list of Interferometer instances or an Interferometer instance.')
+
+            else:
+
+                self.grid_illumination_P22 = NP.zeros((self.gridx_P22.shape[0],
+                                                      self.gridx_P22.shape[1],
+                                                      len(self.f)),
+                                                     dtype=NP.complex_)
+                self.grid_Vf_P22 = NP.zeros((self.gridx_P22.shape[0],
+                                            self.gridx_P22.shape[1],
+                                            len(self.f)), dtype=NP.complex_)
+
+                for key in self.interferometers:
+                    if not self.interferometers[key].pol.flag_P22:
+                        for i in range(len(self.f)):
+                            if method == 'NN':
+                                if self.interferometers[key].wtspos_P22_scale is None: 
+                                    reflocs = self.interferometers[key].wtspos_P22[i] + (self.f[i]/FCNST.c) * NP.asarray([self.interferometers[key].location.x, self.interferometers[key].location.y]).reshape(1,-1)
+                                    inplocs = (self.f[i]/FCNST.c) * NP.hstack((self.gridx_P22.reshape(-1,1), self.gridy_P22.reshape(-1,1)))
+                                    ibind, nnval = LKP.lookup_1NN(reflocs, self.interferometers[key].wts_P22[i], inplocs,
+                                                                  distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                                                  remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+
+                                    # ibind, nnval = LKP.lookup(self.interferometers[key].wtspos_P22[i][:,0]+self.interferometers[key].location.x*(self.f[i]/FCNST.c),
+                                    #                           self.interferometers[key].wtspos_P22[i][:,1]+self.interferometers[key].location.y*(self.f[i]/FCNST.c),
+                                    #                           self.interferometers[key].wts_P22[i], self.gridx_P22*self.f[i]/FCNST.c,
+                                    #                           self.gridy_P22*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
+                                    #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                    roi_ind = NP.unravel_index(ibind, self.gridx_P22.shape)
+                                    if normalize:
+                                        nnval /= NP.sum(nnval)
+                                elif self.interferometers[key].wtspos_P22_scale == 'scale':
+                                    if i == 0: # Determine some parameters only for zeroth channel if scaling is set
+                                        reflocs = self.interferometers[key].wtspos_P22[0] + (self.f[0]/FCNST.c) * NP.asarray([self.interferometers[key].location.x, self.interferometers[key].location.y]).reshape(1,-1)
+                                        inplocs = (self.f[0]/FCNST.c) * NP.hstack((self.gridx_P22.reshape(-1,1), self.gridy_P22.reshape(-1,1)))
+                                        ibind, nnval = LKP.lookup_1NN(reflocs, self.interferometers[key].wts_P22[0], inplocs,
+                                                                      distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                                                      remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                        # ibind, nnval = LKP.lookup(self.interferometers[key].wtspos_P22[0][:,0]+self.interferometers[key].location.x*(self.f[0]/FCNST.c),
+                                        #                           self.interferometers[key].wtspos_P22[0][:,1]+self.interferometers[key].location.y*(self.f[0]/FCNST.c),
+                                        #                           self.interferometers[key].wts_P22[0], self.gridx_P22*self.f[0]/FCNST.c,
+                                        #                           self.gridy_P22*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
+                                        #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                                        roi_ind = NP.unravel_index(ibind, self.gridx_P22.shape)
+                                        if normalize:
+                                            nnval /= NP.sum(nnval)
+                                else:
+                                    raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
+
+                                self.grid_illumination_P22[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += nnval
+                                self.grid_Vf_P22[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += self.interferometers[key].pol.Vf_P22[i] * nnval
+                            else:
+                                if self.interferometers[key].wtspos_P22_scale is None:
+                                    grid_illumination_P22 = GRD.conv_grid2d(self.interferometers[key].location.x * (self.f[i]/FCNST.c),
+                                                                           self.interferometers[key].location.y * (self.f[i]/FCNST.c),
+                                                                           self.interferometers[key].wtspos_P22[i][:,0],
+                                                                           self.interferometers[key].wtspos_P22[i][:,1],
+                                                                           self.interferometers[key].wts_P22[i],
+                                                                           self.gridx_P22 * (self.f[i]/FCNST.c),
+                                                                           self.gridy_P22 * (self.f[i]/FCNST.c),
+                                                                           method=method)
+                                    grid_illumination_P22 = grid_illumination_P22.reshape(self.gridx_P22.shape)
+                                    if normalize:
+                                        grid_illumination_P22 = grid_illumination_P22 / NP.sum(grid_illumination_P22)
+                                    roi_ind = NP.where(NP.abs(grid_illumination_P22) >= eps)
+                                elif self.interferometers[key].wtspos_P22_scale == 'scale':
+                                    if i == 0:
+                                        grid_illumination_P22 = GRD.conv_grid2d(self.interferometers[key].location.x * (self.f[0]/FCNST.c),
+                                                                               self.interferometers[key].location.y * (self.f[0]/FCNST.c),
+                                                                               self.interferometers[key].wtspos_P22[0][:,0],
+                                                                               self.interferometers[key].wtspos_P22[0][:,1],
+                                                                               self.interferometers[key].wts_P22[0],
+                                                                               self.gridx_P22 * (self.f[0]/FCNST.c),
+                                                                               self.gridy_P22 * (self.f[0]/FCNST.c),
+                                                                               method=method)
+                                        grid_illumination_P22 = grid_illumination_P22.reshape(self.gridx_P22.shape)
+                                        if normalize:
+                                            grid_illumination_P22 = grid_illumination_P22 / NP.sum(grid_illumination_P22)
+                                        roi_ind = NP.where(NP.abs(grid_illumination_P22) >= eps)
+                                else:
+                                    raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
+                                
+                                self.grid_illumination_P22[:,:,i] += grid_illumination_P22
+                                self.grid_Vf_P22[:,:,i] += self.interferometers[key].pol.Vf_P22[i] * grid_illumination_P22
+
+                            self.interferometers[key].gridinfo_P22[i] = {} # Create a nested dictionary to hold channel info
+                            self.interferometers[key].gridinfo_P22[i]['f'] = self.f[i]
+                            self.interferometers[key].gridinfo_P22[i]['flag'] = False
+                            self.interferometers[key].gridinfo_P22[i]['gridxy_ind'] = zip(*roi_ind)
+                            if method == 'NN':
+                                self.interferometers[key].gridinfo_P22[i]['illumination'] = nnval
+                                self.interferometers[key].gridinfo_P22[i]['Vf'] = self.interferometers[key].pol.Vf_P22[i] * nnval  
+                            else:
+                                self.interferometers[key].gridinfo_P22[i]['illumination'] = grid_illumination_P22[roi_ind]
+                                self.interferometers[key].gridinfo_P22[i]['Vf'] = self.interferometers[key].pol.Vf_P22[i] * grid_illumination_P22[roi_ind]
+
+    ################################################################################
+
+    def grid_unconvolve(self, antpairs, pol=None):
+
+        """
+        ----------------------------------------------------------------------------
+        Routine to de-project the visibility illumination pattern and the
+        visibilities on the grid. It can operate on the entire interferometer array 
+        or incrementally de-project the visibilities and illumination patterns of
+        specific antenna pairs from an already existing grid.
+
+        Inputs:
+
+        antpairs    [instance of class InterferometerArray, single instance or 
+                    list of instances of class Interferometer, or a dictionary 
+                    holding instances of class Interferometer] If a dictionary is 
+                    provided, the keys should be the interferometer labels and 
+                    the values should be instances of class Interferometer. If a 
+                    list is provided, it should be a list of valid instances of 
+                    class Interferometer. These instance(s) of class 
+                    Interferometer will be merged to the existing grid contained 
+                    in the instance of InterferometerArray class. If any of the 
+                    interferoemters are not found to be in the already existing 
+                    set of interferometers, an exception is raised accordingly
+                    and code execution stops.
+
+        pol         [String] The polarization to be gridded. Can be set to 'P11', 
+                    'P12', 'P21', or 'P22'. If set to None, gridding for all
+                    polarizations is performed. Default = None
+
+        ----------------------------------------------------------------------------
+        """
+
+        try:
+            antpairs
+        except NameError:
+            raise NameError('No antenna pair(s) supplied.')
+
+        if (pol is None) or (pol == 'P11'):
+
+            if isinstance(ants, (Interferometer, str)):
+                antpairs = [antpairs]
+
+            if isinstance(antpairs, (dict, InterferometerArray)):
+                # Check if these interferometers are new or old and compatible
+                for key in antpairs: 
+                    if isinstance(antpairs[key], Interferometer): # required if antpairs is a dictionary and not instance of InterferometerArray
+                        if key in self.interferometers:
+                            if self.interferometers[key].gridinfo_P11: # if gridding info is not empty
+                                for i in range(len(self.f)):
+                                    xind, yind = zip(*self.interferometers[key].gridinfo_P11[i]['gridxy_ind'])
+                                    self.grid_illumination_P11[xind, yind, i] -= self.interferometers[key].gridinfo_P11[i]['illumination']
+                                    self.grid_Vf_P11[xind, yind, i] -= self.interferometers[key].gridinfo_P11[i]['Vf']
+                                self.interferometers[key].gridinfo_P11 = {}
+                        else:
+                            raise KeyError('Interferometer {0} not found to exist in the dictionary of interferometers.'.format(antpairs[key].label))
+                                
+            elif isinstance(antpairs, list):
+                # Check if these interferometers are new or old and compatible
+                for key in range(len(antpairs)): 
+                    if isinstance(antpairs[key], Interferometer): # required if antpairs is a dictionary and not instance of InterferometerArray
+                        if antpairs[key].label in self.interferometers:
+                            if self.interferometers[antpairs[key].label].gridinfo_P11: # if gridding info is not empty
+                                for i in range(len(self.f)):
+                                    xind, yind = zip(*self.interferometers[antpairs[key].label].gridinfo_P11[i]['gridxy_ind'])
+                                    self.grid_illumination_P11[xind, yind, i] -= self.interferometers[antpairs[key].label].gridinfo_P11[i]['illumination']
+                                    self.grid_Vf_P11[xind, yind, i] -= self.interferometers[antpairs[key].label].gridinfo_P11[i]['Vf']
+                                self.interferometers[antpairs[key].label].gridinfo_P11 = {}
+                        else:
+                            raise KeyError('Interferometer {0} not found to exist in the dictionary of interferometers.'.format(antpairs[key].label))
+                    elif isinstance(antpairs[key], str):
+                        if antpairs[key] in self.interferometers:
+                            if self.interferometers[antpairs[key]].gridinfo_P11: # if gridding info is not empty
+                                for i in range(len(self.f)):
+                                    xind, yind = zip(*self.interferometers[antpairs[key]].gridinfo_P11[i]['gridxy_ind'])
+                                    self.grid_illumination_P11[xind, yind, i] -= self.interferometers[antpairs[key]].gridinfo_P11[i]['illumination']
+                                    self.grid_Vf_P11[xind, yind, i] -= self.interferometers[antpairs[key]].gridinfo_P11[i]['Vf']
+                                self.interferometers[antpairs[key]].gridinfo_P11 = {}
+                        else:
+                            raise KeyError('Interferometer {0} not found to exist in the dictionary of interferometers.'.format(antpairs[key]))
+                    else:
+                        raise TypeError('antpairs must be an instance of class InterferometerArray, a list of instances of class Interferometer, a dictionary of instances of class Interferometer or a list of antenna labels.')
+            else:
+                raise TypeError('antpairs must be an instance of InterferometerArray, a dictionary of Interferometer instances, a list of Interferometer instances, an Interferometer instance, or a list of antenna labels.')
+
+        if (pol is None) or (pol == 'P22'):
+
+            if isinstance(ants, (Interferometer, str)):
+                antpairs = [antpairs]
+
+            if isinstance(antpairs, (dict, InterferometerArray)):
+                # Check if these interferometers are new or old and compatible
+                for key in antpairs: 
+                    if isinstance(antpairs[key], Interferometer): # required if antpairs is a dictionary and not instance of InterferometerArray
+                        if key in self.interferometers:
+                            if self.interferometers[key].gridinfo_P22: # if gridding info is not empty
+                                for i in range(len(self.f)):
+                                    xind, yind = zip(*self.interferometers[key].gridinfo_P22[i]['gridxy_ind'])
+                                    self.grid_illumination_P22[xind, yind, i] -= self.interferometers[key].gridinfo_P22[i]['illumination']
+                                    self.grid_Vf_P22[xind, yind, i] -= self.interferometers[key].gridinfo_P22[i]['Vf']
+                                self.interferometers[key].gridinfo_P22 = {}
+                        else:
+                            raise KeyError('Interferometer {0} not found to exist in the dictionary of interferometers.'.format(antpairs[key].label))
+                                
+            elif isinstance(antpairs, list):
+                # Check if these interferometers are new or old and compatible
+                for key in range(len(antpairs)): 
+                    if isinstance(antpairs[key], Interferometer): # required if antpairs is a dictionary and not instance of InterferometerArray
+                        if antpairs[key].label in self.interferometers:
+                            if self.interferometers[antpairs[key].label].gridinfo_P22: # if gridding info is not empty
+                                for i in range(len(self.f)):
+                                    xind, yind = zip(*self.interferometers[antpairs[key].label].gridinfo_P22[i]['gridxy_ind'])
+                                    self.grid_illumination_P22[xind, yind, i] -= self.interferometers[antpairs[key].label].gridinfo_P22[i]['illumination']
+                                    self.grid_Vf_P22[xind, yind, i] -= self.interferometers[antpairs[key].label].gridinfo_P22[i]['Vf']
+                                self.interferometers[antpairs[key].label].gridinfo_P22 = {}
+                        else:
+                            raise KeyError('Interferometer {0} not found to exist in the dictionary of interferometers.'.format(antpairs[key].label))
+                    elif isinstance(antpairs[key], str):
+                        if antpairs[key] in self.interferometers:
+                            if self.interferometers[antpairs[key]].gridinfo_P22: # if gridding info is not empty
+                                for i in range(len(self.f)):
+                                    xind, yind = zip(*self.interferometers[antpairs[key]].gridinfo_P22[i]['gridxy_ind'])
+                                    self.grid_illumination_P22[xind, yind, i] -= self.interferometers[antpairs[key]].gridinfo_P22[i]['illumination']
+                                    self.grid_Vf_P22[xind, yind, i] -= self.interferometers[antpairs[key]].gridinfo_P22[i]['Vf']
+                                self.interferometers[antpairs[key]].gridinfo_P22 = {}
+                        else:
+                            raise KeyError('Interferometer {0} not found to exist in the dictionary of interferometers.'.format(antpairs[key]))
+                    else:
+                        raise TypeError('antpairs must be an instance of class InterferometerArray, a list of instances of class Interferometer, a dictionary of instances of class Interferometer or a list of antenna labels.')
+            else:
+                raise TypeError('antpairs must be an instance of InterferometerArray, a dictionary of Interferometer instances, a list of Interferometer instances, an Interferometer instance, or a list of antenna labels.')
+
+        if (pol is None) or (pol == 'P12'):
+
+            if isinstance(ants, (Interferometer, str)):
+                antpairs = [antpairs]
+
+            if isinstance(antpairs, (dict, InterferometerArray)):
+                # Check if these interferometers are new or old and compatible
+                for key in antpairs: 
+                    if isinstance(antpairs[key], Interferometer): # required if antpairs is a dictionary and not instance of InterferometerArray
+                        if key in self.interferometers:
+                            if self.interferometers[key].gridinfo_P12: # if gridding info is not empty
+                                for i in range(len(self.f)):
+                                    xind, yind = zip(*self.interferometers[key].gridinfo_P12[i]['gridxy_ind'])
+                                    self.grid_illumination_P12[xind, yind, i] -= self.interferometers[key].gridinfo_P12[i]['illumination']
+                                    self.grid_Vf_P12[xind, yind, i] -= self.interferometers[key].gridinfo_P12[i]['Vf']
+                                self.interferometers[key].gridinfo_P12 = {}
+                        else:
+                            raise KeyError('Interferometer {0} not found to exist in the dictionary of interferometers.'.format(antpairs[key].label))
+                                
+            elif isinstance(antpairs, list):
+                # Check if these interferometers are new or old and compatible
+                for key in range(len(antpairs)): 
+                    if isinstance(antpairs[key], Interferometer): # required if antpairs is a dictionary and not instance of InterferometerArray
+                        if antpairs[key].label in self.interferometers:
+                            if self.interferometers[antpairs[key].label].gridinfo_P12: # if gridding info is not empty
+                                for i in range(len(self.f)):
+                                    xind, yind = zip(*self.interferometers[antpairs[key].label].gridinfo_P12[i]['gridxy_ind'])
+                                    self.grid_illumination_P12[xind, yind, i] -= self.interferometers[antpairs[key].label].gridinfo_P12[i]['illumination']
+                                    self.grid_Vf_P12[xind, yind, i] -= self.interferometers[antpairs[key].label].gridinfo_P12[i]['Vf']
+                                self.interferometers[antpairs[key].label].gridinfo_P12 = {}
+                        else:
+                            raise KeyError('Interferometer {0} not found to exist in the dictionary of interferometers.'.format(antpairs[key].label))
+                    elif isinstance(antpairs[key], str):
+                        if antpairs[key] in self.interferometers:
+                            if self.interferometers[antpairs[key]].gridinfo_P12: # if gridding info is not empty
+                                for i in range(len(self.f)):
+                                    xind, yind = zip(*self.interferometers[antpairs[key]].gridinfo_P12[i]['gridxy_ind'])
+                                    self.grid_illumination_P12[xind, yind, i] -= self.interferometers[antpairs[key]].gridinfo_P12[i]['illumination']
+                                    self.grid_Vf_P12[xind, yind, i] -= self.interferometers[antpairs[key]].gridinfo_P12[i]['Vf']
+                                self.interferometers[antpairs[key]].gridinfo_P12 = {}
+                        else:
+                            raise KeyError('Interferometer {0} not found to exist in the dictionary of interferometers.'.format(antpairs[key]))
+                    else:
+                        raise TypeError('antpairs must be an instance of class InterferometerArray, a list of instances of class Interferometer, a dictionary of instances of class Interferometer or a list of antenna labels.')
+            else:
+                raise TypeError('antpairs must be an instance of InterferometerArray, a dictionary of Interferometer instances, a list of Interferometer instances, an Interferometer instance, or a list of antenna labels.')
+
+        if (pol is None) or (pol == 'P21'):
+
+            if isinstance(ants, (Interferometer, str)):
+                antpairs = [antpairs]
+
+            if isinstance(antpairs, (dict, InterferometerArray)):
+                # Check if these interferometers are new or old and compatible
+                for key in antpairs: 
+                    if isinstance(antpairs[key], Interferometer): # required if antpairs is a dictionary and not instance of InterferometerArray
+                        if key in self.interferometers:
+                            if self.interferometers[key].gridinfo_P21: # if gridding info is not empty
+                                for i in range(len(self.f)):
+                                    xind, yind = zip(*self.interferometers[key].gridinfo_P21[i]['gridxy_ind'])
+                                    self.grid_illumination_P21[xind, yind, i] -= self.interferometers[key].gridinfo_P21[i]['illumination']
+                                    self.grid_Vf_P21[xind, yind, i] -= self.interferometers[key].gridinfo_P21[i]['Vf']
+                                self.interferometers[key].gridinfo_P21 = {}
+                        else:
+                            raise KeyError('Interferometer {0} not found to exist in the dictionary of interferometers.'.format(antpairs[key].label))
+                                
+            elif isinstance(antpairs, list):
+                # Check if these interferometers are new or old and compatible
+                for key in range(len(antpairs)): 
+                    if isinstance(antpairs[key], Interferometer): # required if antpairs is a dictionary and not instance of InterferometerArray
+                        if antpairs[key].label in self.interferometers:
+                            if self.interferometers[antpairs[key].label].gridinfo_P21: # if gridding info is not empty
+                                for i in range(len(self.f)):
+                                    xind, yind = zip(*self.interferometers[antpairs[key].label].gridinfo_P21[i]['gridxy_ind'])
+                                    self.grid_illumination_P21[xind, yind, i] -= self.interferometers[antpairs[key].label].gridinfo_P21[i]['illumination']
+                                    self.grid_Vf_P21[xind, yind, i] -= self.interferometers[antpairs[key].label].gridinfo_P21[i]['Vf']
+                                self.interferometers[antpairs[key].label].gridinfo_P21 = {}
+                        else:
+                            raise KeyError('Interferometer {0} not found to exist in the dictionary of interferometers.'.format(antpairs[key].label))
+                    elif isinstance(antpairs[key], str):
+                        if antpairs[key] in self.interferometers:
+                            if self.interferometers[antpairs[key]].gridinfo_P21: # if gridding info is not empty
+                                for i in range(len(self.f)):
+                                    xind, yind = zip(*self.interferometers[antpairs[key]].gridinfo_P21[i]['gridxy_ind'])
+                                    self.grid_illumination_P21[xind, yind, i] -= self.interferometers[antpairs[key]].gridinfo_P21[i]['illumination']
+                                    self.grid_Vf_P21[xind, yind, i] -= self.interferometers[antpairs[key]].gridinfo_P21[i]['Vf']
+                                self.interferometers[antpairs[key]].gridinfo_P21 = {}
+                        else:
+                            raise KeyError('Interferometer {0} not found to exist in the dictionary of interferometers.'.format(antpairs[key]))
+                    else:
+                        raise TypeError('antpairs must be an instance of class InterferometerArray, a list of instances of class Interferometer, a dictionary of instances of class Interferometer or a list of antenna labels.')
+            else:
+                raise TypeError('antpairs must be an instance of InterferometerArray, a dictionary of Interferometer instances, a list of Interferometer instances, an Interferometer instance, or a list of antenna labels.')
+
+    ##################################################################################
+
+    def update(self, updates=None, verbose=False):
+
+        """
+        -------------------------------------------------------------------------
+        Updates the interferometer array instance with newer attribute values.
+        Can also be used to add and/or remove interferometers with/without
+        affecting the existing grid.
+
+        Inputs:
+
+        updates     [Dictionary] Consists of information updates under the
+                    following principal keys:
+                    'interferometer_array': Consists of updates for the
+                                InterferometerArray instance. This is a
+                                dictionary which consists of the following keys:
+                                'timestamp': Unique identifier of the time
+                                       series. It is optional to set this to a
+                                       scalar. If not given, no change is made to 
+                                       the existing timestamp attribute
+                    'interferometers': Holds a dictionary consisting of updates 
+                                for individual interferometers. One of the keys 
+                                is 'label' which indicates an interferometer 
+                                label. If absent, the code execution stops by 
+                                throwing an exception. The other optional keys
+                                and the information they hold are listed below:
+                                'action'      [String scalar] Indicates the type 
+                                              of update operation. 'add' adds the 
+                                              Interferometer instance to the 
+                                              InterferometerArray instance. 
+                                              'remove' removes the interferometer 
+                                              from the interferometer array
+                                              instance. 'modify' modifies the
+                                              interferometer attributes in the 
+                                              interferometer array instance. This 
+                                              key has to be set. No default.
+                                'grid_action' [Boolean] If set to True, will 
+                                              apply the grdding operations 
+                                              (grid(), grid_convolve(), and 
+                                              grid_unconvolve()) appropriately 
+                                              according to the value of the 
+                                              'action' key. If set to None or 
+                                              False, gridding effects will remain
+                                              unchanged. Default=None(=False).
+                                'interferometer' 
+                                              [instance of class Interferometer] 
+                                              Updated Interferometer class 
+                                              instance. Can work for action key
+                                              'remove' even if not set (=None) or
+                                              set to an empty string '' as long as 
+                                              'label' key is specified. 
+                                'gridpol'     [Optional. String scalar] Initiates 
+                                              the specified action on 
+                                              polarization 'P11' or 'P22'. Can be 
+                                              set to 'P11' or 'P22'. If not 
+                                              provided (=None), then the 
+                                              specified action applies to both
+                                              polarizations. Default = None.
+                                'Vt_P11'      [Optional. Numpy array] Complex 
+                                              visibility time series in 
+                                              polarization P11. Is used only if 
+                                              set and if 'action' key value is 
+                                              set to 'modify'. Default = None.
+                                'Vt_P22'      [Optional. Numpy array] Complex 
+                                              visibility time series in 
+                                              polarization P22. Is used only if 
+                                              set and if 'action' key value is 
+                                              set to 'modify'. Default = None.
+                                't'           [Optional. Numpy array] Time axis 
+                                              of the time series. Is used only 
+                                              if set and if 'action' key value is
+                                              set to 'modify'. Default = None.
+                                'timestamp'   [Optional. Scalar] Unique 
+                                              identifier of the time series. Is 
+                                              used only if set and if 'action' 
+                                              key value is set to 'modify'.
+                                              Default = None.
+                                'location'    [Optional. instance of GEOM.Point
+                                              class] 
+                                              Interferometer location in the 
+                                              local ENU coordinate system. Used 
+                                              only if set and if 'action' key 
+                                              value is set to 'modify'.
+                                              Default=None.
+                                'wtsinfo_P11' [Optional. List of dictionaries] 
+                                              See description in Interferometer 
+                                              class member function update(). Is 
+                                              used only if set and if 'action' 
+                                              key value is set to 'modify'.
+                                              Default = None.
+                                'wtsinfo_P22' [Optional. List of dictionaries] 
+                                              See description in Interferometer 
+                                              class member function update(). Is 
+                                              used only if set and if 'action' 
+                                              key value is set to 'modify'.
+                                              Default = None.
+                                'wtsinfo_P12' [Optional. List of dictionaries] 
+                                              See description in Interferometer 
+                                              class member function update(). Is 
+                                              used only if set and if 'action' 
+                                              key value is set to 'modify'.
+                                              Default = None.
+                                'wtsinfo_P21' [Optional. List of dictionaries] 
+                                              See description in Interferometer 
+                                              class member function update(). Is 
+                                              used only if set and if 'action' 
+                                              key value is set to 'modify'.
+                                              Default = None.
+                                'flag_P11'    [Optional. Boolean] Flagging status 
+                                              update for polarization P11 of the 
+                                              interferometer. If True, 
+                                              polarization P11 measurements of
+                                              the interferometer will be flagged. 
+                                              If not set (=None), the previous or 
+                                              default flag status will continue 
+                                              to apply. If set to False, the 
+                                              interferometer status will be 
+                                              updated to become unflagged.
+                                              Default=None.
+                                'flag_P22'    [Optional. Boolean] Flagging status 
+                                              update for polarization P22 of the 
+                                              interferometer. If True, 
+                                              polarization P22 measurements of
+                                              the interferometer will be flagged. 
+                                              If not set (=None), the previous or 
+                                              default flag status will continue 
+                                              to apply. If set to False, the 
+                                              interferometer status will be 
+                                              updated to become unflagged.
+                                              Default=None.
+                                'flag_P12'    [Optional. Boolean] Flagging status 
+                                              update for polarization P12 of the 
+                                              interferometer. If True, 
+                                              polarization P12 measurements of
+                                              the interferometer will be flagged. 
+                                              If not set (=None), the previous or 
+                                              default flag status will continue 
+                                              to apply. If set to False, the 
+                                              interferometer status will be 
+                                              updated to become unflagged.
+                                              Default=None.
+                                'flag_P21'    [Optional. Boolean] Flagging status 
+                                              update for polarization P21 of the 
+                                              interferometer. If True, 
+                                              polarization P21 measurements of
+                                              the interferometer will be flagged. 
+                                              If not set (=None), the previous or 
+                                              default flag status will continue 
+                                              to apply. If set to False, the 
+                                              interferometer status will be 
+                                              updated to become unflagged.
+                                              Default=None.
+                                'gridfunc_freq'
+                                              [Optional. String scalar] Read the 
+                                              description of inputs to 
+                                              Interferometer class member 
+                                              function update(). If set to None 
+                                              (not provided), this attribute is 
+                                              determined based on the size of 
+                                              wtspos_P11 and wtspos_P22. It is 
+                                              applicable only when 'action' key 
+                                              is set to 'modify'. Default = None.
+                                'delaydict_P11'
+                                              Dictionary containing information 
+                                              on delay compensation to be applied 
+                                              to the fourier transformed 
+                                              visibilities for polarization P11. 
+                                              Default is None (no delay 
+                                              compensation to be applied). Refer 
+                                              to the docstring of member function
+                                              delay_compensation() of class 
+                                              PolInfo for more details.
+                                'delaydict_P22'
+                                              Dictionary containing information 
+                                              on delay compensation to be applied 
+                                              to the fourier transformed 
+                                              visibilities for polarization P22. 
+                                              Default is None (no delay 
+                                              compensation to be applied). Refer 
+                                              to the docstring of member function
+                                              delay_compensation() of class 
+                                              PolInfo for more details.
+                                'delaydict_P12'
+                                              Dictionary containing information 
+                                              on delay compensation to be applied 
+                                              to the fourier transformed 
+                                              visibilities for polarization P12. 
+                                              Default is None (no delay 
+                                              compensation to be applied). Refer 
+                                              to the docstring of member function
+                                              delay_compensation() of class 
+                                              PolInfo for more details.
+                                'delaydict_P21'
+                                              Dictionary containing information 
+                                              on delay compensation to be applied 
+                                              to the fourier transformed 
+                                              visibilities for polarization P21. 
+                                              Default is None (no delay 
+                                              compensation to be applied). Refer 
+                                              to the docstring of member function
+                                              delay_compensation() of class 
+                                              PolInfo for more details.
+                                'ref_freq'    [Optional. Scalar] Positive value 
+                                              (in Hz) of reference frequency 
+                                              (used if gridfunc_freq is set to
+                                              'scale') at which wtspos_P11 and 
+                                              wtspos_P22 in wtsinfo_P11 and 
+                                              wtsinfo_P22, respectively, are 
+                                              provided. If set to None, the 
+                                              reference frequency already set in
+                                              interferometer array instance 
+                                              remains unchanged. Default = None.
+                                'pol_type'    [Optional. String scalar] 'Linear' 
+                                              or 'Circular'. Used only when 
+                                              action key is set to 'modify'. If 
+                                              not provided, then the previous
+                                              value remains in effect.
+                                              Default = None.
+                                'norm_wts'    [Optional. Boolean] Default=False. 
+                                              If set to True, the gridded weights 
+                                              are divided by the sum of weights 
+                                              so that the gridded weights add up 
+                                              to unity. This is used only when
+                                              grid_action keyword is set when
+                                              action keyword is set to 'add' or
+                                              'modify'
+                                'gridmethod'  [Optional. String] Indicates 
+                                              gridding method. It accepts the 
+                                              following values 'NN' (nearest 
+                                              neighbour), 'BL' (Bi-linear
+                                              interpolation), and'CS' (Cubic
+                                              Spline interpolation). Default='NN'
+                                'distNN'      [Optional. Scalar] Indicates the 
+                                              upper bound on distance for a 
+                                              nearest neighbour search if the 
+                                              value of 'gridmethod' is set to
+                                              'NN'. The units are of physical
+                                              distance, the same as what is 
+                                              used for interferometer locations.
+                                              Default = NP.inf
+                                'maxmatch'    [scalar] A positive value 
+                                              indicating maximum number of input
+                                              locations in the interferometer 
+                                              grid to be assigned. Default=None. 
+                                              If set to None, all the 
+                                              interferometer array grid elements 
+                                              specified are assigned values for 
+                                              each interferometer. For instance, 
+                                              to have only one interferometer 
+                                              array grid element to be populated 
+                                              per interferometer, use maxmatch=1. 
+                                'tol'         [scalar] If set, only lookup data 
+                                              with abs(val) > tol will be
+                                              considered for nearest neighbour 
+                                              lookup. Default = None implies 
+                                              all lookup values will be 
+                                              considered for nearest neighbour
+                                              determination. tol is to be
+                                              interpreted as a minimum value
+                                              considered as significant in the
+                                              lookup table. 
+
+        verbose     [Boolean] Default = False. If set to True, prints some 
+                    diagnotic or progress messages.
+
+        -------------------------------------------------------------------------
+        """
+
+        if updates is not None:
+            if not isinstance(updates, dict):
+                raise TypeError('Input parameter updates must be a dictionary')
+
+            if 'interferometer_array' in updates:
+                if not isinstance(updates['interferometer_array'], dict):
+                    raise TypeError('Input parameter in updates for interferometer array must be a dictionary with key "interferometer_array"')
+                
+                if 'timestamp' in updates['interferometer_array']:
+                    self.timestamp = updates['interferometer_array']['timestamp']
+
+            if 'interferometer' in updates:
+                if not isinstance(updates['interferometer'], list):
+                    updates['interferometer'] = [updates['interferometer']]
+                for dictitem in updates['interferometer']:
+                    if not isinstance(dictitem, dict):
+                        raise TypeError('Updates to {0} instance should be provided in the form of a list of dictionaries.'.format(self.__class__.__name__))
+                    elif 'label' not in dictitem:
+                        raise KeyError('No interferometer label specified in the dictionary item to be updated.')
+    
+                    if 'action' not in dictitem:
+                        raise KeyError('No action specified for update. Action key should be set to "add", "remove" or "modify".')
+                    elif dictitem['action'] == 'add':
+                        if dictitem['label'] in self.interferometers:
+                            if verbose:
+                                print 'Interferometer {0} for adding already exists in current instance of {1}. Skipping over to the next item to be updated.'.format(dictitem['label'], self.__class__.__name__)
+                        else:
+                            if verbose:
+                                print 'Adding interferometer {0}...'.format(dictitem['label'])
+                            self.add_interferometers(dictitem['interferometer'])
+                            if 'grid_action' in dictitem:
+                                self.grid_convolve(pol=dictitem['gridpol'], ants=dictitem['interferometer'], unconvolve_existing=False)
+                    elif dictitem['action'] == 'remove':
+                        if dictitem['label'] not in self.interferometers:
+                            if verbose:
+                                print 'Interferometer {0} for removal not found in current instance of {1}. Skipping over to the next item to be updated.'.format(dictitem['label'], self.__class__.__name__) 
+                        else:
+                            if verbose:
+                                print 'Removing interferometer {0}...'.format(dictitem['label'])
+                            if 'grid_action' in dictitem:
+                                self.grid_unconvolve(dictitem['label'], dictitem['gridpol'])
+                            self.remove_interferometers(dictitem['label'])
+                    elif dictitem['action'] == 'modify':
+                        if dictitem['label'] not in self.interferometers:
+                            if verbose:
+                                print 'Interferometer {0} for modification not found in current instance of {1}. Skipping over to the next item to be updated.'.format(dictitem['label'], self.__class__.__name__)
+                        else:
+                            if verbose:
+                                print 'Modifying interferometer {0}...'.format(dictitem['label'])
+                            if 'Vt_P11' not in dictitem: dictitem['Vt_P11']=None
+                            if 'Vt_P22' not in dictitem: dictitem['Vt_P22']=None
+                            if 'Vt_P12' not in dictitem: dictitem['Vt_P12']=None
+                            if 'Vt_P21' not in dictitem: dictitem['Vt_P21']=None
+                            if 't' not in dictitem: dictitem['t']=None
+                            if 'timestamp' not in dictitem: dictitem['timestamp']=None
+                            if 'location' not in dictitem: dictitem['location']=None
+                            if 'wtsinfo_P11' not in dictitem: dictitem['wtsinfo_P11']=None
+                            if 'wtsinfo_P22' not in dictitem: dictitem['wtsinfo_P22']=None
+                            if 'flag_P11' not in dictitem: dictitem['flag_P11']=None
+                            if 'flag_P22' not in dictitem: dictitem['flag_P22']=None
+                            if 'wtsinfo_P12' not in dictitem: dictitem['wtsinfo_P12']=None
+                            if 'wtsinfo_P21' not in dictitem: dictitem['wtsinfo_P21']=None
+                            if 'flag_P12' not in dictitem: dictitem['flag_P12']=None
+                            if 'flag_P21' not in dictitem: dictitem['flag_P21']=None
+                            if 'gridfunc_freq' not in dictitem: dictitem['gridfunc_freq']=None
+                            if 'ref_freq' not in dictitem: dictitem['ref_freq']=None
+                            if 'pol_type' not in dictitem: dictitem['pol_type']=None
+                            if 'norm_wts' not in dictitem: dictitem['norm_wts']=False
+                            if 'gridmethod' not in dictitem: dictitem['gridmethod']='NN'
+                            if 'distNN' not in dictitem: dictitem['distNN']=NP.inf
+                            if 'maxmatch' not in dictitem: dictitem['maxmatch']=None
+                            if 'tol' not in dictitem: dictitem['tol']=None
+                            if 'delaydict_P11' not in dictitem: dictitem['delaydict_P11']=None
+                            if 'delaydict_P22' not in dictitem: dictitem['delaydict_P22']=None
+                            if 'delaydict_P12' not in dictitem: dictitem['delaydict_P12']=None
+                            if 'delaydict_P21' not in dictitem: dictitem['delaydict_P21']=None
+                            self.interferometers[dictitem['label']].update(dictitem['label'], dictitem['Vt_P11'], dictitem['Vt_P22'], dictitem['t'], dictitem['timestamp'], dictitem['location'], dictitem['wtsinfo_P11'], dictitem['wtsinfo_P22'], dictitem['flag_P11'], dictitem['flag_P22'], dictitem['gridfunc_freq'], dictitem['delaydict_P11'], dictitem['delaydict_P22'], dictitem['ref_freq'], dictitem['pol_type'], verbose)
+                            if 'gric_action' in dictitem:
+                                self.grid_convolve(pol=dictitem['gridpol'], ants=dictitem['interferometer'], unconvolve_existing=True, normalize=dictitem['norm_wts'], method=dictitem['gridmethod'], distNN=dictitem['distNN'], tol=dictitem['tol'], maxmatch=dictitem['maxmatch'])
+                    else:
+                        raise ValueError('Update action should be set to "add", "remove" or "modify".')
+
+    #############################################################################
+
