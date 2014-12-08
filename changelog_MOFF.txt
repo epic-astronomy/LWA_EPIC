@@ -1,3 +1,58 @@
+From 3280acf:
+============
+
+In antenna_array.py,
+
+(*) in __init__() member function of class InterferometerArray, initialized 
+attributes f, f0, and timestamp based on corresponding values in its
+antenna_array attribute
+(*) created a member function get_flags() for classes CrossPolInfo and
+Interferometer to return flags of cross-polarizations
+(*) created a member function interferometers_containing_antenna() for class
+InterferometerArray to return labels of interferometers and the position (order)
+of the antenna in each of those antenna pairs.
+(*) created member functions FX() and XF() for classes Interferometer and
+InterferometerArray
+(*) Created member function t2f() and f2t() in class Interferometer to convert 
+back and forth between timeseries and frequency spectrum
+(*) Created more member functions, namely, __str__(), __add__(), __radd__(), 
+__sub__(), add_interferometers(), remove_interferometers(), baseline_vectors(),
+grid(), grid_convolve(), grid_unconvolve(), and update() for class
+InterferometerArray
+(*) In update() member function of class AntennaArray, update the attributes t 
+and f
+(*) Added an attribute grid_ready_P1 and grid_ready_P2 in __init__() member
+function of class AntennaArray to indicate if gridding has already been performed
+once. Changed docstring accordingly
+(*) Attributes grid_ready_P1 and grid_ready_P2 are set to True in member function 
+(*) In member function grid_convolve() of class AntennaArray, call the member 
+function grid() to account for any updates that may have happened
+(*) Added a key 'do_grid' inside key 'antenna_array' in input parameter updates
+in member function update() of class AntennaArray
+(*) Added a member function make_grid_cube() inside class InterferometerArray
+to construct a grid cube of aperture illumination and visibilities
+(*) Renamed grid_convolve() to grid_convolve_old() and wrote a new member 
+function grid_convolve()
+(*) Removed setting visibilities to NaN when the baseline is flagged
+(*) Added an input parameter nsamples to __init__() member function of class
+CrossPolInfo. Visibility time series and spectrum are initialized to NaN with
+lengths equal to nsamples. Flags are initialized to True instead of False as was
+done earlier.
+(*) Attribute crosspol of class Interferometer is now initialized with input
+parameter nsamples equal to number of frequency channels in the call to
+__init__() member function of class CrossPolInfo
+(*) Added input parameter nsamples to __init__() member function of class
+PolInfo. Electric field time series and spectrum are initialized to NaN with
+lengths equal to nsamples and 2*nsamples respectively. Flags are initialized to 
+True instead of False as was done earlier.
+(*) Attribute pol of class Antenna is now initialized with input parameter 
+nsamples equal to number of time samples in the call to __init__() member 
+function of class PolInfo
+(*) flag assignment in member function update_flags() of class Interferometer
+modified slightly
+(*) Updated docstrings for classes CrossPolInfo, Interferometer, and 
+InterferometerArray
+
 From v1.06.2 of MOFF:
 ====================
 
