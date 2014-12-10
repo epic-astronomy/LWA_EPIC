@@ -1,4 +1,5 @@
 import numpy as NP
+import multiprocessing as MP
 import scipy.constants as FCNST
 from astropy.io import fits
 import progressbar as PGB
@@ -2865,7 +2866,7 @@ class CrossPolInfo:
 
 #################################################################################
 
-class Interferometer:
+class Interferometer(MP.Process):
 
     """
     ----------------------------------------------------------------------------
@@ -2995,6 +2996,9 @@ class Interferometer:
         Read docstring of class Antenna for details on these attributes.
         ------------------------------------------------------------------------
         """
+        
+        # must call this before anything else
+        MP.Process.__init__(self)
 
         try:
             antenna1, antenna2
@@ -3092,6 +3096,8 @@ class Interferometer:
         self.crosspol.Vf['P22'] = self.A1.pol.Ef_P2 * self.A2.pol.Ef_P2.conjugate()
 
         self.f2t()
+
+        # print 'Completed FX Process {0} on interferometer {1}'.format()
 
     #############################################################################
 
