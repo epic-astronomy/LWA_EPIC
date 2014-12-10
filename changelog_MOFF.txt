@@ -1,3 +1,15 @@
+From 7ad4bee:
+============
+
+(*) Just committing the changelog file since it wasn't committed in the previous version. Code version is still not functional
+
+From ed43e3a:
+============
+
+In antenna_array.py,
+
+(*) Added a few statements related to multiprocessing. But the code does not work and it is not stable. Just committing in order to switch to different branches.
+
 From 3280acf:
 ============
 
