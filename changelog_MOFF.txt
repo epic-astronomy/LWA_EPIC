@@ -1,3 +1,21 @@
+From a87d0bf:
+============
+
+In antenna_array.py,
+
+(*) Found a new bug where latitude is not an input parameter to update()
+member function of class Interferometer. Since latitude of an interferometer 
+is not expected to change during the course of an observation, the option to 
+update the latitude of the interferometer has been removed. Still mysterious
+how this bug crept in since the previous versions of the code worked without
+crashing.
+(*) Introduced parallel processing using the multiprocessing module in
+member functions update_new() and FX_new() which otherwise have the same
+functionality of member functions update() and FX() respectively in class
+Interferometer. 
+
+All the codes and modules are under testing
+
 From 7ad4bee:
 ============
 

@@ -1,5 +1,6 @@
 import numpy as NP
 import multiprocessing as MP
+import itertools as IT
 import scipy.constants as FCNST
 from astropy.io import fits
 import progressbar as PGB
@@ -9,6 +10,12 @@ import my_gridding_modules as GRD
 import my_operations as OPS
 import lookup_operations as LKP
 import ipdb as PDB
+
+def unwrap_interferometer_FX(arg, **kwarg):
+    return Interferometer.FX_new(*arg, **kwarg)
+
+def unwrap_interferometer_update(arg, **kwarg):
+    return Interferometer.update_new(*arg, **kwarg)
 
 #################################################################################  
 
@@ -2866,7 +2873,7 @@ class CrossPolInfo:
 
 #################################################################################
 
-class Interferometer(MP.Process):
+class Interferometer:
 
     """
     ----------------------------------------------------------------------------
@@ -2983,6 +2990,7 @@ class Interferometer(MP.Process):
     """
 
     def __init__(self, antenna1, antenna2, corr_type=None):
+
         """
         ------------------------------------------------------------------------
         Initialize the Interferometer Class which manages an interferometer's
@@ -2997,8 +3005,8 @@ class Interferometer(MP.Process):
         ------------------------------------------------------------------------
         """
         
-        # must call this before anything else
-        MP.Process.__init__(self)
+        # # must call this before anything else
+        # MP.Process.__init__(self, name=(antenna1.label, antenna2.label))
 
         try:
             antenna1, antenna2
@@ -3031,7 +3039,6 @@ class Interferometer(MP.Process):
         self.f = self.A1.f
 
         self.label = (self.A1.label, self.A2.label)
-        # self.label = self.A1.label + '-' + self.A2.label
 
         self.t = 0.0
         self.timestamp = 0.0
@@ -3097,7 +3104,34 @@ class Interferometer(MP.Process):
 
         self.f2t()
 
-        # print 'Completed FX Process {0} on interferometer {1}'.format()
+        # print 'Completed FX Process {0} on interferometer {1}'.format(self.name, self.label)
+
+    #############################################################################
+
+    def FX_new(self):
+
+        """
+        -------------------------------------------------------------------------
+        Computes the visibility spectrum using an FX operation, i.e., Fourier 
+        transform (F) followed by multiplication (X). All four cross
+        polarizations are computed.
+        -------------------------------------------------------------------------
+        """
+
+        self.t = NP.hstack((self.A1.t.ravel(), self.A1.t.max()+self.A2.t.ravel()))
+        self.f = self.f0 + self.channels()
+
+        self.update_flags()
+
+        self.crosspol.Vf['P11'] = self.A1.pol.Ef_P1 * self.A2.pol.Ef_P1.conjugate()
+        self.crosspol.Vf['P12'] = self.A1.pol.Ef_P1 * self.A2.pol.Ef_P2.conjugate()
+        self.crosspol.Vf['P21'] = self.A1.pol.Ef_P2 * self.A2.pol.Ef_P1.conjugate()
+        self.crosspol.Vf['P22'] = self.A1.pol.Ef_P2 * self.A2.pol.Ef_P2.conjugate()
+
+        self.f2t()
+
+        print self.label, id(self)
+        return self
 
     #############################################################################
 
@@ -3307,7 +3341,7 @@ class Interferometer(MP.Process):
         if label is not None: self.label = label
         if location is not None: self.location = location
         if timestamp is not None: self.timestamp = timestamp
-        if latitude is not None: self.latitude = latitude
+        # if latitude is not None: self.latitude = latitude
 
         if t is not None:
             self.t = t
@@ -3393,6 +3427,211 @@ class Interferometer(MP.Process):
         if (NP.abs(NP.linalg.norm(blc_orig)-NP.linalg.norm(self.blc)) > eps) or (NP.abs(NP.linalg.norm(trc_orig)-NP.linalg.norm(self.trc)) > eps):
             if verbose:
                 print 'Grid corner(s) of interferometer {0} have changed. Should re-grid the interferometer array.'.format(self.label)
+
+    #############################################################################
+
+    def update_new(self, update_dict=None, verbose=True):
+
+        """
+        -------------------------------------------------------------------------
+        Updates the interferometer instance with newer attribute values. Updates 
+        the visibility spectrum and timeseries and applies FX or XF operation.
+
+        Inputs:
+
+        label      [Scalar] A unique identifier (preferably a string) for the 
+                   antenna. Default=None means no update to apply
+
+        latitude   [Scalar] Latitude of the antenna's location. Default=None 
+                   means no update to apply
+
+        location   [Instance of GEOM.Point class] The location of the antenna in 
+                   local East, North, Up (ENU) coordinate system. Default=None 
+                   means no update to apply
+
+        timestamp  [Scalar] String or float representing the timestamp for the 
+                   current attributes. Default=None means no update to apply
+
+        t          [vector] The time axis for the visibility time series. 
+                   Default=None means no update to apply
+
+        flags      [dictionary] holds boolean flags for each of the 4 cross-
+                   polarizations which are stored under keys 'P11', 'P12', 'P21', 
+                   and 'P22'. Default=None means no updates for flags.
+
+        Vt         [dictionary] holds cross-correlation time series under 4 
+                   cross-polarizations which are stored under keys 'P11', 'P12', 
+                   'P21', and 'P22'. Default=None implies no updates for Vt.
+
+        wtsinfo    [dictionary] consists of weights information for each of the
+                   four cross-polarizations under keys 'P11', 'P12', 'P21', and 
+                   'P22'. Each of the values under the keys is a list of 
+                   dictionaries. Length of list is equal to the number
+                   of frequency channels or one (equivalent to setting
+                   wtspos_scale to 'scale'.). The list is indexed by 
+                   the frequency channel number. Each element in the list
+                   consists of a dictionary corresponding to that frequency
+                   channel. Each dictionary consists of these items with the
+                   following keys:
+                   wtspos      [2-column Numpy array, optional] u- and v- 
+                               positions for the gridding weights. Units
+                               are in number of wavelengths.
+                   wts         [Numpy array] Complex gridding weights. Size is
+                               equal to the number of rows in wtspos above
+                   orientation [scalar] Orientation (in radians) of the wtspos 
+                               coordinate system relative to the local ENU 
+                               coordinate system. It is measured North of East. 
+                   lookup      [string] If set, refers to a file location
+                               containing the wtspos and wts information above as
+                               columns (x-loc [float], y-loc [float], wts
+                               [real], wts[imag if any]). If set, wtspos and wts 
+                               information are obtained from this lookup table 
+                               and the wtspos and wts keywords in the dictionary
+                               are ignored. Note that wtspos values are obtained
+                               after dividing x- and y-loc lookup values by the
+                               wavelength
+
+        gridfunc_freq
+                   [String scalar] If set to None (not provided) or to 'scale'
+                   assumes that wtspos in wtsinfo are given for a
+                   reference frequency which need to be scaled for the frequency
+                   channels. Will be ignored if the list of dictionaries under 
+                   the cross-polarization keys in wtsinfo have number of elements 
+                   equal to the number of frequency channels.
+
+        ref_freq   [Scalar] Positive value (in Hz) of reference frequency (used
+                   if gridfunc_freq is set to None or 'scale') at which
+                   wtspos is provided. If set to None, ref_freq is assumed to be 
+                   equal to the center frequency in the class Interferometer's 
+                   attribute. 
+
+        do_correlate
+                   [string] Indicates whether correlation operation is to be
+                   performed after updates. Accepted values are 'FX' (for FX
+                   operation) and 'XF' (for XF operation). Default=None means
+                   no correlating operation is to be performed after updates.
+
+        verbose    [boolean] If True, prints diagnostic and progress messages. 
+                   If False (default), suppress printing such messages.
+        -------------------------------------------------------------------------
+        """
+
+        label = None
+        location = None
+        timestamp = None
+        t = None
+        flags = None
+        Vt = None
+        do_correlate = None
+        wtsinfo = None
+        gridfunc_freq = None
+        ref_freq = None
+            
+        if update_dict is not None:
+            if not isinstance(update_dict, dict):
+                raise TypeError('Input parameter containing updates must be a dictionary')
+
+            if 'label' in update_dict: label = update_dict['label']
+            if 'location' in update_dict: location = update_dict['location']
+            if 'timestamp' in update_dict: timestamp = update_dict['timestamp']
+            if 't' in update_dict: t = update_dict['t']
+            if 'Vt' in update_dict: Vt = update_dict['Vt']
+            if 'flags' in update_dict: flags = update_dict['flags']
+            if 'do_correlate' in update_dict: do_correlate = update_dict['do_correlate']
+            if 'wtsinfo' in update_dict: wtsinfo = update_dict['wtsinfo']
+            if 'gridfunc_freq' in update_dict: gridfunc_freq = update_dict['gridfunc_freq']
+            if 'ref_freq' in update_dict: ref_freq = update_dict['ref_freq']
+
+        if label is not None: self.label = label
+        if location is not None: self.location = location
+        if timestamp is not None: self.timestamp = timestamp
+
+        if t is not None:
+            self.t = t
+            self.f = self.f0 + self.channels()     
+
+        if flags is not None:        # Flags determined from interferometer level
+            self.update_flags(flags) 
+
+        if Vt is not None:
+            self.crosspol.update(Vt=Vt)
+        
+        if do_correlate is not None:
+            if do_correlate == 'FX':
+                self.FX()
+            elif do_correlate == 'XF':
+                self.XF()
+            else:
+                raise ValueError('Invalid specification for input parameter do_correlate.')
+
+        blc_orig = NP.copy(self.blc)
+        trc_orig = NP.copy(self.trc)
+        eps = 1e-6
+
+        if wtsinfo is not None:
+            if not isinstance(wtsinfo, dict):
+                raise TypeError('Input parameter wtsinfo must be a dictionary.')
+
+            self.wtspos = {}
+            self.wts = {}
+            self.wtspos_scale = {}
+            angles = []
+            
+            max_wtspos = []
+            for pol in ['P11', 'P12', 'P21', 'P22']:
+                self.wts[pol] = []
+                self.wtspos[pol] = []
+                self.wtspos_scale[pol] = None
+                if pol in wtsinfo:
+                    if len(wtsinfo[pol]) == len(self.f):
+                        angles += [elem['orientation'] for elem in wtsinfo[pol]]
+                        for i in xrange(len(self.f)):
+                            rotation_matrix = NP.asarray([[NP.cos(-angles[i]),  NP.sin(-angles[i])],
+                                                          [-NP.sin(-angles[i]), NP.cos(-angles[i])]])
+                            if ('lookup' not in wtsinfo[pol][i]) or (wtsinfo[pol][i]['lookup'] is None):
+                                self.wts[pol] += [wtsinfo[pol][i]['wts']]
+                                wtspos = wtsinfo[pol][i]['wtspos']
+                            else:
+                                lookupdata = LKP.read_lookup(wtsinfo[pol][i]['lookup'])
+                                wtspos = NP.hstack((lookupdata[0].reshape(-1,1),lookupdata[1].reshape(-1,1))) * (self.f[i]/FCNST.c)
+                                self.wts[pol] += [lookupdata[2]]
+                            self.wtspos[pol] += [ NP.dot(NP.asarray(wtspos), rotation_matrix.T) ]
+                            max_wtspos += [NP.amax(NP.abs(self.wtspos[pol][-1]), axis=0)]
+                    elif len(wtsinfo[pol]) == 1:
+                        if (gridfunc_freq is None) or (gridfunc_freq == 'scale'):
+                            self.wtspos_scale[pol] = 'scale'
+                            if ref_freq is None:
+                                ref_freq = self.f0
+                            angles = wtsinfo[pol][0]['orientation']
+                            rotation_matrix = NP.asarray([[NP.cos(-angles),  NP.sin(-angles)],
+                                                          [-NP.sin(-angles), NP.cos(-angles)]])
+                            if ('lookup' not in wtsinfo[pol][0]) or (wtsinfo[pol][0]['lookup'] is None):
+                                self.wts[pol] += [ wtsinfo[pol][0]['wts'] ]
+                                wtspos = wtsinfo[pol][0]['wtspos']
+                            else:
+                                lookupdata = LKP.read_lookup(wtsinfo[pol][0]['lookup'])
+                                wtspos = NP.hstack((lookupdata[0].reshape(-1,1),lookupdata[1].reshape(-1,1))) * (ref_freq/FCNST.c)
+                                self.wts[pol] += [lookupdata[2]]
+                            self.wtspos[pol] += [ (self.f[0]/ref_freq) * NP.dot(NP.asarray(wtspos), rotation_matrix.T) ]     
+                            max_wtspos += [NP.amax(NP.abs(self.wtspos[pol][-1]), axis=0)]
+                        else:
+                            raise ValueError('gridfunc_freq must be set to None, "scale" or "noscale".')
+    
+                        self.blc = NP.asarray([self.location.x, self.location.y]).reshape(1,-1) - FCNST.c/self.f.min() * NP.amin(NP.abs(self.wtspos[pol][0]), 0)
+                        self.trc = NP.asarray([self.location.x, self.location.y]).reshape(1,-1) + FCNST.c/self.f.min() * NP.amax(NP.abs(self.wtspos[pol][0]), 0)
+    
+                    else:
+                        raise ValueError('Number of elements in wtsinfo for {0} is incompatible with the number of channels.'.format(pol))
+               
+            max_wtspos = NP.amax(NP.asarray(max_wtspos).reshape(-1,blc_orig.size), axis=0)
+            self.blc = NP.asarray([self.location.x, self.location.y]).reshape(1,-1) - FCNST.c/self.f.min() * max_wtspos
+            self.trc = NP.asarray([self.location.x, self.location.y]).reshape(1,-1) + FCNST.c/self.f.min() * max_wtspos
+
+        if (NP.abs(NP.linalg.norm(blc_orig)-NP.linalg.norm(self.blc)) > eps) or (NP.abs(NP.linalg.norm(trc_orig)-NP.linalg.norm(self.trc)) > eps):
+            if verbose:
+                print 'Grid corner(s) of interferometer {0} have changed. Should re-grid the interferometer array.'.format(self.label)
+
+        return self
 
     #############################################################################
 
@@ -4002,7 +4241,7 @@ class InterferometerArray:
 
     ################################################################################# 
 
-    def FX(self):
+    def FX(self, parallel=False, nproc=None):
 
         """
         ----------------------------------------------------------------------------
@@ -4021,8 +4260,24 @@ class InterferometerArray:
         if self.f0 is None:
             self.f0 = self.interferometers.itervalues().next().f0
 
-        for label in self.interferometers:
-            self.interferometers[label].FX()
+        # for label in self.interferometers: # Start processes in parallel
+        #     self.interferometers[label].start()
+
+        if not parallel:
+            for label in self.interferometers:
+                self.interferometers[label].FX()
+        elif parallel or (nproc is not None):
+            if nproc is None:
+                pool = MP.Pool()
+            else:
+                pool = MP.Pool(processes=nproc)
+            updated_interferometers = pool.map(unwrap_interferometer_FX, IT.izip(self.interferometers.values()))
+            pool.close()
+            pool.join()
+
+            for interferometer in updated_interferometers: 
+                self.interferometers[interferometer.label] = interferometer
+            del updated_interferometers
 
     ################################################################################# 
 
@@ -6307,7 +6562,7 @@ class InterferometerArray:
     ##################################################################################
 
     def update(self, antenna_level_updates=None, interferometer_level_updates=None,
-               do_correlate=None, verbose=False):
+               do_correlate=None, parallel=False, nproc=None, verbose=False):
 
         """
         -------------------------------------------------------------------------
@@ -6825,6 +7080,9 @@ class InterferometerArray:
             if 'interferometers' in interferometer_level_updates:
                 if not isinstance(interferometer_level_updates['interferometers'], list):
                     interferometer_level_updates['interferometers'] = [interferometer_level_updates['interferometers']]
+                if parallel:
+                    list_of_interferometer_updates = []
+                    list_of_interferometers = []
                 for dictitem in interferometer_level_updates['interferometers']:
                     if not isinstance(dictitem, dict):
                         raise TypeError('Interferometer_Level_Updates to {0} instance should be provided in the form of a list of dictionaries.'.format(self.__class__.__name__))
@@ -6875,20 +7133,40 @@ class InterferometerArray:
                             if 'maxmatch' not in dictitem: dictitem['maxmatch']=None
                             if 'tol' not in dictitem: dictitem['tol']=None
                             if 'do_correlate' not in dictitem: dictitem['do_correlate']=None
-                            self.interferometers[dictitem['label']].update(dictitem['label'], dictitem['Vt'], dictitem['t'], dictitem['timestamp'], dictitem['location'], dictitem['wtsinfo'], dictitem['flags'], dictitem['gridfunc_freq'], dictitem['ref_freq'], dictitem['do_correlate'], verbose)
+
+                            if not parallel:
+                                self.interferometers[dictitem['label']].update(dictitem['label'], dictitem['Vt'], dictitem['t'], dictitem['timestamp'], dictitem['location'], dictitem['wtsinfo'], dictitem['flags'], dictitem['gridfunc_freq'], dictitem['ref_freq'], dictitem['do_correlate'], verbose)
+                            else:
+                                list_of_interferometers += [self.interferometers[dictitem['label']]]
+                                list_of_interferometer_updates += [dictitem]
+
                             if 'gric_action' in dictitem:
                                 self.grid_convolve(pol=dictitem['gridpol'], antpairs=dictitem['interferometer'], unconvolve_existing=True, normalize=dictitem['norm_wts'], method=dictitem['gridmethod'], distNN=dictitem['distNN'], tol=dictitem['tol'], maxmatch=dictitem['maxmatch'])
                     else:
                         raise ValueError('Update action should be set to "add", "remove" or "modify".')
 
+                if parallel:
+                    if nproc is None:
+                        pool = MP.Pool()
+                    else:
+                        pool = MP.Pool(processes=nproc)
+                    updated_interferometers = pool.map(unwrap_interferometer_update, IT.izip(list_of_interferometers, list_of_interferometer_updates))
+                    pool.close()
+                    pool.join()
+
+                    # Necessary to make the returned and updated interferometers current, otherwise they stay unrelated
+                    for interferometer in updated_interferometers: 
+                        self.interferometers[interferometer.label] = interferometer
+                    del updated_interferometers
+
         if do_correlate is not None:
             if do_correlate == 'FX':
-                self.FX()
+                self.FX(parallel=parallel, nproc=nproc)
             elif do_correlate == 'XF':
-                self.XF()
+                self.XF(parallel=parallel, nproc=nproc)
             else:
                 raise ValueError('Invalid specification for input parameter do_correlate.')
-            
+
 #################################################################################
         
 class Image:
