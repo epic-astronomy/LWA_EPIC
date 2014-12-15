@@ -1,3 +1,19 @@
+From a5a819e:
+============
+
+(*) Changed input parameter in member function grid_convolve() of class 
+InterferometerArray from weighting to mapping and its accepted values from
+'natural' and 'uniform' to 'weighted' and 'sampled' respectively. The default
+value of this input parameter was changed to 'weighted'. Made changes
+accordingly in the main program interferometer_testing_MWA.py. 
+
+(*) Tested these changes successfully on the main program 
+interferometer_testing_MWA.py. The other main program 
+interferometer_testing_LWA.py is not yet untested for these module changes.
+
+(*) Modified the incomplete docstring of member function grid_convolve() of 
+class InterferometerArray.   
+
 From db629df:
 ============
 
@@ -31,7 +47,8 @@ All the codes and modules are under testing
 From 7ad4bee:
 ============
 
-(*) Just committing the changelog file since it wasn't committed in the previous version. Code version is still not functional
+(*) Just committing the changelog file since it wasn't committed in the 
+previous version. Code version is still not functional
 
 From ed43e3a:
 ============

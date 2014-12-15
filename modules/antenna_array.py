@@ -4449,7 +4449,7 @@ class InterferometerArray:
     def grid_convolve(self, pol=None, antpairs=None, unconvolve_existing=False,
                       normalize=False, method='NN', distNN=NP.inf, tol=None,
                       maxmatch=None, identical_interferometers=True,
-                      gridfunc_freq=None, weighting='uniform', wts_change=False,
+                      gridfunc_freq=None, mapping='weighted', wts_change=False,
                       verbose=True): 
 
         """
@@ -4466,7 +4466,7 @@ class InterferometerArray:
                     'P12', 'P21' or 'P22'. If set to None, gridding for all the
                     polarizations is performed. Default = None
 
-        ants        [instance of class InterferometerArray, single instance or list 
+        antpairs    [instance of class InterferometerArray, single instance or list 
                     of instances of class Interferometer, or a dictionary holding 
                     instances of class Interferometer] If a dictionary is provided, 
                     the keys should be the interferometer labels and the values 
@@ -4525,6 +4525,37 @@ class InterferometerArray:
                    all lookup values will be considered for nearest neighbour 
                    determination. tol is to be interpreted as a minimum value 
                    considered as significant in the lookup table. 
+
+        identical_interferometers
+                   [boolean] indicates if all interferometer elements are to be
+                   treated as identical. If True (default), they are identical
+                   and their gridding kernels are identical. If False, they are
+                   not identical and each one has its own gridding kernel.
+
+        gridfunc_freq
+                   [String scalar] If set to None (not provided) or to 'scale'
+                   assumes that attribute wtspos is given for a
+                   reference frequency which need to be scaled for the frequency
+                   channels. Will be ignored if the number of elements of list 
+                   in this attribute under the specific polarization are the same
+                   as the number of frequency channels.
+
+        mapping    [string] indicates the type of mapping between baseline locations
+                   and the grid locations. Allowed values are 'sampled' and 
+                   'weighted' (default). 'sampled' means only the baseline measurement 
+                   closest ot a grid location contributes to that grid location, 
+                   whereas, 'weighted' means that all the baselines contribute in
+                   a weighted fashion to their nearest grid location. The former 
+                   is faster but possibly discards baseline data whereas the latter
+                   is slower but includes all data along with their weights.
+
+        wts_change [boolean] indicates if weights and/or their lcoations have 
+                   changed from the previous intergration or snapshot. 
+                   Default=False means they have not changed. In such a case the 
+                   baseline-to-grid mapping and grid illumination pattern do not 
+                   have to be determined, and mapping and values from the previous 
+                   snapshot can be used. If True, a new mapping has to be 
+                   determined.
 
         verbose    [boolean] If True, prints diagnostic and progress messages. 
                    If False (default), suppress printing such messages.
@@ -4665,7 +4696,7 @@ class InterferometerArray:
                             progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=self.f.size).start()
 
                         for i in xrange(self.f.size):
-                            if weighting == 'natural':
+                            if mapping == 'weighted':
                                 refind, gridind = LKP.find_1NN(gridlocs, reflocs_xy * self.f[i]/FCNST.c, 
                                                               distance_ULIM=distNN*self.f.max()/FCNST.c,
                                                               remove_oob=True)[:2]
@@ -4706,7 +4737,7 @@ class InterferometerArray:
                                 select_bl_ind = self.grid_mapper[cpol]['bl']['rev_ind_all'][self.grid_mapper[cpol]['bl']['rev_ind_all'][j]:self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]]
                                 self.grid_mapper[cpol]['labels'][label] = {}
                                 self.grid_mapper[cpol]['labels'][label]['flag'] = self.interferometers[label].crosspol.flag[cpol]
-                                if weighting == 'natural':
+                                if mapping == 'weighted':
                                     gridind_raveled_around_bl = self.grid_mapper[cpol]['grid']['ind_all'][select_bl_ind]
                                     uniq_gridind_raveled_around_bl = NP.unique(gridind_raveled_around_bl)
                                     self.grid_mapper[cpol]['labels'][label]['gridind'] = uniq_gridind_raveled_around_bl
@@ -4754,7 +4785,7 @@ class InterferometerArray:
                                 select_bl_ind = self.grid_mapper[cpol]['bl']['rev_ind_all'][self.grid_mapper[cpol]['bl']['rev_ind_all'][j]:self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]]
                                 label = self.ordered_labels[self.grid_mapper[cpol]['bl']['uniq_ind_all'][j]]
                                 self.grid_mapper[cpol]['labels'][label]['Vf'] = {}
-                                if weighting == 'natural':
+                                if mapping == 'weighted':
                                     gridind_raveled_around_bl = self.grid_mapper[cpol]['grid']['ind_all'][select_bl_ind]
                                     uniq_gridind_raveled_around_bl = NP.unique(gridind_raveled_around_bl)
                                     self.grid_mapper[cpol]['labels'][label]['Vf'] = OPS.binned_statistic(gridind_raveled_around_bl, contributed_bl_grid_Vf[select_bl_ind].real, statistic='sum', bins=NP.append(uniq_gridind_raveled_around_bl, uniq_gridind_raveled_around_bl.max()+1))[0]
@@ -4770,7 +4801,7 @@ class InterferometerArray:
 
                         # sampled_grid_ind_unraveled = NP.unravel_index(sampled_grid_ind_raveled, self.gridu.shape+(self.f.size,))
                         # PDB.set_trace()
-                        # if weighting == 'natural':
+                        # if mapping == 'weighted':
                         #     uniq_gridind_raveled = NP.unique(sampled_grid_ind_raveled)
                         #     uniq_gridind_unraveled = NP.unravel_index(uniq_gridind_raveled, self.gridu.shape+(self.f.size,))
                         #     grid_val = OPS.binned_statistic(sampled_grid_ind_raveled, contributed_bl_grid_illumination.real, statistic='sum', bins=NP.append(uniq_gridind_raveled, uniq_gridind_raveled.max()+1))[0]
