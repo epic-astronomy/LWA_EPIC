@@ -1,3 +1,15 @@
+From db629df:
+============
+
+(*) Verified a87d0bf is not a buggy version as previously thought and checked 
+the modules function with expected behavior using interferometer_testing_MWA.py
+
+In antenna_array.py,
+
+(*) imported module matplotlib.pyplot to make plots
+(*) in member function imagr() of class NewImage, apply fftshift to 2D fourier
+transform only to axes 0 and 1 and not for the 3rd axes, namely, frequency.
+
 From a87d0bf:
 ============
 
