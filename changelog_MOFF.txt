@@ -1,3 +1,9 @@
+From 3335c88:
+============
+
+(*) Adapted main program interferometer_testing_LWA.py and tested. It was 
+found to work successfully using the current modules.
+
 From a5a819e:
 ============
 
