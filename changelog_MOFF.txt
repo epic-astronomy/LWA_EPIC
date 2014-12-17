@@ -1,3 +1,17 @@
+From dcba750:
+============
+
+In antenna_array.py,
+
+(*) Strengthened parallelization functionality in member function 
+grid_convolve() of class InterferometerArray.
+(*) Added input parameter pp_method to specify the type of parallelization to
+invoke in member function grid_convolve() of class InterferometerArray. 
+Modified docstrings accordingly
+(*) Adapted main programs interferometer_testing_LWA.py and 
+interferometer_testing_MWA.py to take advantage of the parallelized modules.
+They have been tested successfully
+
 From 3335c88:
 ============
 

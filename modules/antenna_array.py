@@ -12,11 +12,42 @@ import my_operations as OPS
 import lookup_operations as LKP
 import ipdb as PDB
 
+################### Routines essential for parallel processing ################
+
 def unwrap_interferometer_FX(arg, **kwarg):
     return Interferometer.FX_new(*arg, **kwarg)
 
 def unwrap_interferometer_update(arg, **kwarg):
     return Interferometer.update_new(*arg, **kwarg)
+
+def baseline_grid_mapping(gridind_raveled, values, bins=None):
+    if bins is None:
+        raise ValueError('Input parameter bins must be specified')
+
+    if NP.iscomplexobj(values):
+        retval = OPS.binned_statistic(gridind_raveled, values.real, statistic='sum', bins=bins)[0]
+        retval = retval.astype(NP.complex64)
+        retval += 1j * OPS.binned_statistic(gridind_raveled, values.imag, statistic='sum', bins=bins)[0]
+    else:
+        retval = OPS.binned_statistic(gridind_raveled, values, statistic='sum', bins=bins)[0]
+
+    print MP.current_process().name
+    return retval
+
+def baseline_grid_mapping_arg_splitter(args, **kwargs):
+    return baseline_grid_mapping(*args, **kwargs)
+
+def baseline_grid_mapper(gridind_raveled, values, bins, label, outq):
+    if NP.iscomplexobj(values):
+        retval = OPS.binned_statistic(gridind_raveled, values.real, statistic='sum', bins=bins)[0]
+        retval = retval.astype(NP.complex64)
+        retval += 1j * OPS.binned_statistic(gridind_raveled, values.imag, statistic='sum', bins=bins)[0]
+    else:
+        retval = OPS.binned_statistic(gridind_raveled, values, statistic='sum', bins=bins)[0]
+    outdict = {}
+    outdict[label] = retval
+    print MP.current_process().name
+    outq.put(outdict)
 
 #################################################################################  
 
@@ -4268,9 +4299,10 @@ class InterferometerArray:
                 self.interferometers[label].FX()
         elif parallel or (nproc is not None):
             if nproc is None:
-                pool = MP.Pool()
+                nproc = max(MP.cpu_count()-1, 1) 
             else:
-                pool = MP.Pool(processes=nproc)
+                nproc = min(nproc, max(MP.cpu_count()-1, 1))
+            pool = MP.Pool(processes=nproc)
             updated_interferometers = pool.map(unwrap_interferometer_FX, IT.izip(self.interferometers.values()))
             pool.close()
             pool.join()
@@ -4450,7 +4482,7 @@ class InterferometerArray:
                       normalize=False, method='NN', distNN=NP.inf, tol=None,
                       maxmatch=None, identical_interferometers=True,
                       gridfunc_freq=None, mapping='weighted', wts_change=False,
-                      verbose=True): 
+                      parallel=False, nproc=None, pp_method='pool', verbose=True): 
 
         """
         ----------------------------------------------------------------------------
@@ -4556,6 +4588,29 @@ class InterferometerArray:
                    have to be determined, and mapping and values from the previous 
                    snapshot can be used. If True, a new mapping has to be 
                    determined.
+
+        parallel   [boolean] specifies if parallelization is to be invoked. 
+                   False (default) means only serial processing
+
+        nprocs     [integer] specifies number of independent processes to spawn.
+                   Default = None, means automatically determines the number of 
+                   process cores in the system and use one less than that to 
+                   avoid locking the system for other processes. Applies only 
+                   if input parameter 'parallel' (see above) is set to True. 
+                   If nprocs is set to a value more than the number of process
+                   cores in the system, it will be reset to number of process 
+                   cores in the system minus one to avoid locking the system out 
+                   for other processes
+
+        pp_method  [string] specifies if the parallelization method is handled
+                   automatically using multirocessing pool or managed manually
+                   by individual processes and collecting results in a queue.
+                   The former is specified by 'pool' (default) and the latter
+                   by 'queue'. These are the two allowed values. The pool method 
+                   has easier bookkeeping and can be fast if the computations 
+                   not expected to be memory bound. The queue method is more
+                   suited for memory bound processes but can be slower or 
+                   inefficient in terms of CPU management.
 
         verbose    [boolean] If True, prints diagnostic and progress messages. 
                    If False (default), suppress printing such messages.
@@ -4723,42 +4778,159 @@ class InterferometerArray:
                                 contributed_bl_grid_Vf = NP.append(contributed_bl_grid_Vf, refwts[refind] * Vf[bl_ind,i])
                                 self.grid_mapper[cpol]['grid']['ind_all'] = NP.append(self.grid_mapper[cpol]['grid']['ind_all'], gridind_raveled)
 
-                            progress.update(i+1)
-                        progress.finish()
+                            if verbose:
+                                progress.update(i+1)
+                        if verbose:
+                            progress.finish()
                                 
                         self.grid_mapper[cpol]['bl']['uniq_ind_all'] = NP.unique(self.grid_mapper[cpol]['bl']['ind_all'])
                         self.grid_mapper[cpol]['bl']['rev_ind_all'] = OPS.binned_statistic(self.grid_mapper[cpol]['bl']['ind_all'], statistic='count', bins=NP.append(self.grid_mapper[cpol]['bl']['uniq_ind_all'], self.grid_mapper[cpol]['bl']['uniq_ind_all'].max()+1))[3]
 
-                        if verbose:
-                            progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=self.grid_mapper[cpol]['bl']['uniq_ind_all'].size).start()
-                        for j in xrange(self.grid_mapper[cpol]['bl']['uniq_ind_all'].size):
-                            label = self.ordered_labels[self.grid_mapper[cpol]['bl']['uniq_ind_all'][j]]
-                            if self.grid_mapper[cpol]['bl']['rev_ind_all'][j] < self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]:
-                                select_bl_ind = self.grid_mapper[cpol]['bl']['rev_ind_all'][self.grid_mapper[cpol]['bl']['rev_ind_all'][j]:self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]]
-                                self.grid_mapper[cpol]['labels'][label] = {}
-                                self.grid_mapper[cpol]['labels'][label]['flag'] = self.interferometers[label].crosspol.flag[cpol]
-                                if mapping == 'weighted':
-                                    gridind_raveled_around_bl = self.grid_mapper[cpol]['grid']['ind_all'][select_bl_ind]
-                                    uniq_gridind_raveled_around_bl = NP.unique(gridind_raveled_around_bl)
-                                    self.grid_mapper[cpol]['labels'][label]['gridind'] = uniq_gridind_raveled_around_bl
+                        if parallel and (mapping == 'weighted'):    # Use parallel processing
 
-                                    self.grid_mapper[cpol]['labels'][label]['Vf'] = OPS.binned_statistic(gridind_raveled_around_bl, contributed_bl_grid_Vf[select_bl_ind].real, statistic='sum', bins=NP.append(uniq_gridind_raveled_around_bl, uniq_gridind_raveled_around_bl.max()+1))[0]
-                                    self.grid_mapper[cpol]['labels'][label]['Vf'] = self.grid_mapper[cpol]['labels'][label]['Vf'].astype(NP.complex64)
-                                    self.grid_mapper[cpol]['labels'][label]['Vf'] += 1j * OPS.binned_statistic(gridind_raveled_around_bl, contributed_bl_grid_Vf[select_bl_ind].imag, statistic='sum', bins=NP.append(uniq_gridind_raveled_around_bl, uniq_gridind_raveled_around_bl.max()+1))[0]
+                            if nproc is None:
+                                nproc = max(MP.cpu_count()-1, 1) 
+                            else:
+                                nproc = min(nproc, max(MP.cpu_count()-1, 1))                            
 
-                                    self.grid_mapper[cpol]['labels'][label]['illumination'] = OPS.binned_statistic(gridind_raveled_around_bl, self.grid_mapper[cpol]['bl']['illumination'][select_bl_ind].real, statistic='sum', bins=NP.append(uniq_gridind_raveled_around_bl, uniq_gridind_raveled_around_bl.max()+1))[0]
-                                    self.grid_mapper[cpol]['labels'][label]['illumination'] = self.grid_mapper[cpol]['labels'][label]['illumination'].astype(NP.complex64)
-                                    self.grid_mapper[cpol]['labels'][label]['illumination'] += 1j * OPS.binned_statistic(gridind_raveled_around_bl, self.grid_mapper[cpol]['bl']['illumination'][select_bl_ind].imag, statistic='sum', bins=NP.append(uniq_gridind_raveled_around_bl, uniq_gridind_raveled_around_bl.max()+1))[0]
+                            if pp_method == 'queue':  ## Use MP.Queue(): useful for memory intensive parallelizing but can be slow
 
-                                else:
-                                    self.grid_mapper[cpol]['labels'][label]['gridind'] = self.grid_mapper[cpol]['grid']['ind_all'][select_bl_ind]
-                                    self.grid_mapper[cpol]['labels'][label]['Vf'] = contributed_bl_grid_Vf[select_bl_ind]
-                                    self.grid_mapper[cpol]['labels'][label]['illumination'] = self.grid_mapper[cpol]['bl']['illumination'][select_bl_ind]
+                                num_bl = self.grid_mapper[cpol]['bl']['uniq_ind_all'].size
+                                job_chunk_begin = range(0,num_bl,nproc)
+                                if verbose:
+                                    progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=len(job_chunk_begin)).start()
+                                for job_start in job_chunk_begin:
+                                    pjobs1 = []
+                                    pjobs2 = []
+                                    out_q1 = MP.Queue()
+                                    out_q2 = MP.Queue()
+    
+                                    for job_ind in xrange(job_start, min(job_start+nproc, num_bl)):
+                                        label = self.ordered_labels[self.grid_mapper[cpol]['bl']['uniq_ind_all'][job_ind]]
+    
+                                        if self.grid_mapper[cpol]['bl']['rev_ind_all'][job_ind] < self.grid_mapper[cpol]['bl']['rev_ind_all'][job_ind+1]:
+        
+                                            self.grid_mapper[cpol]['labels'][label] = {}
+                                            self.grid_mapper[cpol]['labels'][label]['flag'] = self.interferometers[label].crosspol.flag[cpol]
+        
+                                            select_bl_ind = self.grid_mapper[cpol]['bl']['rev_ind_all'][self.grid_mapper[cpol]['bl']['rev_ind_all'][job_ind]:self.grid_mapper[cpol]['bl']['rev_ind_all'][job_ind+1]]
+                                            gridind_raveled_around_bl = self.grid_mapper[cpol]['grid']['ind_all'][select_bl_ind]
+                                            uniq_gridind_raveled_around_bl = NP.unique(gridind_raveled_around_bl)
+                                            self.grid_mapper[cpol]['labels'][label]['gridind'] = uniq_gridind_raveled_around_bl
+                                            pjob1 = MP.Process(target=baseline_grid_mapper, args=(gridind_raveled_around_bl, contributed_bl_grid_Vf[select_bl_ind], NP.append(uniq_gridind_raveled_around_bl, uniq_gridind_raveled_around_bl.max()+1), label, out_q1), name='process-{0:0d}-{1}-visibility'.format(job_ind, label))
+                                            pjob2 = MP.Process(target=baseline_grid_mapper, args=(gridind_raveled_around_bl, self.grid_mapper[cpol]['bl']['illumination'][select_bl_ind], NP.append(uniq_gridind_raveled_around_bl, uniq_gridind_raveled_around_bl.max()+1), label, out_q2), name='process-{0:0d}-{1}-illumination'.format(job_ind, label))
+                                            pjob1.start()
+                                            pjob2.start()
+                                            pjobs1.append(pjob1)
+                                            pjobs2.append(pjob2)
+    
+                                    for p in xrange(len(pjobs1)):
+                                        outdict = out_q1.get()
+                                        label = outdict.keys()[0]
+                                        self.grid_mapper[cpol]['labels'][label]['Vf'] = outdict[label]
+                                        outdict = out_q2.get()
+                                        self.grid_mapper[cpol]['labels'][label]['illumination'] = outdict[label]
+    
+                                    for pjob in pjobs1:
+                                        pjob1.join()
+                                    for pjob in pjobs2:
+                                        pjob2.join()
+        
+                                    del out_q1, out_q2
                                     
+                                    if verbose:
+                                        progress.update(i+1)
+                                if verbose:
+                                    progress.finish()
+                                    
+                            elif pp_method == 'pool':    ## Using MP.Pool.map(): Can be faster if parallelizing is not memory intensive
+
+                                list_of_gridind_raveled_around_bl = []
+                                list_of_bl_grid_values = []
+                                list_of_bl_Vf_contribution = []
+                                list_of_bl_illumination = []
+                                list_of_uniq_gridind_raveled_around_bl = []
+                                list_of_bl_labels = []
+    
+                                for j in xrange(self.grid_mapper[cpol]['bl']['uniq_ind_all'].size): # re-determine gridded visibilities due to each baseline
+    
+                                    label = self.ordered_labels[self.grid_mapper[cpol]['bl']['uniq_ind_all'][j]]
+                                    if self.grid_mapper[cpol]['bl']['rev_ind_all'][j] < self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]:
+    
+                                        self.grid_mapper[cpol]['labels'][label] = {}
+                                        self.grid_mapper[cpol]['labels'][label]['flag'] = self.interferometers[label].crosspol.flag[cpol]
+    
+                                        select_bl_ind = self.grid_mapper[cpol]['bl']['rev_ind_all'][self.grid_mapper[cpol]['bl']['rev_ind_all'][j]:self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]]
+                                        gridind_raveled_around_bl = self.grid_mapper[cpol]['grid']['ind_all'][select_bl_ind]
+                                        uniq_gridind_raveled_around_bl = NP.unique(gridind_raveled_around_bl)
+                                        self.grid_mapper[cpol]['labels'][label]['gridind'] = uniq_gridind_raveled_around_bl
+                                        
+                                        list_of_bl_labels += [label]
+                                        list_of_gridind_raveled_around_bl += [gridind_raveled_around_bl]
+                                        list_of_uniq_gridind_raveled_around_bl += [NP.append(uniq_gridind_raveled_around_bl, uniq_gridind_raveled_around_bl.max()+1)]
+                                        list_of_bl_Vf_contribution += [contributed_bl_grid_Vf[select_bl_ind]]
+                                        list_of_bl_illumination += [self.grid_mapper[cpol]['bl']['illumination'][select_bl_ind]]
+    
+                                if nproc is None:
+                                    nproc = max(MP.cpu_count()-1, 1) 
+                                else:
+                                    nproc = min(nproc, max(MP.cpu_count()-1, 1))
+                                pool = MP.Pool(processes=nproc)
+                                list_of_bl_grid_values = pool.map(baseline_grid_mapping_arg_splitter, IT.izip(list_of_gridind_raveled_around_bl, list_of_bl_Vf_contribution, list_of_uniq_gridind_raveled_around_bl))
+                                pool.close()
+                                pool.join()
+    
+                                for label,grid_values in IT.izip(list_of_bl_labels, list_of_bl_grid_values):
+                                    self.grid_mapper[cpol]['labels'][label]['Vf'] = grid_values
+    
+                                if nproc is None:
+                                    pool = MP.Pool(processes=nproc)
+                                else:
+                                    pool = MP.Pool()
+                                list_of_bl_grid_values = pool.map(baseline_grid_mapping_arg_splitter, IT.izip(list_of_gridind_raveled_around_bl, list_of_bl_illumination, list_of_uniq_gridind_raveled_around_bl))
+                                pool.close()
+                                pool.join()
+    
+                                for label,grid_values in IT.izip(list_of_bl_labels, list_of_bl_grid_values):
+                                    self.grid_mapper[cpol]['labels'][label]['illumination'] = grid_values
+                                
+                                del list_of_bl_grid_values, list_of_gridind_raveled_around_bl, list_of_bl_Vf_contribution, list_of_bl_illumination, list_of_uniq_gridind_raveled_around_bl, list_of_bl_labels
+
+                            else:
+                                raise ValueError('Parallel processing method specified by input parameter ppmethod has to be "pool" or "queue"')
+
+                        else:    # Use serial processing
+
                             if verbose:
-                                progress.update(j+1)
-                        if verbose:
-                            progress.finish()
+                                progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=self.grid_mapper[cpol]['bl']['uniq_ind_all'].size).start()
+                            for j in xrange(self.grid_mapper[cpol]['bl']['uniq_ind_all'].size):
+                                label = self.ordered_labels[self.grid_mapper[cpol]['bl']['uniq_ind_all'][j]]
+                                if self.grid_mapper[cpol]['bl']['rev_ind_all'][j] < self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]:
+                                    select_bl_ind = self.grid_mapper[cpol]['bl']['rev_ind_all'][self.grid_mapper[cpol]['bl']['rev_ind_all'][j]:self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]]
+                                    self.grid_mapper[cpol]['labels'][label] = {}
+                                    self.grid_mapper[cpol]['labels'][label]['flag'] = self.interferometers[label].crosspol.flag[cpol]
+                                    if mapping == 'weighted':
+                                        gridind_raveled_around_bl = self.grid_mapper[cpol]['grid']['ind_all'][select_bl_ind]
+                                        uniq_gridind_raveled_around_bl = NP.unique(gridind_raveled_around_bl)
+                                        self.grid_mapper[cpol]['labels'][label]['gridind'] = uniq_gridind_raveled_around_bl
+    
+                                        self.grid_mapper[cpol]['labels'][label]['Vf'] = OPS.binned_statistic(gridind_raveled_around_bl, contributed_bl_grid_Vf[select_bl_ind].real, statistic='sum', bins=NP.append(uniq_gridind_raveled_around_bl, uniq_gridind_raveled_around_bl.max()+1))[0]
+                                        self.grid_mapper[cpol]['labels'][label]['Vf'] = self.grid_mapper[cpol]['labels'][label]['Vf'].astype(NP.complex64)
+                                        self.grid_mapper[cpol]['labels'][label]['Vf'] += 1j * OPS.binned_statistic(gridind_raveled_around_bl, contributed_bl_grid_Vf[select_bl_ind].imag, statistic='sum', bins=NP.append(uniq_gridind_raveled_around_bl, uniq_gridind_raveled_around_bl.max()+1))[0]
+    
+                                        self.grid_mapper[cpol]['labels'][label]['illumination'] = OPS.binned_statistic(gridind_raveled_around_bl, self.grid_mapper[cpol]['bl']['illumination'][select_bl_ind].real, statistic='sum', bins=NP.append(uniq_gridind_raveled_around_bl, uniq_gridind_raveled_around_bl.max()+1))[0]
+                                        self.grid_mapper[cpol]['labels'][label]['illumination'] = self.grid_mapper[cpol]['labels'][label]['illumination'].astype(NP.complex64)
+                                        self.grid_mapper[cpol]['labels'][label]['illumination'] += 1j * OPS.binned_statistic(gridind_raveled_around_bl, self.grid_mapper[cpol]['bl']['illumination'][select_bl_ind].imag, statistic='sum', bins=NP.append(uniq_gridind_raveled_around_bl, uniq_gridind_raveled_around_bl.max()+1))[0]
+    
+                                    else:
+                                        self.grid_mapper[cpol]['labels'][label]['gridind'] = self.grid_mapper[cpol]['grid']['ind_all'][select_bl_ind]
+                                        self.grid_mapper[cpol]['labels'][label]['Vf'] = contributed_bl_grid_Vf[select_bl_ind]
+                                        self.grid_mapper[cpol]['labels'][label]['illumination'] = self.grid_mapper[cpol]['bl']['illumination'][select_bl_ind]
+                                        
+                                if verbose:
+                                    progress.update(j+1)
+                            if verbose:
+                                progress.finish()
                             
                     else: # Only re-determine gridded visibilities
 
@@ -4778,26 +4950,102 @@ class InterferometerArray:
                         if verbose:
                             progress.finish()
 
-                        if verbose:
-                            progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=self.grid_mapper[cpol]['bl']['uniq_ind_all'].size).start()
-                        for j in xrange(self.grid_mapper[cpol]['bl']['uniq_ind_all'].size): # re-determine gridded visibilities due to each baseline
-                            if self.grid_mapper[cpol]['bl']['rev_ind_all'][j] < self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]:
-                                select_bl_ind = self.grid_mapper[cpol]['bl']['rev_ind_all'][self.grid_mapper[cpol]['bl']['rev_ind_all'][j]:self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]]
-                                label = self.ordered_labels[self.grid_mapper[cpol]['bl']['uniq_ind_all'][j]]
-                                self.grid_mapper[cpol]['labels'][label]['Vf'] = {}
-                                if mapping == 'weighted':
-                                    gridind_raveled_around_bl = self.grid_mapper[cpol]['grid']['ind_all'][select_bl_ind]
-                                    uniq_gridind_raveled_around_bl = NP.unique(gridind_raveled_around_bl)
-                                    self.grid_mapper[cpol]['labels'][label]['Vf'] = OPS.binned_statistic(gridind_raveled_around_bl, contributed_bl_grid_Vf[select_bl_ind].real, statistic='sum', bins=NP.append(uniq_gridind_raveled_around_bl, uniq_gridind_raveled_around_bl.max()+1))[0]
-                                    self.grid_mapper[cpol]['labels'][label]['Vf'] = self.grid_mapper[cpol]['labels'][label]['Vf'].astype(NP.complex64)
-                                    self.grid_mapper[cpol]['labels'][label]['Vf'] += 1j * OPS.binned_statistic(gridind_raveled_around_bl, contributed_bl_grid_Vf[select_bl_ind].imag, statistic='sum', bins=NP.append(uniq_gridind_raveled_around_bl, uniq_gridind_raveled_around_bl.max()+1))[0]
-                                else:
-                                    self.grid_mapper[cpol]['labels'][label]['Vf'] = contributed_bl_grid_Vf[select_bl_ind]
-                            if verbose:
-                                progress.update(j+1)
-                        if verbose:
-                            progress.finish()
+                        if parallel and (mapping == 'weighted'):    # Use parallel processing
 
+                            if nproc is None:
+                                nproc = max(MP.cpu_count()-1, 1) 
+                            else:
+                                nproc = min(nproc, max(MP.cpu_count()-1, 1))                            
+
+                            if pp_method == 'queue':   ## Use MP.Queue(): useful for memory intensive parallelizing but can be slow
+
+                                num_bl = self.grid_mapper[cpol]['bl']['uniq_ind_all'].size
+                                job_chunk_begin = range(0,num_bl,nproc)
+                                if verbose:
+                                    progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=len(job_chunk_begin)).start()
+                                for job_start in job_chunk_begin:
+                                    pjobs = []
+                                    out_q = MP.Queue()
+    
+                                    for job_ind in xrange(job_start, min(job_start+nproc, num_bl)):
+                                        label = self.ordered_labels[self.grid_mapper[cpol]['bl']['uniq_ind_all'][job_ind]]
+    
+                                        if self.grid_mapper[cpol]['bl']['rev_ind_all'][job_ind] < self.grid_mapper[cpol]['bl']['rev_ind_all'][job_ind+1]:
+        
+                                            select_bl_ind = self.grid_mapper[cpol]['bl']['rev_ind_all'][self.grid_mapper[cpol]['bl']['rev_ind_all'][job_ind]:self.grid_mapper[cpol]['bl']['rev_ind_all'][job_ind+1]]
+                                            gridind_raveled_around_bl = self.grid_mapper[cpol]['grid']['ind_all'][select_bl_ind]
+                                            uniq_gridind_raveled_around_bl = self.grid_mapper[cpol]['labels'][label]['gridind']
+                                            pjob = MP.Process(target=baseline_grid_mapper, args=(gridind_raveled_around_bl, contributed_bl_grid_Vf[select_bl_ind], NP.append(uniq_gridind_raveled_around_bl, uniq_gridind_raveled_around_bl.max()+1), label, out_q), name='process-{0:0d}-{1}-visibility'.format(job_ind, label))
+    
+                                            pjob.start()
+                                            pjobs.append(pjob)
+    
+                                    for p in xrange(len(pjobs)):
+                                        outdict = out_q.get()
+                                        label = outdict.keys()[0]
+                                        self.grid_mapper[cpol]['labels'][label]['Vf'] = outdict[label]
+    
+                                    for pjob in pjobs:
+                                        pjob.join()
+        
+                                    del out_q
+                                    
+                                    if verbose:
+                                        progress.update(i+1)
+                                if verbose:
+                                    progress.finish()
+
+                            else:    ## Use MP.Pool.map(): Can be faster if parallelizing is not memory intensive
+
+                                list_of_gridind_raveled_around_bl = []
+                                list_of_bl_Vf_contribution = []
+                                list_of_uniq_gridind_raveled_around_bl = []
+                                list_of_bl_labels = []
+                                for j in xrange(self.grid_mapper[cpol]['bl']['uniq_ind_all'].size): # re-determine gridded visibilities due to each baseline
+                                    if self.grid_mapper[cpol]['bl']['rev_ind_all'][j] < self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]:
+                                        select_bl_ind = self.grid_mapper[cpol]['bl']['rev_ind_all'][self.grid_mapper[cpol]['bl']['rev_ind_all'][j]:self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]]
+                                        label = self.ordered_labels[self.grid_mapper[cpol]['bl']['uniq_ind_all'][j]]
+                                        gridind_raveled_around_bl = self.grid_mapper[cpol]['grid']['ind_all'][select_bl_ind]
+                                        uniq_gridind_raveled_around_bl = NP.unique(gridind_raveled_around_bl)
+                                        list_of_bl_labels += [label]
+                                        list_of_gridind_raveled_around_bl += [gridind_raveled_around_bl]
+                                        list_of_uniq_gridind_raveled_around_bl += [NP.append(uniq_gridind_raveled_around_bl, uniq_gridind_raveled_around_bl.max()+1)]
+                                        list_of_bl_Vf_contribution += [contributed_bl_grid_Vf[select_bl_ind]]
+                                if nproc is None:
+                                    nproc = max(MP.cpu_count()-1, 1) 
+                                else:
+                                    nproc = min(nproc, max(MP.cpu_count()-1, 1))
+                                pool = MP.Pool(processes=nproc)
+                                list_of_grid_Vf = pool.map(baseline_grid_mapping_arg_splitter, IT.izip(list_of_gridind_raveled_around_bl, list_of_bl_Vf_contribution, list_of_uniq_gridind_raveled_around_bl))
+                                pool.close()
+                                pool.join()
+    
+                                for label,grid_Vf in IT.izip(list_of_bl_labels, list_of_grid_Vf):
+                                    self.grid_mapper[cpol]['labels'][label]['Vf'] = grid_Vf
+                                
+                                del list_of_gridind_raveled_around_bl, list_of_grid_Vf, list_of_bl_Vf_contribution, list_of_uniq_gridind_raveled_around_bl, list_of_bl_labels
+
+                        else:          # use serial processing
+                            if verbose:
+                                progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=self.grid_mapper[cpol]['bl']['uniq_ind_all'].size).start()
+                            for j in xrange(self.grid_mapper[cpol]['bl']['uniq_ind_all'].size): # re-determine gridded visibilities due to each baseline
+                                if self.grid_mapper[cpol]['bl']['rev_ind_all'][j] < self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]:
+                                    select_bl_ind = self.grid_mapper[cpol]['bl']['rev_ind_all'][self.grid_mapper[cpol]['bl']['rev_ind_all'][j]:self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]]
+                                    label = self.ordered_labels[self.grid_mapper[cpol]['bl']['uniq_ind_all'][j]]
+                                    self.grid_mapper[cpol]['labels'][label]['Vf'] = {}
+                                    if mapping == 'weighted':
+                                        gridind_raveled_around_bl = self.grid_mapper[cpol]['grid']['ind_all'][select_bl_ind]
+                                        uniq_gridind_raveled_around_bl = self.grid_mapper[cpol]['labels'][label]['gridind']
+                                        # uniq_gridind_raveled_around_bl = NP.unique(gridind_raveled_around_bl)
+                                        self.grid_mapper[cpol]['labels'][label]['Vf'] = OPS.binned_statistic(gridind_raveled_around_bl, contributed_bl_grid_Vf[select_bl_ind].real, statistic='sum', bins=NP.append(uniq_gridind_raveled_around_bl, uniq_gridind_raveled_around_bl.max()+1))[0]
+                                        self.grid_mapper[cpol]['labels'][label]['Vf'] = self.grid_mapper[cpol]['labels'][label]['Vf'].astype(NP.complex64)
+                                        self.grid_mapper[cpol]['labels'][label]['Vf'] += 1j * OPS.binned_statistic(gridind_raveled_around_bl, contributed_bl_grid_Vf[select_bl_ind].imag, statistic='sum', bins=NP.append(uniq_gridind_raveled_around_bl, uniq_gridind_raveled_around_bl.max()+1))[0]
+                                    else:
+                                        self.grid_mapper[cpol]['labels'][label]['Vf'] = contributed_bl_grid_Vf[select_bl_ind]
+                                if verbose:
+                                    progress.update(j+1)
+                            if verbose:
+                                progress.finish()
 
                         # sampled_grid_ind_unraveled = NP.unravel_index(sampled_grid_ind_raveled, self.gridu.shape+(self.f.size,))
                         # PDB.set_trace()
@@ -7178,9 +7426,10 @@ class InterferometerArray:
 
                 if parallel:
                     if nproc is None:
-                        pool = MP.Pool()
+                        nproc = max(MP.cpu_count()-1, 1) 
                     else:
-                        pool = MP.Pool(processes=nproc)
+                        nproc = min(nproc, max(MP.cpu_count()-1, 1))
+                    pool = MP.Pool(processes=nproc)
                     updated_interferometers = pool.map(unwrap_interferometer_update, IT.izip(list_of_interferometers, list_of_interferometer_updates))
                     pool.close()
                     pool.join()
