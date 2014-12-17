@@ -49,6 +49,9 @@ def baseline_grid_mapper(gridind_raveled, values, bins, label, outq):
     print MP.current_process().name
     outq.put(outdict)
 
+def find_1NN_arg_splitter(args, **kwargs):
+    return LKP.find_1NN(*args, **kwargs)
+
 #################################################################################  
 
 class PolInfo:
@@ -4747,51 +4750,153 @@ class InterferometerArray:
                         gridlocs = NP.hstack((self.gridu.reshape(-1,1), self.gridv.reshape(-1,1)))
                         contributed_bl_grid_Vf = None
 
-                        if verbose:
-                            progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=self.f.size).start()
-
-                        for i in xrange(self.f.size):
-                            if mapping == 'weighted':
-                                refind, gridind = LKP.find_1NN(gridlocs, reflocs_xy * self.f[i]/FCNST.c, 
-                                                              distance_ULIM=distNN*self.f.max()/FCNST.c,
-                                                              remove_oob=True)[:2]
+                        if parallel:    # Use parallelization over frequency to determine gridding convolution
+                            if nproc is None:
+                                nproc = max(MP.cpu_count()-1, 1) 
                             else:
-                                gridind, refind = LKP.find_1NN(reflocs_xy * self.f[i]/FCNST.c, gridlocs,
-                                                              distance_ULIM=distNN*self.f.max()/FCNST.c,
-                                                              remove_oob=True)[:2]
+                                nproc = min(nproc, max(MP.cpu_count()-1, 1))
                             
-                            self.grid_mapper[cpol]['refind'] += [refind]
-                            self.grid_mapper[cpol]['gridind'] += [gridind]
+                            if pp_method == 'queue':  ## Use MP.Queue(): useful for memory intensive parallelizing but can be slow
+                                job_chunk_begin = range(0,self.f.size,nproc)
+                                if verbose:
+                                    progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=len(job_chunk_begin)).start()
+                                for i,job_start in enumerate(job_chunk_begin):
+                                    pjobs = []
+                                    out_q = MP.Queue()
+                                    for job_ind in xrange(job_start, min(job_start+nproc, self.f.size)):    # Start the processes and store outputs in the queue
+                                        if mapping == 'weighted':
+                                            pjob = MP.Process(target=LKP.find_1NN_pp, args=(gridlocs, reflocs_xy * self.f[job_ind]/FCNST.c, job_ind, out_q, distNN*self.f.max()/FCNST.c, True), name='process-{0:0d}-channel-{1:0d}'.format(job_ind-job_start, job_ind))
+                                        else:
+                                            pjob = MP.Process(target=LKP.find_1NN_pp, args=(reflocs_xy * self.f[job_ind]/FCNST.c, gridlocs, job_ind, out_q, distNN*self.f.max()/FCNST.c, True), name='process-{0:0d}-channel-{1:0d}'.format(job_ind-job_start, job_ind))             
+                                        pjob.start()
+                                        pjobs.append(pjob)
+                                   
+                                    for p in xrange(len(pjobs)):   # Unpack the queue output
+                                        outdict = out_q.get()
+                                        chan = outdict.keys()[0]
+                                        if mapping == 'weighted':
+                                            refind, gridind = outdict[chan]['inpind'], outdict[chan]['refind']
+                                        else:
+                                            gridind, refind = outdict[chan]['inpind'], outdict[chan]['refind']                                            
+                                        self.grid_mapper[cpol]['refind'] += [refind]
+                                        self.grid_mapper[cpol]['gridind'] += [gridind]
 
-                            bl_ind, lkp_ind = NP.unravel_index(refind, (n_bl, n_wts))
-                            self.grid_mapper[cpol]['bl']['ind_freq'] += [bl_ind]
-                            gridind_unraveled = NP.unravel_index(gridind, self.gridu.shape) + (i+NP.zeros(gridind.size,dtype=int),)
-                            gridind_raveled = NP.ravel_multi_index(gridind_unraveled, self.gridu.shape+(self.f.size,))
-                            if i == 0:
-                                self.grid_mapper[cpol]['bl']['ind_all'] = NP.copy(bl_ind)
-                                self.grid_mapper[cpol]['bl']['illumination'] = refwts[refind]
-                                contributed_bl_grid_Vf = refwts[refind] * Vf[bl_ind,i]
-                                self.grid_mapper[cpol]['grid']['ind_all'] = NP.copy(gridind_raveled)
+                                        bl_ind, lkp_ind = NP.unravel_index(refind, (n_bl, n_wts))
+                                        self.grid_mapper[cpol]['bl']['ind_freq'] += [bl_ind]
+                                        gridind_unraveled = NP.unravel_index(gridind, self.gridu.shape) + (chan+NP.zeros(gridind.size,dtype=int),)
+                                        gridind_raveled = NP.ravel_multi_index(gridind_unraveled, self.gridu.shape+(self.f.size,))
+
+                                        if self.grid_mapper[cpol]['bl']['ind_all'] is None:
+                                            self.grid_mapper[cpol]['bl']['ind_all'] = NP.copy(bl_ind)
+                                            self.grid_mapper[cpol]['bl']['illumination'] = refwts[refind]
+                                            contributed_bl_grid_Vf = refwts[refind] * Vf[bl_ind,chan]
+                                            self.grid_mapper[cpol]['grid']['ind_all'] = NP.copy(gridind_raveled)
+                                        else:
+                                            self.grid_mapper[cpol]['bl']['ind_all'] = NP.append(self.grid_mapper[cpol]['bl']['ind_all'], bl_ind)
+                                            self.grid_mapper[cpol]['bl']['illumination'] = NP.append(self.grid_mapper[cpol]['bl']['illumination'], refwts[refind])
+                                            contributed_bl_grid_Vf = NP.append(contributed_bl_grid_Vf, refwts[refind] * Vf[bl_ind,chan])
+                                            self.grid_mapper[cpol]['grid']['ind_all'] = NP.append(self.grid_mapper[cpol]['grid']['ind_all'], gridind_raveled)
+    
+                                    for pjob in pjobs:
+                                        pjob.join()
+
+                                    del out_q
+
+                                    if verbose:
+                                        progress.update(i+1)
+                                if verbose:
+                                    progress.finish()
+
+                            elif pp_method == 'pool':   ## Using MP.Pool.map(): Can be faster if parallelizing is not memory intensive
+                                list_of_gridlocs = [gridlocs] * self.f.size
+                                list_of_reflocs = [reflocs_xy * f/FCNST.c for f in self.f]
+                                list_of_dist_NN = [distNN*self.f.max()/FCNST.c] * self.f.size
+                                list_of_remove_oob = [True] * self.f.size
+
+                                pool = MP.Pool(processes=nproc)
+                                if mapping == 'weighted':
+                                    list_of_NNout = pool.map(find_1NN_arg_splitter, IT.izip(list_of_gridlocs, list_of_reflocs, list_of_dist_NN, list_of_remove_oob))
+                                else:
+                                    list_of_NNout = pool.map(find_1NN_arg_splitter, IT.izip(list_of_reflocs, list_of_gridlocs, list_of_dist_NN, list_of_remove_oob))
+
+                                pool.close()
+                                pool.join()
+
+                                for chan, NNout in enumerate(list_of_NNout):    # Unpack the pool output
+                                    if mapping == 'weighted':
+                                        refind, gridind = NNout[0], NNout[1]
+                                    else:
+                                        gridind, refind = NNout[0], NNout[1]
+
+                                    self.grid_mapper[cpol]['refind'] += [refind]
+                                    self.grid_mapper[cpol]['gridind'] += [gridind]
+
+                                    bl_ind, lkp_ind = NP.unravel_index(refind, (n_bl, n_wts))
+                                    self.grid_mapper[cpol]['bl']['ind_freq'] += [bl_ind]
+                                    gridind_unraveled = NP.unravel_index(gridind, self.gridu.shape) + (chan+NP.zeros(gridind.size,dtype=int),)
+                                    gridind_raveled = NP.ravel_multi_index(gridind_unraveled, self.gridu.shape+(self.f.size,))
+
+                                    if chan == 0:
+                                        self.grid_mapper[cpol]['bl']['ind_all'] = NP.copy(bl_ind)
+                                        self.grid_mapper[cpol]['bl']['illumination'] = refwts[refind]
+                                        contributed_bl_grid_Vf = refwts[refind] * Vf[bl_ind,chan]
+                                        self.grid_mapper[cpol]['grid']['ind_all'] = NP.copy(gridind_raveled)
+                                    else:
+                                        self.grid_mapper[cpol]['bl']['ind_all'] = NP.append(self.grid_mapper[cpol]['bl']['ind_all'], bl_ind)
+                                        self.grid_mapper[cpol]['bl']['illumination'] = NP.append(self.grid_mapper[cpol]['bl']['illumination'], refwts[refind])
+                                        contributed_bl_grid_Vf = NP.append(contributed_bl_grid_Vf, refwts[refind] * Vf[bl_ind,chan])
+                                        self.grid_mapper[cpol]['grid']['ind_all'] = NP.append(self.grid_mapper[cpol]['grid']['ind_all'], gridind_raveled)
+
                             else:
-                                self.grid_mapper[cpol]['bl']['ind_all'] = NP.append(self.grid_mapper[cpol]['bl']['ind_all'], bl_ind)
-                                self.grid_mapper[cpol]['bl']['illumination'] = NP.append(self.grid_mapper[cpol]['bl']['illumination'], refwts[refind])
-                                contributed_bl_grid_Vf = NP.append(contributed_bl_grid_Vf, refwts[refind] * Vf[bl_ind,i])
-                                self.grid_mapper[cpol]['grid']['ind_all'] = NP.append(self.grid_mapper[cpol]['grid']['ind_all'], gridind_raveled)
+                                raise ValueError('Parallel processing method specified by input parameter ppmethod has to be "pool" or "queue"')
+                            
+                        else:    # Use serial processing over frequency to determine gridding convolution
 
                             if verbose:
-                                progress.update(i+1)
-                        if verbose:
-                            progress.finish()
+                                progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=self.f.size).start()
+    
+                            for i in xrange(self.f.size):
+                                if mapping == 'weighted':
+                                    refind, gridind = LKP.find_1NN(gridlocs, reflocs_xy * self.f[i]/FCNST.c, 
+                                                                  distance_ULIM=distNN*self.f.max()/FCNST.c,
+                                                                  remove_oob=True)[:2]
+                                else:
+                                    gridind, refind = LKP.find_1NN(reflocs_xy * self.f[i]/FCNST.c, gridlocs,
+                                                                  distance_ULIM=distNN*self.f.max()/FCNST.c,
+                                                                  remove_oob=True)[:2]
+                                
+                                self.grid_mapper[cpol]['refind'] += [refind]
+                                self.grid_mapper[cpol]['gridind'] += [gridind]
+    
+                                bl_ind, lkp_ind = NP.unravel_index(refind, (n_bl, n_wts))
+                                self.grid_mapper[cpol]['bl']['ind_freq'] += [bl_ind]
+                                gridind_unraveled = NP.unravel_index(gridind, self.gridu.shape) + (i+NP.zeros(gridind.size,dtype=int),)
+                                gridind_raveled = NP.ravel_multi_index(gridind_unraveled, self.gridu.shape+(self.f.size,))
+                                if i == 0:
+                                    self.grid_mapper[cpol]['bl']['ind_all'] = NP.copy(bl_ind)
+                                    self.grid_mapper[cpol]['bl']['illumination'] = refwts[refind]
+                                    contributed_bl_grid_Vf = refwts[refind] * Vf[bl_ind,i]
+                                    self.grid_mapper[cpol]['grid']['ind_all'] = NP.copy(gridind_raveled)
+                                else:
+                                    self.grid_mapper[cpol]['bl']['ind_all'] = NP.append(self.grid_mapper[cpol]['bl']['ind_all'], bl_ind)
+                                    self.grid_mapper[cpol]['bl']['illumination'] = NP.append(self.grid_mapper[cpol]['bl']['illumination'], refwts[refind])
+                                    contributed_bl_grid_Vf = NP.append(contributed_bl_grid_Vf, refwts[refind] * Vf[bl_ind,i])
+                                    self.grid_mapper[cpol]['grid']['ind_all'] = NP.append(self.grid_mapper[cpol]['grid']['ind_all'], gridind_raveled)
+    
+                                if verbose:
+                                    progress.update(i+1)
+                            if verbose:
+                                progress.finish()
                                 
                         self.grid_mapper[cpol]['bl']['uniq_ind_all'] = NP.unique(self.grid_mapper[cpol]['bl']['ind_all'])
                         self.grid_mapper[cpol]['bl']['rev_ind_all'] = OPS.binned_statistic(self.grid_mapper[cpol]['bl']['ind_all'], statistic='count', bins=NP.append(self.grid_mapper[cpol]['bl']['uniq_ind_all'], self.grid_mapper[cpol]['bl']['uniq_ind_all'].max()+1))[3]
 
-                        if parallel and (mapping == 'weighted'):    # Use parallel processing
+                        if parallel and (mapping == 'weighted'):    # Use parallel processing over baselines to determine baseline-grid mapping of gridded aperture illumination and visibilities
 
                             if nproc is None:
                                 nproc = max(MP.cpu_count()-1, 1) 
                             else:
-                                nproc = min(nproc, max(MP.cpu_count()-1, 1))                            
+                                nproc = min(nproc, max(MP.cpu_count()-1, 1))
 
                             if pp_method == 'queue':  ## Use MP.Queue(): useful for memory intensive parallelizing but can be slow
 
@@ -4805,7 +4910,7 @@ class InterferometerArray:
                                     out_q1 = MP.Queue()
                                     out_q2 = MP.Queue()
     
-                                    for job_ind in xrange(job_start, min(job_start+nproc, num_bl)):
+                                    for job_ind in xrange(job_start, min(job_start+nproc, num_bl)):   # Start the parallel processes and store the output in the queue
                                         label = self.ordered_labels[self.grid_mapper[cpol]['bl']['uniq_ind_all'][job_ind]]
     
                                         if self.grid_mapper[cpol]['bl']['rev_ind_all'][job_ind] < self.grid_mapper[cpol]['bl']['rev_ind_all'][job_ind+1]:
@@ -4824,7 +4929,7 @@ class InterferometerArray:
                                             pjobs1.append(pjob1)
                                             pjobs2.append(pjob2)
     
-                                    for p in xrange(len(pjobs1)):
+                                    for p in xrange(len(pjobs1)):    # Unpack the gridded visibility and aperture illumination information from the pool output
                                         outdict = out_q1.get()
                                         label = outdict.keys()[0]
                                         self.grid_mapper[cpol]['labels'][label]['Vf'] = outdict[label]
@@ -4871,16 +4976,12 @@ class InterferometerArray:
                                         list_of_bl_Vf_contribution += [contributed_bl_grid_Vf[select_bl_ind]]
                                         list_of_bl_illumination += [self.grid_mapper[cpol]['bl']['illumination'][select_bl_ind]]
     
-                                if nproc is None:
-                                    nproc = max(MP.cpu_count()-1, 1) 
-                                else:
-                                    nproc = min(nproc, max(MP.cpu_count()-1, 1))
                                 pool = MP.Pool(processes=nproc)
                                 list_of_bl_grid_values = pool.map(baseline_grid_mapping_arg_splitter, IT.izip(list_of_gridind_raveled_around_bl, list_of_bl_Vf_contribution, list_of_uniq_gridind_raveled_around_bl))
                                 pool.close()
                                 pool.join()
     
-                                for label,grid_values in IT.izip(list_of_bl_labels, list_of_bl_grid_values):
+                                for label,grid_values in IT.izip(list_of_bl_labels, list_of_bl_grid_values):    # Unpack the gridded visibility information from the pool output
                                     self.grid_mapper[cpol]['labels'][label]['Vf'] = grid_values
     
                                 if nproc is None:
@@ -4891,7 +4992,7 @@ class InterferometerArray:
                                 pool.close()
                                 pool.join()
     
-                                for label,grid_values in IT.izip(list_of_bl_labels, list_of_bl_grid_values):
+                                for label,grid_values in IT.izip(list_of_bl_labels, list_of_bl_grid_values):    # Unpack the gridded visibility and aperture illumination information from the pool output
                                     self.grid_mapper[cpol]['labels'][label]['illumination'] = grid_values
                                 
                                 del list_of_bl_grid_values, list_of_gridind_raveled_around_bl, list_of_bl_Vf_contribution, list_of_bl_illumination, list_of_uniq_gridind_raveled_around_bl, list_of_bl_labels
@@ -4899,7 +5000,7 @@ class InterferometerArray:
                             else:
                                 raise ValueError('Parallel processing method specified by input parameter ppmethod has to be "pool" or "queue"')
 
-                        else:    # Use serial processing
+                        else:    # Use serial processing over baselines to determine baseline-grid mapping of gridded aperture illumination and visibilities
 
                             if verbose:
                                 progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=self.grid_mapper[cpol]['bl']['uniq_ind_all'].size).start()
@@ -4967,7 +5068,7 @@ class InterferometerArray:
                                     pjobs = []
                                     out_q = MP.Queue()
     
-                                    for job_ind in xrange(job_start, min(job_start+nproc, num_bl)):
+                                    for job_ind in xrange(job_start, min(job_start+nproc, num_bl)):    # Start the parallel processes and store the outputs in a queue
                                         label = self.ordered_labels[self.grid_mapper[cpol]['bl']['uniq_ind_all'][job_ind]]
     
                                         if self.grid_mapper[cpol]['bl']['rev_ind_all'][job_ind] < self.grid_mapper[cpol]['bl']['rev_ind_all'][job_ind+1]:
@@ -4980,7 +5081,7 @@ class InterferometerArray:
                                             pjob.start()
                                             pjobs.append(pjob)
     
-                                    for p in xrange(len(pjobs)):
+                                    for p in xrange(len(pjobs)):    # Unpack the gridded visibility information from the queue
                                         outdict = out_q.get()
                                         label = outdict.keys()[0]
                                         self.grid_mapper[cpol]['labels'][label]['Vf'] = outdict[label]
@@ -5020,7 +5121,7 @@ class InterferometerArray:
                                 pool.close()
                                 pool.join()
     
-                                for label,grid_Vf in IT.izip(list_of_bl_labels, list_of_grid_Vf):
+                                for label,grid_Vf in IT.izip(list_of_bl_labels, list_of_grid_Vf):    # Unpack the gridded visibility information from the pool output
                                     self.grid_mapper[cpol]['labels'][label]['Vf'] = grid_Vf
                                 
                                 del list_of_gridind_raveled_around_bl, list_of_grid_Vf, list_of_bl_Vf_contribution, list_of_uniq_gridind_raveled_around_bl, list_of_bl_labels

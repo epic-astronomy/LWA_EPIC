@@ -1,3 +1,12 @@
+From daf42c2:
+============
+
+In antenna_array.py,
+
+(*) Added more parallelization functionality in member function grid_convolve()
+of class InterferoemterArray in the nearest neighbour lookup process. And this
+has been tested to work successfully using interferometer_testing_MWA.py.
+
 From dcba750:
 ============
 
