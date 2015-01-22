@@ -54,7 +54,7 @@ def find_1NN_arg_splitter(args, **kwargs):
 
 #################################################################################  
 
-class PolInfo:
+class PolInfo_old:
 
     """
     ----------------------------------------------------------------------------
@@ -343,7 +343,7 @@ class PolInfo:
 
 #####################################################################################
 
-class Antenna:
+class Antenna_old:
 
     """
     ----------------------------------------------------------------------------
@@ -999,7 +999,7 @@ class AntennaPair(Antenna):
 
 ################################################################################
 
-class AntennaArray:
+class AntennaArray_old:
 
     """
     ----------------------------------------------------------------------------
@@ -8692,3 +8692,73 @@ class NewImage:
             print '\tImage information written successfully to FITS file on disk:\n\t\t{0}\n'.format(filename)
 
 #################################################################################
+
+class PolInfo:
+
+    """
+    ----------------------------------------------------------------------------
+    Class to manage polarization information of an antenna. 
+
+    Attributes:
+
+    Et       [dictionary] holds measured complex time series under 2 
+             polarizations which are stored under keys 'P1', and 'P2'
+
+    Ef       [dictionary] holds complex electric field spectra under 2 
+             polarizations which are stored under keys 'P1', and 'P2'. The 
+             length of the spectra is twice that of the time series.
+
+    flag     [dictionary] holds boolean flags for each of the 2 polarizations
+             which are stored under keys 'P1', and 'P2'. Default=True means  
+             that polarization is flagged.
+
+    Member functions:
+
+    __init__():    Initializes an instance of class PolInfo
+
+    __str__():     Prints a summary of current attributes.
+
+    temporal_F():  Perform a Fourier transform of an Electric field time series
+
+    update():      Routine to update the Electric field and flag information.
+    
+    delay_compensation():
+                   Routine to apply delay compensation to Electric field spectra 
+                   through additional phase.
+
+    Read the member function docstrings for details. 
+    ----------------------------------------------------------------------------
+    """
+
+    def __init__(self, nsamples=1):
+        """
+        ------------------------------------------------------------------------
+        Initialize the PolInfo Class which manages polarization information of
+        an antenna. 
+
+        Class attributes initialized are:
+        Et, Ef, flag
+     
+        Read docstring of class PolInfo for details on these attributes.
+        ------------------------------------------------------------------------
+        """
+
+        self.Et = {}
+        self.Ef = {}
+        self.flag = {}
+
+        if not isinstance(nsamples, int):
+            raise TypeError('nsamples must be an integer')
+        elif nsamples <= 0:
+            nsamples = 1
+
+        for pol in ['P1', 'P2']:
+            self.Et[pol] = NP.empty(nsamples, dtype=NP.complex64)
+            self.Ef[pol] = NP.empty(2*nsamples, dtype=NP.complex64)
+            
+            self.Et[pol].fill(NP.nan)
+            self.Ef[pol].fill(NP.nan)
+
+            self.flag[pol] = True
+
+    ############################################################################ 
