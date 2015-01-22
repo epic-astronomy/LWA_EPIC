@@ -8767,3 +8767,32 @@ class PolInfo:
         return ' Instance of class "{0}" in module "{1}" \n flag (P1): {2} \n flag (P2): {3} '.format(self.__class__.__name__, self.__module__, self.flag_P1, self.flag_P2)
 
     ############################################################################ 
+
+    def temporal_F(self, pol=None):
+
+        """
+        ------------------------------------------------------------------------
+        Perform a Fourier transform of an Electric field time series after 
+        doubling the length of the sequence with zero padding (in order to be 
+        identical to what would be obtained from a XF oepration)
+
+        Keyword Input(s):
+
+        pol     polarization to be Fourier transformed. Set to 'P1' or 'P2'. If 
+                None provided, time series of both polarizations are Fourier 
+                transformed.
+        ------------------------------------------------------------------------
+        """
+
+        if pol is None:
+            pol = ['P1', 'P2']
+
+        for p in pol:
+            if p in ['P1', 'P2']:
+                Et = NP.pad(self.Et[p], (0,len(self.Et[p])), 'constant', constant_values=(0,0))
+                self.Ef[p] = DSP.FT1D(Et, ax=0, use_real=False, inverse=False, shift=True)
+            else:
+                raise ValueError('polarization string "{0}" unrecognized. Verify inputs. Aborting {1}.{2}()'.format(p, self.__class__.__name__, 'temporal_F'))
+
+    ############################################################################ 
+

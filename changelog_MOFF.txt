@@ -1,3 +1,11 @@
+From 014cf99:
+============
+
+In antenna_array.py,
+
+(*) Add member function temporal_F() to class PolInfo to compute
+electric field spectrum from time series, with basic docstring
+
 From 6609d93:
 ============
 
