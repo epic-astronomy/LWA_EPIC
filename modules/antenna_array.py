@@ -8762,3 +8762,8 @@ class PolInfo:
             self.flag[pol] = True
 
     ############################################################################ 
+
+    def __str__(self):
+        return ' Instance of class "{0}" in module "{1}" \n flag (P1): {2} \n flag (P2): {3} '.format(self.__class__.__name__, self.__module__, self.flag_P1, self.flag_P2)
+
+    ############################################################################ 

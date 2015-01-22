@@ -1,3 +1,11 @@
+From 6609d93:
+============
+
+In antenna_array.py,
+
+(*) Add member function __str__() to class PolInfo to print brief 
+summary of the information help by an instance of this class
+
 From 1ffbd9b:
 ============
 
