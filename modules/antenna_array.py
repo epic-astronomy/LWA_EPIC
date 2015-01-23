@@ -8911,7 +8911,7 @@ class PolInfo:
 
     ############################################################################ 
 
-    def update(self, Et=None, Ef=None, flags=None):
+    def update(self, Et=None, Ef=None, flags=None, delaydict=None):
         
         """
         ------------------------------------------------------------------------
@@ -8931,6 +8931,34 @@ class PolInfo:
         flag   [dictionary] holds boolean flags for each of the 2 polarizations 
                which are stored under keys 'P1', and 'P2'. Default=None means 
                no updates for flags.
+
+        delaydict
+               [dictionary] contains one or both polarization keys, namely,
+               'P1' and 'P2'. The value under each of these keys is another 
+               dictionary with the following keys and values:
+               'frequencies': scalar, list or numpy vector specifying the 
+                      frequencie(s) (in Hz) for which delays are specified. 
+                      If a scalar is specified, the delays are assumed to be
+                      frequency independent and the delays are assumed to be
+                      valid for all frequencies. If a vector is specified, 
+                      it must be of same size as the delays and as the 
+                      number of samples in the electric field timeseries. 
+                      These frequencies are assumed to match those of the 
+                      electric field spectrum. No default.
+               'delays': list or numpy vector specifying the delays (in 
+                      seconds) at the respective frequencies which are to be 
+                      compensated through additional phase in the electric 
+                      field spectrum. Must be of same size as frequencies 
+                      and the size of the electric field timeseries. No
+                      default.
+               'fftshifted': boolean scalar indicating if the frequencies
+                      provided have already been fft-shifted. If True 
+                      (default) or this key is absent, the frequencies are 
+                      assumed to have been fft-shifted. If False, they have 
+                      to be fft-shifted before applying the delay 
+                      compensation to rightly align with the fft-shifted 
+                      electric field spectrum computed in member function 
+                      temporal_F(). 
         ------------------------------------------------------------------------
         """
 
@@ -8945,6 +8973,7 @@ class PolInfo:
                         if NP.any(NP.isnan(Et[pol])):
                             # self.Et[pol] = NP.nan
                             self.flag[pol] = True
+                self.temporal_F()  # Update the spectrum
             else:
                 raise TypeError('Input parameter Et must be a dictionary')
 
@@ -8958,5 +8987,8 @@ class PolInfo:
                             self.flag[pol] = True
             else:
                 raise TypeError('Input parameter Ef must be a dictionary')
+
+        if delaydict is not None:
+            self.delay_compensation(delaydict)
 
 #################################################################################

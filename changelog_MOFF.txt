@@ -1,3 +1,13 @@
+From c2568ce:
+============
+
+In antenna_array.py,
+
+(*) Modify member function update() of class PolInfo to update the
+spectrum automatically after updating the time series, and also be able
+to update the delay compensation with a new input parameter delaydict. 
+Modify docstring accordingly.
+
 From c2c901a:
 ============
 
