@@ -1,3 +1,11 @@
+From 2d81656:
+============
+
+In antenna_array.py,
+
+(*) Add member function update_flags() to class PolInfo to update the
+current flags. Add basic docstring
+
 From 8ab5bae:
 ============
 

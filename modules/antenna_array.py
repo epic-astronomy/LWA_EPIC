@@ -8801,7 +8801,7 @@ class PolInfo:
         """
         -------------------------------------------------------------------------
         Routine to apply delay compensation to Electric field spectra through
-        additional phase.
+        additional phase. This assumes that the spectra have already been made
 
         Keyword input(s):
 
@@ -8883,3 +8883,30 @@ class PolInfo:
 
     ############################################################################ 
 
+    def update_flags(self, flags=None):
+
+        """
+        ------------------------------------------------------------------------
+        Updates the flags based on current inputs
+    
+        Inputs:
+    
+        flags    [dictionary] holds boolean flags for each of the 2 
+                 polarizations which are stored under keys 'P1', and 'P2'.
+                 Default=None means no new flagging to be applied. If 
+                 the value under the polarization key is True, it is to be 
+                 flagged and if False, it is to be unflagged.
+        ------------------------------------------------------------------------
+        """
+
+        if flags is not None:
+            if not isinstance(flags, dict):
+                raise TypeError('Input parameter flags must be a dictionary')
+            for pol in ['P1', 'P2']:
+                if pol in flags:
+                    if isinstance(flags[pol], bool):
+                        self.flag[pol] = flags[pol]
+                    else:
+                        raise TypeError('flag values must be boolean')
+
+    ############################################################################ 
