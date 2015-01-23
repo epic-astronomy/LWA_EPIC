@@ -8796,3 +8796,90 @@ class PolInfo:
 
     ############################################################################ 
 
+    def delay_compensation(self, delaydict):
+        
+        """
+        -------------------------------------------------------------------------
+        Routine to apply delay compensation to Electric field spectra through
+        additional phase.
+
+        Keyword input(s):
+
+        delaydict   [dictionary] contains one or both polarization keys, namely,
+                    'P1' and 'P2'. The value under each of these keys is another 
+                    dictionary with the following keys and values:
+                    'frequencies': scalar, list or numpy vector specifying the 
+                           frequencie(s) (in Hz) for which delays are specified. 
+                           If a scalar is specified, the delays are assumed to be
+                           frequency independent and the delays are assumed to be
+                           valid for all frequencies. If a vector is specified, 
+                           it must be of same size as the delays and as the 
+                           number of samples in the electric field timeseries. 
+                           These frequencies are assumed to match those of the 
+                           electric field spectrum. No default.
+                    'delays': list or numpy vector specifying the delays (in 
+                           seconds) at the respective frequencies which are to be 
+                           compensated through additional phase in the electric 
+                           field spectrum. Must be of same size as frequencies 
+                           and the size of the electric field timeseries. No
+                           default.
+                    'fftshifted': boolean scalar indicating if the frequencies
+                           provided have already been fft-shifted. If True 
+                           (default) or this key is absent, the frequencies are 
+                           assumed to have been fft-shifted. If False, they have 
+                           to be fft-shifted before applying the delay 
+                           compensation to rightly align with the fft-shifted 
+                           electric field spectrum computed in member function 
+                           temporal_F(). 
+        -------------------------------------------------------------------------
+        """
+
+        try:
+            delaydict
+        except NameError:
+            raise NameError('Delay information must be supplied for delay correction in the dictionary delaydict.')
+
+        if not isinstance(delaydict, dict):
+            raise TypeError('delaydict must be a dictionary')
+
+        for pol in delaydict:
+            if pol not in ['P1','P2']:
+                raise ValueError('Invalid specification for polarization')
+                
+            if 'delays' in delaydict[pol]:
+                if NP.asarray(delaydict[pol]['delays']).size == 1:
+                    delays = delaydict[pol]['delays'] + NP.zeros(self.Et[pol].size)
+                else:
+                    if (NP.asarray(delaydict[pol]['delays']).size == self.Et[pol].size):
+                        delays = NP.asarray(delaydict[pol]['delays']).ravel()
+                    else:
+                        raise IndexError('Size of delays in delaydict must be equal to 1 or match that of the timeseries.')
+
+                if 'frequencies' in delaydict[pol]:
+                    frequencies = NP.asarray(delaydict[pol]['frequencies']).ravel()
+                    if frequencies.size != self.Et[pol].size:
+                        raise IndexError('Size of frequencies must match that of the Electric field time series.')
+                else:
+                    raise KeyError('Key "frequencies" not found in dictionary delaydict[{0}] holding delay information.'.format(pol))
+
+                temp_phases = 2 * NP.pi * delays * frequencies
+
+                # Convert phases to fft-shifted arrangement based on key "fftshifted" in delaydict
+                if 'fftshifted' in delaydict[pol]:
+                    if not isinstance(delaydict[pol]['fftshifted'], bool):
+                        raise TypeError('Value under key "fftshifted" must be boolean')
+
+                    if not delaydict[pol]['fftshifted']:
+                        temp_phases = NP.fft.fftshift(temp_phases)
+
+                # Expand the size to account for the fact that the Fourier transform of the timeseries is obtained after zero padding
+                phases = NP.empty(2*frequencies.size) 
+                phases[0::2] = temp_phases
+                phases[1::2] = temp_phases
+  
+                self.Ef[pol] *= NP.exp(1j * phases)
+                    
+        ## INSERT FEATURE: yet to modify the timeseries after application of delay compensation ##
+
+    ############################################################################ 
+

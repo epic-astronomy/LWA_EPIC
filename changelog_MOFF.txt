@@ -1,3 +1,12 @@
+From 8ab5bae:
+============
+
+In antenna_array.py,
+
+(*) Add member function delay_compensation() to class PolInfo to apply
+delay compensation through phases in the electric field spectra. Add
+basic docstring
+
 From 014cf99:
 ============
 
