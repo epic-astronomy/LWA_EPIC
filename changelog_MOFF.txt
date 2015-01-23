@@ -1,3 +1,11 @@
+From c2c901a:
+============
+
+In antenna_array.py,
+
+(*) Add member function update() to class PolInfo to update the electric
+field time series, spectra and flags. Add basic docstring
+
 From 2d81656:
 ============
 

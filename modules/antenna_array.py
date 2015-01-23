@@ -8910,3 +8910,53 @@ class PolInfo:
                         raise TypeError('flag values must be boolean')
 
     ############################################################################ 
+
+    def update(self, Et=None, Ef=None, flags=None):
+        
+        """
+        ------------------------------------------------------------------------
+        Updates the electric field time series and spectra for different
+        polarizations
+
+        Inputs:
+        
+        Et     [dictionary] holds time series under 2 polarizations which are 
+               stored under keys 'P1', and 'P2'. Default=None implies no updates 
+               for Et.
+
+        Ef     [dictionary] holds spectra under 2 polarizations which are 
+               stored under keys 'P1', and 'P2'. Default=None implies no updates 
+               for Ef.
+
+        flag   [dictionary] holds boolean flags for each of the 2 polarizations 
+               which are stored under keys 'P1', and 'P2'. Default=None means 
+               no updates for flags.
+        ------------------------------------------------------------------------
+        """
+
+        if flags is not None:
+            self.update_flags(flags)
+
+        if Et is not None:
+            if isinstance(Et, dict):
+                for pol in ['P1', 'P2']:
+                    if pol in Et:
+                        self.Et[pol] = Et[pol]
+                        if NP.any(NP.isnan(Et[pol])):
+                            # self.Et[pol] = NP.nan
+                            self.flag[pol] = True
+            else:
+                raise TypeError('Input parameter Et must be a dictionary')
+
+        if Ef is not None:
+            if isinstance(Ef, dict):
+                for pol in ['P1', 'P2']:
+                    if pol in Ef:
+                        self.Ef[pol] = Ef[pol]
+                        if NP.any(NP.isnan(Ef[pol])):
+                            # self.Ef[pol] = NP.nan
+                            self.flag[pol] = True
+            else:
+                raise TypeError('Input parameter Ef must be a dictionary')
+
+#################################################################################
