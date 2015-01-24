@@ -1,3 +1,11 @@
+From 3aa5bd8:
+============
+
+In antenna_array.py,
+
+(*) Add member function update_flags() to class Antenna to update flags
+on the antenna polarizations, with basic docstring
+
 From 519e61b:
 ============
 

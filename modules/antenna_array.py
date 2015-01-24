@@ -9168,3 +9168,21 @@ class Antenna:
 
     #############################################################################
 
+    def update_flags(self, flags=None):
+
+        """
+        ------------------------------------------------------------------------
+        Updates flags for antenna polarizations 
+
+        Inputs:
+
+        flags  [dictionary] boolean flags for each of the 2 polarizations 
+               of the antenna which are stored under keys 'P1' and 'P2',
+               Default=None means no updates for flags.
+        ------------------------------------------------------------------------
+        """
+
+        if flags is not None:
+            self.antpol.update_flags(flags)
+
+    ############################################################################
