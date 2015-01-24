@@ -9151,3 +9151,20 @@ class Antenna:
 
     #################################################################################
 
+    def channels(self):
+
+        """
+        ------------------------------------------------------------------------
+        Computes the frequency channels from a temporal Fourier Transform 
+
+        Output(s):
+
+        Frequencies corresponding to channels obtained by a Fourier Transform
+        of the time series.
+        ------------------------------------------------------------------------
+        """
+
+        return DSP.spectax(2*self.t.size, self.t[1]-self.t[0], shift=True)
+
+    #############################################################################
+

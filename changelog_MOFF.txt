@@ -1,3 +1,11 @@
+From 519e61b:
+============
+
+In antenna_array.py,
+
+(*) Add member function channels() to class Antenna to determine the
+frequencies of the channels. Add basic docstring.
+
 From 81f8d3a:
 ============
 
