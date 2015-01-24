@@ -1,3 +1,12 @@
+From 9ca0421:
+============
+
+In antenna_array.py,
+
+(*) Start a new class Antenna to hold antenna level information and 
+procedures with a preliminary docstring
+(*) Wrote an __init__() member function with basic docstring
+
 From c2568ce:
 ============
 

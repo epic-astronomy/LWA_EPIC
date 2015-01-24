@@ -4645,7 +4645,7 @@ class InterferometerArray:
                             if isinstance(antpairs[key], Interferometer): # required if antpairs is a dictionary and not instance of InterferometerArray
                                 if key in self.interferometers:
                                     if unconvolve_existing: # Effects on the grid of interferometers already existing must be removed 
-                                        if self.interferometers[key]._gridinfo['P11']: # if gridding info is not empty
+                                        if self.interferometers[key]._gridinfo[cpol]: # if gridding info is not empty
                                             for i in range(len(self.f)):
                                                 self.grid_unconvolve(antpairs[key].label)
                                     else:
@@ -8992,3 +8992,156 @@ class PolInfo:
             self.delay_compensation(delaydict)
 
 #################################################################################
+
+class Antenna:
+
+    """
+    ----------------------------------------------------------------------------
+    Class to manage individual antenna information.
+
+    Attributes:
+
+    label:      [Scalar] A unique identifier (preferably a string) for the 
+                antenna. 
+
+    latitude:   [Scalar] Latitude of the antenna's location.
+
+    location:   [Instance of GEOM.Point class] The location of the antenna in 
+                local East, North, Up coordinate system.
+
+    timestamp:  [Scalar] String or float representing the timestamp for the 
+                current attributes
+
+    t:          [vector] The time axis for the time series of electric fields
+
+    f:          [vector] Frequency axis obtained by a Fourier Transform of
+                the electric field time series. Same length as attribute t 
+
+    f0:         [Scalar] Center frequency in Hz.
+
+    antpol:     [Instance of class PolInfo] polarization information for the 
+                antenna. Read docstring of class PolInfo for details
+
+    wts:        [dictionary] The gridding weights for antenna. Different 
+                polarizations 'P1' and 'P2' form the keys 
+                of this dictionary. These values are in general complex. Under 
+                each key, the values are maintained as a list of numpy vectors, 
+                where each vector corresponds to a frequency channel. See 
+                wtspos_scale for more requirements.
+
+    wtspos      [dictionary] two-dimensional locations of the gridding weights in
+                wts for each polarization under keys 'P1' and 'P2'. The locations 
+                are in ENU coordinate system as a list of 2-column numpy arrays. 
+                Each 2-column array in the list is the position of the gridding 
+                weights for a corresponding frequency 
+                channel. The size of the list must be the same as wts and the 
+                number of channels. Units are in number of wavelengths. See 
+                wtspos_scale for more requirements.
+
+    wtspos_scale [dictionary] The scaling of weights is specified for each 
+                 polarization under one of the keys 'P1' and 'P2'. 
+                 The values under these keys can be either None (default) or 
+                 'scale'. If None, numpy vectors in wts and wtspos under
+                 corresponding keys are provided for each frequency channel. If 
+                 set to 'scale' wts and wtspos contain a list of only one 
+                 numpy array corresponding to a reference frequency. This is
+                 scaled internally to correspond to the first channel.
+                 The gridding positions are correspondingly scaled to all the 
+                 frequency channels.
+
+    blc          [2-element numpy array] Bottom Left corner where the
+                 antenna contributes non-zero weight to the grid. Same 
+                 for all polarizations
+
+    trc          [2-element numpy array] Top right corner where the
+                 antenna contributes non-zero weight to the grid. Same 
+                 for all polarizations
+
+    Member Functions:
+
+    __init__():  Initializes an instance of class Antenna
+
+    __str__():   Prints a summary of current attributes
+
+    channels():  Computes the frequency channels from a temporal Fourier 
+                 Transform
+
+    update_flags()
+                 Updates flags for polarizations provided as input parameters
+
+    update():    Updates the antenna instance with newer attribute values
+                 Updates the electric field spectrum and timeseries. It also
+                 applies Fourier transform if timeseries is updated
+
+    save():      Saves the antenna information to disk. Needs serious 
+                 development. 
+
+    Read the member function docstrings for details.
+    ----------------------------------------------------------------------------
+    """
+
+    def __init__(self, label, latitude, location, center_freq, nsamples=1):
+
+        """
+        ------------------------------------------------------------------------
+        Initialize the Antenna Class which manages an antenna's information 
+
+        Class attributes initialized are:
+        label, latitude, location, pol, t, timestamp, f0, f, wts, wtspos, 
+        wtspos_scale, blc, trc, and antpol
+     
+        Read docstring of class Antenna for details on these attributes.
+        ------------------------------------------------------------------------
+        """
+
+        try:
+            label
+        except NameError:
+            raise NameError('Antenna label must be provided.')
+
+        try:
+            latitude
+        except NameError:
+            self.latitude = 0.0
+
+        try:
+            location
+        except NameError:
+            self.location = GEOM.Point()
+
+        try:
+            center_freq
+        except NameError:
+            raise NameError('Center frequency must be provided.')
+
+        self.label = label
+        self.latitude = latitude
+
+        if isinstance(location, GEOM.Point):
+            self.location = location
+        elif isinstance(location, (list, tuple, NP.ndarray)):
+            self.location = GEOM.Point(location)
+        else:
+            raise TypeError('Antenna position must be a 3-element tuple or an instance of GEOM.Point')
+
+        self.antpol = PolInfo(nsamples=nsamples)
+        self.t = 0.0
+        self.timestamp = 0.0
+        self.f0 = center_freq
+        self.f = self.f0
+
+        self.wts = {}
+        self.wtspos = {}
+        self.wtspos_scale = {}
+        self._gridinfo = {}
+
+        for pol in ['P1', 'P2']:
+            self.wtspos[pol] = []
+            self.wts[pol] = []
+            self.wtspos_scale[pol] = None
+            self._gridinfo[pol] = {}
+        
+        self.blc = NP.asarray([self.location.x, self.location.y]).reshape(1,-1)
+        self.trc = NP.asarray([self.location.x, self.location.y]).reshape(1,-1)
+
+    #################################################################################
