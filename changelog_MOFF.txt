@@ -1,3 +1,11 @@
+From 81f8d3a:
+============
+
+In antenna_array.py,
+
+(*) Add member function __str__() to class Antenna to print brief
+summary of the information held by an instance of this class
+
 From 9ca0421:
 ============
 
@@ -56,7 +64,7 @@ From 6609d93:
 In antenna_array.py,
 
 (*) Add member function __str__() to class PolInfo to print brief 
-summary of the information help by an instance of this class
+summary of the information held by an instance of this class
 
 From 1ffbd9b:
 ============

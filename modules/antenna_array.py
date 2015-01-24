@@ -9145,3 +9145,9 @@ class Antenna:
         self.trc = NP.asarray([self.location.x, self.location.y]).reshape(1,-1)
 
     #################################################################################
+
+    def __str__(self):
+        return ' Instance of class "{0}" in module "{1}" \n label: ({2[0]}, {2[1]}) \n location: {3}'.format(self.__class__.__name__, self.__module__, self.label, self.location.__str__())
+
+    #################################################################################
+
