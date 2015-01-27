@@ -1,6 +1,7 @@
 import numpy as NP
 import multiprocessing as MP
 import itertools as IT
+import copy
 import scipy.constants as FCNST
 from astropy.io import fits
 import matplotlib.pyplot as PLT
@@ -3831,8 +3832,82 @@ class InterferometerArray:
                                              
     Member Functions:
 
-    __init__(): 
+    __init__()      Initializes an instance of class InterferometerArray
 
+    __str__()       Prints summary of an instance of this class
+
+    __add__()       Operator overloading for adding interferometer(s)
+
+    __radd__()      Operator overloading for adding interferometer(s)
+
+    __sub__()       Operator overloading for removing interferometer(s)
+
+    add_interferometers()
+                    Routine to add interferometer(s) to the interferometer 
+                    array instance. A wrapper for operator overloading 
+                    __add__() and __radd__()
+
+    remove_interferometers()
+                    Routine to remove interferometer(s) from the interferometer 
+                    array instance. A wrapper for operator overloading __sub__()
+
+    interferometers_containing_antenna()
+                    Find interferometer pairs which contain the specified 
+                    antenna labels
+
+    baseline_vectors()
+                    Routine to return the interferometer label and baseline 
+                    vectors (sorted by interferometer label if specified)
+
+    FX()            Computes the Fourier transform of the cross-correlated time 
+                    series of the interferometer pairs in the interferometer 
+                    array to compute the visibility spectra
+
+    XF()            Computes the visibility spectra by cross-multiplying the 
+                    electric field spectra for all the interferometer pairs in 
+                    the interferometer array
+
+    get_visibilities()
+                    Routine to return the interferometer label and visibilities 
+                    (sorted by interferometer label if specified)
+
+    grid()          Routine to produce a grid based on the interferometer array 
+
+    grid_convolve() Routine to project the complex illumination power pattern 
+                    and the visibilities on the grid. It can operate on the 
+                    entire interferometer array or incrementally project the 
+                    visibilities and complex illumination power patterns from
+                    specific interferometers on to an already existing grid. 
+                    (The latter is not implemented yet)
+
+    grid_convolve_old()
+                    Routine to project the visibility illumination pattern and 
+                    the visibilities on the grid. It can operate on the entire 
+                    antenna array or incrementally project the visibilities and 
+                    illumination patterns from specific antenna pairs on to an
+                    already existing grid.
+
+    make_grid_cube()
+                    Constructs the grid of complex power illumination and 
+                    visibilities using the gridding information determined for 
+                    every baseline. Flags are taken into account while 
+                    constructing this grid.
+
+    grid_unconvolve()
+                    [Needs to be re-written] Routine to de-project the 
+                    visibility illumination pattern and the visibilities on the 
+                    grid. It can operate on the entire interferometer array or 
+                    incrementally de-project the visibilities and illumination 
+                    patterns of specific antenna pairs from an already existing 
+                    grid.
+
+    update_flags()  Updates all flags in the interferometer array followed by 
+                    any flags that need overriding through inputs of specific 
+                    flag information
+
+    update()        Updates the interferometer array instance with newer 
+                    attribute values. Can also be used to add and/or remove 
+                    interferometers with/without affecting the existing grid.
     ----------------------------------------------------------------------------
     """
 
@@ -9381,4 +9456,393 @@ class Antenna:
 
         return self
 
-    #############################################################################
+#################################################################################
+
+class AntennaArray:
+
+    """
+    ----------------------------------------------------------------------------
+    Class to manage collective information on a group of antennas.
+
+    Attributes:
+
+    antennas:    [Dictionary] Dictionary consisting of keys which hold instances
+                 of class Antenna. The keys themselves are identical to the
+                 label attributes of the antenna instances they hold.
+
+    ants_blc_P1  [2-element Numpy array] The coordinates of the bottom left 
+                 corner of the array of antennas for polarization P1.
+
+    ants_trc_P1  [2-element Numpy array] The coordinates of the top right 
+                 corner of the array of antennas for polarization P1.
+
+    ants_blc_P2  [2-element Numpy array] The coordinates of the bottom left 
+                 corner of the array of antennas for polarization P2.
+
+    ants_trc_P2  [2-element Numpy array] The coordinates of the top right 
+                 corner of the array of antennas for polarization P2.
+
+    grid_blc_P1  [2-element Numpy array] The coordinates of the bottom left 
+                 corner of the grid constructed for the array of antennas
+                 for polarization P1. This may differ from ants_blc_P1 due to
+                 any extra padding during the gridding process.
+
+    grid_trc_P1  [2-element Numpy array] The coordinates of the top right 
+                 corner of the grid constructed for the array of antennas
+                 for polarization P1. This may differ from ants_trc_P1 due to
+                 any extra padding during the gridding process.
+
+    grid_blc_P2  [2-element Numpy array] The coordinates of the bottom left 
+                 corner of the grid constructed for the array of antennas
+                 for polarization P2. This may differ from ants_blc_P2 due to
+                 any extra padding during the gridding process.
+
+    grid_trc_P2  [2-element Numpy array] The coordinates of the top right 
+                 corner of the grid constructed for the array of antennas
+                 for polarization P2. This may differ from ants_trc_P2 due to
+                 any extra padding during the gridding process.
+
+    grid_ready_P1 
+                 [boolean] True if the grid has been created for P1 polarization,
+                 False otherwise
+
+    grid_ready_P2
+                 [boolean] True if the grid has been created for P2 polarization,
+                 False otherwise
+
+    gridx_P1     [Numpy array] x-locations of the grid lattice for P1
+                 polarization
+
+    gridy_P1     [Numpy array] y-locations of the grid lattice for P1
+                 polarization
+
+    gridx_P2     [Numpy array] x-locations of the grid lattice for P2
+                 polarization
+
+    gridy_P2     [Numpy array] y-locations of the grid lattice for P2
+                 polarization
+
+    grid_illuminaton_P1
+                 [Numpy array] Electric field illumination for P1 polarization 
+                 on the grid. Could be complex. Same size as the grid
+
+    grid_illuminaton_P2
+                 [Numpy array] Electric field illumination for P2 polarization 
+                 on the grid. Could be complex. Same size as the grid
+
+    grid_Ef_P1   [Numpy array] Complex Electric field of polarization P1 
+                 projected on the grid. 
+
+    grid_Ef_P2   [Numpy array] Complex Electric field of polarization P2 
+                 projected on the grid. 
+
+    f            [Numpy array] Frequency channels (in Hz)
+
+    f0           [Scalar] Center frequency of the observing band (in Hz)
+
+    Member Functions:
+
+    __init__()        Initializes an instance of class AntennaArray which manages
+                      information about an array of antennas.
+                      
+    __str__()         Prints a summary of current attributes
+                      
+    __add__()         Operator overloading for adding antenna(s)
+                      
+    __radd__()        Operator overloading for adding antenna(s)
+                      
+    __sub__()         Operator overloading for removing antenna(s)
+                      
+    add_antennas()    Routine to add antenna(s) to the antenna array instance. 
+                      A wrapper for operator overloading __add__() and __radd__()
+                      
+    remove_antennas() Routine to remove antenna(s) from the antenna array 
+                      instance. A wrapper for operator overloading __sub__()
+                      
+    grid()            Routine to produce a grid based on the antenna array 
+
+    grid_convolve()   Routine to project the electric field illumination pattern
+                      and the electric fields on the grid. It can operate on the
+                      entire antenna array or incrementally project the electric
+                      fields and illumination patterns from specific antennas on
+                      to an already existing grid.
+
+    grid_unconvolve() Routine to de-project the electric field illumination 
+                      pattern and the electric fields on the grid. It can operate 
+                      on the entire antenna array or incrementally de-project the 
+                      electric fields and illumination patterns from specific 
+                      antennas from an already existing grid.
+
+    update():         Updates the antenna array instance with newer attribute
+                      values
+                      
+    save():           Saves the antenna array information to disk. 
+
+    Read the member function docstrings for details.
+    ----------------------------------------------------------------------------
+    """
+
+    def __init__(self, antenna_array=None):
+
+        """
+        ------------------------------------------------------------------------
+        Initialize the AntennaArray Class which manages information about an 
+        array of antennas.
+
+        Class attributes initialized are:
+        antennas, ants_blc_P1, ants_trc_P1, ants_blc_P2, ant_trc_P2, gridx_P1,
+        gridy_P1, gridx_P2, gridy_P2, grid_illumination_P1, 
+        grid_illumination_P2, grid_Ef_P1, grid_Ef_P2, f, f0
+     
+        Read docstring of class AntennaArray for details on these attributes.
+        ------------------------------------------------------------------------
+        """
+
+        self.antennas = {}
+        self.blc = NP.zeros(2)
+        self.trc = NP.zeros(2)
+        self.grid_blc = NP.zeros(2)
+        self.grid_trc = NP.zeros(2)
+        self.gridx, self.gridy = None, None
+        self.gridu, self.gridv = None, None
+        self.grid_ready = False
+        self.grid_illumination = {}
+        self.grid_Ef = {}
+        self.f = None
+        self.f0 = None
+        self.t = None
+        self.timestamp = None
+
+        self._ant_contribution = {}
+
+        self.ordered_labels = [] # Usually output from member function baseline_vectors() or get_visibilities()
+        self.grid_mapper = {}
+
+        for pol in ['P1', 'P2']:
+            self.grid_mapper[pol] = {}
+            self.grid_mapper[pol]['labels'] = {}
+            self.grid_mapper[pol]['refind'] = []
+            # self.grid_mapper[pol]['ant_ind'] = []
+            self.grid_mapper[pol]['gridind'] = []
+            self.grid_mapper[pol]['refwts'] = None
+            self.grid_mapper[pol]['ant'] = {}
+            self.grid_mapper[pol]['ant']['ind_freq'] = []
+            self.grid_mapper[pol]['ant']['ind_all'] = None
+            self.grid_mapper[pol]['ant']['uniq_ind_all'] = None
+            self.grid_mapper[pol]['ant']['rev_ind_all'] = None
+            self.grid_mapper[pol]['ant']['illumination'] = None
+            self.grid_mapper[pol]['grid'] = {}
+            self.grid_mapper[pol]['grid']['ind_all'] = None
+
+            self.grid_illumination[pol] = None
+            self.grid_Ef[pol] = None
+            self._ant_contribution[pol] = {}
+
+        if antenna_array is not None:
+            self += antenna_array
+            self.f = NP.copy(self.antennas.itervalues().next().f)
+            self.f = NP.copy(self.antennas.itervalues().next().f0)
+            self.t = NP.copy(self.antennas.itervalues().next().t)
+            self.timestamp = copy.deepcopy(self.antennas.itervalues().next().timestamp)
+        
+    ################################################################################# 
+
+    def __add__(self, others):
+
+        """
+        ----------------------------------------------------------------------------
+        Operator overloading for adding antenna(s)
+    
+        Inputs:
+    
+        others     [Instance of class AntennaArray, dictionary holding instance(s)
+                   of class Antenna, list of instances of class Antenna, or a single
+                   instance of class Antenna] If a dictionary is provided, the keys
+                   should be the antenna labels and the values should be instances 
+                   of class Antenna. If a list is provided, it should be a list of 
+                   valid instances of class Antenna. These instance(s) of class
+                   Antenna will be added to the existing instance of AntennaArray
+                   class.
+        ----------------------------------------------------------------------------
+        """
+
+        retval = self
+        if isinstance(others, AntennaArray):
+            # for k,v in others.antennas.items():
+            for k,v in others.antennas.iteritems():
+                if k in retval.antennas:
+                    print "Antenna {0} already included in the list of antennas.".format(k)
+                    print "For updating, use the update() method. Ignoring antenna {0}".format(k)
+                else:
+                    retval.antennas[k] = v
+                    print 'Antenna "{0}" added to the list of antennas.'.format(k)
+        elif isinstance(others, dict):
+            # for item in others.values():
+            for item in others.itervalues():
+                if isinstance(item, Antenna):
+                    if item.label in retval.antennas:
+                        print "Antenna {0} already included in the list of antennas.".format(item.label)
+                        print "For updating, use the update() method. Ignoring antenna {0}".format(item.label)
+                    else:
+                        retval.antennas[item.label] = item
+                        print 'Antenna "{0}" added to the list of antennas.'.format(item.label)
+        elif isinstance(others, list):
+            for i in range(len(others)):
+                if isinstance(others[i], Antenna):
+                    if others[i].label in retval.antennas:
+                        print "Antenna {0} already included in the list of antennas.".format(others[i].label)
+                        print "For updating, use the update() method. Ignoring antenna {0}".format(others[i].label)
+                    else:
+                        retval.antennas[others[i].label] = others[i]
+                        print 'Antenna "{0}" added to the list of antennas.'.format(others[i].label)
+                else:
+                    print 'Element \# {0} is not an instance of class Antenna.'.format(i)
+        elif isinstance(others, Antenna):
+            if others.label in retval.antennas:
+                print "Antenna {0} already included in the list of antennas.".format(others.label)
+                print "For updating, use the update() method. Ignoring antenna {0}".format(others[i].label)
+            else:
+                retval.antennas[others.label] = others
+                print 'Antenna "{0}" added to the list of antennas.'.format(others.label)
+        else:
+            print 'Input(s) is/are not instance(s) of class Antenna.'
+
+        return retval
+
+    ################################################################################# 
+
+    def __radd__(self, others):
+
+        """
+        ----------------------------------------------------------------------------
+        Operator overloading for adding antenna(s)
+    
+        Inputs:
+    
+        others     [Instance of class AntennaArray, dictionary holding instance(s)
+                   of class Antenna, list of instances of class Antenna, or a single
+                   instance of class Antenna] If a dictionary is provided, the keys
+                   should be the antenna labels and the values should be instances 
+                   of class Antenna. If a list is provided, it should be a list of 
+                   valid instances of class Antenna. These instance(s) of class
+                   Antenna will be added to the existing instance of AntennaArray
+                   class.
+        ----------------------------------------------------------------------------
+        """
+
+        return self.__add__(others)
+
+    ################################################################################# 
+
+    def __sub__(self, others):
+        """
+        ----------------------------------------------------------------------------
+        Operator overloading for removing antenna(s)
+    
+        Inputs:
+    
+        others     [Instance of class AntennaArray, dictionary holding instance(s)
+                   of class Antenna, list of instances of class Antenna, list of
+                   strings containing antenna labels or a single instance of class
+                   Antenna] If a dictionary is provided, the keys should be the
+                   antenna labels and the values should be instances of class
+                   Antenna. If a list is provided, it should be a list of valid
+                   instances of class Antenna. These instance(s) of class Antenna
+                   will be removed from the existing instance of AntennaArray class.
+        ----------------------------------------------------------------------------
+        """
+
+        retval = self
+        if isinstance(others, dict):
+            for item in others.values():
+                if isinstance(item, Antenna):
+                    if item.label not in retval.antennas:
+                        print "Antenna {0} does not exist in the list of antennas.".format(item.label)
+                    else:
+                        del retval.antennas[item.label]
+                        print 'Antenna "{0}" removed from the list of antennas.'.format(item.label)
+        elif isinstance(others, list):
+            for i in range(0,len(others)):
+                if isinstance(others[i], str):
+                    if others[i] in retval.antennas:
+                        del retval.antennas[others[i]]
+                        print 'Antenna {0} removed from the list of antennas.'.format(others[i])
+                elif isinstance(others[i], Antenna):
+                    if others[i].label in retval.antennas:
+                        del retval.antennas[others[i].label]
+                        print 'Antenna {0} removed from the list of antennas.'.format(others[i].label)
+                    else:
+                        print "Antenna {0} does not exist in the list of antennas.".format(others[i].label)
+                else:
+                    print 'Element \# {0} has no matches in the list of antennas.'.format(i)                        
+        elif others in retval.antennas:
+            del retval.antennas[others]
+            print 'Antenna "{0}" removed from the list of antennas.'.format(others)
+        elif isinstance(others, Antenna):
+            if others.label in retval.antennas:
+                del retval.antennas[others.label]
+                print 'Antenna "{0}" removed from the list of antennas.'.format(others.label)
+            else:
+                print "Antenna {0} does not exist in the list of antennas.".format(others.label)
+        else:
+            print 'No matches found in existing list of antennas.'
+
+        return retval
+
+    ################################################################################# 
+
+    def add_antennas(self, A=None):
+
+        """
+        ----------------------------------------------------------------------------
+        Routine to add antenna(s) to the antenna array instance. A wrapper for
+        operator overloading __add__() and __radd__()
+    
+        Inputs:
+    
+        A          [Instance of class AntennaArray, dictionary holding instance(s)
+                   of class Antenna, list of instances of class Antenna, or a single
+                   instance of class Antenna] If a dictionary is provided, the keys
+                   should be the antenna labels and the values should be instances 
+                   of class Antenna. If a list is provided, it should be a list of 
+                   valid instances of class Antenna. These instance(s) of class
+                   Antenna will be added to the existing instance of AntennaArray
+                   class.
+        ----------------------------------------------------------------------------
+        """
+
+        if A is None:
+            print 'No antenna(s) supplied.'
+        elif isinstance(A, (list, Antenna)):
+            self = self.__add__(A)
+        else:
+            print 'Input(s) is/are not instance(s) of class Antenna.'
+
+    ################################################################################# 
+
+    def remove_antennas(self, A=None):
+
+        """
+        ----------------------------------------------------------------------------
+        Routine to remove antenna(s) from the antenna array instance. A wrapper for
+        operator overloading __sub__()
+    
+        Inputs:
+    
+        A          [Instance of class AntennaArray, dictionary holding instance(s)
+                   of class Antenna, list of instances of class Antenna, or a single
+                   instance of class Antenna] If a dictionary is provided, the keys
+                   should be the antenna labels and the values should be instances 
+                   of class Antenna. If a list is provided, it should be a list of 
+                   valid instances of class Antenna. These instance(s) of class
+                   Antenna will be removed from the existing instance of AntennaArray
+                   class.
+        ----------------------------------------------------------------------------
+        """
+
+        if A is None:
+            print 'No antenna specified for removal.'
+        else:
+            self = self.__sub__(A)
+
+    ################################################################################# 

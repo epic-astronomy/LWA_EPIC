@@ -1,3 +1,14 @@
+From 37f760c:
+============
+
+In antenna_array.py,
+
+(*) Start rewriting class AntennaArray
+(*) Add member function __init__() to class AntennaArray
+(*) Add member functions __add__(), __radd__(), __sub__(),
+add_antennas(), and remove_atennas() to class AntennaArray
+(*) Update docstring of class InterferometerArray
+
 From 8e1668a:
 ============
 
