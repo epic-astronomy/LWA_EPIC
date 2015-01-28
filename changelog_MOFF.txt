@@ -1,3 +1,10 @@
+From b63de09:
+============
+
+In antenna_array.py,
+
+(*) Rename member function temporal_F() in class PolInfo to FT() 
+
 From 37f760c:
 ============
 

@@ -8793,7 +8793,7 @@ class PolInfo:
 
     __str__():     Prints a summary of current attributes.
 
-    temporal_F():  Perform a Fourier transform of an Electric field time series
+    FT():          Perform a Fourier transform of an Electric field time series
 
     update():      Routine to update the Electric field and flag information.
     
@@ -8843,7 +8843,7 @@ class PolInfo:
 
     ############################################################################ 
 
-    def temporal_F(self, pol=None):
+    def FT(self, pol=None):
 
         """
         ------------------------------------------------------------------------
@@ -8867,7 +8867,7 @@ class PolInfo:
                 Et = NP.pad(self.Et[p], (0,len(self.Et[p])), 'constant', constant_values=(0,0))
                 self.Ef[p] = DSP.FT1D(Et, ax=0, use_real=False, inverse=False, shift=True)
             else:
-                raise ValueError('polarization string "{0}" unrecognized. Verify inputs. Aborting {1}.{2}()'.format(p, self.__class__.__name__, 'temporal_F'))
+                raise ValueError('polarization string "{0}" unrecognized. Verify inputs. Aborting {1}.{2}()'.format(p, self.__class__.__name__, 'FT'))
 
     ############################################################################ 
 
@@ -8905,7 +8905,7 @@ class PolInfo:
                            to be fft-shifted before applying the delay 
                            compensation to rightly align with the fft-shifted 
                            electric field spectrum computed in member function 
-                           temporal_F(). 
+                           FT(). 
         -------------------------------------------------------------------------
         """
 
@@ -9033,7 +9033,7 @@ class PolInfo:
                       to be fft-shifted before applying the delay 
                       compensation to rightly align with the fft-shifted 
                       electric field spectrum computed in member function 
-                      temporal_F(). 
+                      FT(). 
         ------------------------------------------------------------------------
         """
 
@@ -9048,7 +9048,7 @@ class PolInfo:
                         if NP.any(NP.isnan(Et[pol])):
                             # self.Et[pol] = NP.nan
                             self.flag[pol] = True
-                self.temporal_F()  # Update the spectrum
+                self.FT()  # Update the spectrum
             else:
                 raise TypeError('Input parameter Et must be a dictionary')
 
