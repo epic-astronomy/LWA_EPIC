@@ -5427,7 +5427,7 @@ class InterferometerArray:
                 raise ValueError('Invalid specification for input parameter pol')
 
             if cpol not in self._bl_contribution:
-                raise KeyError('Key {0} not found in attribute bl_contribution'.format(cpol))
+                raise KeyError('Key {0} not found in attribute _bl_contribution'.format(cpol))
     
             self.grid_illumination[cpol] = NP.zeros((self.gridu.shape + (self.f.size,)), dtype=NP.complex_)
             self.grid_Vf[cpol] = NP.zeros((self.gridu.shape + (self.f.size,)), dtype=NP.complex_)
@@ -10822,5 +10822,66 @@ class AntennaArray:
                                     progress.update(j+1)
                             if verbose:
                                 progress.finish()
+
+    ################################################################################# 
+
+    def make_grid_cube(self, pol=None, verbose=True):
+
+        """
+        ----------------------------------------------------------------------------
+        Constructs the grid of complex field illumination and electric fields using 
+        the gridding information determined for every antenna. Flags are taken
+        into account while constructing this grid.
+
+        Inputs:
+
+        pol     [String] The polarization to be gridded. Can be set to 'P1' or 'P2'.
+                If set to None, gridding for all the polarizations is performed. 
+                Default = None
+        
+        verbose [boolean] If True, prints diagnostic and progress messages. 
+                If False (default), suppress printing such messages.
+        ----------------------------------------------------------------------------
+        """
+
+        if pol is None:
+            pol = ['P1', 'P2']
+
+        pol = NP.unique(NP.asarray(pol))
+        
+        for apol in pol:
+
+            if verbose:
+                print 'Gridding aperture illumination and electric fields for polarization {0} ...'.format(apol)
+
+            if apol not in ['P1', 'P2']:
+                raise ValueError('Invalid specification for input parameter pol')
+
+            if apol not in self._ant_contribution:
+                raise KeyError('Key {0} not found in attribute _ant_contribution'.format(apol))
+    
+            self.grid_illumination[apol] = NP.zeros((self.gridu.shape + (self.f.size,)), dtype=NP.complex_)
+            self.grid_Ef[apol] = NP.zeros((self.gridu.shape + (self.f.size,)), dtype=NP.complex_)
+    
+            labels = self.grid_mapper[apol]['labels'].keys()
+            if verbose:
+                progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=len(labels)).start()
+            loopcount = 0
+            num_unflagged = 0
+            # while loopcount < len(labels):
+            #     antinfo = self.grid_mapper[apol]['labels'].itervalues().next()
+            for antinfo in self.grid_mapper[apol]['labels'].itervalues():
+                if not antinfo['flag']:
+                    num_unflagged += 1
+                    gridind_unraveled = NP.unravel_index(antinfo['gridind'], self.gridu.shape+(self.f.size,))
+                    self.grid_illumination[apol][gridind_unraveled] += antinfo['illumination']
+                    self.grid_Ef[apol][gridind_unraveled] += antinfo['Ef']
+
+                progress.update(loopcount+1)
+                loopcount += 1
+            progress.finish()
+                
+            if verbose:
+                print 'Gridded aperture illumination and electric fields for polarization {0} from {1:0d} unflagged contributing antennas'.format(apol, num_unflagged)
 
     ################################################################################# 

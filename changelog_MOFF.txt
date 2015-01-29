@@ -1,3 +1,10 @@
+From 459b4c5:
+============
+
+In antenna_array.py,
+
+(*) Add member function make_grid_cube() to class AntennaArray
+
 From 8a996c5:
 ============
 
