@@ -1,3 +1,12 @@
+From 8a996c5:
+============
+
+In antenna_array.py,
+
+(*) Add functions antenna_grid_mapping_arg_splitter(), 
+antenna_grid_mapping() and antenna_grid_mapper() to enable parallel
+processing during gridding convolution of antenna kernels
+
 From d4bb9c7:
 ============
 

@@ -24,6 +24,35 @@ def unwrap_interferometer_FX(arg, **kwarg):
 def unwrap_interferometer_update(arg, **kwarg):
     return Interferometer.update_new(*arg, **kwarg)
 
+def antenna_grid_mapping(gridind_raveled, values, bins=None):
+    if bins is None:
+        raise ValueError('Input parameter bins must be specified')
+
+    if NP.iscomplexobj(values):
+        retval = OPS.binned_statistic(gridind_raveled, values.real, statistic='sum', bins=bins)[0]
+        retval = retval.astype(NP.complex64)
+        retval += 1j * OPS.binned_statistic(gridind_raveled, values.imag, statistic='sum', bins=bins)[0]
+    else:
+        retval = OPS.binned_statistic(gridind_raveled, values, statistic='sum', bins=bins)[0]
+
+    print MP.current_process().name
+    return retval
+
+def antenna_grid_mapping_arg_splitter(args, **kwargs):
+    return antenna_grid_mapping(*args, **kwargs)
+
+def antenna_grid_mapper(gridind_raveled, values, bins, label, outq):
+    if NP.iscomplexobj(values):
+        retval = OPS.binned_statistic(gridind_raveled, values.real, statistic='sum', bins=bins)[0]
+        retval = retval.astype(NP.complex64)
+        retval += 1j * OPS.binned_statistic(gridind_raveled, values.imag, statistic='sum', bins=bins)[0]
+    else:
+        retval = OPS.binned_statistic(gridind_raveled, values, statistic='sum', bins=bins)[0]
+    outdict = {}
+    outdict[label] = retval
+    print MP.current_process().name
+    outq.put(outdict)
+
 def baseline_grid_mapping(gridind_raveled, values, bins=None):
     if bins is None:
         raise ValueError('Input parameter bins must be specified')
