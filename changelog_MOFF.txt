@@ -1,3 +1,10 @@
+From d4bb9c7:
+============
+
+In antenna_array.py,
+
+(*) Add member function grid_convolve() to class AntennaArray
+
 From aac7ff5:
 ============
 

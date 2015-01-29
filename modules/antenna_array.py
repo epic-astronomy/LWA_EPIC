@@ -10128,3 +10128,670 @@ class AntennaArray:
 
     ################################################################################# 
 
+    def grid_convolve(self, pol=None, ants=None, unconvolve_existing=False,
+                      normalize=False, method='NN', distNN=NP.inf, tol=None,
+                      maxmatch=None, identical_antennas=True,
+                      gridfunc_freq=None, mapping='weighted', wts_change=False,
+                      parallel=False, nproc=None, pp_method='pool', verbose=True): 
+
+        """
+        ----------------------------------------------------------------------------
+        Routine to project the complex illumination field pattern and the electric
+        fields on the grid. It can operate on the entire antenna array 
+        or incrementally project the electric fields and complex illumination field 
+        patterns from specific antennas on to an already existing grid. (The
+        latter is not implemented yet)
+
+        Inputs:
+
+        pol        [String] The polarization to be gridded. Can be set to 'P1' or 
+                   'P2'. If set to None, gridding for all the polarizations is 
+                   performed. Default = None
+
+        ants       [instance of class AntennaArray, single instance or list 
+                   of instances of class Antenna, or a dictionary holding 
+                   instances of class Antenna] If a dictionary is provided, 
+                   the keys should be the antenna labels and the values 
+                   should be instances of class Antenna. If a list is 
+                   provided, it should be a list of valid instances of class 
+                   Antenna. These instance(s) of class Antenna will 
+                   be merged to the existing grid contained in the instance of 
+                   AntennaArray class. If ants is not provided (set to 
+                   None), the gridding operations will be performed on the entire
+                   set of antennas contained in the instance of class 
+                   AntennaArray. Default = None.
+
+        unconvolve_existing
+                   [Boolean] Default = False. If set to True, the effects of
+                   gridding convolution contributed by the antenna(s) 
+                   specified will be undone before updating the antenna 
+                   measurements on the grid, if the antenna(s) is/are 
+                   already found to in the set of antennas held by the 
+                   instance of AntennaArray. If False and if one or more 
+                   antenna instances specified are already found to be held 
+                   in the instance of class AntennaArray, the code will stop
+                   raising an error indicating the gridding oepration cannot
+                   proceed. 
+
+        normalize  [Boolean] Default = False. If set to True, the gridded weights
+                   are divided by the sum of weights so that the gridded weights 
+                   add up to unity. (Need to work on normaliation)
+
+        method     [string] The gridding method to be used in applying the 
+                   antenna weights on to the antenna array grid. 
+                   Accepted values are 'NN' (nearest neighbour - default), 'CS' 
+                   (cubic spline), or 'BL' (Bi-linear). In case of applying grid 
+                   weights by 'NN' method, an optional distance upper bound for 
+                   the nearest neighbour can be provided in the parameter distNN 
+                   to prune the search and make it efficient. Currently, only the
+                   nearest neighbour method is operational.
+
+        distNN     [scalar] A positive value indicating the upper bound on 
+                   distance to the nearest neighbour in the gridding process. It 
+                   has units of distance, the same units as the antenna 
+                   attribute location and antenna array attribute gridx 
+                   and gridy. Default is NP.inf (infinite distance). It will be 
+                   internally converted to have same units as antenna 
+                   attributes wtspos (units in number of wavelengths)
+
+        maxmatch   [scalar] A positive value indicating maximum number of input 
+                   locations in the antenna grid to be assigned. Default = None. 
+                   If set to None, all the antenna array grid elements specified 
+                   are assigned values for each antenna. For instance, to have 
+                   only one antenna array grid element to be populated per 
+                   antenna, use maxmatch=1. 
+
+        tol        [scalar] If set, only lookup data with abs(val) > tol will be 
+                   considered for nearest neighbour lookup. Default = None implies 
+                   all lookup values will be considered for nearest neighbour 
+                   determination. tol is to be interpreted as a minimum value 
+                   considered as significant in the lookup table. 
+
+        identical_antennas
+                   [boolean] indicates if all antenna elements are to be
+                   treated as identical. If True (default), they are identical
+                   and their gridding kernels are identical. If False, they are
+                   not identical and each one has its own gridding kernel.
+
+        gridfunc_freq
+                   [String scalar] If set to None (not provided) or to 'scale'
+                   assumes that attribute wtspos is given for a
+                   reference frequency which need to be scaled for the frequency
+                   channels. Will be ignored if the number of elements of list 
+                   in this attribute under the specific polarization are the same
+                   as the number of frequency channels.
+
+        mapping    [string] indicates the type of mapping between antenna locations
+                   and the grid locations. Allowed values are 'sampled' and 
+                   'weighted' (default). 'sampled' means only the antenna measurement 
+                   closest ot a grid location contributes to that grid location, 
+                   whereas, 'weighted' means that all the antennas contribute in
+                   a weighted fashion to their nearest grid location. The former 
+                   is faster but possibly discards antenna data whereas the latter
+                   is slower but includes all data along with their weights.
+
+        wts_change [boolean] indicates if weights and/or their lcoations have 
+                   changed from the previous intergration or snapshot. 
+                   Default=False means they have not changed. In such a case the 
+                   antenna-to-grid mapping and grid illumination pattern do not 
+                   have to be determined, and mapping and values from the previous 
+                   snapshot can be used. If True, a new mapping has to be 
+                   determined.
+
+        parallel   [boolean] specifies if parallelization is to be invoked. 
+                   False (default) means only serial processing
+
+        nprocs     [integer] specifies number of independent processes to spawn.
+                   Default = None, means automatically determines the number of 
+                   process cores in the system and use one less than that to 
+                   avoid locking the system for other processes. Applies only 
+                   if input parameter 'parallel' (see above) is set to True. 
+                   If nprocs is set to a value more than the number of process
+                   cores in the system, it will be reset to number of process 
+                   cores in the system minus one to avoid locking the system out 
+                   for other processes
+
+        pp_method  [string] specifies if the parallelization method is handled
+                   automatically using multirocessing pool or managed manually
+                   by individual processes and collecting results in a queue.
+                   The former is specified by 'pool' (default) and the latter
+                   by 'queue'. These are the two allowed values. The pool method 
+                   has easier bookkeeping and can be fast if the computations 
+                   not expected to be memory bound. The queue method is more
+                   suited for memory bound processes but can be slower or 
+                   inefficient in terms of CPU management.
+
+        verbose    [boolean] If True, prints diagnostic and progress messages. 
+                   If False (default), suppress printing such messages.
+        ----------------------------------------------------------------------------
+        """
+
+        eps = 1.0e-10
+        if pol is None:
+            pol = ['P1', 'P2']
+        elif not isinstance(pol, list):
+            pol = [pol]
+
+        if not self.grid_ready:
+            self.grid()
+
+        antpol = ['P1', 'P2']
+
+        for apol in antpol:
+            if apol in pol:
+
+                if ants is not None:
+    
+                    if isinstance(ants, Antenna):
+                        ants = [ants]
+    
+                    if isinstance(ants, (dict, AntennaArray)):
+                        # Check if these antennas are new or old and compatible
+                        for key in ants: 
+                            if isinstance(ants[key], Antenna): # required if ants is a dictionary and not instance of AntennaArray
+                                if key in self.antennas:
+                                    if unconvolve_existing: # Effects on the grid of antennas already existing must be removed 
+                                        if self.antennas[key]._gridinfo[apol]: # if gridding info is not empty
+                                            for i in range(len(self.f)):
+                                                self.grid_unconvolve(ants[key].label)
+                                    else:
+                                        raise KeyError('Antenna {0} already found to exist in the dictionary of antennas but cannot proceed grid_convolve() without unconvolving first.'.format(ants[key].label)) 
+                                
+                            else:
+                                del ants[key] # remove the dictionary element since it is not an Antenna instance
+                
+                    if identical_antennas and (gridfunc_freq == 'scale'):
+                        ant_dict = self.antenna_positions(pol=apol, flag=False, sort=True)
+                        ant_xy = ant_dict['positions'][:,:2]
+                        self.ordered_labels = ant_dict['labels']
+                        n_ant = ant_xy.shape[0]
+
+                        Ef_dict = self.get_E_fields(apol, flag=False, sort=True)
+                        Ef = Ef_dict['E-fields'].astype(NP.complex64)
+
+                        # Since antennas are identical, read from first antenna, since wtspos are scaled with frequency, read from first frequency channel
+                        wtspos_xy = ants[0].wtspos[apol][0] * FCNST.c/self.f[0] 
+                        wts = ants[0].wts[apol][0]
+                        n_wts = wts.size
+
+                        reflocs_xy = ant_xy[:,NP.newaxis,:] + wtspos_xy[NP.newaxis,:,:]
+                        refwts_xy = wts.reshape(1,-1) * NP.ones((n_ant,1))
+
+                        reflocs_xy = reflocs_xy.reshape(-1,ant_xy.shape[1])
+                        refwts_xy = refwts_xy.reshape(-1,1).astype(NP.complex64)
+                        reflocs_uv = reflocs_xy[:,NP.newaxis,:] * self.f.reshape(1,-1,1) / FCNST.c
+                        refwts_uv = refwts_xy * NP.ones((1,self.f.size))
+                        reflocs_uv = reflocs_uv.reshape(-1,ant_xy.shape[1])
+                        refwts_uv = refwts_uv.reshape(-1,1).ravel()
+
+                        inplocs = NP.hstack((self.gridu.reshape(-1,1), self.gridv.reshape(-1,1)))
+                        ibind, nnval = LKP.lookup_1NN(reflocs_uv, refwts_uv, inplocs,
+                                                      distance_ULIM=distNN*self.f.max()/FCNST.c,
+                                                      remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
+                        
+                else:  
+
+                    # self.grid_illumination[apol] = NP.zeros((self.gridu.shape + (self.f.size,)), dtype=NP.complex_)
+                    # self.grid_Ef[apol] = NP.zeros((self.gridu.shape + (self.f.size,)), dtype=NP.complex_)
+
+                    ant_dict = self.antenna_positions(pol=apol, flag=None, sort=True)
+                    self.ordered_labels = ant_dict['labels']
+                    ant_xy = ant_dict['positions'][:,:2] # n_ant x 2
+                    n_ant = ant_xy.shape[0]
+
+                    Ef_dict = self.get_E_fields(apol, flag=None, sort=True)
+                    Ef = Ef_dict['E-fields'].astype(NP.complex64)  # n_ant x nchan
+                    if Ef.shape[0] != n_ant:
+                        raise ValueError('Encountered unexpected behavior. Need to debug.')
+                    if verbose:
+                        print 'Gathered antenna data for gridding convolution for timestamp {0}'.format(self.timestamp)
+
+                    if wts_change or (not self.grid_mapper[apol]['labels']):
+    
+                        if gridfunc_freq == 'scale':
+                            if identical_antennas:
+    
+                                wts_tol = 1e-6
+    
+                                # Since antennas are identical, read from first antenna, since wtspos are scaled with frequency, read from first frequency channel
+    
+                                wtspos_xy = self.antennas.itervalues().next().wtspos[apol][0] * FCNST.c/self.f[0] 
+                                wts = self.antennas.itervalues().next().wts[apol][0].astype(NP.complex64)
+                                wtspos_xy = wtspos_xy[NP.abs(wts) >= wts_tol, :]
+                                wts = wts[NP.abs(wts) >= wts_tol]
+                                n_wts = wts.size
+        
+                                reflocs_xy = ant_xy[:,NP.newaxis,:] + wtspos_xy[NP.newaxis,:,:] # n_ant x n_wts x 2 
+                                refwts = wts.reshape(1,-1) * NP.ones((n_ant,1))  # n_ant x n_wts
+                                # refwts_xy = wts.reshape(1,-1) * NP.ones((n_ant,1))  # n_ant x n_wts
+        
+                                # refwts_xy = refwts_xy.reshape(-1,1)  # (n_ant x n_wts) x 1
+                                # reflocs_uv = reflocs_xy[:,NP.newaxis,:] * self.f.reshape(1,-1,1) / FCNST.c  # (n_ant x n_wts) x nchan x 2
+                                # refwts_uv = refwts_xy * NP.ones((1,self.f.size))  # (n_ant x n_wts) x nchan
+                                # Ef_uv = Ef[:,NP.newaxis,:] * NP.ones((1,n_wts,1))  # n_ant x n_wts x nchan
+                                # Ef_uv = Ef_uv.reshape(-1,1)  # (n_ant x n_wts x nchan) x 1
+                                # reflocs_uv = reflocs_uv.reshape(-1,ant_xy.shape[1])  # (n_ant x n_wts x nchan) x 2
+                                # refwts_uv = refwts_uv.reshape(-1,1).ravel()  # (n_ant x n_wts x nchan)
+                                # Ef_uv = Ef_uv.reshape(-1,1).ravel()  # (n_ant x n_wts x nchan)
+    
+                            else:
+                                for i,label in enumerate(self.ordered_labels):
+                                    ant_wtspos = self.antennas[label].wtspos[apol][0]
+                                    ant_wts = self.antennas[label].wts[apol][0].astype(NP.complex64)
+                                    if i == 0:
+                                        wtspos = ant_wtspos[NP.newaxis,:,:] # 1 x n_wts x 2
+                                        refwts = ant_wts.reshape(1,-1) # 1 x n_wts
+                                    else:
+                                        wtspos = NP.vstack((wtspos, ant_wtspos[NP.newaxis,:,:])) # n_ant x n_wts x 2
+                                        refwts = NP.vstack((refwts, ant_wts.reshape(1,-1))) # n_ant x n_wts
+                                    reflocs_xy = ant_xy[:,NP.newaxis,:] + wtspos * FCNST.c/self.f[0] # n_ant x n_wts x 2
+                                    
+                            reflocs_xy = reflocs_xy.reshape(-1,ant_xy.shape[1])  # (n_ant x n_wts) x 2
+                            refwts = refwts.ravel()
+                            self.grid_mapper[apol]['refwts'] = NP.copy(refwts.ravel()) # (n_ant x n_wts)
+                            
+                        else: # Weights do not scale with frequency (needs serious development)
+                            pass
+                            
+                        gridlocs = NP.hstack((self.gridu.reshape(-1,1), self.gridv.reshape(-1,1)))
+                        contributed_ant_grid_Ef = None
+
+                        if parallel:    # Use parallelization over frequency to determine gridding convolution
+                            if nproc is None:
+                                nproc = max(MP.cpu_count()-1, 1) 
+                            else:
+                                nproc = min(nproc, max(MP.cpu_count()-1, 1))
+                            
+                            if pp_method == 'queue':  ## Use MP.Queue(): useful for memory intensive parallelizing but can be slow
+                                job_chunk_begin = range(0,self.f.size,nproc)
+                                if verbose:
+                                    progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=len(job_chunk_begin)).start()
+                                for i,job_start in enumerate(job_chunk_begin):
+                                    pjobs = []
+                                    out_q = MP.Queue()
+                                    for job_ind in xrange(job_start, min(job_start+nproc, self.f.size)):    # Start the processes and store outputs in the queue
+                                        if mapping == 'weighted':
+                                            pjob = MP.Process(target=LKP.find_1NN_pp, args=(gridlocs, reflocs_xy * self.f[job_ind]/FCNST.c, job_ind, out_q, distNN*self.f.max()/FCNST.c, True), name='process-{0:0d}-channel-{1:0d}'.format(job_ind-job_start, job_ind))
+                                        else:
+                                            pjob = MP.Process(target=LKP.find_1NN_pp, args=(reflocs_xy * self.f[job_ind]/FCNST.c, gridlocs, job_ind, out_q, distNN*self.f.max()/FCNST.c, True), name='process-{0:0d}-channel-{1:0d}'.format(job_ind-job_start, job_ind))             
+                                        pjob.start()
+                                        pjobs.append(pjob)
+                                   
+                                    for p in xrange(len(pjobs)):   # Unpack the queue output
+                                        outdict = out_q.get()
+                                        chan = outdict.keys()[0]
+                                        if mapping == 'weighted':
+                                            refind, gridind = outdict[chan]['inpind'], outdict[chan]['refind']
+                                        else:
+                                            gridind, refind = outdict[chan]['inpind'], outdict[chan]['refind']                                            
+                                        self.grid_mapper[apol]['refind'] += [refind]
+                                        self.grid_mapper[apol]['gridind'] += [gridind]
+
+                                        ant_ind, lkp_ind = NP.unravel_index(refind, (n_ant, n_wts))
+                                        self.grid_mapper[apol]['ant']['ind_freq'] += [ant_ind]
+                                        gridind_unraveled = NP.unravel_index(gridind, self.gridu.shape) + (chan+NP.zeros(gridind.size,dtype=int),)
+                                        gridind_raveled = NP.ravel_multi_index(gridind_unraveled, self.gridu.shape+(self.f.size,))
+
+                                        if self.grid_mapper[apol]['ant']['ind_all'] is None:
+                                            self.grid_mapper[apol]['ant']['ind_all'] = NP.copy(ant_ind)
+                                            self.grid_mapper[apol]['ant']['illumination'] = refwts[refind]
+                                            contributed_ant_grid_Ef = refwts[refind] * Ef[ant_ind,chan]
+                                            self.grid_mapper[apol]['grid']['ind_all'] = NP.copy(gridind_raveled)
+                                        else:
+                                            self.grid_mapper[apol]['ant']['ind_all'] = NP.append(self.grid_mapper[apol]['ant']['ind_all'], ant_ind)
+                                            self.grid_mapper[apol]['ant']['illumination'] = NP.append(self.grid_mapper[apol]['ant']['illumination'], refwts[refind])
+                                            contributed_ant_grid_Ef = NP.append(contributed_ant_grid_Ef, refwts[refind] * Ef[ant_ind,chan])
+                                            self.grid_mapper[apol]['grid']['ind_all'] = NP.append(self.grid_mapper[apol]['grid']['ind_all'], gridind_raveled)
+    
+                                    for pjob in pjobs:
+                                        pjob.join()
+
+                                    del out_q
+
+                                    if verbose:
+                                        progress.update(i+1)
+                                if verbose:
+                                    progress.finish()
+
+                            elif pp_method == 'pool':   ## Using MP.Pool.map(): Can be faster if parallelizing is not memory intensive
+                                list_of_gridlocs = [gridlocs] * self.f.size
+                                list_of_reflocs = [reflocs_xy * f/FCNST.c for f in self.f]
+                                list_of_dist_NN = [distNN*self.f.max()/FCNST.c] * self.f.size
+                                list_of_remove_oob = [True] * self.f.size
+
+                                pool = MP.Pool(processes=nproc)
+                                if mapping == 'weighted':
+                                    list_of_NNout = pool.map(find_1NN_arg_splitter, IT.izip(list_of_gridlocs, list_of_reflocs, list_of_dist_NN, list_of_remove_oob))
+                                else:
+                                    list_of_NNout = pool.map(find_1NN_arg_splitter, IT.izip(list_of_reflocs, list_of_gridlocs, list_of_dist_NN, list_of_remove_oob))
+
+                                pool.close()
+                                pool.join()
+
+                                for chan, NNout in enumerate(list_of_NNout):    # Unpack the pool output
+                                    if mapping == 'weighted':
+                                        refind, gridind = NNout[0], NNout[1]
+                                    else:
+                                        gridind, refind = NNout[0], NNout[1]
+
+                                    self.grid_mapper[apol]['refind'] += [refind]
+                                    self.grid_mapper[apol]['gridind'] += [gridind]
+
+                                    ant_ind, lkp_ind = NP.unravel_index(refind, (n_ant, n_wts))
+                                    self.grid_mapper[apol]['ant']['ind_freq'] += [ant_ind]
+                                    gridind_unraveled = NP.unravel_index(gridind, self.gridu.shape) + (chan+NP.zeros(gridind.size,dtype=int),)
+                                    gridind_raveled = NP.ravel_multi_index(gridind_unraveled, self.gridu.shape+(self.f.size,))
+
+                                    if chan == 0:
+                                        self.grid_mapper[apol]['ant']['ind_all'] = NP.copy(ant_ind)
+                                        self.grid_mapper[apol]['ant']['illumination'] = refwts[refind]
+                                        contributed_ant_grid_Ef = refwts[refind] * Ef[ant_ind,chan]
+                                        self.grid_mapper[apol]['grid']['ind_all'] = NP.copy(gridind_raveled)
+                                    else:
+                                        self.grid_mapper[apol]['ant']['ind_all'] = NP.append(self.grid_mapper[apol]['ant']['ind_all'], ant_ind)
+                                        self.grid_mapper[apol]['ant']['illumination'] = NP.append(self.grid_mapper[apol]['ant']['illumination'], refwts[refind])
+                                        contributed_ant_grid_Ef = NP.append(contributed_ant_grid_Ef, refwts[refind] * Ef[ant_ind,chan])
+                                        self.grid_mapper[apol]['grid']['ind_all'] = NP.append(self.grid_mapper[apol]['grid']['ind_all'], gridind_raveled)
+
+                            else:
+                                raise ValueError('Parallel processing method specified by input parameter ppmethod has to be "pool" or "queue"')
+                            
+                        else:    # Use serial processing over frequency to determine gridding convolution
+
+                            if verbose:
+                                progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=self.f.size).start()
+    
+                            for i in xrange(self.f.size):
+                                if mapping == 'weighted':
+                                    refind, gridind = LKP.find_1NN(gridlocs, reflocs_xy * self.f[i]/FCNST.c, 
+                                                                  distance_ULIM=distNN*self.f.max()/FCNST.c,
+                                                                  remove_oob=True)[:2]
+                                else:
+                                    gridind, refind = LKP.find_1NN(reflocs_xy * self.f[i]/FCNST.c, gridlocs,
+                                                                  distance_ULIM=distNN*self.f.max()/FCNST.c,
+                                                                  remove_oob=True)[:2]
+                                
+                                self.grid_mapper[apol]['refind'] += [refind]
+                                self.grid_mapper[apol]['gridind'] += [gridind]
+    
+                                ant_ind, lkp_ind = NP.unravel_index(refind, (n_ant, n_wts))
+                                self.grid_mapper[apol]['ant']['ind_freq'] += [ant_ind]
+                                gridind_unraveled = NP.unravel_index(gridind, self.gridu.shape) + (i+NP.zeros(gridind.size,dtype=int),)
+                                gridind_raveled = NP.ravel_multi_index(gridind_unraveled, self.gridu.shape+(self.f.size,))
+                                if i == 0:
+                                    self.grid_mapper[apol]['ant']['ind_all'] = NP.copy(ant_ind)
+                                    self.grid_mapper[apol]['ant']['illumination'] = refwts[refind]
+                                    contributed_ant_grid_Ef = refwts[refind] * Ef[ant_ind,i]
+                                    self.grid_mapper[apol]['grid']['ind_all'] = NP.copy(gridind_raveled)
+                                else:
+                                    self.grid_mapper[apol]['ant']['ind_all'] = NP.append(self.grid_mapper[apol]['ant']['ind_all'], ant_ind)
+                                    self.grid_mapper[apol]['ant']['illumination'] = NP.append(self.grid_mapper[apol]['ant']['illumination'], refwts[refind])
+                                    contributed_ant_grid_Ef = NP.append(contributed_ant_grid_Ef, refwts[refind] * Ef[ant_ind,i])
+                                    self.grid_mapper[apol]['grid']['ind_all'] = NP.append(self.grid_mapper[apol]['grid']['ind_all'], gridind_raveled)
+    
+                                if verbose:
+                                    progress.update(i+1)
+                            if verbose:
+                                progress.finish()
+                                
+                        self.grid_mapper[apol]['ant']['uniq_ind_all'] = NP.unique(self.grid_mapper[apol]['ant']['ind_all'])
+                        self.grid_mapper[apol]['ant']['rev_ind_all'] = OPS.binned_statistic(self.grid_mapper[apol]['ant']['ind_all'], statistic='count', bins=NP.append(self.grid_mapper[apol]['ant']['uniq_ind_all'], self.grid_mapper[apol]['ant']['uniq_ind_all'].max()+1))[3]
+
+                        if parallel and (mapping == 'weighted'):    # Use parallel processing over antennas to determine antenna-grid mapping of gridded aperture illumination and electric fields
+
+                            if nproc is None:
+                                nproc = max(MP.cpu_count()-1, 1) 
+                            else:
+                                nproc = min(nproc, max(MP.cpu_count()-1, 1))
+
+                            if pp_method == 'queue':  ## Use MP.Queue(): useful for memory intensive parallelizing but can be slow
+
+                                num_ant = self.grid_mapper[apol]['ant']['uniq_ind_all'].size
+                                job_chunk_begin = range(0,num_ant,nproc)
+                                if verbose:
+                                    progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=len(job_chunk_begin)).start()
+                                for job_start in job_chunk_begin:
+                                    pjobs1 = []
+                                    pjobs2 = []
+                                    out_q1 = MP.Queue()
+                                    out_q2 = MP.Queue()
+    
+                                    for job_ind in xrange(job_start, min(job_start+nproc, num_ant)):   # Start the parallel processes and store the output in the queue
+                                        label = self.ordered_labels[self.grid_mapper[apol]['ant']['uniq_ind_all'][job_ind]]
+    
+                                        if self.grid_mapper[apol]['ant']['rev_ind_all'][job_ind] < self.grid_mapper[apol]['ant']['rev_ind_all'][job_ind+1]:
+        
+                                            self.grid_mapper[apol]['labels'][label] = {}
+                                            self.grid_mapper[apol]['labels'][label]['flag'] = self.antennas[label].antpol.flag[apol]
+        
+                                            select_ant_ind = self.grid_mapper[apol]['ant']['rev_ind_all'][self.grid_mapper[apol]['ant']['rev_ind_all'][job_ind]:self.grid_mapper[apol]['ant']['rev_ind_all'][job_ind+1]]
+                                            gridind_raveled_around_ant = self.grid_mapper[apol]['grid']['ind_all'][select_ant_ind]
+                                            uniq_gridind_raveled_around_ant = NP.unique(gridind_raveled_around_ant)
+                                            self.grid_mapper[apol]['labels'][label]['gridind'] = uniq_gridind_raveled_around_ant
+                                            pjob1 = MP.Process(target=antenna_grid_mapper, args=(gridind_raveled_around_ant, contributed_ant_grid_Ef[select_ant_ind], NP.append(uniq_gridind_raveled_around_ant, uniq_gridind_raveled_around_ant.max()+1), label, out_q1), name='process-{0:0d}-{1}-visibility'.format(job_ind, label))
+                                            pjob2 = MP.Process(target=antenna_grid_mapper, args=(gridind_raveled_around_ant, self.grid_mapper[apol]['ant']['illumination'][select_ant_ind], NP.append(uniq_gridind_raveled_around_ant, uniq_gridind_raveled_around_ant.max()+1), label, out_q2), name='process-{0:0d}-{1}-illumination'.format(job_ind, label))
+                                            pjob1.start()
+                                            pjob2.start()
+                                            pjobs1.append(pjob1)
+                                            pjobs2.append(pjob2)
+    
+                                    for p in xrange(len(pjobs1)):    # Unpack the gridded visibility and aperture illumination information from the pool output
+                                        outdict = out_q1.get()
+                                        label = outdict.keys()[0]
+                                        self.grid_mapper[apol]['labels'][label]['Ef'] = outdict[label]
+                                        outdict = out_q2.get()
+                                        self.grid_mapper[apol]['labels'][label]['illumination'] = outdict[label]
+    
+                                    for pjob in pjobs1:
+                                        pjob1.join()
+                                    for pjob in pjobs2:
+                                        pjob2.join()
+        
+                                    del out_q1, out_q2
+                                    
+                                    if verbose:
+                                        progress.update(i+1)
+                                if verbose:
+                                    progress.finish()
+                                    
+                            elif pp_method == 'pool':    ## Using MP.Pool.map(): Can be faster if parallelizing is not memory intensive
+
+                                list_of_gridind_raveled_around_ant = []
+                                list_of_ant_grid_values = []
+                                list_of_ant_Ef_contribution = []
+                                list_of_ant_illumination = []
+                                list_of_uniq_gridind_raveled_around_ant = []
+                                list_of_ant_labels = []
+    
+                                for j in xrange(self.grid_mapper[apol]['ant']['uniq_ind_all'].size): # re-determine gridded electric fields due to each antenna
+    
+                                    label = self.ordered_labels[self.grid_mapper[apol]['ant']['uniq_ind_all'][j]]
+                                    if self.grid_mapper[apol]['ant']['rev_ind_all'][j] < self.grid_mapper[apol]['ant']['rev_ind_all'][j+1]:
+    
+                                        self.grid_mapper[apol]['labels'][label] = {}
+                                        self.grid_mapper[apol]['labels'][label]['flag'] = self.antennas[label].antpol.flag[apol]
+    
+                                        select_ant_ind = self.grid_mapper[apol]['ant']['rev_ind_all'][self.grid_mapper[apol]['ant']['rev_ind_all'][j]:self.grid_mapper[apol]['ant']['rev_ind_all'][j+1]]
+                                        gridind_raveled_around_ant = self.grid_mapper[apol]['grid']['ind_all'][select_ant_ind]
+                                        uniq_gridind_raveled_around_ant = NP.unique(gridind_raveled_around_ant)
+                                        self.grid_mapper[apol]['labels'][label]['gridind'] = uniq_gridind_raveled_around_ant
+                                        
+                                        list_of_ant_labels += [label]
+                                        list_of_gridind_raveled_around_ant += [gridind_raveled_around_ant]
+                                        list_of_uniq_gridind_raveled_around_ant += [NP.append(uniq_gridind_raveled_around_ant, uniq_gridind_raveled_around_ant.max()+1)]
+                                        list_of_ant_Ef_contribution += [contributed_ant_grid_Ef[select_ant_ind]]
+                                        list_of_ant_illumination += [self.grid_mapper[apol]['ant']['illumination'][select_ant_ind]]
+    
+                                pool = MP.Pool(processes=nproc)
+                                list_of_ant_grid_values = pool.map(antenna_grid_mapping_arg_splitter, IT.izip(list_of_gridind_raveled_around_ant, list_of_ant_Ef_contribution, list_of_uniq_gridind_raveled_around_ant))
+                                pool.close()
+                                pool.join()
+    
+                                for label,grid_values in IT.izip(list_of_ant_labels, list_of_ant_grid_values):    # Unpack the gridded visibility information from the pool output
+                                    self.grid_mapper[apol]['labels'][label]['Ef'] = grid_values
+    
+                                if nproc is None:
+                                    pool = MP.Pool(processes=nproc)
+                                else:
+                                    pool = MP.Pool()
+                                list_of_ant_grid_values = pool.map(antenna_grid_mapping_arg_splitter, IT.izip(list_of_gridind_raveled_around_ant, list_of_ant_illumination, list_of_uniq_gridind_raveled_around_ant))
+                                pool.close()
+                                pool.join()
+    
+                                for label,grid_values in IT.izip(list_of_ant_labels, list_of_ant_grid_values):    # Unpack the gridded visibility and aperture illumination information from the pool output
+                                    self.grid_mapper[apol]['labels'][label]['illumination'] = grid_values
+                                
+                                del list_of_ant_grid_values, list_of_gridind_raveled_around_ant, list_of_ant_Ef_contribution, list_of_ant_illumination, list_of_uniq_gridind_raveled_around_ant, list_of_ant_labels
+
+                            else:
+                                raise ValueError('Parallel processing method specified by input parameter ppmethod has to be "pool" or "queue"')
+
+                        else:    # Use serial processing over antennas to determine antenna-grid mapping of gridded aperture illumination and electric fields
+
+                            if verbose:
+                                progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=self.grid_mapper[apol]['ant']['uniq_ind_all'].size).start()
+                            for j in xrange(self.grid_mapper[apol]['ant']['uniq_ind_all'].size):
+                                label = self.ordered_labels[self.grid_mapper[apol]['ant']['uniq_ind_all'][j]]
+                                if self.grid_mapper[apol]['ant']['rev_ind_all'][j] < self.grid_mapper[apol]['ant']['rev_ind_all'][j+1]:
+                                    select_ant_ind = self.grid_mapper[apol]['ant']['rev_ind_all'][self.grid_mapper[apol]['ant']['rev_ind_all'][j]:self.grid_mapper[apol]['ant']['rev_ind_all'][j+1]]
+                                    self.grid_mapper[apol]['labels'][label] = {}
+                                    self.grid_mapper[apol]['labels'][label]['flag'] = self.antennas[label].antpol.flag[apol]
+                                    if mapping == 'weighted':
+                                        gridind_raveled_around_ant = self.grid_mapper[apol]['grid']['ind_all'][select_ant_ind]
+                                        uniq_gridind_raveled_around_ant = NP.unique(gridind_raveled_around_ant)
+                                        self.grid_mapper[apol]['labels'][label]['gridind'] = uniq_gridind_raveled_around_ant
+    
+                                        self.grid_mapper[apol]['labels'][label]['Ef'] = OPS.binned_statistic(gridind_raveled_around_ant, contributed_ant_grid_Ef[select_ant_ind].real, statistic='sum', bins=NP.append(uniq_gridind_raveled_around_ant, uniq_gridind_raveled_around_ant.max()+1))[0]
+                                        self.grid_mapper[apol]['labels'][label]['Ef'] = self.grid_mapper[apol]['labels'][label]['Ef'].astype(NP.complex64)
+                                        self.grid_mapper[apol]['labels'][label]['Ef'] += 1j * OPS.binned_statistic(gridind_raveled_around_ant, contributed_ant_grid_Ef[select_ant_ind].imag, statistic='sum', bins=NP.append(uniq_gridind_raveled_around_ant, uniq_gridind_raveled_around_ant.max()+1))[0]
+    
+                                        self.grid_mapper[apol]['labels'][label]['illumination'] = OPS.binned_statistic(gridind_raveled_around_ant, self.grid_mapper[apol]['ant']['illumination'][select_ant_ind].real, statistic='sum', bins=NP.append(uniq_gridind_raveled_around_ant, uniq_gridind_raveled_around_ant.max()+1))[0]
+                                        self.grid_mapper[apol]['labels'][label]['illumination'] = self.grid_mapper[apol]['labels'][label]['illumination'].astype(NP.complex64)
+                                        self.grid_mapper[apol]['labels'][label]['illumination'] += 1j * OPS.binned_statistic(gridind_raveled_around_ant, self.grid_mapper[apol]['ant']['illumination'][select_ant_ind].imag, statistic='sum', bins=NP.append(uniq_gridind_raveled_around_ant, uniq_gridind_raveled_around_ant.max()+1))[0]
+    
+                                    else:
+                                        self.grid_mapper[apol]['labels'][label]['gridind'] = self.grid_mapper[apol]['grid']['ind_all'][select_ant_ind]
+                                        self.grid_mapper[apol]['labels'][label]['Ef'] = contributed_ant_grid_Ef[select_ant_ind]
+                                        self.grid_mapper[apol]['labels'][label]['illumination'] = self.grid_mapper[apol]['ant']['illumination'][select_ant_ind]
+                                        
+                                if verbose:
+                                    progress.update(j+1)
+                            if verbose:
+                                progress.finish()
+                            
+                    else: # Only re-determine gridded electric fields
+
+                        if verbose:
+                            progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=self.f.size).start()
+
+                        for i in xrange(self.f.size): # Only re-estimate electric fields contributed by antennas
+                            ant_refwts = self.grid_mapper[apol]['refwts'][self.grid_mapper[apol]['refind'][i]]
+                            ant_Ef = Ef[self.grid_mapper[apol]['ant']['ind_freq'][i],i]
+                            if i == 0:
+                                contributed_ant_grid_Ef = ant_refwts * ant_Ef
+                            else:
+                                contributed_ant_grid_Ef = NP.append(contributed_ant_grid_Ef, ant_refwts * ant_Ef)
+
+                            if verbose:
+                                progress.update(i+1)
+                        if verbose:
+                            progress.finish()
+
+                        if parallel and (mapping == 'weighted'):    # Use parallel processing
+
+                            if nproc is None:
+                                nproc = max(MP.cpu_count()-1, 1) 
+                            else:
+                                nproc = min(nproc, max(MP.cpu_count()-1, 1))                            
+
+                            if pp_method == 'queue':   ## Use MP.Queue(): useful for memory intensive parallelizing but can be slow
+
+                                num_ant = self.grid_mapper[apol]['ant']['uniq_ind_all'].size
+                                job_chunk_begin = range(0,num_ant,nproc)
+                                if verbose:
+                                    progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=len(job_chunk_begin)).start()
+                                for job_start in job_chunk_begin:
+                                    pjobs = []
+                                    out_q = MP.Queue()
+    
+                                    for job_ind in xrange(job_start, min(job_start+nproc, num_ant)):    # Start the parallel processes and store the outputs in a queue
+                                        label = self.ordered_labels[self.grid_mapper[apol]['ant']['uniq_ind_all'][job_ind]]
+    
+                                        if self.grid_mapper[apol]['ant']['rev_ind_all'][job_ind] < self.grid_mapper[apol]['ant']['rev_ind_all'][job_ind+1]:
+        
+                                            select_ant_ind = self.grid_mapper[apol]['ant']['rev_ind_all'][self.grid_mapper[apol]['ant']['rev_ind_all'][job_ind]:self.grid_mapper[apol]['ant']['rev_ind_all'][job_ind+1]]
+                                            gridind_raveled_around_ant = self.grid_mapper[apol]['grid']['ind_all'][select_ant_ind]
+                                            uniq_gridind_raveled_around_ant = self.grid_mapper[apol]['labels'][label]['gridind']
+                                            pjob = MP.Process(target=antenna_grid_mapper, args=(gridind_raveled_around_ant, contributed_ant_grid_Ef[select_ant_ind], NP.append(uniq_gridind_raveled_around_ant, uniq_gridind_raveled_around_ant.max()+1), label, out_q), name='process-{0:0d}-{1}-visibility'.format(job_ind, label))
+    
+                                            pjob.start()
+                                            pjobs.append(pjob)
+    
+                                    for p in xrange(len(pjobs)):    # Unpack the gridded visibility information from the queue
+                                        outdict = out_q.get()
+                                        label = outdict.keys()[0]
+                                        self.grid_mapper[apol]['labels'][label]['Ef'] = outdict[label]
+    
+                                    for pjob in pjobs:
+                                        pjob.join()
+        
+                                    del out_q
+                                    
+                                    if verbose:
+                                        progress.update(i+1)
+                                if verbose:
+                                    progress.finish()
+
+                            else:    ## Use MP.Pool.map(): Can be faster if parallelizing is not memory intensive
+
+                                list_of_gridind_raveled_around_ant = []
+                                list_of_ant_Ef_contribution = []
+                                list_of_uniq_gridind_raveled_around_ant = []
+                                list_of_ant_labels = []
+                                for j in xrange(self.grid_mapper[apol]['ant']['uniq_ind_all'].size): # re-determine gridded electric fields due to each antenna
+                                    if self.grid_mapper[apol]['ant']['rev_ind_all'][j] < self.grid_mapper[apol]['ant']['rev_ind_all'][j+1]:
+                                        select_ant_ind = self.grid_mapper[apol]['ant']['rev_ind_all'][self.grid_mapper[apol]['ant']['rev_ind_all'][j]:self.grid_mapper[apol]['ant']['rev_ind_all'][j+1]]
+                                        label = self.ordered_labels[self.grid_mapper[apol]['ant']['uniq_ind_all'][j]]
+                                        gridind_raveled_around_ant = self.grid_mapper[apol]['grid']['ind_all'][select_ant_ind]
+                                        uniq_gridind_raveled_around_ant = NP.unique(gridind_raveled_around_ant)
+                                        list_of_ant_labels += [label]
+                                        list_of_gridind_raveled_around_ant += [gridind_raveled_around_ant]
+                                        list_of_uniq_gridind_raveled_around_ant += [NP.append(uniq_gridind_raveled_around_ant, uniq_gridind_raveled_around_ant.max()+1)]
+                                        list_of_ant_Ef_contribution += [contributed_ant_grid_Ef[select_ant_ind]]
+                                if nproc is None:
+                                    nproc = max(MP.cpu_count()-1, 1) 
+                                else:
+                                    nproc = min(nproc, max(MP.cpu_count()-1, 1))
+                                pool = MP.Pool(processes=nproc)
+                                list_of_grid_Ef = pool.map(antenna_grid_mapping_arg_splitter, IT.izip(list_of_gridind_raveled_around_ant, list_of_ant_Ef_contribution, list_of_uniq_gridind_raveled_around_ant))
+                                pool.close()
+                                pool.join()
+    
+                                for label,grid_Ef in IT.izip(list_of_ant_labels, list_of_grid_Ef):    # Unpack the gridded visibility information from the pool output
+                                    self.grid_mapper[apol]['labels'][label]['Ef'] = grid_Ef
+                                
+                                del list_of_gridind_raveled_around_ant, list_of_grid_Ef, list_of_ant_Ef_contribution, list_of_uniq_gridind_raveled_around_ant, list_of_ant_labels
+
+                        else:          # use serial processing
+                            if verbose:
+                                progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=self.grid_mapper[apol]['ant']['uniq_ind_all'].size).start()
+                            for j in xrange(self.grid_mapper[apol]['ant']['uniq_ind_all'].size): # re-determine gridded electric fields due to each antenna
+                                if self.grid_mapper[apol]['ant']['rev_ind_all'][j] < self.grid_mapper[apol]['ant']['rev_ind_all'][j+1]:
+                                    select_ant_ind = self.grid_mapper[apol]['ant']['rev_ind_all'][self.grid_mapper[apol]['ant']['rev_ind_all'][j]:self.grid_mapper[apol]['ant']['rev_ind_all'][j+1]]
+                                    label = self.ordered_labels[self.grid_mapper[apol]['ant']['uniq_ind_all'][j]]
+                                    self.grid_mapper[apol]['labels'][label]['Ef'] = {}
+                                    if mapping == 'weighted':
+                                        gridind_raveled_around_ant = self.grid_mapper[apol]['grid']['ind_all'][select_ant_ind]
+                                        uniq_gridind_raveled_around_ant = self.grid_mapper[apol]['labels'][label]['gridind']
+                                        # uniq_gridind_raveled_around_ant = NP.unique(gridind_raveled_around_ant)
+                                        self.grid_mapper[apol]['labels'][label]['Ef'] = OPS.binned_statistic(gridind_raveled_around_ant, contributed_ant_grid_Ef[select_ant_ind].real, statistic='sum', bins=NP.append(uniq_gridind_raveled_around_ant, uniq_gridind_raveled_around_ant.max()+1))[0]
+                                        self.grid_mapper[apol]['labels'][label]['Ef'] = self.grid_mapper[apol]['labels'][label]['Ef'].astype(NP.complex64)
+                                        self.grid_mapper[apol]['labels'][label]['Ef'] += 1j * OPS.binned_statistic(gridind_raveled_around_ant, contributed_ant_grid_Ef[select_ant_ind].imag, statistic='sum', bins=NP.append(uniq_gridind_raveled_around_ant, uniq_gridind_raveled_around_ant.max()+1))[0]
+                                    else:
+                                        self.grid_mapper[apol]['labels'][label]['Ef'] = contributed_ant_grid_Ef[select_ant_ind]
+                                if verbose:
+                                    progress.update(j+1)
+                            if verbose:
+                                progress.finish()
+
+    ################################################################################# 
