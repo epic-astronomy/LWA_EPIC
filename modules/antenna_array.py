@@ -9904,3 +9904,65 @@ class AntennaArray:
             del updated_antennas
         
     ################################################################################# 
+
+    def grid(self, uvspacing=0.5, uvpad=None, pow2=True, pol=None):
+        
+        """
+        ----------------------------------------------------------------------------
+        Routine to produce a grid based on the antenna array 
+
+        Inputs:
+
+        uvspacing   [Scalar] Positive value indicating the maximum uv-spacing
+                    desirable at the lowest wavelength (max frequency). 
+                    Default = 0.5
+
+        xypad       [List] Padding to be applied around the antenna locations 
+                    before forming a grid. List elements should be positive. If it 
+                    is a one-element list, the element is applicable to both x and 
+                    y axes. If list contains three or more elements, only the 
+                    first two elements are considered one for each axis. 
+                    Default = None.
+
+        pow2        [Boolean] If set to True, the grid is forced to have a size a 
+                    next power of 2 relative to the actual sie required. If False,
+                    gridding is done with the appropriate size as determined by
+                    uvspacing. Default = True.
+
+        pol         [String] The polarization to be gridded. Can be set to 'P11', 
+                    'P12', 'P21', or 'P22'. If set to None, gridding for all the
+                    polarizations is performed. 
+        ----------------------------------------------------------------------------
+        """
+
+        if self.f is None:
+            self.f = self.antennas.itervalues().next().f
+
+        if self.f0 is None:
+            self.f0 = self.antennas.itervalues().next().f0
+
+        # if self.timestamp is None:
+        #     self.timestamp = self.antennas.itervalues().next().timestamp
+
+        wavelength = FCNST.c / self.f
+        min_lambda = NP.abs(wavelength).min()
+
+        # Change itervalues() to values() when porting to Python 3.x
+        # May have to change *blc and *trc with zip(*blc) and zip(*trc) when using Python 3.x
+
+        blc = [[self.antennas[label].blc[0,0], self.antennas[label].blc[0,1]] for label in self.antennas]
+        trc = [[self.antennas[label].trc[0,0], self.antennas[label].trc[0,1]] for label in self.antennas]
+
+        self.trc = NP.amax(NP.abs(NP.vstack((NP.asarray(blc), NP.asarray(trc)))), axis=0).ravel() / min_lambda
+        self.blc = -1 * self.trc
+
+        self.gridu, self.gridv = GRD.grid_2d([(self.blc[0], self.trc[0]), (self.blc[1], self.trc[1])], pad=uvpad, spacing=uvspacing, pow2=True)
+
+        self.grid_blc = NP.asarray([self.gridu.min(), self.gridv.min()])
+        self.grid_trc = NP.asarray([self.gridu.max(), self.gridv.max()])
+
+        self.grid_ready = True
+
+    ################################################################################# 
+
+
