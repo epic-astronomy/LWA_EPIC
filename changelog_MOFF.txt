@@ -1,3 +1,10 @@
+From 1d268cc:
+============
+
+In antenna_array.py,
+
+(*) Add member function antenna_positions() to class AntennaArray
+
 From 194b1ba:
 ============
 
