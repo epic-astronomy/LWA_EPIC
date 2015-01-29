@@ -21,6 +21,9 @@ def unwrap_antenna_FT(arg, **kwarg):
 def unwrap_interferometer_FX(arg, **kwarg):
     return Interferometer.FX_new(*arg, **kwarg)
 
+def unwrap_antenna_update(arg, **kwarg):
+    return Antenna.update_new(*arg, **kwarg)
+
 def unwrap_interferometer_update(arg, **kwarg):
     return Interferometer.update_new(*arg, **kwarg)
 
@@ -9512,6 +9515,22 @@ class Antenna:
             if verbose:
                 print 'Grid corner(s) of antenna {0} have changed. Should re-grid the antenna array.'.format(self.label)
 
+    ############################################################################
+
+    def update_new(self, update_dict=None, verbose=True):
+
+        """
+        -------------------------------------------------------------------------
+        Wrapper for member function update() and returns the updated instance of
+        this class. Mostly intended to be used when parallel processing is 
+        applicable and not to be used directly. Use update() instead when 
+        updates are to be applied directly.
+
+        See member function update() for details on inputs.
+        -------------------------------------------------------------------------
+        """
+
+        self.update(update_dict=update_dict, verbose=verbose)
         return self
 
 #################################################################################
@@ -11167,7 +11186,8 @@ class AntennaArray:
                             if 'delaydict' not in dictitem: dictitem['delaydict']=None
                             
                             if not parallel:
-                                self.antennas[dictitem['label']].update(dictitem['label'], dictitem['Et'], dictitem['t'], dictitem['timestamp'], dictitem['location'], dictitem['wtsinfo'], dictitem['flags'], dictitem['gridfunc_freq'], dictitem['delaydict'], dictitem['ref_freq'], dictitem['pol_type'], verbose)
+                                self.antennas[dictitem['label']].update(dictitem, verbose)
+                                # self.antennas[dictitem['label']].update(dictitem['label'], dictitem['Et'], dictitem['t'], dictitem['timestamp'], dictitem['location'], dictitem['wtsinfo'], dictitem['flags'], dictitem['gridfunc_freq'], dictitem['delaydict'], dictitem['ref_freq'], dictitem['pol_type'], verbose)
                             else:
                                 list_of_antennas += [self.antennas[dictitem['label']]]
                                 list_of_antenna_updates += [dictitem]

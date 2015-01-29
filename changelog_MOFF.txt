@@ -1,3 +1,15 @@
+From 4483e7f:
+============
+
+In antenna_array.py,
+
+(*) Add update_new() method to class Antenna as a wrapper to update()
+method when using parallel processing. Add basic docstring
+(*) Add unwrap_antenna_update() to enable parallel processing during
+gridding convolution of antenna kernels
+(*) Move feature of returning updated instance from update() to
+update_new() in class Antenna
+
 From 30bb3dd:
 ============
 
