@@ -10885,3 +10885,38 @@ class AntennaArray:
                 print 'Gridded aperture illumination and electric fields for polarization {0} from {1:0d} unflagged contributing antennas'.format(apol, num_unflagged)
 
     ################################################################################# 
+
+    def update_flags(self, dictflags=None):
+
+        """
+        ----------------------------------------------------------------------------
+        Updates all flags in the antenna array followed by any flags that
+        need overriding through inputs of specific flag information
+
+        Inputs:
+
+        dictflags  [dictionary] contains flag information overriding after default
+                   flag updates are determined. Antenna based flags are given as 
+                   further dictionaries with each under under a key which is the
+                   same as the antenna label. Flags for each antenna are
+                   specified as a dictionary holding boolean flags for each of the 
+                   two polarizations which are stored under keys 'P1' and 'P2'. 
+                   An absent key just means it is not a part of the update. Flag 
+                   information under each antenna must be of same type as input 
+                   parameter flags in member function update_flags() of class 
+                   PolInfo
+        ----------------------------------------------------------------------------
+        """
+
+        for label in self.antennas:
+            self.antennas[label].update_flags()
+
+        if dictflags is not None:
+            if not isinstance(dictflags, dict):
+                raise TypeError('Input parameter dictflags must be a dictionary')
+            
+            for label in dictflags:
+                if label in self.antennas:
+                    self.antennas[label].crosspol.update_flags(flags=dictflags[label])
+
+    ##################################################################################
