@@ -4445,8 +4445,7 @@ class InterferometerArray:
                  keys and information:
                  'labels':    Contains a numpy array of strings of interferometer 
                               labels
-                 'visibilities': baseline vectors of interferometers (3-column 
-                              array)
+                 'visibilities': interferometer visibilities (n_bl x nchan array)
         ----------------------------------------------------------------------------
         """
 
@@ -9936,26 +9935,106 @@ class AntennaArray:
                     labels = [label for label in sorted(self.antennas.keys(), key=lambda tup: tup[0])]
                 else:
                     if flag:           # get flagged positions
-                        xyz = NP.asarray([[self.antennas[label].location.x, self.antennas[label].location.y, self.antennas[label].location.z] for label in sorted(self.antennas.keys(), key=lambda tup: tup[0]) if self.antennas[label].crosspol.flag[pol]])
-                        labels = [label for label in sorted(self.antennas.keys(), key=lambda tup: tup[0]) if self.antennas[label].crosspol.flag[pol]]                    
+                        xyz = NP.asarray([[self.antennas[label].location.x, self.antennas[label].location.y, self.antennas[label].location.z] for label in sorted(self.antennas.keys(), key=lambda tup: tup[0]) if self.antennas[label].antpol.flag[pol]])
+                        labels = [label for label in sorted(self.antennas.keys(), key=lambda tup: tup[0]) if self.antennas[label].antpol.flag[pol]]                    
                     else:              # get unflagged positions
-                        xyz = NP.asarray([[self.antennas[label].location.x, self.antennas[label].location.y, self.antennas[label].location.z] for label in sorted(self.antennas.keys(), key=lambda tup: tup[0]) if not self.antennas[label].crosspol.flag[pol]])
-                        labels = [label for label in sorted(self.antennas.keys(), key=lambda tup: tup[0]) if not self.antennas[label].crosspol.flag[pol]]
+                        xyz = NP.asarray([[self.antennas[label].location.x, self.antennas[label].location.y, self.antennas[label].location.z] for label in sorted(self.antennas.keys(), key=lambda tup: tup[0]) if not self.antennas[label].antpol.flag[pol]])
+                        labels = [label for label in sorted(self.antennas.keys(), key=lambda tup: tup[0]) if not self.antennas[label].antpol.flag[pol]]
             else:                      # no sorting
                 if flag is None:       # get all positions
                     xyz = NP.asarray([[self.antennas[label].location.x, self.antennas[label].location.y, self.antennas[label].location.z] for label in self.antennas.keys()])
                     labels = [label for label in self.antennas.keys()]
                 else:
                     if flag:           # get flagged positions
-                        xyz = NP.asarray([[self.antennas[label].location.x, self.antennas[label].location.y, self.antennas[label].location.z] for label in self.antennas.keys() if self.antennas[label].crosspol.flag[pol]])
-                        labels = [label for label in self.antennas.keys() if self.antennas[label].crosspol.flag[pol]]
+                        xyz = NP.asarray([[self.antennas[label].location.x, self.antennas[label].location.y, self.antennas[label].location.z] for label in self.antennas.keys() if self.antennas[label].antpol.flag[pol]])
+                        labels = [label for label in self.antennas.keys() if self.antennas[label].antpol.flag[pol]]
                     else:              # get unflagged positions
-                        xyz = NP.asarray([[self.antennas[label].location.x, self.antennas[label].location.y, self.antennas[label].location.z] for label in self.antennas.keys() if not self.antennas[label].crosspol.flag[pol]])
-                        labels = [label for label in self.antennas.keys() if not self.antennas[label].crosspol.flag[pol]]
+                        xyz = NP.asarray([[self.antennas[label].location.x, self.antennas[label].location.y, self.antennas[label].location.z] for label in self.antennas.keys() if not self.antennas[label].antpol.flag[pol]])
+                        labels = [label for label in self.antennas.keys() if not self.antennas[label].antpol.flag[pol]]
 
         outdict = {}
         outdict['labels'] = labels
         outdict['positions'] = xyz
+
+        return outdict
+
+    ################################################################################# 
+
+    def get_E_fields(self, pol, flag=False, sort=True):
+
+        """
+        ----------------------------------------------------------------------------
+        Routine to return the antenna label and Electric fields (sorted by
+        antenna label if specified)
+
+        Keyword Inputs:
+
+        pol      [string] select antenna positions of this polarization that are 
+                 either flagged or unflagged as specified by input parameter flag. 
+                 Allowed values are 'P1' and 'P22'. Only one of these values must 
+                 be specified.
+
+        flag     [boolean] If False, return electric fields of unflagged antennas,
+                 otherwise return flagged ones. Default=None means all electric 
+                 fields independent of flagging are returned.
+
+        sort     [boolean] If True, returned antenna information is sorted 
+                 by antenna label. Default = True.
+
+        Output:
+
+        outdict  [dictionary] Output consists of a dictionary with the following 
+                 keys and information:
+                 'labels':    Contains a numpy array of strings of antenna 
+                              labels
+                 'E-fields':    measured electric fields (n_ant x nchan array)
+        ----------------------------------------------------------------------------
+        """
+
+        try: 
+            pol 
+        except NameError:
+            raise NameError('Input parameter pol must be specified.')
+
+        if not isinstance(pol, str):
+            raise TypeError('Input parameter must be a string')
+        
+        if not pol in ['P1' 'P2']:
+            raise ValueError('Invalid specification for input parameter pol')
+
+        if not isinstance(sort, bool):
+            raise TypeError('sort keyword has to be a Boolean value.')
+
+        if flag is not None:
+            if not isinstance(flag, bool):
+                raise TypeError('flag keyword has to be a Boolean value.')
+
+        if sort:                   # sort by first antenna label
+            if flag is None:       # get all antenna positions
+                    efields = NP.asarray([self.antennas[label].antpol.Ef[pol] for label in sorted(self.antennas.keys(), key=lambda tup: tup[0])])
+                    labels = [label for label in sorted(self.antennas.keys(), key=lambda tup: tup[0])]   
+            else:
+                if flag:           # get flagged antenna positions
+                    efields = NP.asarray([self.antennas[label].antpol.Ef[pol] for label in sorted(self.antennas.keys(), key=lambda tup: tup[0]) if self.antennas[label].antpol.flag[pol]])
+                    labels = [label for label in sorted(self.antennas.keys(), key=lambda tup: tup[0]) if self.antennas[label].antpol.flag[pol]]                    
+                else:              # get unflagged antenna positions
+                    efields = NP.asarray([self.antennas[label].antpol.Ef[pol] for label in sorted(self.antennas.keys(), key=lambda tup: tup[0]) if not self.antennas[label].antpol.flag[pol]])
+                    labels = [label for label in sorted(self.antennas.keys(), key=lambda tup: tup[0]) if not self.antennas[label].antpol.flag[pol]]
+        else:                      # no sorting
+            if flag is None:
+                efields = NP.asarray([self.antennas[label].antpol.Ef[pol] for label in self.antennas.keys()])
+                labels = [label for label in self.antennas.keys()]
+            else:
+                if flag:               # get flagged antenna positions
+                    efields = NP.asarray([self.antennas[label].antpol.Ef[pol] for label in self.antennas.keys() if self.antennas[label].antpol.flag[pol]])
+                    labels = [label for label in self.antennas.keys() if self.antennas[label].antpol.flag[pol]]                    
+                else:                  # get unflagged antenna positions
+                    efields = NP.asarray([self.antennas[label].antpol.Ef[pol] for label in self.antennas.keys() if not self.antennas[label].antpol.flag[pol]])
+                    labels = [label for label in sorted(self.antennas.keys(), key=lambda tup: tup[0]) if not self.antennas[label].antpol.flag[pol]]
+
+        outdict = {}
+        outdict['labels'] = labels
+        outdict['E-fields'] = efields
 
         return outdict
 
