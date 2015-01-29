@@ -15,6 +15,9 @@ import ipdb as PDB
 
 ################### Routines essential for parallel processing ################
 
+def unwrap_antenna_FT(arg, **kwarg):
+    return Antenna.FT_new(*arg, **kwarg)
+
 def unwrap_interferometer_FX(arg, **kwarg):
     return Interferometer.FX_new(*arg, **kwarg)
 
@@ -9243,6 +9246,33 @@ class Antenna:
 
     #############################################################################
 
+    def FT(self, pol=None):
+
+        """
+        ----------------------------------------------------------------------------
+        Computes the Fourier transform of the time series of the antennas in the 
+        antenna array to compute the visibility spectra
+        ----------------------------------------------------------------------------
+        """
+        
+        self.antpol.FT(pol=pol)
+        
+    ################################################################################# 
+
+    def FT_new(self, pol=None):
+
+        """
+        ----------------------------------------------------------------------------
+        Computes the Fourier transform of the time series of the antennas in the 
+        antenna array to compute the visibility spectra
+        ----------------------------------------------------------------------------
+        """
+        
+        self.antpol.FT(pol=pol)
+        return self
+        
+    ################################################################################# 
+
     def update_flags(self, flags=None):
 
         """
@@ -9845,4 +9875,32 @@ class AntennaArray:
         else:
             self = self.__sub__(A)
 
+    ################################################################################# 
+
+    def FT(self, pol=None, parallel=False, nproc=None):
+
+        """
+        ----------------------------------------------------------------------------
+        Computes the Fourier transform of the time series of the antennas in the 
+        antenna array to compute the visibility spectra
+        ----------------------------------------------------------------------------
+        """
+        
+        if not parallel:
+            for label in self.antennas:
+                self.antennas[label].FX()
+        elif parallel or (nproc is not None):
+            if nproc is None:
+                nproc = max(MP.cpu_count()-1, 1) 
+            else:
+                nproc = min(nproc, max(MP.cpu_count()-1, 1))
+            pool = MP.Pool(processes=nproc)
+            updated_antennas = pool.map(unwrap_antenna_FT, IT.izip(self.antennas.values()))
+            pool.close()
+            pool.join()
+
+            for antenna in updated_antennas: 
+                self.antennas[antenna.label] = antenna
+            del updated_antennas
+        
     ################################################################################# 
