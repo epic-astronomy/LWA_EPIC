@@ -1,3 +1,11 @@
+From 3f66e8a:
+============
+
+In antenna-array.py,
+
+(*) Fix bug by changing use of attribute crosspol to antpol in member 
+function update_flags() of class AntennaArray
+
 From feee1bb:
 ============
 

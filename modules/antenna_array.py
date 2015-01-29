@@ -10917,6 +10917,6 @@ class AntennaArray:
             
             for label in dictflags:
                 if label in self.antennas:
-                    self.antennas[label].crosspol.update_flags(flags=dictflags[label])
+                    self.antennas[label].antpol.update_flags(flags=dictflags[label])
 
     ##################################################################################
