@@ -1,3 +1,11 @@
+From 30bb3dd:
+============
+
+In antenna_array.py,
+
+(*) Add member function update() to class AntennaArray with basic
+docstring
+
 From 3f66e8a:
 ============
 

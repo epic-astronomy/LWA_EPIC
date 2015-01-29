@@ -10884,7 +10884,7 @@ class AntennaArray:
             if verbose:
                 print 'Gridded aperture illumination and electric fields for polarization {0} from {1:0d} unflagged contributing antennas'.format(apol, num_unflagged)
 
-    ################################################################################# 
+    ############################################################################ 
 
     def update_flags(self, dictflags=None):
 
@@ -10919,4 +10919,294 @@ class AntennaArray:
                 if label in self.antennas:
                     self.antennas[label].antpol.update_flags(flags=dictflags[label])
 
-    ##################################################################################
+    ############################################################################
+
+    def update(self, updates=None, verbose=False):
+
+        """
+        -------------------------------------------------------------------------
+        Updates the antenna array instance with newer attribute values. Can also 
+        be used to add and/or remove antennas with/without affecting the existing
+        grid.
+
+        Inputs:
+
+        updates     [Dictionary] Consists of information updates under the
+                    following principal keys:
+                    'antenna_array': Consists of updates for the AntennaArray
+                                instance. This is a dictionary which consists of
+                                the following keys:
+                                'timestamp'   Unique identifier of the time 
+                                              series. It is optional to set this 
+                                              to a scalar. If not given, no 
+                                              change is made to the existing
+                                              timestamp attribute
+                                'do_grid'     [boolean] If set to True, create or
+                                              recreate a grid. To be specified 
+                                              when the antenna locations are
+                                              updated.
+                    'antennas': Holds a list of dictionaries consisting of 
+                                updates for individual antennas. Each element 
+                                in the list contains update for one antenna. 
+                                For each of these dictionaries, one of the keys 
+                                is 'label' which indicates an antenna label. If 
+                                absent, the code execution stops by throwing an 
+                                exception. The other optional keys and the 
+                                information they hold are listed below:
+                                'action'      [String scalar] Indicates the type 
+                                              of update operation. 'add' adds the 
+                                              Antenna instance to the 
+                                              AntennaArray instance. 'remove' 
+                                              removes the antenna from the
+                                              antenna array instance. 'modify'
+                                              modifies the antenna attributes in 
+                                              the antenna array instance. This 
+                                              key has to be set. No default.
+                                'grid_action' [Boolean] If set to True, will 
+                                              apply the grdding operations 
+                                              (grid(), grid_convolve(), and 
+                                              grid_unconvolve()) appropriately 
+                                              according to the value of the 
+                                              'action' key. If set to None or 
+                                              False, gridding effects will remain
+                                              unchanged. Default=None(=False).
+                                'antenna'     [instance of class Antenna] Updated 
+                                              Antenna class instance. Can work 
+                                              for action key 'remove' even if not 
+                                              set (=None) or set to an empty 
+                                              string '' as long as 'label' key is 
+                                              specified. 
+                                'gridpol'     [Optional. String scalar] Initiates 
+                                              the specified action on 
+                                              polarization 'P1' or 'P2'. Can be 
+                                              set to 'P1' or 'P2'. If not 
+                                              provided (=None), then the 
+                                              specified action applies to both
+                                              polarizations. Default = None.
+                                'Et'          [Optional. Dictionary] Complex 
+                                              Electric field time series under
+                                              two polarizations which are under
+                                              keys 'P1' and 'P2'. Is used only 
+                                              if set and if 'action' key value 
+                                              is set to 'modify'. 
+                                              Default = None.
+                                't'           [Optional. Numpy array] Time axis 
+                                              of the time series. Is used only 
+                                              if set and if 'action' key value is
+                                              set to 'modify'. Default = None.
+                                'timestamp'   [Optional. Scalar] Unique 
+                                              identifier of the time series. Is 
+                                              used only if set and if 'action' 
+                                              key value is set to 'modify'.
+                                              Default = None.
+                                'location'    [Optional. instance of GEOM.Point
+                                              class] 
+                                              Antenna location in the local ENU 
+                                              coordinate system. Used only if 
+                                              set and if 'action' key value is 
+                                              set to 'modify'. Default = None.
+                                'wtsinfo'     [Optional. Dictionary] 
+                                              See description in Antenna class 
+                                              member function update(). Is used 
+                                              only if set and if 'action' key 
+                                              value is set to 'modify'.
+                                              Default = None.
+                                'flags'       [Optional. Dictionary] holds 
+                                              boolean flags for each of the 2 
+                                              polarizations which are stored 
+                                              under keys 'P1' and 'P2'. 
+                                              Default=None means no updates for 
+                                              flags. If True, that polarization 
+                                              will be flagged. If not set 
+                                              (=None), the previous or default 
+                                              flag status will continue to 
+                                              apply. If set to False, the 
+                                              antenna status will be updated to 
+                                              become unflagged.
+                                'gridfunc_freq'
+                                              [Optional. String scalar] Read the 
+                                              description of inputs to Antenna 
+                                              class member function update(). If 
+                                              set to None (not provided), this
+                                              attribute is determined based on 
+                                              the size of wtspos under each 
+                                              polarization. It is applicable 
+                                              only when 'action' key is set to 
+                                              'modify'. Default = None.
+                                'delaydict'   [Dictionary] contains information 
+                                              on delay compensation to be applied 
+                                              to the fourier transformed electric 
+                                              fields under each polarization which
+                                              are stored under keys 'P1' and 'P2'. 
+                                              Default is None (no delay 
+                                              compensation to be applied). Refer 
+                                              to the docstring of member function
+                                              delay_compensation() of class 
+                                              PolInfo for more details.
+                                'ref_freq'    [Optional. Scalar] Positive value 
+                                              (in Hz) of reference frequency 
+                                              (used if gridfunc_freq is set to
+                                              'scale') at which wtspos in 
+                                              wtsinfo are provided. If set to 
+                                              None, the reference frequency 
+                                              already set in antenna array 
+                                              instance remains unchanged. 
+                                              Default = None.
+                                'pol_type'    [Optional. String scalar] 'Linear' 
+                                              or 'Circular'. Used only when 
+                                              action key is set to 'modify'. If 
+                                              not provided, then the previous
+                                              value remains in effect.
+                                              Default = None.
+                                'norm_wts'    [Optional. Boolean] Default=False. 
+                                              If set to True, the gridded weights 
+                                              are divided by the sum of weights 
+                                              so that the gridded weights add up 
+                                              to unity. This is used only when
+                                              grid_action keyword is set when
+                                              action keyword is set to 'add' or
+                                              'modify'
+                                'gridmethod'  [Optional. String] Indicates 
+                                              gridding method. It accepts the 
+                                              following values 'NN' (nearest 
+                                              neighbour), 'BL' (Bi-linear
+                                              interpolation), and'CS' (Cubic
+                                              Spline interpolation). Default='NN'
+                                'distNN'      [Optional. Scalar] Indicates the 
+                                              upper bound on distance for a 
+                                              nearest neighbour search if the 
+                                              value of 'gridmethod' is set to
+                                              'NN'. The units are of physical
+                                              distance, the same as what is 
+                                              used for antenna locations.
+                                              Default = NP.inf
+                                'maxmatch'    [scalar] A positive value 
+                                              indicating maximum number of input
+                                              locations in the antenna grid to 
+                                              be assigned. Default = None. If 
+                                              set to None, all the antenna array 
+                                              grid elements specified are 
+                                              assigned values for each antenna.
+                                              For instance, to have only one
+                                              antenna array grid element to be
+                                              populated per antenna, use
+                                              maxmatch=1. 
+                                'tol'         [scalar] If set, only lookup data 
+                                              with abs(val) > tol will be
+                                              considered for nearest neighbour 
+                                              lookup. Default = None implies 
+                                              all lookup values will be 
+                                              considered for nearest neighbour
+                                              determination. tol is to be
+                                              interpreted as a minimum value
+                                              considered as significant in the
+                                              lookup table. 
+
+        verbose     [Boolean] Default = False. If set to True, prints some 
+                    diagnotic or progress messages.
+
+        -------------------------------------------------------------------------
+        """
+
+        if updates is not None:
+            if not isinstance(updates, dict):
+                raise TypeError('Input parameter updates must be a dictionary')
+
+            if 'antennas' in updates: # contains updates at level of individual antennas
+                if not isinstance(updates['antennas'], list):
+                    updates['antennas'] = [updates['antennas']]
+                for dictitem in updates['antennas']:
+                    if not isinstance(dictitem, dict):
+                        raise TypeError('Updates to {0} instance should be provided in the form of a list of dictionaries.'.format(self.__class__.__name__))
+                    elif 'label' not in dictitem:
+                        raise KeyError('No antenna label specified in the dictionary item to be updated.')
+    
+                    if 'action' not in dictitem:
+                        raise KeyError('No action specified for update. Action key should be set to "add", "remove" or "modify".')
+                    elif dictitem['action'] == 'add':
+                        if dictitem['label'] in self.antennas:
+                            if verbose:
+                                print 'Antenna {0} for adding already exists in current instance of {1}. Skipping over to the next item to be updated.'.format(dictitem['label'], self.__class__.__name__)
+                        else:
+                            if verbose:
+                                print 'Adding antenna {0}...'.format(dictitem['label'])
+                            self.add_antennas(dictitem['antenna'])
+                            if 'grid_action' in dictitem:
+                                self.grid_convolve(pol=dictitem['gridpol'], ants=dictitem['antenna'], unconvolve_existing=False)
+                    elif dictitem['action'] == 'remove':
+                        if dictitem['label'] not in self.antennas:
+                            if verbose:
+                                print 'Antenna {0} for removal not found in current instance of {1}. Skipping over to the next item to be updated.'.format(dictitem['label'], self.__class__.__name__) 
+                        else:
+                            if verbose:
+                                print 'Removing antenna {0}...'.format(dictitem['label'])
+                            if 'grid_action' in dictitem:
+                                self.grid_unconvolve(dictitem['label'], dictitem['gridpol'])
+                            self.remove_antennas(dictitem['label'])
+                    elif dictitem['action'] == 'modify':
+                        if dictitem['label'] not in self.antennas:
+                            if verbose:
+                                print 'Antenna {0} for modification not found in current instance of {1}. Skipping over to the next item to be updated.'.format(dictitem['label'], self.__class__.__name__)
+                        else:
+                            if verbose:
+                                print 'Modifying antenna {0}...'.format(dictitem['label'])
+                            if 'Et' not in dictitem: dictitem['Et']=None
+                            if 't' not in dictitem: dictitem['t']=None
+                            if 'timestamp' not in dictitem: dictitem['timestamp']=None
+                            if 'location' not in dictitem: dictitem['location']=None
+                            if 'wtsinfo' not in dictitem: dictitem['wtsinfo']=None
+                            if 'flags' not in dictitem: dictitem['flags']=None
+                            if 'gridfunc_freq' not in dictitem: dictitem['gridfunc_freq']=None
+                            if 'ref_freq' not in dictitem: dictitem['ref_freq']=None
+                            if 'pol_type' not in dictitem: dictitem['pol_type']=None
+                            if 'norm_wts' not in dictitem: dictitem['norm_wts']=False
+                            if 'gridmethod' not in dictitem: dictitem['gridmethod']='NN'
+                            if 'distNN' not in dictitem: dictitem['distNN']=NP.inf
+                            if 'maxmatch' not in dictitem: dictitem['maxmatch']=None
+                            if 'tol' not in dictitem: dictitem['tol']=None
+                            if 'delaydict' not in dictitem: dictitem['delaydict']=None
+                            
+                            if not parallel:
+                                self.antennas[dictitem['label']].update(dictitem['label'], dictitem['Et'], dictitem['t'], dictitem['timestamp'], dictitem['location'], dictitem['wtsinfo'], dictitem['flags'], dictitem['gridfunc_freq'], dictitem['delaydict'], dictitem['ref_freq'], dictitem['pol_type'], verbose)
+                            else:
+                                list_of_antennas += [self.antennas[dictitem['label']]]
+                                list_of_antenna_updates += [dictitem]
+
+                            if 'gric_action' in dictitem:
+                                self.grid_convolve(pol=dictitem['gridpol'], ants=dictitem['antenna'], unconvolve_existing=True, normalize=dictitem['norm_wts'], method=dictitem['gridmethod'], distNN=dictitem['distNN'], tol=dictitem['tol'], maxmatch=dictitem['maxmatch'])
+                    else:
+                        raise ValueError('Update action should be set to "add", "remove" or "modify".')
+
+                if parallel:
+                    if nproc is None:
+                        nproc = max(MP.cpu_count()-1, 1) 
+                    else:
+                        nproc = min(nproc, max(MP.cpu_count()-1, 1))
+                    pool = MP.Pool(processes=nproc)
+                    updated_antennas = pool.map(unwrap_antenna_update, IT.izip(list_of_antennas, list_of_antenna_updates))
+                    pool.close()
+                    pool.join()
+
+                    # Necessary to make the returned and updated antennas current, otherwise they stay unrelated
+                    for antenna in updated_antennas: 
+                        self.antennas[antenna.label] = antenna
+                    del updated_antennas
+                    
+
+            if 'antenna_array' in updates: # contains updates at 'antenna array' level
+                if not isinstance(updates['antenna_array'], dict):
+                    raise TypeError('Input parameter in updates for antenna array must be a dictionary with key "antenna_array"')
+                
+                if 'timestamp' in updates['antenna_array']:
+                    self.timestamp = updates['antenna_array']['timestamp']
+
+                if 'do_grid' in updates['antenna_array']:
+                    if isinstance(updates['antenna_array']['do_grid'], boolean):
+                        self.grid()
+                    else:
+                        raise TypeError('Value in key "do_grid" inside key "antenna_array" of input dictionary updates must be boolean.')
+
+        self.t = self.antennas.itervalues().next().t # Update time axis
+        self.f = self.antennas.itervalues().next().f # Update frequency axis
+
+    ############################################################################
