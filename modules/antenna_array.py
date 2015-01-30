@@ -3068,9 +3068,8 @@ class Interferometer:
         information 
 
         Class attributes initialized are:
-        label, latitude, location, pol, t, timestamp, f0, f, wts_P1, wts_P2, 
-        wtspos_P1, wtspos_P2, wtspos_P1_scale, wtspos_P2_scale, gridinfo_P1, 
-        gridinfo_P2, blc_P1, trc_P1, blc_P2, trc_P2
+        label, latitude, location, pol, t, timestamp, f0, f, wts, wtspos, 
+        wtspos_scale, gridinfo, blc, trc
      
         Read docstring of class Antenna for details on these attributes.
         ------------------------------------------------------------------------
@@ -5471,64 +5470,65 @@ class InterferometerArray:
 
         Inputs:
 
-        pol         [String] The polarization to be gridded. Can be set to 'P1' or
-                    'P2'. If set to None, gridding for both 'P1' and 'P2' is
-                    performed. Default = None
+        pol        [String] The polarization to be gridded. Can be set to 'P1' 
+                   or 'P2'. If set to None, gridding for both 'P1' and 'P2' 
+                   is performed. Default = None
 
-        ants        [instance of class AntennaArray, single instance or list of
-                    instances of class Antenna, or a dictionary holding instances of
-                    of class Antenna] If a dictionary is provided, the keys
-                    should be the antenna labels and the values should be instances 
-                    of class Antenna. If a list is provided, it should be a list of 
-                    valid instances of class Antenna. These instance(s) of class
-                    Antenna will be merged to the existing grid contained in the
-                    instance of AntennaArray class. If ants is not provided (set to
-                    None), the gridding operations will be performed on the entire
-                    set of antennas contained in the instance of class AntennaArray.
-                    Default = None.
+        ants       [instance of class AntennaArray, single instance or list of
+                   instances of class Antenna, or a dictionary holding instances 
+                   of class Antenna] If a dictionary is provided, the keys
+                   should be the antenna labels and the values should be 
+                   instances of class Antenna. If a list is provided, it should 
+                   be a list of valid instances of class Antenna. These 
+                   instance(s) of class Antenna will be merged to the existing 
+                   grid contained in the instance of AntennaArray class. If ants 
+                   is not provided (set to None), the gridding operations will 
+                   be performed on the entire set of antennas contained in the 
+                   instance of class AntennaArray. Default = None.
 
         unconvolve_existing
                    [Boolean] Default = False. If set to True, the effects of
-                   gridding convolution contributed by the antenna(s) specified will
-                   be undone before updating the antenna measurements on the grid,
-                   if the antenna(s) is/are already found to in the set of antennas
-                   held by the instance of AntennaArray. If False and if one or more
-                   antenna instances specified are already found to be held in the
-                   instance of class AntennaArray, the code will stop raising an
-                   error indicating the gridding operation cannot proceed. 
+                   gridding convolution contributed by the antenna(s) specified 
+                   will be undone before updating the antenna measurements on 
+                   the grid, if the antenna(s) is/are already found to in the 
+                   set of antennas held by the instance of AntennaArray. If 
+                   False and if one or more antenna instances specified are 
+                   already found to be held in the instance of class 
+                   AntennaArray, the code will stop raising an error indicating 
+                   the gridding operation cannot proceed. 
 
-        normalize  [Boolean] Default = False. If set to True, the gridded weights
-                   are divided by the sum of weights so that the gridded weights add
-                   up to unity. 
+        normalize  [Boolean] Default = False. If set to True, the gridded 
+                   weights are divided by the sum of weights so that the gridded 
+                   weights add up to unity. 
 
-        method     [string] The gridding method to be used in applying the antenna
-                   weights on to the antenna array grid. Accepted values are 'NN'
-                   (nearest neighbour - default), 'CS' (cubic spline), or 'BL'
-                   (Bi-linear). In case of applying grid weights by 'NN' method, an
-                   optional distance upper bound for the nearest neighbour can be 
-                   provided in the parameter distNN to prune the search and make it
-                   efficient
+        method     [string] The gridding method to be used in applying the 
+                   antenna weights on to the antenna array grid. Accepted values 
+                   are 'NN' (nearest neighbour - default), 'CS' (cubic spline), 
+                   or 'BL' (Bi-linear). In case of applying grid weights by 'NN' 
+                   method, an optional distance upper bound for the nearest 
+                   neighbour can be provided in the parameter distNN to prune 
+                   the search and make it efficient
 
-        distNN     [scalar] A positive value indicating the upper bound on distance
-                   to the nearest neighbour in the gridding process. It has units of
-                   distance, the same units as the antenna attribute location and 
-                   antenna array attribute gridx_P1 and gridy_P1. Default is NP.inf
-                   (infinite distance). It will be internally converted to have same
-                   units as antenna attributes wtspos_P1 and wtspos_P2 (units in 
-                   number of wavelengths)
+        distNN     [scalar] A positive value indicating the upper bound on 
+                   distance to the nearest neighbour in the gridding process. 
+                   It has units of distance, the same units as the antenna 
+                   attribute location and antenna array attribute gridx and 
+                   gridy. Default is NP.inf (infinite distance). It will be 
+                   internally converted to have same units as antenna attributes 
+                   wtspos (units in number of wavelengths)
 
         maxmatch   [scalar] A positive value indicating maximum number of input 
                    locations in the antenna grid to be assigned. Default = None. 
                    If set to None, all the antenna array grid elements specified 
-                   are assigned values for each antenna. For instance, to have only 
-                   one antenna array grid element to be populated per antenna, use
-                   maxmatch=1. 
+                   are assigned values for each antenna. For instance, to have 
+                   only one antenna array grid element to be populated per 
+                   antenna, use maxmatch=1. 
 
         tol        [scalar] If set, only lookup data with abs(val) > tol will be 
-                   considered for nearest neighbour lookup. Default = None implies 
-                   all lookup values will be considered for nearest neighbour 
-                   determination. tol is to be interpreted as a minimum value 
-                   considered as significant in the lookup table. 
+                   considered for nearest neighbour lookup. Default = None 
+                   implies all lookup values will be considered for nearest 
+                   neighbour determination. tol is to be interpreted as a minimum 
+                   value considered as significant in the lookup table. 
         ----------------------------------------------------------------------------
         """
 
@@ -7079,12 +7079,14 @@ class InterferometerArray:
                                               recreate a grid. To be specified 
                                               when the antenna locations are
                                               updated.
-                    'antennas': Holds a dictionary consisting of updates for 
-                                individual antennas. One of the keys is 'label' 
-                                which indicates an antenna label. If absent, the 
-                                code execution stops by throwing an exception. 
-                                The other optional keys and the information they
-                                hold are listed below:
+                    'antennas': Holds a list of dictionaries consisting of 
+                                updates for individual antennas. Each element 
+                                in the list contains update for one antenna. 
+                                For each of these dictionaries, one of the keys 
+                                is 'label' which indicates an antenna label. If 
+                                absent, the code execution stops by throwing an 
+                                exception. The other optional keys and the 
+                                information they hold are listed below:
                                 'action'      [String scalar] Indicates the type 
                                               of update operation. 'add' adds the 
                                               Antenna instance to the 
@@ -7273,11 +7275,12 @@ class InterferometerArray:
                                        series. It is optional to set this to a
                                        scalar. If not given, no change is made to 
                                        the existing timestamp attribute
-                    'interferometers': Holds a dictionary consisting of updates 
-                                for individual interferometers. One of the keys 
-                                is 'label' which indicates an interferometer 
+                    'interferometers': Holds a list of dictionaries where element
+                                consists of updates for individual 
+                                interferometers. Each dictionary must contain a 
+                                key 'label' which indicates an interferometer 
                                 label. If absent, the code execution stops by 
-                                throwing an exception. The other optional keys
+                                throwing an exception. The other optional keys 
                                 and the information they hold are listed below:
                                 'action'      [String scalar] Indicates the type 
                                               of update operation. 'add' adds the 
@@ -7311,14 +7314,11 @@ class InterferometerArray:
                                               provided (=None), then the 
                                               specified action applies to both
                                               polarizations. Default = None.
-                                'Vt_P11'      [Optional. Numpy array] Complex 
-                                              visibility time series in 
-                                              polarization P11. Is used only if 
-                                              set and if 'action' key value is 
-                                              set to 'modify'. Default = None.
-                                'Vt_P22'      [Optional. Numpy array] Complex 
-                                              visibility time series in 
-                                              polarization P22. Is used only if 
+                                'Vt'          [Optional. Dictionary] Complex 
+                                              visibility time series for each 
+                                              of the four cross-polarization 
+                                              specified as keys 'P11', 'P12', 
+                                              'P21' and 'P22'. Is used only if 
                                               set and if 'action' key value is 
                                               set to 'modify'. Default = None.
                                 't'           [Optional. Numpy array] Time axis 
@@ -7331,80 +7331,29 @@ class InterferometerArray:
                                               key value is set to 'modify'.
                                               Default = None.
                                 'location'    [Optional. instance of GEOM.Point
-                                              class] 
-                                              Interferometer location in the 
-                                              local ENU coordinate system. Used 
-                                              only if set and if 'action' key 
-                                              value is set to 'modify'.
+                                              class] Interferometer location in 
+                                              the local ENU coordinate system. 
+                                              Used only if set and if 'action' 
+                                              key value is set to 'modify'.
                                               Default=None.
-                                'wtsinfo_P11' [Optional. List of dictionaries] 
-                                              See description in Interferometer 
-                                              class member function update(). Is 
-                                              used only if set and if 'action' 
-                                              key value is set to 'modify'.
-                                              Default = None.
-                                'wtsinfo_P22' [Optional. List of dictionaries] 
-                                              See description in Interferometer 
-                                              class member function update(). Is 
-                                              used only if set and if 'action' 
-                                              key value is set to 'modify'.
-                                              Default = None.
-                                'wtsinfo_P12' [Optional. List of dictionaries] 
-                                              See description in Interferometer 
-                                              class member function update(). Is 
-                                              used only if set and if 'action' 
-                                              key value is set to 'modify'.
-                                              Default = None.
-                                'wtsinfo_P21' [Optional. List of dictionaries] 
-                                              See description in Interferometer 
-                                              class member function update(). Is 
-                                              used only if set and if 'action' 
-                                              key value is set to 'modify'.
-                                              Default = None.
-                                'flag_P11'    [Optional. Boolean] Flagging status 
-                                              update for polarization P11 of the 
-                                              interferometer. If True, 
-                                              polarization P11 measurements of
-                                              the interferometer will be flagged. 
+                                'wtsinfo'     [Optional. Dictionary] See 
+                                              description in Interferometer 
+                                              class member function update(). 
+                                              Is used only if set and if 
+                                              'action' key value is set to 
+                                              'modify'. Default = None.
+                                'flags'       [Optional. Dictionary] holds 
+                                              boolean flags for each of the 4 
+                                              cross-polarizations which are 
+                                              stored under keys 'P11', 'P12', 
+                                              'P21' and 'P2'. Default=None means 
+                                              no updates for flags. If True, 
+                                              that polarization will be flagged. 
                                               If not set (=None), the previous or 
                                               default flag status will continue 
                                               to apply. If set to False, the 
-                                              interferometer status will be 
-                                              updated to become unflagged.
-                                              Default=None.
-                                'flag_P22'    [Optional. Boolean] Flagging status 
-                                              update for polarization P22 of the 
-                                              interferometer. If True, 
-                                              polarization P22 measurements of
-                                              the interferometer will be flagged. 
-                                              If not set (=None), the previous or 
-                                              default flag status will continue 
-                                              to apply. If set to False, the 
-                                              interferometer status will be 
-                                              updated to become unflagged.
-                                              Default=None.
-                                'flag_P12'    [Optional. Boolean] Flagging status 
-                                              update for polarization P12 of the 
-                                              interferometer. If True, 
-                                              polarization P12 measurements of
-                                              the interferometer will be flagged. 
-                                              If not set (=None), the previous or 
-                                              default flag status will continue 
-                                              to apply. If set to False, the 
-                                              interferometer status will be 
-                                              updated to become unflagged.
-                                              Default=None.
-                                'flag_P21'    [Optional. Boolean] Flagging status 
-                                              update for polarization P21 of the 
-                                              interferometer. If True, 
-                                              polarization P21 measurements of
-                                              the interferometer will be flagged. 
-                                              If not set (=None), the previous or 
-                                              default flag status will continue 
-                                              to apply. If set to False, the 
-                                              interferometer status will be 
-                                              updated to become unflagged.
-                                              Default=None.
+                                              antenna status will be updated to 
+                                              become unflagged.
                                 'gridfunc_freq'
                                               [Optional. String scalar] Read the 
                                               description of inputs to 
@@ -7412,59 +7361,19 @@ class InterferometerArray:
                                               function update(). If set to None 
                                               (not provided), this attribute is 
                                               determined based on the size of 
-                                              wtspos_P11 and wtspos_P22. It is 
-                                              applicable only when 'action' key 
-                                              is set to 'modify'. Default = None.
-                                'delaydict_P11'
-                                              Dictionary containing information 
-                                              on delay compensation to be applied 
-                                              to the fourier transformed 
-                                              visibilities for polarization P11. 
-                                              Default is None (no delay 
-                                              compensation to be applied). Refer 
-                                              to the docstring of member function
-                                              delay_compensation() of class 
-                                              PolInfo for more details.
-                                'delaydict_P22'
-                                              Dictionary containing information 
-                                              on delay compensation to be applied 
-                                              to the fourier transformed 
-                                              visibilities for polarization P22. 
-                                              Default is None (no delay 
-                                              compensation to be applied). Refer 
-                                              to the docstring of member function
-                                              delay_compensation() of class 
-                                              PolInfo for more details.
-                                'delaydict_P12'
-                                              Dictionary containing information 
-                                              on delay compensation to be applied 
-                                              to the fourier transformed 
-                                              visibilities for polarization P12. 
-                                              Default is None (no delay 
-                                              compensation to be applied). Refer 
-                                              to the docstring of member function
-                                              delay_compensation() of class 
-                                              PolInfo for more details.
-                                'delaydict_P21'
-                                              Dictionary containing information 
-                                              on delay compensation to be applied 
-                                              to the fourier transformed 
-                                              visibilities for polarization P21. 
-                                              Default is None (no delay 
-                                              compensation to be applied). Refer 
-                                              to the docstring of member function
-                                              delay_compensation() of class 
-                                              PolInfo for more details.
+                                              wtspos under each polarization. 
+                                              It is applicable only when 'action' 
+                                              key is set to 'modify'. 
+                                              Default = None.
                                 'ref_freq'    [Optional. Scalar] Positive value 
                                               (in Hz) of reference frequency 
                                               (used if gridfunc_freq is set to
-                                              'scale') at which wtspos_P11 and 
-                                              wtspos_P22 in wtsinfo_P11 and 
-                                              wtsinfo_P22, respectively, are 
-                                              provided. If set to None, the 
-                                              reference frequency already set in
-                                              interferometer array instance 
-                                              remains unchanged. Default = None.
+                                              'scale') at which wtspos in 
+                                              wtsinfo are provided. If set to 
+                                              None, the reference frequency 
+                                              already set in interferometer 
+                                              array instance remains unchanged. 
+                                              Default = None.
                                 'pol_type'    [Optional. String scalar] 'Linear' 
                                               or 'Circular'. Used only when 
                                               action key is set to 'modify'. If 
