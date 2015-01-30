@@ -1004,36 +1004,36 @@ class Antenna_old:
 
 #####################################################################  
 
-class AntennaPair(Antenna):
-    def __init__(self, A1, A2):
-        self.A1, self.A2 = A1, A2
-        self.label = A1.label+'-'+A2.label
-        self.location = A1.location-A2.location
-        self.Et = DSP.XC(self.A1.Et, self.A2.Et)
-        # self.t = (A1.t[1]-A1.t[0])*NP.asarray(range(0,len(self.Et)))
-        self.Ef = DSP.FT1D(self.Et, ax=0, use_real=False, shift=False)
-        self.f = DSP.spectax(len(self.Et), resolution=A1.t[1]-A1.t[0])
-        self.t = NP.fft.fftfreq(len(self.Ef),self.f[1]-self.f[0])        
-        self.mode = 'XF'
+# class AntennaPair(Antenna):
+#     def __init__(self, A1, A2):
+#         self.A1, self.A2 = A1, A2
+#         self.label = A1.label+'-'+A2.label
+#         self.location = A1.location-A2.location
+#         self.Et = DSP.XC(self.A1.Et, self.A2.Et)
+#         # self.t = (A1.t[1]-A1.t[0])*NP.asarray(range(0,len(self.Et)))
+#         self.Ef = DSP.FT1D(self.Et, ax=0, use_real=False, shift=False)
+#         self.f = DSP.spectax(len(self.Et), resolution=A1.t[1]-A1.t[0])
+#         self.t = NP.fft.fftfreq(len(self.Ef),self.f[1]-self.f[0])        
+#         self.mode = 'XF'
     
-    def __str__(self):
-        return ' Instance of class "{0}" in module "{1}" \n label: {2} \n baseline: {3}'.format(self.__class__.__name__, self.__module__, self.label, self.location.__str__())
+#     def __str__(self):
+#         return ' Instance of class "{0}" in module "{1}" \n label: {2} \n baseline: {3}'.format(self.__class__.__name__, self.__module__, self.label, self.location.__str__())
 
-    def XF(self):
-        self.Ef = DSP.FT1D(self.Et, ax=0, use_real=False, shift=False)
-        self.f = DSP.spectax(len(self.Et), resolution=self.t[1]-self.t[0])
-        self.mode = 'XF'
+#     def XF(self):
+#         self.Ef = DSP.FT1D(self.Et, ax=0, use_real=False, shift=False)
+#         self.f = DSP.spectax(len(self.Et), resolution=self.t[1]-self.t[0])
+#         self.mode = 'XF'
 
-    def FX(self):
-        # Ensure power of 2 and sufficient Nyquist length with zero padding to get identical results to XF-correlator output
-        zero_pad_length1 = 2**NP.ceil(NP.log2(len(self.A1.Et)+len(self.A2.Et)-1))-len(self.A1.Et)   # zero pad length for first sequence
-        zero_pad_length2 = 2**NP.ceil(NP.log2(len(self.A1.Et)+len(self.A2.Et)-1))-len(self.A2.Et)   # zero pad length for second sequence
-        self.Ef = DSP.FT1D(NP.append(self.A1.Et, NP.zeros(zero_pad_length1)), ax=0, use_real=False, shift=False)*NP.conj(DSP.FT1D(NP.append(self.A2.Et, NP.zeros(zero_pad_length2)), ax=0, use_real=False, shift=False))  # product of FT
-        self.f = DSP.spectax(int(2**NP.ceil(NP.log2(len(self.A1.Et)+len(self.A2.Et)-1))), resolution=self.A1.t[1]-self.A1.t[0])
-        self.mode = 'FX'
-        self.t = NP.fft.fftfreq(len(self.Ef),self.f[1]-self.f[0])
+#     def FX(self):
+#         # Ensure power of 2 and sufficient Nyquist length with zero padding to get identical results to XF-correlator output
+#         zero_pad_length1 = 2**NP.ceil(NP.log2(len(self.A1.Et)+len(self.A2.Et)-1))-len(self.A1.Et)   # zero pad length for first sequence
+#         zero_pad_length2 = 2**NP.ceil(NP.log2(len(self.A1.Et)+len(self.A2.Et)-1))-len(self.A2.Et)   # zero pad length for second sequence
+#         self.Ef = DSP.FT1D(NP.append(self.A1.Et, NP.zeros(zero_pad_length1)), ax=0, use_real=False, shift=False)*NP.conj(DSP.FT1D(NP.append(self.A2.Et, NP.zeros(zero_pad_length2)), ax=0, use_real=False, shift=False))  # product of FT
+#         self.f = DSP.spectax(int(2**NP.ceil(NP.log2(len(self.A1.Et)+len(self.A2.Et)-1))), resolution=self.A1.t[1]-self.A1.t[0])
+#         self.mode = 'FX'
+#         self.t = NP.fft.fftfreq(len(self.Ef),self.f[1]-self.f[0])
 
-################################################################################
+# ################################################################################
 
 class AntennaArray_old:
 
@@ -1262,7 +1262,7 @@ class AntennaArray_old:
         elif isinstance(others, Antenna):
             if others.label in retval.antennas:
                 print "Antenna {0} already included in the list of antennas.".format(others.label)
-                print "For updating, use the update() method. Ignoring antenna {0}".format(others[i].label)
+                print "For updating, use the update() method. Ignoring antenna {0}".format(others.label)
             else:
                 retval.antennas[others.label] = others
                 print 'Antenna "{0}" added to the list of antennas.'.format(others.label)
@@ -9686,7 +9686,7 @@ class AntennaArray:
         elif isinstance(others, Antenna):
             if others.label in retval.antennas:
                 print "Antenna {0} already included in the list of antennas.".format(others.label)
-                print "For updating, use the update() method. Ignoring antenna {0}".format(others[i].label)
+                print "For updating, use the update() method. Ignoring antenna {0}".format(others.label)
             else:
                 retval.antennas[others.label] = others
                 print 'Antenna "{0}" added to the list of antennas.'.format(others.label)

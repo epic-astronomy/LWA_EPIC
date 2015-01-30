@@ -1,3 +1,15 @@
+From 380833d:
+============
+
+In antenna_array.py,
+
+(*) Fix a bug in member function __add__() of class AntennaArray and
+AntennaArray_old
+(*) Test __init__() of classes Antenna and AntennaArray
+(*) Comment out undeveloped class AntennaPair
+
+Add new_MOFF_testing_MWA.py to git
+
 From fdf6c25:
 ============
 
