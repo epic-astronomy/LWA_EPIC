@@ -5042,6 +5042,7 @@ class InterferometerArray:
                                         label = outdict.keys()[0]
                                         self.grid_mapper[cpol]['labels'][label]['Vf'] = outdict[label]
                                         outdict = out_q2.get()
+                                        label = outdict.keys()[0]
                                         self.grid_mapper[cpol]['labels'][label]['illumination'] = outdict[label]
     
                                     for pjob in pjobs1:
@@ -8378,41 +8379,79 @@ class NewImage:
                 if verbose:
                     print '\t\tInitialized time stamp to {0} from antenna array info.'.format(self.timestamp)
             
-                if (pol is None) or (pol == 'P1'):
-                    if verbose:
-                        print '\n\t\tWorking on polarization P1...'
-                    self.gridx_P1 = antenna_array.gridx_P1
-                    self.gridy_P1 = antenna_array.gridy_P1
-                    self.grid_illumination_P1 = antenna_array.grid_illumination_P1
-                    self.grid_Ef_P1 = antenna_array.grid_Ef_P1
-                    self.holograph_P1 = None
-                    self.img_P1 = None
-                    self.holograph_PB_P1 = None
-                    self.PB_P1 = None
-                    self.lf_P1 = None
-                    self.mf_P1 = None
-                    if verbose:
-                        print '\t\tInitialized gridx_P1, gridy_P1, grid_illumination_P1, and grid_Ef_P1.'
-                        print '\t\tInitialized lf_P1, mf_P1, holograph_PB_P1, PB_P1, holograph_P1, and img_P1'
+                self.grid_illumination = {}
+                self.grid_Ef = {}
+                self.img = {}
+                self.beam = {}
+                self.gridl = {}
+                self.gridm = {}
+                self.grid_wts = {}
 
-                if (pol is None) or (pol == 'P2'):
-                    if verbose:
-                        print '\n\t\tWorking on polarization P2...'
-                    self.gridx_P2 = antenna_array.gridx_P2
-                    self.gridy_P2 = antenna_array.gridy_P2
-                    self.grid_illumination_P2 = antenna_array.grid_illumination_P2
-                    self.grid_Ef_P2 = antenna_array.grid_Ef_P2
-                    self.holograph_P2 = None
-                    self.img_P2 = None
-                    self.holograph_PB_P2 = None
-                    self.PB_P2 = None
-                    self.lf_P2 = None
-                    self.mf_P2 = None
-                    if verbose:
-                        print '\t\tInitialized gridx_P2, gridy_P2, grid_illumination_P2, and grid_Ef_P2.'
-                        print '\t\tInitialized lf_P2, mf_P2, holograph_PB_P2, PB_P2, holograph_P2, and img_P2'
+                if pol is None:
+                    pol = ['P1', 'P2']
+                pol = NP.unique(NP.asarray(pol))
 
+                self.gridu, self.gridv = antenna_array.gridu, antenna_array.gridv
+                antenna_array.make_grid_cube(verbose=verbose, pol=pol)
+
+                for apol in pol:
+                    if apol in ['P1', 'P2']:
+                        if verbose:
+                            print '\n\t\tWorking on polarization {0}'.format(apol)
+                                
+                        self.img[apol] = None
+                        self.beam[apol] = None
+                        self.grid_wts[apol] = NP.zeros(self.gridu.shape+(self.f.size,))
+                        if apol in antenna_array.grid_illumination:
+                            self.grid_illumination[apol] = antenna_array.grid_illumination[apol]
+                            self.grid_Ef[apol] = antenna_array.grid_Ef[apol]
+                        else:
+                            self.grid_illumination[apol] = None
+                            self.grid_Ef[apol] = None
+    
                 self.measured_type = 'E-field'
+
+                if verbose:
+                    print '\t\tInitialized gridx, gridy, grid_illumination, and grid_Ef.'
+                    print '\t\tInitialized gridl, gridm, and img'
+
+
+                # if (pol is None) or (pol == 'P1'):
+                #     if verbose:
+                #         print '\n\t\tWorking on polarization P1...'
+                #     self.gridx_P1 = antenna_array.gridx_P1
+                #     self.gridy_P1 = antenna_array.gridy_P1
+                #     self.grid_illumination_P1 = antenna_array.grid_illumination_P1
+                #     self.grid_Ef_P1 = antenna_array.grid_Ef_P1
+                #     self.holograph_P1 = None
+                #     self.img_P1 = None
+                #     self.holograph_PB_P1 = None
+                #     self.PB_P1 = None
+                #     self.lf_P1 = None
+                #     self.mf_P1 = None
+                #     if verbose:
+                #         print '\t\tInitialized gridx_P1, gridy_P1, grid_illumination_P1, and grid_Ef_P1.'
+                #         print '\t\tInitialized lf_P1, mf_P1, holograph_PB_P1, PB_P1, holograph_P1, and img_P1'
+
+                # if (pol is None) or (pol == 'P2'):
+                #     if verbose:
+                #         print '\n\t\tWorking on polarization P2...'
+                #     self.gridx_P2 = antenna_array.gridx_P2
+                #     self.gridy_P2 = antenna_array.gridy_P2
+                #     self.grid_illumination_P2 = antenna_array.grid_illumination_P2
+                #     self.grid_Ef_P2 = antenna_array.grid_Ef_P2
+                #     self.holograph_P2 = None
+                #     self.img_P2 = None
+                #     self.holograph_PB_P2 = None
+                #     self.PB_P2 = None
+                #     self.lf_P2 = None
+                #     self.mf_P2 = None
+                #     if verbose:
+                #         print '\t\tInitialized gridx_P2, gridy_P2, grid_illumination_P2, and grid_Ef_P2.'
+                #         print '\t\tInitialized lf_P2, mf_P2, holograph_PB_P2, PB_P2, holograph_P2, and img_P2'
+
+                # self.measured_type = 'E-field'
+
             else:
                 raise TypeError('antenna_array is not an instance of class AntennaArray. Cannot initiate instance of class Image.')
 
@@ -8508,73 +8547,90 @@ class NewImage:
         if self.measured_type is None:
             raise ValueError('Measured type is unknown.')
 
-        if self.measured_type == 'E-field':
-            if (pol is None) or (pol == 'P1'):
+        # if self.measured_type == 'E-field':
+        #     if (pol is None) or (pol == 'P1'):
                 
-                if verbose:
-                    print '\tWorking on polarization P1...'
+        #         if verbose:
+        #             print '\tWorking on polarization P1...'
     
-                grid_shape = self.grid_Ef_P1.shape
-                if verbose:
-                    print '\t\tPreparing to zero pad and Inverse Fourier Transform...'
+        #         grid_shape = self.grid_Ef_P1.shape
+        #         if verbose:
+        #             print '\t\tPreparing to zero pad and Inverse Fourier Transform...'
     
-                sum_wts = NP.sum(self.grid_illumination_P1, axis=(0,1))
+        #         sum_wts = NP.sum(self.grid_illumination_P1, axis=(0,1))
     
-                self.holograph_P1 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_Ef_P1, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
-                if verbose:
-                    print '\t\tComputed complex holographic voltage image from antenna array.'
+        #         self.holograph_P1 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_Ef_P1, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
+        #         if verbose:
+        #             print '\t\tComputed complex holographic voltage image from antenna array.'
     
-                self.holograph_PB_P1 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_illumination_P1, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
-                if verbose:
-                    print '\t\tComputed complex holographic voltage pattern of antenna array.'
+        #         self.holograph_PB_P1 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_illumination_P1, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
+        #         if verbose:
+        #             print '\t\tComputed complex holographic voltage pattern of antenna array.'
     
-                dx = self.gridx_P1[0,1] - self.gridx_P1[0,0]
-                dy = self.gridy_P1[1,0] - self.gridy_P1[0,0]
-                self.lf_P1 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[1], dx)), FCNST.c/self.f)
-                self.mf_P1 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[0], dy)), FCNST.c/self.f)
-                if verbose:
-                    print '\t\tComputed the direction cosine coordinates for the image.'
-                grid_lf_P1 = NP.repeat(NP.expand_dims(self.lf_P1, axis=0), self.mf_P1.shape[0], axis=0)
-                grid_mf_P1 = NP.repeat(NP.expand_dims(self.mf_P1, axis=1), self.lf_P1.shape[0], axis=1)
-                nan_ind = grid_lf_P1**2 + grid_mf_P1**2 > 1.0
-                self.holograph_P1[nan_ind] = NP.nan
-                self.holograph_PB_P1[nan_ind] = NP.nan
-                if verbose:
-                    print '\t\tImage pixels corresponding to invalid direction cosine coordinates flagged as NAN.'
+        #         dx = self.gridx_P1[0,1] - self.gridx_P1[0,0]
+        #         dy = self.gridy_P1[1,0] - self.gridy_P1[0,0]
+        #         self.lf_P1 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[1], dx)), FCNST.c/self.f)
+        #         self.mf_P1 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[0], dy)), FCNST.c/self.f)
+        #         if verbose:
+        #             print '\t\tComputed the direction cosine coordinates for the image.'
+        #         grid_lf_P1 = NP.repeat(NP.expand_dims(self.lf_P1, axis=0), self.mf_P1.shape[0], axis=0)
+        #         grid_mf_P1 = NP.repeat(NP.expand_dims(self.mf_P1, axis=1), self.lf_P1.shape[0], axis=1)
+        #         nan_ind = grid_lf_P1**2 + grid_mf_P1**2 > 1.0
+        #         self.holograph_P1[nan_ind] = NP.nan
+        #         self.holograph_PB_P1[nan_ind] = NP.nan
+        #         if verbose:
+        #             print '\t\tImage pixels corresponding to invalid direction cosine coordinates flagged as NAN.'
     
-            if (pol is None) or (pol == 'P2'):
+        #     if (pol is None) or (pol == 'P2'):
     
-                if verbose:
-                    print '\tWorking on polarization P2...'
+        #         if verbose:
+        #             print '\tWorking on polarization P2...'
     
-                grid_shape = self.grid_Ef_P2.shape
-                if verbose:
-                    print '\t\tPreparing to zero pad and Inverse Fourier Transform...'
+        #         grid_shape = self.grid_Ef_P2.shape
+        #         if verbose:
+        #             print '\t\tPreparing to zero pad and Inverse Fourier Transform...'
     
-                sum_wts = NP.sum(self.grid_illumination_P1, axis=(0,1))
+        #         sum_wts = NP.sum(self.grid_illumination_P1, axis=(0,1))
     
-                self.holograph_P2 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_Ef_P2, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
-                if verbose:
-                    print '\t\tComputed complex holographic voltage image from antenna array.'
+        #         self.holograph_P2 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_Ef_P2, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
+        #         if verbose:
+        #             print '\t\tComputed complex holographic voltage image from antenna array.'
     
-                self.holograph_PB_P2 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_illumination_P2, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
-                if verbose:
-                    print '\t\tComputed complex holographic voltage pattern of antenna array.'
+        #         self.holograph_PB_P2 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_illumination_P2, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
+        #         if verbose:
+        #             print '\t\tComputed complex holographic voltage pattern of antenna array.'
     
-                dx = self.gridx_P2[0,1] - self.gridx_P2[0,0]
-                dy = self.gridy_P2[1,0] - self.gridy_P2[0,0]
-                self.lf_P2 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[1], dx)), FCNST.c/self.f)
-                self.mf_P2 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[0], dy)), FCNST.c/self.f)
-                if verbose:
-                    print '\t\tComputed the direction cosine coordinates for the image.'
-                grid_lf_P2 = NP.repeat(NP.expand_dims(self.lf_P2, axis=0), self.mf_P2.shape[0], axis=0)
-                grid_mf_P2 = NP.repeat(NP.expand_dims(self.mf_P2, axis=1), self.lf_P2.shape[0], axis=1)
-                nan_ind = grid_lf_P2**2 + grid_mf_P2**2 > 1.0
-                self.holograph_P2[nan_ind] = NP.nan
-                self.holograph_PB_P2[nan_ind] = NP.nan
-                if verbose:
-                    print '\t\tImage pixels corresponding to invalid direction cosine coordinates (if any) \n\t\t\thave been flagged as NAN.'
-                    print '\nImaging completed successfully.\n'
+        #         dx = self.gridx_P2[0,1] - self.gridx_P2[0,0]
+        #         dy = self.gridy_P2[1,0] - self.gridy_P2[0,0]
+        #         self.lf_P2 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[1], dx)), FCNST.c/self.f)
+        #         self.mf_P2 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[0], dy)), FCNST.c/self.f)
+        #         if verbose:
+        #             print '\t\tComputed the direction cosine coordinates for the image.'
+        #         grid_lf_P2 = NP.repeat(NP.expand_dims(self.lf_P2, axis=0), self.mf_P2.shape[0], axis=0)
+        #         grid_mf_P2 = NP.repeat(NP.expand_dims(self.mf_P2, axis=1), self.lf_P2.shape[0], axis=1)
+        #         nan_ind = grid_lf_P2**2 + grid_mf_P2**2 > 1.0
+        #         self.holograph_P2[nan_ind] = NP.nan
+        #         self.holograph_PB_P2[nan_ind] = NP.nan
+        #         if verbose:
+        #             print '\t\tImage pixels corresponding to invalid direction cosine coordinates (if any) \n\t\t\thave been flagged as NAN.'
+        #             print '\nImaging completed successfully.\n'
+
+        if self.measured_type == 'E-field':
+            if pol is None: pol = ['P1', 'P2']
+            pol = NP.unique(NP.asarray(pol))
+            grid_shape = self.gridu.shape
+            for apol in pol:
+                if apol in ['P1', 'P2']:
+                    if verbose: print 'Preparing to Inverse Fourier Transform...'
+                    if weighting == 'uniform':
+                        self.grid_wts[apol][NP.abs(self.grid_illumination[apol]) > 0.0] = 1.0/NP.abs(self.grid_illumination[apol][NP.abs(self.grid_illumination[apol]) > 0.0])
+                    else:
+                        self.grid_wts[apol][NP.abs(self.grid_illumination[apol]) > 0.0] = 1.0
+
+                    sum_wts = NP.sum(NP.abs(self.grid_wts[apol] * self.grid_illumination[apol]), axis=(0,1), keepdims=True)
+
+                    self.beam[apol] = NP.fft.fftshift(NP.fft.fft2(self.grid_wts[apol]*self.grid_illumination[apol],axes=(0,1)).real, axes=(0,1)) / sum_wts
+                    self.img[apol] = NP.fft.fftshift(NP.fft.fft2(self.grid_wts[apol]*self.grid_Ef[apol],axes=(0,1)).real, axes=(0,1)) / sum_wts
 
         if self.measured_type == 'visibility':
             if pol is None: pol = ['P11', 'P12', 'P21', 'P22']
@@ -8593,14 +8649,13 @@ class NewImage:
                     self.beam[cpol] = NP.fft.fftshift(NP.fft.fft2(self.grid_wts[cpol]*self.grid_illumination[cpol],axes=(0,1)).real, axes=(0,1)) / sum_wts
                     self.img[cpol] = NP.fft.fftshift(NP.fft.fft2(self.grid_wts[cpol]*self.grid_Vf[cpol],axes=(0,1)).real, axes=(0,1)) / sum_wts
                     
-            du = self.gridu[0,1] - self.gridu[0,0]
-            dv = self.gridv[1,0] - self.gridv[0,0]
-            self.gridl, self.gridm = NP.meshgrid(NP.fft.fftshift(NP.fft.fftfreq(grid_shape[1], du)), NP.fft.fftshift(NP.fft.fftfreq(grid_shape[0], dv)))
-            nan_ind = NP.where(self.gridl**2 + self.gridm**2 > 1.0)
-            # nan_ind_unraveled = NP.unravel_index(nan_ind, self.gridl.shape)
-            # self.beam[cpol][nan_ind_unraveled,:] = NP.nan
-            # self.img[cpol][nan_ind_unraveled,:] = NP.nan    
-            
+        du = self.gridu[0,1] - self.gridu[0,0]
+        dv = self.gridv[1,0] - self.gridv[0,0]
+        self.gridl, self.gridm = NP.meshgrid(NP.fft.fftshift(NP.fft.fftfreq(grid_shape[1], du)), NP.fft.fftshift(NP.fft.fftfreq(grid_shape[0], dv)))
+        nan_ind = NP.where(self.gridl**2 + self.gridm**2 > 1.0)
+        # nan_ind_unraveled = NP.unravel_index(nan_ind, self.gridl.shape)
+        # self.beam[cpol][nan_ind_unraveled,:] = NP.nan
+        # self.img[cpol][nan_ind_unraveled,:] = NP.nan    
 
     #############################################################################
         
@@ -9955,7 +10010,7 @@ class AntennaArray:
         if not isinstance(pol, str):
             raise TypeError('Input parameter must be a string')
         
-        if not pol in ['P1' 'P2']:
+        if not pol in ['P1', 'P2']:
             raise ValueError('Invalid specification for input parameter pol')
 
         if not isinstance(sort, bool):
@@ -10524,18 +10579,19 @@ class AntennaArray:
                                             gridind_raveled_around_ant = self.grid_mapper[apol]['grid']['ind_all'][select_ant_ind]
                                             uniq_gridind_raveled_around_ant = NP.unique(gridind_raveled_around_ant)
                                             self.grid_mapper[apol]['labels'][label]['gridind'] = uniq_gridind_raveled_around_ant
-                                            pjob1 = MP.Process(target=antenna_grid_mapper, args=(gridind_raveled_around_ant, contributed_ant_grid_Ef[select_ant_ind], NP.append(uniq_gridind_raveled_around_ant, uniq_gridind_raveled_around_ant.max()+1), label, out_q1), name='process-{0:0d}-{1}-visibility'.format(job_ind, label))
+                                            pjob1 = MP.Process(target=antenna_grid_mapper, args=(gridind_raveled_around_ant, contributed_ant_grid_Ef[select_ant_ind], NP.append(uniq_gridind_raveled_around_ant, uniq_gridind_raveled_around_ant.max()+1), label, out_q1), name='process-{0:0d}-{1}-E-field'.format(job_ind, label))
                                             pjob2 = MP.Process(target=antenna_grid_mapper, args=(gridind_raveled_around_ant, self.grid_mapper[apol]['ant']['illumination'][select_ant_ind], NP.append(uniq_gridind_raveled_around_ant, uniq_gridind_raveled_around_ant.max()+1), label, out_q2), name='process-{0:0d}-{1}-illumination'.format(job_ind, label))
                                             pjob1.start()
                                             pjob2.start()
                                             pjobs1.append(pjob1)
                                             pjobs2.append(pjob2)
-    
-                                    for p in xrange(len(pjobs1)):    # Unpack the gridded visibility and aperture illumination information from the pool output
+
+                                    for p in xrange(len(pjobs1)):    # Unpack the E-fields and aperture illumination information from the pool output
                                         outdict = out_q1.get()
                                         label = outdict.keys()[0]
                                         self.grid_mapper[apol]['labels'][label]['Ef'] = outdict[label]
                                         outdict = out_q2.get()
+                                        label = outdict.keys()[0]
                                         self.grid_mapper[apol]['labels'][label]['illumination'] = outdict[label]
     
                                     for pjob in pjobs1:
@@ -10678,7 +10734,7 @@ class AntennaArray:
                                             select_ant_ind = self.grid_mapper[apol]['ant']['rev_ind_all'][self.grid_mapper[apol]['ant']['rev_ind_all'][job_ind]:self.grid_mapper[apol]['ant']['rev_ind_all'][job_ind+1]]
                                             gridind_raveled_around_ant = self.grid_mapper[apol]['grid']['ind_all'][select_ant_ind]
                                             uniq_gridind_raveled_around_ant = self.grid_mapper[apol]['labels'][label]['gridind']
-                                            pjob = MP.Process(target=antenna_grid_mapper, args=(gridind_raveled_around_ant, contributed_ant_grid_Ef[select_ant_ind], NP.append(uniq_gridind_raveled_around_ant, uniq_gridind_raveled_around_ant.max()+1), label, out_q), name='process-{0:0d}-{1}-visibility'.format(job_ind, label))
+                                            pjob = MP.Process(target=antenna_grid_mapper, args=(gridind_raveled_around_ant, contributed_ant_grid_Ef[select_ant_ind], NP.append(uniq_gridind_raveled_around_ant, uniq_gridind_raveled_around_ant.max()+1), label, out_q), name='process-{0:0d}-{1}-E-field'.format(job_ind, label))
     
                                             pjob.start()
                                             pjobs.append(pjob)
@@ -10807,6 +10863,7 @@ class AntennaArray:
                 progress.update(loopcount+1)
                 loopcount += 1
             progress.finish()
+            print num_unflagged
                 
             if verbose:
                 print 'Gridded aperture illumination and electric fields for polarization {0} from {1:0d} unflagged contributing antennas'.format(apol, num_unflagged)
@@ -11152,5 +11209,6 @@ class AntennaArray:
 
         self.t = self.antennas.itervalues().next().t # Update time axis
         self.f = self.antennas.itervalues().next().f # Update frequency axis
+        self.update_flags()
 
     ############################################################################

@@ -1,3 +1,20 @@
+From 7b6d837:
+============
+
+In antenna_array.py,
+
+(*) Fix bug in get_E_fields() member function of class AntennaArray by
+listing polarization strings separated by comma
+(*) Fix bug in reading queue outputs from parallel processing in
+member function grid_convolve() of classes InterferometerArray and
+AntennaArray
+(*) Modify __init__() of class NewImage to be compatible with changes
+to class AntennaArray
+(*) Modify imagr() of class NewImage to be compatible with changes
+to class AntennaArray
+(*) Fix bug in update() member function of class AntennaArray where
+update_flags() was not called
+
 From 4989a55:
 ============
 
