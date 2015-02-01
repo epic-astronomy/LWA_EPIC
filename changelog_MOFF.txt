@@ -1,3 +1,16 @@
+From 4989a55:
+============
+
+In antenna_array.py,
+
+(*) Add input parameters parallel and nproc to member function update()
+of class AntennaArray
+(*) Fix bug in update() member function of class Antenna by removing
+do_correlate statement(s)
+(*) Fix docstring throughout by replacing nprocs with nproc
+(*) Test update() member function of classes AntennaArray and Antenna
+in both serial and parallel processing scenarios
+
 From 380833d:
 ============
 

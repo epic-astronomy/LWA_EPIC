@@ -4703,12 +4703,12 @@ class InterferometerArray:
         parallel   [boolean] specifies if parallelization is to be invoked. 
                    False (default) means only serial processing
 
-        nprocs     [integer] specifies number of independent processes to spawn.
+        nproc      [integer] specifies number of independent processes to spawn.
                    Default = None, means automatically determines the number of 
                    process cores in the system and use one less than that to 
                    avoid locking the system for other processes. Applies only 
                    if input parameter 'parallel' (see above) is set to True. 
-                   If nprocs is set to a value more than the number of process
+                   If nproc is set to a value more than the number of process
                    cores in the system, it will be reset to number of process 
                    cores in the system minus one to avoid locking the system out 
                    for other processes
@@ -9338,7 +9338,6 @@ class Antenna:
             if 't' in update_dict: t = update_dict['t']
             if 'Et' in update_dict: Et = update_dict['Et']
             if 'flags' in update_dict: flags = update_dict['flags']
-            if 'do_correlate' in update_dict: do_correlate = update_dict['do_correlate']
             if 'wtsinfo' in update_dict: wtsinfo = update_dict['wtsinfo']
             if 'gridfunc_freq' in update_dict: gridfunc_freq = update_dict['gridfunc_freq']
             if 'ref_freq' in update_dict: ref_freq = update_dict['ref_freq']
@@ -10198,12 +10197,12 @@ class AntennaArray:
         parallel   [boolean] specifies if parallelization is to be invoked. 
                    False (default) means only serial processing
 
-        nprocs     [integer] specifies number of independent processes to spawn.
+        nproc      [integer] specifies number of independent processes to spawn.
                    Default = None, means automatically determines the number of 
                    process cores in the system and use one less than that to 
                    avoid locking the system for other processes. Applies only 
                    if input parameter 'parallel' (see above) is set to True. 
-                   If nprocs is set to a value more than the number of process
+                   If nproc is set to a value more than the number of process
                    cores in the system, it will be reset to number of process 
                    cores in the system minus one to avoid locking the system out 
                    for other processes
@@ -10849,7 +10848,7 @@ class AntennaArray:
 
     ############################################################################
 
-    def update(self, updates=None, verbose=False):
+    def update(self, updates=None, parallel=False, nproc=None, verbose=False):
 
         """
         -------------------------------------------------------------------------
@@ -11030,6 +11029,19 @@ class AntennaArray:
                                               considered as significant in the
                                               lookup table. 
 
+        parallel   [boolean] specifies if parallelization is to be invoked. 
+                   False (default) means only serial processing
+
+        nproc      [integer] specifies number of independent processes to spawn.
+                   Default = None, means automatically determines the number of 
+                   process cores in the system and use one less than that to 
+                   avoid locking the system for other processes. Applies only 
+                   if input parameter 'parallel' (see above) is set to True. 
+                   If nproc is set to a value more than the number of process
+                   cores in the system, it will be reset to number of process 
+                   cores in the system minus one to avoid locking the system out 
+                   for other processes
+
         verbose     [Boolean] Default = False. If set to True, prints some 
                     diagnotic or progress messages.
 
@@ -11043,6 +11055,9 @@ class AntennaArray:
             if 'antennas' in updates: # contains updates at level of individual antennas
                 if not isinstance(updates['antennas'], list):
                     updates['antennas'] = [updates['antennas']]
+                if parallel:
+                    list_of_antenna_updates = []
+                    list_of_antennas = []
                 for dictitem in updates['antennas']:
                     if not isinstance(dictitem, dict):
                         raise TypeError('Updates to {0} instance should be provided in the form of a list of dictionaries.'.format(self.__class__.__name__))
