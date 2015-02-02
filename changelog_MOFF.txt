@@ -1,3 +1,11 @@
+From f5df64e:
+============
+
+In antenna_array.py,
+
+(*) Make FX() member function of class Interferometer to be compatible 
+with new PolInfo and Antenna classes
+
 From 7b6d837:
 ============
 

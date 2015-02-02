@@ -3167,10 +3167,15 @@ class Interferometer:
 
         self.update_flags()
 
-        self.crosspol.Vf['P11'] = self.A1.pol.Ef_P1 * self.A2.pol.Ef_P1.conjugate()
-        self.crosspol.Vf['P12'] = self.A1.pol.Ef_P1 * self.A2.pol.Ef_P2.conjugate()
-        self.crosspol.Vf['P21'] = self.A1.pol.Ef_P2 * self.A2.pol.Ef_P1.conjugate()
-        self.crosspol.Vf['P22'] = self.A1.pol.Ef_P2 * self.A2.pol.Ef_P2.conjugate()
+        self.crosspol.Vf['P11'] = self.A1.pol.Ef['P1'] * self.A2.pol.Ef['P1'].conjugate()
+        self.crosspol.Vf['P12'] = self.A1.pol.Ef['P1'] * self.A2.pol.Ef['P2'].conjugate()
+        self.crosspol.Vf['P21'] = self.A1.pol.Ef['P2'] * self.A2.pol.Ef['P1'].conjugate()
+        self.crosspol.Vf['P22'] = self.A1.pol.Ef['P2'] * self.A2.pol.Ef['P2'].conjugate()
+
+        # self.crosspol.Vf['P11'] = self.A1.pol.Ef_P1 * self.A2.pol.Ef_P1.conjugate()
+        # self.crosspol.Vf['P12'] = self.A1.pol.Ef_P1 * self.A2.pol.Ef_P2.conjugate()
+        # self.crosspol.Vf['P21'] = self.A1.pol.Ef_P2 * self.A2.pol.Ef_P1.conjugate()
+        # self.crosspol.Vf['P22'] = self.A1.pol.Ef_P2 * self.A2.pol.Ef_P2.conjugate()
 
         self.f2t()
 
