@@ -1,3 +1,11 @@
+From 0f09325:
+============
+
+In antenna_array.py,
+
+(*) Check similarity of images from MOFF and FX
+(*) Yet to test exact amplitudes
+
 From b53f0a3:
 ============
 
