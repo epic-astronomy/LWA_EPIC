@@ -1004,37 +1004,6 @@ class Antenna_old:
 
 #####################################################################  
 
-# class AntennaPair(Antenna):
-#     def __init__(self, A1, A2):
-#         self.A1, self.A2 = A1, A2
-#         self.label = A1.label+'-'+A2.label
-#         self.location = A1.location-A2.location
-#         self.Et = DSP.XC(self.A1.Et, self.A2.Et)
-#         # self.t = (A1.t[1]-A1.t[0])*NP.asarray(range(0,len(self.Et)))
-#         self.Ef = DSP.FT1D(self.Et, ax=0, use_real=False, shift=False)
-#         self.f = DSP.spectax(len(self.Et), resolution=A1.t[1]-A1.t[0])
-#         self.t = NP.fft.fftfreq(len(self.Ef),self.f[1]-self.f[0])        
-#         self.mode = 'XF'
-    
-#     def __str__(self):
-#         return ' Instance of class "{0}" in module "{1}" \n label: {2} \n baseline: {3}'.format(self.__class__.__name__, self.__module__, self.label, self.location.__str__())
-
-#     def XF(self):
-#         self.Ef = DSP.FT1D(self.Et, ax=0, use_real=False, shift=False)
-#         self.f = DSP.spectax(len(self.Et), resolution=self.t[1]-self.t[0])
-#         self.mode = 'XF'
-
-#     def FX(self):
-#         # Ensure power of 2 and sufficient Nyquist length with zero padding to get identical results to XF-correlator output
-#         zero_pad_length1 = 2**NP.ceil(NP.log2(len(self.A1.Et)+len(self.A2.Et)-1))-len(self.A1.Et)   # zero pad length for first sequence
-#         zero_pad_length2 = 2**NP.ceil(NP.log2(len(self.A1.Et)+len(self.A2.Et)-1))-len(self.A2.Et)   # zero pad length for second sequence
-#         self.Ef = DSP.FT1D(NP.append(self.A1.Et, NP.zeros(zero_pad_length1)), ax=0, use_real=False, shift=False)*NP.conj(DSP.FT1D(NP.append(self.A2.Et, NP.zeros(zero_pad_length2)), ax=0, use_real=False, shift=False))  # product of FT
-#         self.f = DSP.spectax(int(2**NP.ceil(NP.log2(len(self.A1.Et)+len(self.A2.Et)-1))), resolution=self.A1.t[1]-self.A1.t[0])
-#         self.mode = 'FX'
-#         self.t = NP.fft.fftfreq(len(self.Ef),self.f[1]-self.f[0])
-
-# ################################################################################
-
 class AntennaArray_old:
 
     """
@@ -1487,11 +1456,6 @@ class AntennaArray_old:
 
         if self.timestamp is None:
             self.timestamp = self.antennas.itervalues().next().timestamp
-
-        # if not isinstance(wavelength, NP.ndarray) and not isinstance(wavelength, list) and not isinstance(wavelength, (int,float)):
-        #     raise TypeError('wavelength must be a scalar, list or numpy array.')
-
-        # wavelength = NP.asarray(wavelength)
 
         wavelength = FCNST.c / self.f
         min_lambda = NP.min(NP.abs(wavelength))
@@ -3077,9 +3041,6 @@ class Interferometer:
         ------------------------------------------------------------------------
         """
         
-        # # must call this before anything else
-        # MP.Process.__init__(self, name=(antenna1.label, antenna2.label))
-
         try:
             antenna1, antenna2
         except NameError:
@@ -3174,14 +3135,7 @@ class Interferometer:
         self.crosspol.Vf['P21'] = self.A1.antpol.Ef['P2'] * self.A2.antpol.Ef['P1'].conjugate()
         self.crosspol.Vf['P22'] = self.A1.antpol.Ef['P2'] * self.A2.antpol.Ef['P2'].conjugate()
 
-        # self.crosspol.Vf['P11'] = self.A1.pol.Ef_P1 * self.A2.pol.Ef_P1.conjugate()
-        # self.crosspol.Vf['P12'] = self.A1.pol.Ef_P1 * self.A2.pol.Ef_P2.conjugate()
-        # self.crosspol.Vf['P21'] = self.A1.pol.Ef_P2 * self.A2.pol.Ef_P1.conjugate()
-        # self.crosspol.Vf['P22'] = self.A1.pol.Ef_P2 * self.A2.pol.Ef_P2.conjugate()
-
         self.f2t()
-
-        # print 'Completed FX Process {0} on interferometer {1}'.format(self.name, self.label)
 
     #############################################################################
 
@@ -3204,11 +3158,6 @@ class Interferometer:
         self.crosspol.Vf['P12'] = self.A1.antpol.Ef['P1'] * self.A2.antpol.Ef['P2'].conjugate()
         self.crosspol.Vf['P21'] = self.A1.antpol.Ef['P2'] * self.A2.antpol.Ef['P1'].conjugate()
         self.crosspol.Vf['P22'] = self.A1.antpol.Ef['P2'] * self.A2.antpol.Ef['P2'].conjugate()
-
-        # self.crosspol.Vf['P11'] = self.A1.pol.Ef_P1 * self.A2.pol.Ef_P1.conjugate()
-        # self.crosspol.Vf['P12'] = self.A1.pol.Ef_P1 * self.A2.pol.Ef_P2.conjugate()
-        # self.crosspol.Vf['P21'] = self.A1.pol.Ef_P2 * self.A2.pol.Ef_P1.conjugate()
-        # self.crosspol.Vf['P22'] = self.A1.pol.Ef_P2 * self.A2.pol.Ef_P2.conjugate()
 
         self.f2t()
 
@@ -3235,11 +3184,6 @@ class Interferometer:
         self.crosspol.Vt['P12'] = DSP.XC(self.A1.antpol.Et['P1'], self.A2.antpol.Et['P2'], shift=False)
         self.crosspol.Vt['P21'] = DSP.XC(self.A1.antpol.Et['P2'], self.A2.antpol.Et['P1'], shift=False)
         self.crosspol.Vt['P22'] = DSP.XC(self.A1.antpol.Et['P2'], self.A2.antpol.Et['P2'], shift=False)
-
-        # self.crosspol.Vt['P11'] = DSP.XC(self.A1.pol.Et_P1, self.A2.pol.Et_P1, shift=False)
-        # self.crosspol.Vt['P12'] = DSP.XC(self.A1.pol.Et_P1, self.A2.pol.Et_P2, shift=False)
-        # self.crosspol.Vt['P21'] = DSP.XC(self.A1.pol.Et_P2, self.A2.pol.Et_P1, shift=False)
-        # self.crosspol.Vt['P22'] = DSP.XC(self.A1.pol.Et_P2, self.A2.pol.Et_P2, shift=False)
 
         self.t2f()
 
@@ -3328,15 +3272,6 @@ class Interferometer:
             self.crosspol.flag['P12'] = True
         if self.A1.antpol.flag['P2'] or self.A2.antpol.flag['P2']:
             self.crosspol.flag['P22'] = True
-
-        # if self.A1.pol.flag_P1 or self.A2.pol.flag_P1:
-        #     self.crosspol.flag['P11'] = True
-        # if self.A1.pol.flag_P2 or self.A2.pol.flag_P1:
-        #     self.crosspol.flag['P21'] = True
-        # if self.A1.pol.flag_P1 or self.A2.pol.flag_P2:
-        #     self.crosspol.flag['P12'] = True
-        # if self.A1.pol.flag_P2 or self.A2.pol.flag_P2:
-        #     self.crosspol.flag['P22'] = True
 
         # Flags determined from interferometer level
 
@@ -4591,9 +4526,6 @@ class InterferometerArray:
         if self.f0 is None:
             self.f0 = self.interferometers.itervalues().next().f0
 
-        # if self.timestamp is None:
-        #     self.timestamp = self.interferometers.itervalues().next().timestamp
-
         wavelength = FCNST.c / self.f
         min_lambda = NP.abs(wavelength).min()
 
@@ -4819,9 +4751,6 @@ class InterferometerArray:
                         
                 else:  
 
-                    # self.grid_illumination[cpol] = NP.zeros((self.gridu.shape + (self.f.size,)), dtype=NP.complex_)
-                    # self.grid_Vf[cpol] = NP.zeros((self.gridu.shape + (self.f.size,)), dtype=NP.complex_)
-
                     bl_dict = self.baseline_vectors(pol=cpol, flag=None, sort=True)
                     self.ordered_labels = bl_dict['labels']
                     bl_xy = bl_dict['baselines'][:,:2] # n_bl x 2
@@ -4851,17 +4780,6 @@ class InterferometerArray:
         
                                 reflocs_xy = bl_xy[:,NP.newaxis,:] + wtspos_xy[NP.newaxis,:,:] # n_bl x n_wts x 2 
                                 refwts = wts.reshape(1,-1) * NP.ones((n_bl,1))  # n_bl x n_wts
-                                # refwts_xy = wts.reshape(1,-1) * NP.ones((n_bl,1))  # n_bl x n_wts
-        
-                                # refwts_xy = refwts_xy.reshape(-1,1)  # (n_bl x n_wts) x 1
-                                # reflocs_uv = reflocs_xy[:,NP.newaxis,:] * self.f.reshape(1,-1,1) / FCNST.c  # (n_bl x n_wts) x nchan x 2
-                                # refwts_uv = refwts_xy * NP.ones((1,self.f.size))  # (n_bl x n_wts) x nchan
-                                # vis_uv = Vf[:,NP.newaxis,:] * NP.ones((1,n_wts,1))  # n_bl x n_wts x nchan
-                                # vis_uv = vis_uv.reshape(-1,1)  # (n_bl x n_wts x nchan) x 1
-                                # reflocs_uv = reflocs_uv.reshape(-1,bl_xy.shape[1])  # (n_bl x n_wts x nchan) x 2
-                                # refwts_uv = refwts_uv.reshape(-1,1).ravel()  # (n_bl x n_wts x nchan)
-                                # vis_uv = vis_uv.reshape(-1,1).ravel()  # (n_bl x n_wts x nchan)
-    
                             else:
                                 for i,label in enumerate(self.ordered_labels):
                                     bl_wtspos = self.interferometers[label].wtspos[cpol][0]
@@ -5283,144 +5201,6 @@ class InterferometerArray:
                             if verbose:
                                 progress.finish()
 
-                        # sampled_grid_ind_unraveled = NP.unravel_index(sampled_grid_ind_raveled, self.gridu.shape+(self.f.size,))
-                        # PDB.set_trace()
-                        # if mapping == 'weighted':
-                        #     uniq_gridind_raveled = NP.unique(sampled_grid_ind_raveled)
-                        #     uniq_gridind_unraveled = NP.unravel_index(uniq_gridind_raveled, self.gridu.shape+(self.f.size,))
-                        #     grid_val = OPS.binned_statistic(sampled_grid_ind_raveled, contributed_bl_grid_illumination.real, statistic='sum', bins=NP.append(uniq_gridind_raveled, uniq_gridind_raveled.max()+1))[0]
-                        #     grid_val = grid_val.astype(NP.complex64)
-                        #     grid_val += 1j * OPS.binned_statistic(sampled_grid_ind_raveled, contributed_bl_grid_illumination.imag, statistic='sum', bins=NP.append(uniq_gridind_raveled, uniq_gridind_raveled.max()+1))[0]
-                        #     self.grid_illumination[cpol][uniq_gridind_unraveled] = grid_val
-                        #     grid_val = OPS.binned_statistic(sampled_grid_ind_raveled, contributed_bl_grid_Vf.real, statistic='sum', bins=NP.append(uniq_gridind_raveled, uniq_gridind_raveled.max()+1))[0]
-                        #     grid_val += 1j * OPS.binned_statistic(sampled_grid_ind_raveled, contributed_bl_grid_Vf.imag, statistic='sum', bins=NP.append(uniq_gridind_raveled, uniq_gridind_raveled.max()+1))[0]
-                        #     self.grid_Vf[cpol][uniq_gridind_unraveled] = grid_val
-                        # else:
-                        #     self.grid_illumination[cpol][sampled_grid_ind_unraveled] = contributed_bl_grid_illumination
-                        #     self.grid_Vf[cpol][sampled_grid_ind_unraveled] = contributed_bl_grid_Vf
-                            
-                        #     # lkp_wts = refwts_xy[refind]
-
-                        # PDB.set_trace()
-                        # inpind, refind = LKP.find_1NN(reflocs_uv, inplocs,
-                        #                              distance_ULIM=distNN*self.f.max()/FCNST.c,
-                        #                              remove_oob=True)[:2]
-                        # refind1, inpind1 = LKP.find_1NN(inplocs, reflocs_uv, 
-                        #                                 distance_ULIM=distNN*self.f.max()/FCNST.c, 
-                        #                                 remove_oob=True)[:2]
-                        # if verbose:
-                        #     print 'Determined nearest neighbors on the grid for the relevant baselines.'
-
-                        # refind3d = NP.unravel_index(refind, (n_bl, n_wts, self.f.size))
-
-                        # if verbose:
-                        #     print 'Working on gridded illumination and visibilities...'
-
-                        # ## DO NOT DELETE THE FOLLOWING COMMENTED LINES ##
-                        # ## Elegant and vectorized but slow due to histogram on large array ##
-                        # # inpind_3d = NP.unravel_index(inpind, self.gridu.shape) + (refind3d[2],)
-                        # # inpind_raveled = NP.ravel_multi_index(inpind_3d, self.grid_Vf[cpol].shape)
-                        # # uniq_inpind = NP.unique(inpind_raveled)
-                        # # val = refwts_uv[refind]
-                        # # gwts = OPS.binned_statistic(inpind_raveled, values=val.real, statistic='sum', bins=NP.hstack((uniq_inpind, uniq_inpind.max()+1)))[0]
-                        # # gwts = gwts.astype(NP.complex64)
-                        # # gwts += 1j * OPS.binned_statistic(inpind_raveled, values=val.imag, statistic='sum', bins=NP.hstack((uniq_inpind, uniq_inpind.max()+1)))[0]
-
-                        # # val *= vis_uv[refind]
-                        # # gvis = OPS.binned_statistic(inpind_raveled, values=val.real, statistic='sum', bins=NP.hstack((uniq_inpind, uniq_inpind.max()+1)))[0]
-                        # # gvis = gvis.astype(NP.complex64)
-                        # # gvis += 1j * OPS.binned_statistic(inpind_raveled, values=val.imag, statistic='sum', bins=NP.hstack((uniq_inpind, uniq_inpind.max()+1)))[0]
-
-                        # # roi_ind = NP.unravel_index(uniq_inpind, self.grid_Vf[cpol].shape)
-                        # # self.grid_illumination[cpol][roi_ind] = gwts
-                        # # self.grid_Vf[cpol][roi_ind] = gvis
-                        # ## DO NOT DELETE THE ABOVE COMMENTED LINES ##
-                                
-                        # ## Has a for loop in frequency but way faster because histogram on small arrays
-
-                        # uniq_inpind = NP.unique(inpind)
-                        # freq_revind = OPS.binned_statistic(refind3d[2], statistic='count', bins=NP.arange(self.f.size+1))[3]
-                        # if verbose:
-                        #     progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=self.f.size).start()
-
-                        # for i in xrange(self.f.size):
-                        #     if freq_revind[i] < freq_revind[i+1]:
-                        #         select_freq_ind = freq_revind[freq_revind[i]:freq_revind[i+1]]
-                        #         select_freq_inpind = inpind[select_freq_ind]
-                        #         uniq_inpind_in_freq = NP.unique(select_freq_inpind)
-                        #         val = refwts_uv[refind[select_freq_ind]]
-                        #         gwts = OPS.binned_statistic(select_freq_inpind, values=val.real, statistic='sum', bins=NP.hstack((uniq_inpind_in_freq, uniq_inpind_in_freq.max()+1)))[0]
-                        #         gwts = gwts.astype(NP.complex64)
-                        #         gwts += 1j * OPS.binned_statistic(select_freq_inpind, values=val.imag, statistic='sum', bins=NP.hstack((uniq_inpind_in_freq, uniq_inpind_in_freq.max()+1)))[0]
-
-                        #         val *= vis_uv[refind[select_freq_ind]]
-                        #         gvis = OPS.binned_statistic(select_freq_inpind, values=val.real, statistic='sum', bins=NP.hstack((uniq_inpind_in_freq, uniq_inpind_in_freq.max()+1)))[0]
-                        #         gvis = gvis.astype(NP.complex64)
-                        #         gvis += 1j * OPS.binned_statistic(select_freq_inpind, values=val.imag, statistic='sum', bins=NP.hstack((uniq_inpind_in_freq, uniq_inpind_in_freq.max()+1)))[0]
-
-                        #         roi_ind = NP.unravel_index(uniq_inpind_in_freq, self.gridu.shape)
-                        #         roi_ind = roi_ind + (i+NP.zeros(uniq_inpind_in_freq.size, dtype=NP.int),)
-                        #         self.grid_illumination[cpol][roi_ind] = gwts
-                        #         self.grid_Vf[cpol][roi_ind] = gvis
-
-                        #     progress.update(i+1)
-                        # progress.finish()
-                            
-
-                        #         # bl_revind = OPS.binned_statistic(refind3d[0][select_freq_ind], statistic='count', bins=NP.arange(n_bl+1))[3]
-                        #         # for j in xrange(n_bl):
-                        #         #     self.interferometers[bl_labels[j]].wtspos[cpol] = {}
-                        #         #     self.interferometers[bl_labels[j]].wts[cpol] = {}
-                        #         #     self.interferometers[bl_labels[j]].wtspos_scale[cpol] = 'scale'
-                        #         #     self.interferometers[bl_labels[j]].wtspos[cpol][i] = None
-                        #         #     self.interferometers[bl_labels[j]].wts[cpol][i] = None
-                    
-                        #         #     if bl_revind[j] < bl_revind[j+1]:
-                        #         #         select_bl_ind = bl_revind[bl_revind[j]:bl_revind[j+1]]
-                        #         #         select_bl_inpind = inpind[select_freq_ind[select_bl_ind]]
-                        #         #         uniq_inpind_in_bl = NP.unique(select_bl_inpind)
-                        #         #         val_bl = refwts_uv[refind[select_freq_ind[select_bl_ind]]]
-                        #         #         bwts = OPS.binned_statistic(select_bl_inpind, values=val_bl.real, statistic='sum', bins=NP.hstack((uniq_inpind_in_bl, uniq_inpind_in_bl.max()+1)))[0]
-                        #         #         bwts = bwts.astype(NP.complex64)
-                        #         #         bwts += 1j * OPS.binned_statistic(select_bl_inpind, values=val_bl.imag, statistic='sum', bins=NP.hstack((uniq_inpind_in_bl, uniq_inpind_in_bl.max()+1)))[0]
-
-                        #         #         val_bl *= vis_uv[refind[select_freq_ind[select_bl_ind]]]
-                        #         #         bvis = OPS.binned_statistic(select_bl_inpind, values=val_bl.real, statistic='sum', bins=NP.hstack((uniq_inpind_in_bl, uniq_inpind_in_bl.max()+1)))[0]
-                        #         #         bvis = bvis.astype(NP.complex64)
-                        #         #         bvis += 1j * OPS.binned_statistic(select_bl_inpind, values=val_bl.imag, statistic='sum', bins=NP.hstack((uniq_inpind_in_bl, uniq_inpind_in_bl.max()+1)))[0]
-                        #         #         roi_ind_bl = NP.unravel_index(uniq_inpind_in_bl, self.gridu.shape)
-
-                                        
-                        # if verbose:
-                        #     print 'Determining contributions of individual interferometers to gridded illuminaiton and visibilities...'
-                        #     progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=n_bl).start()
-
-                        # bl_revind = OPS.binned_statistic(refind3d[0], statistic='count', bins=NP.arange(n_bl+1))[3]
-                        # for i in xrange(n_bl):
-                        #     self.interferometers[bl_labels[i]]._gridinfo[cpol] = {}
-                        #     if bl_revind[i] < bl_revind[i+1]:
-                        #         select_bl_ind = bl_revind[bl_revind[i]:bl_revind[i+1]]
-                        #         select_bl_inpind = inpind[select_bl_ind]
-                        #         select_bl_inpind_3d = NP.unravel_index(select_bl_inpind, self.gridu.shape)
-                        #         select_bl_inpind_3d = select_bl_inpind_3d + (refind3d[2][select_bl_ind],)
-                        #         select_bl_inpind_raveled = NP.ravel_multi_index(select_bl_inpind_3d, (self.gridu.shape+(self.f.size,)))
-                        #         uniq_inpind_in_bl = NP.unique(select_bl_inpind_raveled)
-                        #         val = refwts_uv[refind[select_bl_ind]]
-                        #         bwts = OPS.binned_statistic(select_bl_inpind_raveled, values=val.real, statistic='sum', bins=NP.hstack((uniq_inpind_in_bl, uniq_inpind_in_bl.max()+1)))[0]
-                        #         bwts = bwts.astype(NP.complex64)
-                        #         bwts += 1j * OPS.binned_statistic(select_bl_inpind_raveled, values=val.imag, statistic='sum', bins=NP.hstack((uniq_inpind_in_bl, uniq_inpind_in_bl.max()+1)))[0]
-
-                        #         val *= vis_uv[refind[select_bl_ind]]
-                        #         bvis = OPS.binned_statistic(select_bl_inpind_raveled, values=val.real, statistic='sum', bins=NP.hstack((uniq_inpind_in_bl, uniq_inpind_in_bl.max()+1)))[0]
-                        #         bvis = bvis.astype(NP.complex64)
-                        #         bvis += 1j * OPS.binned_statistic(select_bl_inpind_raveled, values=val.imag, statistic='sum', bins=NP.hstack((uniq_inpind_in_bl, uniq_inpind_in_bl.max()+1)))[0]
-
-                        #         self.interferometers[bl_labels[i]]._gridinfo[cpol]['roi_ind'] = NP.unravel_index(uniq_inpind_in_bl, self.grid_Vf[cpol].shape)
-                        #         self.interferometers[bl_labels[i]]._gridinfo[cpol]['wts'] = bwts
-                        #         self.interferometers[bl_labels[i]]._gridinfo[cpol]['Vf'] = bvis
-                        #     progress.update(i+1)
-                        # progress.finish()
-                        
     ################################################################################# 
 
     def make_grid_cube(self, pol=None, verbose=True):
@@ -5466,8 +5246,6 @@ class InterferometerArray:
                 progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=len(labels)).start()
             loopcount = 0
             num_unflagged = 0
-            # while loopcount < len(labels):
-            #     blinfo = self.grid_mapper[cpol]['labels'].itervalues().next()
             for blinfo in self.grid_mapper[cpol]['labels'].itervalues():
                 if not blinfo['flag']:
                     num_unflagged += 1
@@ -6118,699 +5896,6 @@ class InterferometerArray:
                             else:
                                 self.interferometers[key]._gridinfo_P22[i]['illumination'] = grid_illumination_P22[roi_ind]
                                 self.interferometers[key]._gridinfo_P22[i]['Vf'] = self.interferometers[key].crosspol.Vf_P22[i] * grid_illumination_P22[roi_ind]
-
-    ################################################################################
-
-    # def grid_convolve(self, pol=None, antpairs=None, unconvolve_existing=False,
-    #                   normalize=False, method='NN', distNN=NP.inf, tol=None,
-    #                   maxmatch=None): 
-
-    #     """
-    #     ----------------------------------------------------------------------------
-    #     Routine to project the visibility illumination pattern and the visibilities
-    #     on the grid. It can operate on the entire antenna array or
-    #     incrementally project the visibilities and illumination patterns from
-    #     specific antenna pairs on to an already existing grid.
-
-    #     Inputs:
-
-    #     pol         [String] The polarization to be gridded. Can be set to 'P1' or
-    #                 'P2'. If set to None, gridding for both 'P1' and 'P2' is
-    #                 performed. Default = None
-
-    #     ants        [instance of class AntennaArray, single instance or list of
-    #                 instances of class Antenna, or a dictionary holding instances of
-    #                 of class Antenna] If a dictionary is provided, the keys
-    #                 should be the antenna labels and the values should be instances 
-    #                 of class Antenna. If a list is provided, it should be a list of 
-    #                 valid instances of class Antenna. These instance(s) of class
-    #                 Antenna will be merged to the existing grid contained in the
-    #                 instance of AntennaArray class. If ants is not provided (set to
-    #                 None), the gridding operations will be performed on the entire
-    #                 set of antennas contained in the instance of class AntennaArray.
-    #                 Default = None.
-
-    #     unconvolve_existing
-    #                [Boolean] Default = False. If set to True, the effects of
-    #                gridding convolution contributed by the antenna(s) specified will
-    #                be undone before updating the antenna measurements on the grid,
-    #                if the antenna(s) is/are already found to in the set of antennas
-    #                held by the instance of AntennaArray. If False and if one or more
-    #                antenna instances specified are already found to be held in the
-    #                instance of class AntennaArray, the code will stop raising an
-    #                error indicating the gridding operation cannot proceed. 
-
-    #     normalize  [Boolean] Default = False. If set to True, the gridded weights
-    #                are divided by the sum of weights so that the gridded weights add
-    #                up to unity. 
-
-    #     method     [string] The gridding method to be used in applying the antenna
-    #                weights on to the antenna array grid. Accepted values are 'NN'
-    #                (nearest neighbour - default), 'CS' (cubic spline), or 'BL'
-    #                (Bi-linear). In case of applying grid weights by 'NN' method, an
-    #                optional distance upper bound for the nearest neighbour can be 
-    #                provided in the parameter distNN to prune the search and make it
-    #                efficient
-
-    #     distNN     [scalar] A positive value indicating the upper bound on distance
-    #                to the nearest neighbour in the gridding process. It has units of
-    #                distance, the same units as the antenna attribute location and 
-    #                antenna array attribute gridx_P1 and gridy_P1. Default is NP.inf
-    #                (infinite distance). It will be internally converted to have same
-    #                units as antenna attributes wtspos_P1 and wtspos_P2 (units in 
-    #                number of wavelengths)
-
-    #     maxmatch   [scalar] A positive value indicating maximum number of input 
-    #                locations in the antenna grid to be assigned. Default = None. 
-    #                If set to None, all the antenna array grid elements specified 
-    #                are assigned values for each antenna. For instance, to have only 
-    #                one antenna array grid element to be populated per antenna, use
-    #                maxmatch=1. 
-
-    #     tol        [scalar] If set, only lookup data with abs(val) > tol will be 
-    #                considered for nearest neighbour lookup. Default = None implies 
-    #                all lookup values will be considered for nearest neighbour 
-    #                determination. tol is to be interpreted as a minimum value 
-    #                considered as significant in the lookup table. 
-    #     ----------------------------------------------------------------------------
-    #     """
-
-    #     PDB.set_trace()
-    #     eps = 1.0e-10
-
-    #     if (pol is None) or (pol == 'P11'):
-
-    #         if antpairs is not None:
-
-    #             if isinstance(antpairs, Interferometer):
-    #                 antpairs = [antpairs]
-
-    #             if isinstance(antpairs, (dict, InterferometerArray)):
-    #                 # Check if these interferometers are new or old and compatible
-    #                 for key in antpairs: 
-    #                     if isinstance(antpairs[key], Interferometer): # required if antpairs is a dictionary and not instance of InterferometerArray
-    #                         if key in self.interferometers:
-    #                             if unconvolve_existing: # Effects on the grid of interferometers already existing must be removed 
-    #                                 if self.interferometers[key]._gridinfo_P11: # if gridding info is not empty
-    #                                     for i in range(len(self.f)):
-    #                                         self.grid_unconvolve(antpairs[key].label)
-    #                             else:
-    #                                 raise KeyError('Interferometer {0} already found to exist in the dictionary of interferometers but cannot proceed grid_convolve() without unconvolving first.'.format(antpairs[key].label)) 
-                            
-    #                     else:
-    #                         del antpairs[key] # remove the dictionary element since it is not an Interferometer instance
-
-    #                 for key in antpairs:
-    #                     if not antpairs[key].crosspol.flag_P11:
-    #                         for i in range(len(self.f)):
-    #                             if method == 'NN':
-    #                                 if antpairs[key].wtspos_scale['P11'] is None: 
-    #                                     reflocs = antpairs[key].wtspos_P11[i] + (self.f[i]/FCNST.c) * NP.asarray([antpairs[key].location.x, antpairs[key].location.y]).reshape(1,-1)
-    #                                     inplocs = (self.f[i]/FCNST.c) * NP.hstack((self.gridx.reshape(-1,1), self.gridy.reshape(-1,1)))
-    #                                     ibind, nnval = LKP.lookup_1NN(reflocs, antpairs[key].wts_P11[i], inplocs,
-    #                                                                   distance_ULIM=distNN*self.f[i]/FCNST.c,
-    #                                                                   remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
-    #                                     # ibind, nnval = LKP.lookup(antpairs[key].wtspos_P11[i][:,0] + antpairs[key].location.x * (self.f[i]/FCNST.c),
-    #                                     #                           antpairs[key].wtspos_P11[i][:,1] + antpairs[key].location.y * (self.f[i]/FCNST.c),
-    #                                     #                           antpairs[key].wts_P11[i], self.gridx*self.f[i]/FCNST.c,
-    #                                     #                           self.gridy*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
-    #                                     #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
-    #                                     roi_ind = NP.unravel_index(ibind, self.gridx.shape)
-    #                                     if normalize:
-    #                                         nnval /= NP.sum(nnval)
-    #                                 elif antpairs[key].wtspos_scale['P11'] == 'scale':
-    #                                     if i == 0: # Determine some parameters only for zeroth channel if scaling is set
-    #                                         reflocs = antpairs[key].wtspos_P11[0] + (self.f[0]/FCNST.c) * NP.asarray([antpairs[key].location.x, antpairs[key].location.y]).reshape(1,-1)
-    #                                         inplocs = (self.f[0]/FCNST.c) * NP.hstack((self.gridx.reshape(-1,1), self.gridy.reshape(-1,1)))
-    #                                         ibind, nnval = LKP.lookup_1NN(reflocs, antpairs[key].wts_P11[0], inplocs,
-    #                                                                       distance_ULIM=distNN*self.f[0]/FCNST.c,
-    #                                                                       remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
-    #                                         # ibind, nnval = LKP.lookup(antpairs[key].wtspos_P11[0][:,0]+antpairs[key].location.x*(self.f[0]/FCNST.c),
-    #                                         #                           antpairs[key].wtspos_P11[0][:,1]+antpairs[key].location.y*(self.f[0]/FCNST.c),
-    #                                         #                           antpairs[key].wts_P11[0], self.gridx*self.f[0]/FCNST.c,
-    #                                         #                           self.gridy*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
-    #                                         #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
-    #                                         roi_ind = NP.unravel_index(ibind, self.gridx.shape)
-    #                                         if normalize:
-    #                                             nnval /= NP.sum(nnval)
-    #                                 else:
-    #                                     raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
-
-    #                                 self.grid_illumination_P11[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += nnval
-    #                                 self.grid_Vf_P11[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += antpairs[key].crosspol.Vf_P11[i] * nnval
-    #                             else:
-    #                                 if antpairs[key].wtspos_scale['P11'] is None: 
-    #                                     grid_illumination_P11 = GRD.conv_grid2d(antpairs[key].location.x * (self.f[i]/FCNST.c),
-    #                                                                            antpairs[key].location.y * (self.f[i]/FCNST.c),
-    #                                                                            antpairs[key].wtspos_P11[i][:,0],
-    #                                                                            antpairs[key].wtspos_P11[i][:,1],
-    #                                                                            antpairs[key].wts_P11[i],
-    #                                                                            self.gridx * (self.f[i]/FCNST.c),
-    #                                                                            self.gridy * (self.f[i]/FCNST.c),
-    #                                                                            method=method)
-    #                                     grid_illumination_P11 = grid_illumination_P11.reshape(self.gridx.shape)
-    #                                     if normalize:
-    #                                         grid_illumination_P11 = grid_illumination_P11 / NP.sum(grid_illumination_P11)
-    #                                     roi_ind = NP.where(NP.abs(grid_illumination_P11) >= eps)
-    #                                 elif antpairs[key].wtspos_scale['P11'] == 'scale':
-    #                                     if i == 0: # Determine some parameters only for zeroth channel if scaling is set
-    #                                         grid_illumination_P11 = GRD.conv_grid2d(antpairs[key].location.x * (self.f[0]/FCNST.c),
-    #                                                                                antpairs[key].location.y * (self.f[0]/FCNST.c),
-    #                                                                                antpairs[key].wtspos_P11[0][:,0],
-    #                                                                                antpairs[key].wtspos_P11[0][:,1],
-    #                                                                                antpairs[key].wts_P11[0],
-    #                                                                                self.gridx * (self.f[0]/FCNST.c),
-    #                                                                                self.gridy * (self.f[0]/FCNST.c),
-    #                                                                                method=method)
-    #                                         grid_illumination_P11 = grid_illumination_P11.reshape(self.gridx.shape)
-    #                                         if normalize:
-    #                                             grid_illumination_P11 = grid_illumination_P11 / NP.sum(grid_illumination_P11)
-    #                                         roi_ind = NP.where(NP.abs(grid_illumination_P11) >= eps)
-    #                                 else:
-    #                                     raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
-
-    #                                 self.grid_illumination_P11[:,:,i] += grid_illumination_P11
-    #                                 self.grid_Vf_P11[:,:,i] += antpairs[key].crosspol.Vf_P11[i] * grid_illumination_P11
-
-    #                             if key in self.interferometers:
-    #                                 if i not in self.interferometers[key]._gridinfo_P11:
-    #                                     self.interferometers[key]._gridinfo_P11 = {} # Create an empty dictionary for each channel to hold grid info
-    #                                 self.interferometers[key]._gridinfo_P11[i]['f'] = self.f[i]
-    #                                 self.interferometers[key]._gridinfo_P11[i]['flag'] = False
-    #                                 self.interferometers[key]._gridinfo_P11[i]['gridxy_ind'] = zip(*roi_ind)
-    #                                 self.interferometers[key].wtspos_scale['P11'] = antpairs[key].wtspos_scale['P11']
-    #                                 if method == 'NN':
-    #                                     self.interferometers[key]._gridinfo_P11[i]['illumination'] = nnval
-    #                                     self.interferometers[key]._gridinfo_P11[i]['Vf'] = antpairs[key].crosspol.Vf_P11[i] * nnval
-    #                                 else:
-    #                                     self.interferometers[key]._gridinfo_P11[i]['illumination'] = grid_illumination_P11[roi_ind]
-    #                                     self.interferometers[key]._gridinfo_P11[i]['Vf'] = antpairs[key].crosspol.Vf_P11[i] * grid_illumination_P11[roi_ind]
-
-    #             elif isinstance(antpairs, list):
-    #                 # Check if these interferometers are new or old and compatible
-    #                 for key in range(len(antpairs)): 
-    #                     if isinstance(antpairs[key], Interferometer): # required if antpairs is a dictionary and not instance of InterferometerArray
-    #                         if antpairs[key].label in self.interferometers:
-    #                             if unconvolve_existing: # Effects on the grid of interferometers already existing must be removed 
-    #                                 if self.interferometers[antpairs[key].label]._gridinfo_P11: # if gridding info is not empty
-    #                                     for i in range(len(self.f)):
-    #                                         self.grid_unconvolve(antpairs[key].label)
-    #                             else:
-    #                                 raise KeyError('Interferometer {0} already found to exist in the dictionary of interferometers but cannot proceed grid_convolve() without unconvolving first.'.format(antpairs[key].label))
-                            
-    #                     else:
-    #                         del antpairs[key] # remove the dictionary element since it is not an Interferometer instance
-
-    #                 for key in range(len(antpairs)):
-    #                     if not antpairs[key].crosspol.flag_P11:
-    #                         for i in range(len(self.f)):
-    #                             if method == 'NN':
-    #                                 if antpairs[key].wtspos_scale['P11'] is None: 
-    #                                     reflocs = antpairs[key].wtspos_P11[i] + (self.f[i]/FCNST.c) * NP.asarray([antpairs[key].location.x, antpairs[key].location.y]).reshape(1,-1)
-    #                                     inplocs = (self.f[i]/FCNST.c) * NP.hstack((self.gridx.reshape(-1,1), self.gridy.reshape(-1,1)))
-    #                                     ibind, nnval = LKP.lookup_1NN(reflocs, antpairs[key].wts_P11[i], inplocs,
-    #                                                                   distance_ULIM=distNN*self.f[i]/FCNST.c,
-    #                                                                   remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
-
-    #                                     # ibind, nnval = LKP.lookup(antpairs[key].wtspos_P11[i][:,0] + antpairs[key].location.x * (self.f[i]/FCNST.c),
-    #                                     #                           antpairs[key].wtspos_P11[i][:,1] + antpairs[key].location.y * (self.f[i]/FCNST.c),
-    #                                     #                           antpairs[key].wts_P11[i], self.gridx*self.f[i]/FCNST.c,
-    #                                     #                           self.gridy*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
-    #                                     #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
-    #                                     roi_ind = NP.unravel_index(ibind, self.gridx.shape)
-    #                                     if normalize:
-    #                                         nnval /= NP.sum(nnval)
-    #                                 elif antpairs[key].wtspos_scale['P11'] == 'scale':
-    #                                     if i == 0: # Determine some parameters only for zeroth channel if scaling is set
-    #                                         reflocs = antpairs[key].wtspos_P11[0] + (self.f[0]/FCNST.c) * NP.asarray([antpairs[key].location.x, antpairs[key].location.y]).reshape(1,-1)
-    #                                         inplocs = (self.f[0]/FCNST.c) * NP.hstack((self.gridx.reshape(-1,1), self.gridy.reshape(-1,1)))
-    #                                         ibind, nnval = LKP.lookup_1NN(reflocs, antpairs[key].wts_P11[0], inplocs,
-    #                                                                       distance_ULIM=distNN*self.f[0]/FCNST.c,
-    #                                                                       remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
-
-    #                                         # ibind, nnval = LKP.lookup(antpairs[key].wtspos_P11[0][:,0]+antpairs[key].location.x*(self.f[0]/FCNST.c),
-    #                                         #                           antpairs[key].wtspos_P11[0][:,1]+antpairs[key].location.y*(self.f[0]/FCNST.c),
-    #                                         #                           antpairs[key].wts_P11[0], self.gridx*self.f[0]/FCNST.c,
-    #                                         #                           self.gridy*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
-    #                                         #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
-    #                                         roi_ind = NP.unravel_index(ibind, self.gridx.shape)
-    #                                         if normalize:
-    #                                             nnval /= NP.sum(nnval)
-    #                                 else:
-    #                                     raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
-
-    #                                 self.grid_illumination_P11[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += nnval
-    #                                 self.grid_Vf_P11[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += antpairs[key].crosspol.Vf_P11[i] * nnval
-    #                             else:
-    #                                 if antpairs[key].wtspos_scale['P11'] is None:
-    #                                     grid_illumination_P11 = GRD.conv_grid2d(antpairs[key].location.x * (self.f[i]/FCNST.c),
-    #                                                                            antpairs[key].location.y * (self.f[i]/FCNST.c),
-    #                                                                            antpairs[key].wtspos_P11[i][:,0],
-    #                                                                            antpairs[key].wtspos_P11[i][:,1],
-    #                                                                            antpairs[key].wts_P11[i],
-    #                                                                            self.gridx * (self.f[i]/FCNST.c),
-    #                                                                            self.gridy * (self.f[i]/FCNST.c),
-    #                                                                            method=method)
-    #                                     grid_illumination_P11 = grid_illumination_P11.reshape(self.gridx.shape)
-    #                                     if normalize:
-    #                                         grid_illumination_P11 = grid_illumination_P11 / NP.sum(grid_illumination_P11)
-    #                                     roi_ind = NP.where(NP.abs(grid_illumination_P11) >= eps)
-    #                                 elif antpairs[key].wtspos_scale['P11'] == 'scale':
-    #                                     if i == 0: # Determine some parameters only for zeroth channel if scaling is set
-    #                                         grid_illumination_P11 = GRD.conv_grid2d(antpairs[key].location.x * (self.f[0]/FCNST.c),
-    #                                                                                antpairs[key].location.y * (self.f[0]/FCNST.c),
-    #                                                                                antpairs[key].wtspos_P11[0][:,0],
-    #                                                                                antpairs[key].wtspos_P11[0][:,1],
-    #                                                                                antpairs[key].wts_P11[0],
-    #                                                                                self.gridx * (self.f[0]/FCNST.c),
-    #                                                                                self.gridy * (self.f[0]/FCNST.c),
-    #                                                                                method=method)
-    #                                         grid_illumination_P11 = grid_illumination_P11.reshape(self.gridx.shape)
-    #                                         if normalize:
-    #                                             grid_illumination_P11 = grid_illumination_P11 / NP.sum(grid_illumination_P11)
-    #                                         roi_ind = NP.where(NP.abs(grid_illumination_P11) >= eps)
-    #                                 else:
-    #                                     raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
-
-    #                                 self.grid_illumination_P11[:,:,i] += grid_illumination_P11
-    #                                 self.grid_Vf_P11[:,:,i] += antpairs[key].crosspol.Vf_P11[i] * grid_illumination_P11
-
-    #                             if antpairs[key].label in self.interferometers:
-    #                                 if i not in self.interferometers[key]._gridinfo_P11:
-    #                                     self.interferometers[key]._gridinfo_P11 = {} # Create an empty dictionary for each channel to hold grid info
-    #                                 self.interferometers[antpairs[key].label]._gridinfo_P11[i]['f'] = self.f[i]
-    #                                 self.interferometers[antpairs[key].label]._gridinfo_P11[i]['flag'] = False
-    #                                 self.interferometers[antpairs[key].label]._gridinfo_P11[i]['gridxy_ind'] = zip(*roi_ind)
-    #                                 self.interferometers[key].wtspos_scale['P11'] = antpairs[key].wtspos_scale['P11']
-    #                                 if method == 'NN':
-    #                                     self.interferometers[antpairs[key].label]._gridinfo_P11[i]['illumination'] = nnval
-    #                                     self.interferometers[antpairs[key].label]._gridinfo_P11[i]['Vf'] = antpairs[key].crosspol.Vf_P11[i] * nnval
-    #                                 else:
-    #                                     self.interferometers[antpairs[key].label]._gridinfo_P11[i]['illumination'] = grid_illumination_P11[roi_ind]
-    #                                     self.interferometers[antpairs[key].label]._gridinfo_P11[i]['Vf'] = antpairs[key].crosspol.Vf_P11[i] * grid_illumination_P11[roi_ind] 
-    #             else:
-    #                 raise TypeError('antpairs must be an instance of InterferometerArray, a dictionary of Interferometer instances, a list of Interferometer instances or an Interferometer instance.')
-
-    #         else:
-
-    #             self.grid_illumination_P11 = NP.zeros((self.gridx.shape[0],
-    #                                                   self.gridx.shape[1],
-    #                                                   len(self.f)),
-    #                                                  dtype=NP.complex_)
-    #             self.grid_Vf_P11 = NP.zeros((self.gridx.shape[0],
-    #                                         self.gridx.shape[1],
-    #                                         len(self.f)), dtype=NP.complex_)
-
-    #             for key in self.interferometers:
-    #                 if not self.interferometers[key].crosspol.flag_P11:
-    #                     for i in range(len(self.f)):
-    #                         if method == 'NN':
-    #                             if self.interferometers[key].wtspos_scale['P11'] is None: 
-    #                                 reflocs = self.interferometers[key].wtspos_P11[i] + (self.f[i]/FCNST.c) * NP.asarray([self.interferometers[key].location.x, self.interferometers[key].location.y]).reshape(1,-1)
-    #                                 inplocs = (self.f[i]/FCNST.c) * NP.hstack((self.gridx.reshape(-1,1), self.gridy.reshape(-1,1)))
-    #                                 ibind, nnval = LKP.lookup_1NN(reflocs, self.interferometers[key].wts_P11[i], inplocs,
-    #                                                               distance_ULIM=distNN*self.f[i]/FCNST.c,
-    #                                                               remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
-
-    #                                 # ibind, nnval = LKP.lookup(self.interferometers[key].wtspos_P11[i][:,0]+self.interferometers[key].location.x*(self.f[i]/FCNST.c),
-    #                                 #                           self.interferometers[key].wtspos_P11[i][:,1]+self.interferometers[key].location.y*(self.f[i]/FCNST.c),
-    #                                 #                           self.interferometers[key].wts_P11[i], self.gridx*self.f[i]/FCNST.c,
-    #                                 #                           self.gridy*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
-    #                                 #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
-    #                                 roi_ind = NP.unravel_index(ibind, self.gridx.shape)
-    #                                 if normalize:
-    #                                     nnval /= NP.sum(nnval)
-    #                             elif self.interferometers[key].wtspos_scale['P11'] == 'scale':
-    #                                 if i == 0: # Determine some parameters only for zeroth channel if scaling is set
-    #                                     reflocs = self.interferometers[key].wtspos_P11[0] + (self.f[0]/FCNST.c) * NP.asarray([self.interferometers[key].location.x, self.interferometers[key].location.y]).reshape(1,-1)
-    #                                     inplocs = (self.f[0]/FCNST.c) * NP.hstack((self.gridx.reshape(-1,1), self.gridy.reshape(-1,1)))
-    #                                     ibind, nnval = LKP.lookup_1NN(reflocs, self.interferometers[key].wts_P11[0], inplocs,
-    #                                                                   distance_ULIM=distNN*self.f[0]/FCNST.c,
-    #                                                                   remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
-    #                                     # ibind, nnval = LKP.lookup(self.interferometers[key].wtspos_P11[0][:,0]+self.interferometers[key].location.x*(self.f[0]/FCNST.c),
-    #                                     #                           self.interferometers[key].wtspos_P11[0][:,1]+self.interferometers[key].location.y*(self.f[0]/FCNST.c),
-    #                                     #                           self.interferometers[key].wts_P11[0], self.gridx*self.f[0]/FCNST.c,
-    #                                     #                           self.gridy*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
-    #                                     #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
-    #                                     roi_ind = NP.unravel_index(ibind, self.gridx.shape)
-    #                                     if normalize:
-    #                                         nnval /= NP.sum(nnval)
-    #                             else:
-    #                                 raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
-
-    #                             self.grid_illumination_P11[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += nnval
-    #                             self.grid_Vf_P11[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += self.interferometers[key].crosspol.Vf_P11[i] * nnval
-    #                         else:
-    #                             if self.interferometers[key].wtspos_scale['P11'] is None:
-    #                                 grid_illumination_P11 = GRD.conv_grid2d(self.interferometers[key].location.x * (self.f[i]/FCNST.c),
-    #                                                                        self.interferometers[key].location.y * (self.f[i]/FCNST.c),
-    #                                                                        self.interferometers[key].wtspos_P11[i][:,0],
-    #                                                                        self.interferometers[key].wtspos_P11[i][:,1],
-    #                                                                        self.interferometers[key].wts_P11[i],
-    #                                                                        self.gridx * (self.f[i]/FCNST.c),
-    #                                                                        self.gridy * (self.f[i]/FCNST.c),
-    #                                                                        method=method)
-    #                                 grid_illumination_P11 = grid_illumination_P11.reshape(self.gridx.shape)
-    #                                 if normalize:
-    #                                     grid_illumination_P11 = grid_illumination_P11 / NP.sum(grid_illumination_P11)
-    #                                 roi_ind = NP.where(NP.abs(grid_illumination_P11) >= eps)
-    #                             elif self.interferometers[key].wtspos_scale['P11'] == 'scale':
-    #                                 if i == 0:
-    #                                     grid_illumination_P11 = GRD.conv_grid2d(self.interferometers[key].location.x * (self.f[0]/FCNST.c),
-    #                                                                            self.interferometers[key].location.y * (self.f[0]/FCNST.c),
-    #                                                                            self.interferometers[key].wtspos_P11[0][:,0],
-    #                                                                            self.interferometers[key].wtspos_P11[0][:,1],
-    #                                                                            self.interferometers[key].wts_P11[0],
-    #                                                                            self.gridx * (self.f[0]/FCNST.c),
-    #                                                                            self.gridy * (self.f[0]/FCNST.c),
-    #                                                                            method=method)
-    #                                     grid_illumination_P11 = grid_illumination_P11.reshape(self.gridx.shape)
-    #                                     if normalize:
-    #                                         grid_illumination_P11 = grid_illumination_P11 / NP.sum(grid_illumination_P11)
-    #                                     roi_ind = NP.where(NP.abs(grid_illumination_P11) >= eps)
-    #                             else:
-    #                                 raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
-                                
-    #                             self.grid_illumination_P11[:,:,i] += grid_illumination_P11
-    #                             self.grid_Vf_P11[:,:,i] += self.interferometers[key].crosspol.Vf_P11[i] * grid_illumination_P11
-
-    #                         self.interferometers[key]._gridinfo_P11[i] = {} # Create a nested dictionary to hold channel info
-    #                         self.interferometers[key]._gridinfo_P11[i]['f'] = self.f[i]
-    #                         self.interferometers[key]._gridinfo_P11[i]['flag'] = False
-    #                         self.interferometers[key]._gridinfo_P11[i]['gridxy_ind'] = zip(*roi_ind)
-    #                         if method == 'NN':
-    #                             self.interferometers[key]._gridinfo_P11[i]['illumination'] = nnval
-    #                             self.interferometers[key]._gridinfo_P11[i]['Vf'] = self.interferometers[key].crosspol.Vf_P11[i] * nnval  
-    #                         else:
-    #                             self.interferometers[key]._gridinfo_P11[i]['illumination'] = grid_illumination_P11[roi_ind]
-    #                             self.interferometers[key]._gridinfo_P11[i]['Vf'] = self.interferometers[key].crosspol.Vf_P11[i] * grid_illumination_P11[roi_ind]
-
-    #     if (pol is None) or (pol == 'P22'):
-
-    #         if antpairs is not None:
-
-    #             if isinstance(antpairs, Interferometer):
-    #                 antpairs = [antpairs]
-
-    #             if isinstance(antpairs, (dict, InterferometerArray)):
-    #                 # Check if these interferometers are new or old and compatible
-    #                 for key in antpairs: 
-    #                     if isinstance(antpairs[key], Interferometer): # required if antpairs is a dictionary and not instance of InterferometerArray
-    #                         if key in self.interferometers:
-    #                             if unconvolve_existing: # Effects on the grid of interferometers already existing must be removed 
-    #                                 if self.interferometers[key]._gridinfo_P22: # if gridding info is not empty
-    #                                     for i in range(len(self.f)):
-    #                                         self.grid_unconvolve(antpairs[key].label)
-    #                             else:
-    #                                 raise KeyError('Interferometer {0} already found to exist in the dictionary of interferometers but cannot proceed grid_convolve() without unconvolving first.'.format(antpairs[key].label)) 
-                            
-    #                     else:
-    #                         del antpairs[key] # remove the dictionary element since it is not an Interferometer instance
-
-    #                 for key in antpairs:
-    #                     if not antpairs[key].crosspol.flag_P22:
-    #                         for i in range(len(self.f)):
-    #                             if method == 'NN':
-    #                                 if antpairs[key].wtspos_P22_scale is None: 
-    #                                     reflocs = antpairs[key].wtspos_P22[i] + (self.f[i]/FCNST.c) * NP.asarray([antpairs[key].location.x, antpairs[key].location.y]).reshape(1,-1)
-    #                                     inplocs = (self.f[i]/FCNST.c) * NP.hstack((self.gridx.reshape(-1,1), self.gridy.reshape(-1,1)))
-    #                                     ibind, nnval = LKP.lookup_1NN(reflocs, antpairs[key].wts_P22[i], inplocs,
-    #                                                                   distance_ULIM=distNN*self.f[i]/FCNST.c,
-    #                                                                   remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
-    #                                     # ibind, nnval = LKP.lookup(antpairs[key].wtspos_P22[i][:,0] + antpairs[key].location.x * (self.f[i]/FCNST.c),
-    #                                     #                           antpairs[key].wtspos_P22[i][:,1] + antpairs[key].location.y * (self.f[i]/FCNST.c),
-    #                                     #                           antpairs[key].wts_P22[i], self.gridx*self.f[i]/FCNST.c,
-    #                                     #                           self.gridy*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
-    #                                     #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
-    #                                     roi_ind = NP.unravel_index(ibind, self.gridx.shape)
-    #                                     if normalize:
-    #                                         nnval /= NP.sum(nnval)
-    #                                 elif antpairs[key].wtspos_P22_scale == 'scale':
-    #                                     if i == 0: # Determine some parameters only for zeroth channel if scaling is set
-    #                                         reflocs = antpairs[key].wtspos_P22[0] + (self.f[0]/FCNST.c) * NP.asarray([antpairs[key].location.x, antpairs[key].location.y]).reshape(1,-1)
-    #                                         inplocs = (self.f[0]/FCNST.c) * NP.hstack((self.gridx.reshape(-1,1), self.gridy.reshape(-1,1)))
-    #                                         ibind, nnval = LKP.lookup_1NN(reflocs, antpairs[key].wts_P22[0], inplocs,
-    #                                                                       distance_ULIM=distNN*self.f[0]/FCNST.c,
-    #                                                                       remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
-    #                                         # ibind, nnval = LKP.lookup(antpairs[key].wtspos_P22[0][:,0]+antpairs[key].location.x*(self.f[0]/FCNST.c),
-    #                                         #                           antpairs[key].wtspos_P22[0][:,1]+antpairs[key].location.y*(self.f[0]/FCNST.c),
-    #                                         #                           antpairs[key].wts_P22[0], self.gridx*self.f[0]/FCNST.c,
-    #                                         #                           self.gridy*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
-    #                                         #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
-    #                                         roi_ind = NP.unravel_index(ibind, self.gridx.shape)
-    #                                         if normalize:
-    #                                             nnval /= NP.sum(nnval)
-    #                                 else:
-    #                                     raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
-
-    #                                 self.grid_illumination_P22[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += nnval
-    #                                 self.grid_Vf_P22[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += antpairs[key].crosspol.Vf_P22[i] * nnval
-    #                             else:
-    #                                 if antpairs[key].wtspos_P22_scale is None: 
-    #                                     grid_illumination_P22 = GRD.conv_grid2d(antpairs[key].location.x * (self.f[i]/FCNST.c),
-    #                                                                            antpairs[key].location.y * (self.f[i]/FCNST.c),
-    #                                                                            antpairs[key].wtspos_P22[i][:,0],
-    #                                                                            antpairs[key].wtspos_P22[i][:,1],
-    #                                                                            antpairs[key].wts_P22[i],
-    #                                                                            self.gridx * (self.f[i]/FCNST.c),
-    #                                                                            self.gridy * (self.f[i]/FCNST.c),
-    #                                                                            method=method)
-    #                                     grid_illumination_P22 = grid_illumination_P22.reshape(self.gridx.shape)
-    #                                     if normalize:
-    #                                         grid_illumination_P22 = grid_illumination_P22 / NP.sum(grid_illumination_P22)
-    #                                     roi_ind = NP.where(NP.abs(grid_illumination_P22) >= eps)
-    #                                 elif antpairs[key].wtspos_P22_scale == 'scale':
-    #                                     if i == 0: # Determine some parameters only for zeroth channel if scaling is set
-    #                                         grid_illumination_P22 = GRD.conv_grid2d(antpairs[key].location.x * (self.f[0]/FCNST.c),
-    #                                                                                antpairs[key].location.y * (self.f[0]/FCNST.c),
-    #                                                                                antpairs[key].wtspos_P22[0][:,0],
-    #                                                                                antpairs[key].wtspos_P22[0][:,1],
-    #                                                                                antpairs[key].wts_P22[0],
-    #                                                                                self.gridx * (self.f[0]/FCNST.c),
-    #                                                                                self.gridy * (self.f[0]/FCNST.c),
-    #                                                                                method=method)
-    #                                         grid_illumination_P22 = grid_illumination_P22.reshape(self.gridx.shape)
-    #                                         if normalize:
-    #                                             grid_illumination_P22 = grid_illumination_P22 / NP.sum(grid_illumination_P22)
-    #                                         roi_ind = NP.where(NP.abs(grid_illumination_P22) >= eps)
-    #                                 else:
-    #                                     raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
-
-    #                                 self.grid_illumination_P22[:,:,i] += grid_illumination_P22
-    #                                 self.grid_Vf_P22[:,:,i] += antpairs[key].crosspol.Vf_P22[i] * grid_illumination_P22
-
-    #                             if key in self.interferometers:
-    #                                 if i not in self.interferometers[key]._gridinfo_P22:
-    #                                     self.interferometers[key]._gridinfo_P22 = {} # Create an empty dictionary for each channel to hold grid info
-    #                                 self.interferometers[key]._gridinfo_P22[i]['f'] = self.f[i]
-    #                                 self.interferometers[key]._gridinfo_P22[i]['flag'] = False
-    #                                 self.interferometers[key]._gridinfo_P22[i]['gridxy_ind'] = zip(*roi_ind)
-    #                                 self.interferometers[key].wtspos_P22_scale = antpairs[key].wtspos_P22_scale
-    #                                 if method == 'NN':
-    #                                     self.interferometers[key]._gridinfo_P22[i]['illumination'] = nnval
-    #                                     self.interferometers[key]._gridinfo_P22[i]['Vf'] = antpairs[key].crosspol.Vf_P22[i] * nnval
-    #                                 else:
-    #                                     self.interferometers[key]._gridinfo_P22[i]['illumination'] = grid_illumination_P22[roi_ind]
-    #                                     self.interferometers[key]._gridinfo_P22[i]['Vf'] = antpairs[key].crosspol.Vf_P22[i] * grid_illumination_P22[roi_ind]
-
-    #             elif isinstance(antpairs, list):
-    #                 # Check if these interferometers are new or old and compatible
-    #                 for key in range(len(antpairs)): 
-    #                     if isinstance(antpairs[key], Interferometer): # required if antpairs is a dictionary and not instance of InterferometerArray
-    #                         if antpairs[key].label in self.interferometers:
-    #                             if unconvolve_existing: # Effects on the grid of interferometers already existing must be removed 
-    #                                 if self.interferometers[antpairs[key].label]._gridinfo_P22: # if gridding info is not empty
-    #                                     for i in range(len(self.f)):
-    #                                         self.grid_unconvolve(antpairs[key].label)
-    #                             else:
-    #                                 raise KeyError('Interferometer {0} already found to exist in the dictionary of interferometers but cannot proceed grid_convolve() without unconvolving first.'.format(antpairs[key].label))
-                            
-    #                     else:
-    #                         del antpairs[key] # remove the dictionary element since it is not an Interferometer instance
-
-    #                 for key in range(len(antpairs)):
-    #                     if not antpairs[key].crosspol.flag_P22:
-    #                         for i in range(len(self.f)):
-    #                             if method == 'NN':
-    #                                 if antpairs[key].wtspos_P22_scale is None: 
-    #                                     reflocs = antpairs[key].wtspos_P22[i] + (self.f[i]/FCNST.c) * NP.asarray([antpairs[key].location.x, antpairs[key].location.y]).reshape(1,-1)
-    #                                     inplocs = (self.f[i]/FCNST.c) * NP.hstack((self.gridx.reshape(-1,1), self.gridy.reshape(-1,1)))
-    #                                     ibind, nnval = LKP.lookup_1NN(reflocs, antpairs[key].wts_P22[i], inplocs,
-    #                                                                   distance_ULIM=distNN*self.f[i]/FCNST.c,
-    #                                                                   remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
-
-    #                                     # ibind, nnval = LKP.lookup(antpairs[key].wtspos_P22[i][:,0] + antpairs[key].location.x * (self.f[i]/FCNST.c),
-    #                                     #                           antpairs[key].wtspos_P22[i][:,1] + antpairs[key].location.y * (self.f[i]/FCNST.c),
-    #                                     #                           antpairs[key].wts_P22[i], self.gridx*self.f[i]/FCNST.c,
-    #                                     #                           self.gridy*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
-    #                                     #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
-    #                                     roi_ind = NP.unravel_index(ibind, self.gridx.shape)
-    #                                     if normalize:
-    #                                         nnval /= NP.sum(nnval)
-    #                                 elif antpairs[key].wtspos_P22_scale == 'scale':
-    #                                     if i == 0: # Determine some parameters only for zeroth channel if scaling is set
-    #                                         reflocs = antpairs[key].wtspos_P22[0] + (self.f[0]/FCNST.c) * NP.asarray([antpairs[key].location.x, antpairs[key].location.y]).reshape(1,-1)
-    #                                         inplocs = (self.f[0]/FCNST.c) * NP.hstack((self.gridx.reshape(-1,1), self.gridy.reshape(-1,1)))
-    #                                         ibind, nnval = LKP.lookup_1NN(reflocs, antpairs[key].wts_P22[0], inplocs,
-    #                                                                       distance_ULIM=distNN*self.f[0]/FCNST.c,
-    #                                                                       remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
-
-    #                                         # ibind, nnval = LKP.lookup(antpairs[key].wtspos_P22[0][:,0]+antpairs[key].location.x*(self.f[0]/FCNST.c),
-    #                                         #                           antpairs[key].wtspos_P22[0][:,1]+antpairs[key].location.y*(self.f[0]/FCNST.c),
-    #                                         #                           antpairs[key].wts_P22[0], self.gridx*self.f[0]/FCNST.c,
-    #                                         #                           self.gridy*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
-    #                                         #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
-    #                                         roi_ind = NP.unravel_index(ibind, self.gridx.shape)
-    #                                         if normalize:
-    #                                             nnval /= NP.sum(nnval)
-    #                                 else:
-    #                                     raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
-
-    #                                 self.grid_illumination_P22[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += nnval
-    #                                 self.grid_Vf_P22[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += antpairs[key].crosspol.Vf_P22[i] * nnval
-    #                             else:
-    #                                 if antpairs[key].wtspos_P22_scale is None:
-    #                                     grid_illumination_P22 = GRD.conv_grid2d(antpairs[key].location.x * (self.f[i]/FCNST.c),
-    #                                                                            antpairs[key].location.y * (self.f[i]/FCNST.c),
-    #                                                                            antpairs[key].wtspos_P22[i][:,0],
-    #                                                                            antpairs[key].wtspos_P22[i][:,1],
-    #                                                                            antpairs[key].wts_P22[i],
-    #                                                                            self.gridx * (self.f[i]/FCNST.c),
-    #                                                                            self.gridy * (self.f[i]/FCNST.c),
-    #                                                                            method=method)
-    #                                     grid_illumination_P22 = grid_illumination_P22.reshape(self.gridx.shape)
-    #                                     if normalize:
-    #                                         grid_illumination_P22 = grid_illumination_P22 / NP.sum(grid_illumination_P22)
-    #                                     roi_ind = NP.where(NP.abs(grid_illumination_P22) >= eps)
-    #                                 elif antpairs[key].wtspos_P22_scale == 'scale':
-    #                                     if i == 0: # Determine some parameters only for zeroth channel if scaling is set
-    #                                         grid_illumination_P22 = GRD.conv_grid2d(antpairs[key].location.x * (self.f[0]/FCNST.c),
-    #                                                                                antpairs[key].location.y * (self.f[0]/FCNST.c),
-    #                                                                                antpairs[key].wtspos_P22[0][:,0],
-    #                                                                                antpairs[key].wtspos_P22[0][:,1],
-    #                                                                                antpairs[key].wts_P22[0],
-    #                                                                                self.gridx * (self.f[0]/FCNST.c),
-    #                                                                                self.gridy * (self.f[0]/FCNST.c),
-    #                                                                                method=method)
-    #                                         grid_illumination_P22 = grid_illumination_P22.reshape(self.gridx.shape)
-    #                                         if normalize:
-    #                                             grid_illumination_P22 = grid_illumination_P22 / NP.sum(grid_illumination_P22)
-    #                                         roi_ind = NP.where(NP.abs(grid_illumination_P22) >= eps)
-    #                                 else:
-    #                                     raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
-
-    #                                 self.grid_illumination_P22[:,:,i] += grid_illumination_P22
-    #                                 self.grid_Vf_P22[:,:,i] += antpairs[key].crosspol.Vf_P22[i] * grid_illumination_P22
-
-    #                             if antpairs[key].label in self.interferometers:
-    #                                 if i not in self.interferometers[key]._gridinfo_P22:
-    #                                     self.interferometers[key]._gridinfo_P22 = {} # Create an empty dictionary for each channel to hold grid info
-    #                                 self.interferometers[antpairs[key].label]._gridinfo_P22[i]['f'] = self.f[i]
-    #                                 self.interferometers[antpairs[key].label]._gridinfo_P22[i]['flag'] = False
-    #                                 self.interferometers[antpairs[key].label]._gridinfo_P22[i]['gridxy_ind'] = zip(*roi_ind)
-    #                                 self.interferometers[key].wtspos_P22_scale = antpairs[key].wtspos_P22_scale
-    #                                 if method == 'NN':
-    #                                     self.interferometers[antpairs[key].label]._gridinfo_P22[i]['illumination'] = nnval
-    #                                     self.interferometers[antpairs[key].label]._gridinfo_P22[i]['Vf'] = antpairs[key].crosspol.Vf_P22[i] * nnval
-    #                                 else:
-    #                                     self.interferometers[antpairs[key].label]._gridinfo_P22[i]['illumination'] = grid_illumination_P22[roi_ind]
-    #                                     self.interferometers[antpairs[key].label]._gridinfo_P22[i]['Vf'] = antpairs[key].crosspol.Vf_P22[i] * grid_illumination_P22[roi_ind] 
-    #             else:
-    #                 raise TypeError('antpairs must be an instance of InterferometerArray, a dictionary of Interferometer instances, a list of Interferometer instances or an Interferometer instance.')
-
-    #         else:
-
-    #             self.grid_illumination_P22 = NP.zeros((self.gridx.shape[0],
-    #                                                   self.gridx.shape[1],
-    #                                                   len(self.f)),
-    #                                                  dtype=NP.complex_)
-    #             self.grid_Vf_P22 = NP.zeros((self.gridx.shape[0],
-    #                                         self.gridx.shape[1],
-    #                                         len(self.f)), dtype=NP.complex_)
-
-    #             for key in self.interferometers:
-    #                 if not self.interferometers[key].crosspol.flag_P22:
-    #                     for i in range(len(self.f)):
-    #                         if method == 'NN':
-    #                             if self.interferometers[key].wtspos_P22_scale is None: 
-    #                                 reflocs = self.interferometers[key].wtspos_P22[i] + (self.f[i]/FCNST.c) * NP.asarray([self.interferometers[key].location.x, self.interferometers[key].location.y]).reshape(1,-1)
-    #                                 inplocs = (self.f[i]/FCNST.c) * NP.hstack((self.gridx.reshape(-1,1), self.gridy.reshape(-1,1)))
-    #                                 ibind, nnval = LKP.lookup_1NN(reflocs, self.interferometers[key].wts_P22[i], inplocs,
-    #                                                               distance_ULIM=distNN*self.f[i]/FCNST.c,
-    #                                                               remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
-
-    #                                 # ibind, nnval = LKP.lookup(self.interferometers[key].wtspos_P22[i][:,0]+self.interferometers[key].location.x*(self.f[i]/FCNST.c),
-    #                                 #                           self.interferometers[key].wtspos_P22[i][:,1]+self.interferometers[key].location.y*(self.f[i]/FCNST.c),
-    #                                 #                           self.interferometers[key].wts_P22[i], self.gridx*self.f[i]/FCNST.c,
-    #                                 #                           self.gridy*self.f[i]/FCNST.c, distance_ULIM=distNN*self.f[i]/FCNST.c,
-    #                                 #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
-    #                                 roi_ind = NP.unravel_index(ibind, self.gridx.shape)
-    #                                 if normalize:
-    #                                     nnval /= NP.sum(nnval)
-    #                             elif self.interferometers[key].wtspos_P22_scale == 'scale':
-    #                                 if i == 0: # Determine some parameters only for zeroth channel if scaling is set
-    #                                     reflocs = self.interferometers[key].wtspos_P22[0] + (self.f[0]/FCNST.c) * NP.asarray([self.interferometers[key].location.x, self.interferometers[key].location.y]).reshape(1,-1)
-    #                                     inplocs = (self.f[0]/FCNST.c) * NP.hstack((self.gridx.reshape(-1,1), self.gridy.reshape(-1,1)))
-    #                                     ibind, nnval = LKP.lookup_1NN(reflocs, self.interferometers[key].wts_P22[0], inplocs,
-    #                                                                   distance_ULIM=distNN*self.f[0]/FCNST.c,
-    #                                                                   remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
-    #                                     # ibind, nnval = LKP.lookup(self.interferometers[key].wtspos_P22[0][:,0]+self.interferometers[key].location.x*(self.f[0]/FCNST.c),
-    #                                     #                           self.interferometers[key].wtspos_P22[0][:,1]+self.interferometers[key].location.y*(self.f[0]/FCNST.c),
-    #                                     #                           self.interferometers[key].wts_P22[0], self.gridx*self.f[0]/FCNST.c,
-    #                                     #                           self.gridy*self.f[0]/FCNST.c, distance_ULIM=distNN*self.f[0]/FCNST.c,
-    #                                     #                           remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
-    #                                     roi_ind = NP.unravel_index(ibind, self.gridx.shape)
-    #                                     if normalize:
-    #                                         nnval /= NP.sum(nnval)
-    #                             else:
-    #                                 raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
-
-    #                             self.grid_illumination_P22[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += nnval
-    #                             self.grid_Vf_P22[roi_ind+(i+NP.zeros(ibind.size, dtype=NP.int),)] += self.interferometers[key].crosspol.Vf_P22[i] * nnval
-    #                         else:
-    #                             if self.interferometers[key].wtspos_P22_scale is None:
-    #                                 grid_illumination_P22 = GRD.conv_grid2d(self.interferometers[key].location.x * (self.f[i]/FCNST.c),
-    #                                                                        self.interferometers[key].location.y * (self.f[i]/FCNST.c),
-    #                                                                        self.interferometers[key].wtspos_P22[i][:,0],
-    #                                                                        self.interferometers[key].wtspos_P22[i][:,1],
-    #                                                                        self.interferometers[key].wts_P22[i],
-    #                                                                        self.gridx * (self.f[i]/FCNST.c),
-    #                                                                        self.gridy * (self.f[i]/FCNST.c),
-    #                                                                        method=method)
-    #                                 grid_illumination_P22 = grid_illumination_P22.reshape(self.gridx.shape)
-    #                                 if normalize:
-    #                                     grid_illumination_P22 = grid_illumination_P22 / NP.sum(grid_illumination_P22)
-    #                                 roi_ind = NP.where(NP.abs(grid_illumination_P22) >= eps)
-    #                             elif self.interferometers[key].wtspos_P22_scale == 'scale':
-    #                                 if i == 0:
-    #                                     grid_illumination_P22 = GRD.conv_grid2d(self.interferometers[key].location.x * (self.f[0]/FCNST.c),
-    #                                                                            self.interferometers[key].location.y * (self.f[0]/FCNST.c),
-    #                                                                            self.interferometers[key].wtspos_P22[0][:,0],
-    #                                                                            self.interferometers[key].wtspos_P22[0][:,1],
-    #                                                                            self.interferometers[key].wts_P22[0],
-    #                                                                            self.gridx * (self.f[0]/FCNST.c),
-    #                                                                            self.gridy * (self.f[0]/FCNST.c),
-    #                                                                            method=method)
-    #                                     grid_illumination_P22 = grid_illumination_P22.reshape(self.gridx.shape)
-    #                                     if normalize:
-    #                                         grid_illumination_P22 = grid_illumination_P22 / NP.sum(grid_illumination_P22)
-    #                                     roi_ind = NP.where(NP.abs(grid_illumination_P22) >= eps)
-    #                             else:
-    #                                 raise ValueError('Invalid scale option specified. Aborting grid_convolve().')
-                                
-    #                             self.grid_illumination_P22[:,:,i] += grid_illumination_P22
-    #                             self.grid_Vf_P22[:,:,i] += self.interferometers[key].crosspol.Vf_P22[i] * grid_illumination_P22
-
-    #                         self.interferometers[key]._gridinfo_P22[i] = {} # Create a nested dictionary to hold channel info
-    #                         self.interferometers[key]._gridinfo_P22[i]['f'] = self.f[i]
-    #                         self.interferometers[key]._gridinfo_P22[i]['flag'] = False
-    #                         self.interferometers[key]._gridinfo_P22[i]['gridxy_ind'] = zip(*roi_ind)
-    #                         if method == 'NN':
-    #                             self.interferometers[key]._gridinfo_P22[i]['illumination'] = nnval
-    #                             self.interferometers[key]._gridinfo_P22[i]['Vf'] = self.interferometers[key].crosspol.Vf_P22[i] * nnval  
-    #                         else:
-    #                             self.interferometers[key]._gridinfo_P22[i]['illumination'] = grid_illumination_P22[roi_ind]
-    #                             self.interferometers[key]._gridinfo_P22[i]['Vf'] = self.interferometers[key].crosspol.Vf_P22[i] * grid_illumination_P22[roi_ind]
 
     ################################################################################
 
@@ -7467,25 +6552,6 @@ class InterferometerArray:
 
         if antenna_level_updates is not None:
             self.antenna_array.update(updates=antenna_level_updates)
-            # for ant_label in self.antenna_array.antennas:
-            #     ant_pair_labels, ant_order = self.interferometers_containing_antenna(ant_label)
-            #     for i in xrange(len(ant_pair_labels)):
-            #         if ant_order[i] == 1:
-            #             if self.antenna_array.antennas[ant_label].pol.flag_P1:
-            #                 self.interferometers[ant_pair_labels[i]].crosspol.flag['P11'] = True
-            #                 self.interferometers[ant_pair_labels[i]].crosspol.flag['P12'] = True
-
-            #             if self.antenna_array.antennas[ant_label].pol.flag_P2:
-            #                 self.interferometers[ant_pair_labels[i]].crosspol.flag['P21'] = True
-            #                 self.interferometers[ant_pair_labels[i]].crosspol.flag['P22'] = True
-            #         else:
-            #             if self.antenna_array.antennas[ant_label].pol.flag_P1:
-            #                 self.interferometers[ant_pair_labels[i]].crosspol.flag['P11'] = True
-            #                 self.interferometers[ant_pair_labels[i]].crosspol.flag['P21'] = True
-
-            #             if self.antenna_array.antennas[ant_label].pol.flag_P2:
-            #                 self.interferometers[ant_pair_labels[i]].crosspol.flag['P12'] = True
-            #                 self.interferometers[ant_pair_labels[i]].crosspol.flag['P22'] = True
 
         self.timestamp = self.antenna_array.timestamp
         self.t = self.antenna_array.t
@@ -7494,13 +6560,6 @@ class InterferometerArray:
         if interferometer_level_updates is not None:
             if not isinstance(interferometer_level_updates, dict):
                 raise TypeError('Input parameter interferometer_level_updates must be a dictionary')
-
-            # if 'interferometer_array' in interferometer_level_updates:
-            #     if not isinstance(interferometer_level_updates['interferometer_array'], dict):
-            #         raise TypeError('Input parameter in interferometer_level_updates for interferometer array must be a dictionary with key "interferometer_array"')
-                
-            #     if 'timestamp' in interferometer_level_updates['interferometer_array']:
-            #         self.timestamp = interferometer_level_updates['interferometer_array']['timestamp']
 
             if 'interferometers' in interferometer_level_updates:
                 if not isinstance(interferometer_level_updates['interferometers'], list):
@@ -8440,44 +7499,6 @@ class NewImage:
                 if verbose:
                     print '\t\tInitialized gridx, gridy, grid_illumination, and grid_Ef.'
                     print '\t\tInitialized gridl, gridm, and img'
-
-
-                # if (pol is None) or (pol == 'P1'):
-                #     if verbose:
-                #         print '\n\t\tWorking on polarization P1...'
-                #     self.gridx_P1 = antenna_array.gridx_P1
-                #     self.gridy_P1 = antenna_array.gridy_P1
-                #     self.grid_illumination_P1 = antenna_array.grid_illumination_P1
-                #     self.grid_Ef_P1 = antenna_array.grid_Ef_P1
-                #     self.holograph_P1 = None
-                #     self.img_P1 = None
-                #     self.holograph_PB_P1 = None
-                #     self.PB_P1 = None
-                #     self.lf_P1 = None
-                #     self.mf_P1 = None
-                #     if verbose:
-                #         print '\t\tInitialized gridx_P1, gridy_P1, grid_illumination_P1, and grid_Ef_P1.'
-                #         print '\t\tInitialized lf_P1, mf_P1, holograph_PB_P1, PB_P1, holograph_P1, and img_P1'
-
-                # if (pol is None) or (pol == 'P2'):
-                #     if verbose:
-                #         print '\n\t\tWorking on polarization P2...'
-                #     self.gridx_P2 = antenna_array.gridx_P2
-                #     self.gridy_P2 = antenna_array.gridy_P2
-                #     self.grid_illumination_P2 = antenna_array.grid_illumination_P2
-                #     self.grid_Ef_P2 = antenna_array.grid_Ef_P2
-                #     self.holograph_P2 = None
-                #     self.img_P2 = None
-                #     self.holograph_PB_P2 = None
-                #     self.PB_P2 = None
-                #     self.lf_P2 = None
-                #     self.mf_P2 = None
-                #     if verbose:
-                #         print '\t\tInitialized gridx_P2, gridy_P2, grid_illumination_P2, and grid_Ef_P2.'
-                #         print '\t\tInitialized lf_P2, mf_P2, holograph_PB_P2, PB_P2, holograph_P2, and img_P2'
-
-                # self.measured_type = 'E-field'
-
             else:
                 raise TypeError('antenna_array is not an instance of class AntennaArray. Cannot initiate instance of class Image.')
 
@@ -8572,74 +7593,6 @@ class NewImage:
 
         if self.measured_type is None:
             raise ValueError('Measured type is unknown.')
-
-        # if self.measured_type == 'E-field':
-        #     if (pol is None) or (pol == 'P1'):
-                
-        #         if verbose:
-        #             print '\tWorking on polarization P1...'
-    
-        #         grid_shape = self.grid_Ef_P1.shape
-        #         if verbose:
-        #             print '\t\tPreparing to zero pad and Inverse Fourier Transform...'
-    
-        #         sum_wts = NP.sum(self.grid_illumination_P1, axis=(0,1))
-    
-        #         self.holograph_P1 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_Ef_P1, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
-        #         if verbose:
-        #             print '\t\tComputed complex holographic voltage image from antenna array.'
-    
-        #         self.holograph_PB_P1 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_illumination_P1, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
-        #         if verbose:
-        #             print '\t\tComputed complex holographic voltage pattern of antenna array.'
-    
-        #         dx = self.gridx_P1[0,1] - self.gridx_P1[0,0]
-        #         dy = self.gridy_P1[1,0] - self.gridy_P1[0,0]
-        #         self.lf_P1 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[1], dx)), FCNST.c/self.f)
-        #         self.mf_P1 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[0], dy)), FCNST.c/self.f)
-        #         if verbose:
-        #             print '\t\tComputed the direction cosine coordinates for the image.'
-        #         grid_lf_P1 = NP.repeat(NP.expand_dims(self.lf_P1, axis=0), self.mf_P1.shape[0], axis=0)
-        #         grid_mf_P1 = NP.repeat(NP.expand_dims(self.mf_P1, axis=1), self.lf_P1.shape[0], axis=1)
-        #         nan_ind = grid_lf_P1**2 + grid_mf_P1**2 > 1.0
-        #         self.holograph_P1[nan_ind] = NP.nan
-        #         self.holograph_PB_P1[nan_ind] = NP.nan
-        #         if verbose:
-        #             print '\t\tImage pixels corresponding to invalid direction cosine coordinates flagged as NAN.'
-    
-        #     if (pol is None) or (pol == 'P2'):
-    
-        #         if verbose:
-        #             print '\tWorking on polarization P2...'
-    
-        #         grid_shape = self.grid_Ef_P2.shape
-        #         if verbose:
-        #             print '\t\tPreparing to zero pad and Inverse Fourier Transform...'
-    
-        #         sum_wts = NP.sum(self.grid_illumination_P1, axis=(0,1))
-    
-        #         self.holograph_P2 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_Ef_P2, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
-        #         if verbose:
-        #             print '\t\tComputed complex holographic voltage image from antenna array.'
-    
-        #         self.holograph_PB_P2 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_illumination_P2, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
-        #         if verbose:
-        #             print '\t\tComputed complex holographic voltage pattern of antenna array.'
-    
-        #         dx = self.gridx_P2[0,1] - self.gridx_P2[0,0]
-        #         dy = self.gridy_P2[1,0] - self.gridy_P2[0,0]
-        #         self.lf_P2 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[1], dx)), FCNST.c/self.f)
-        #         self.mf_P2 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[0], dy)), FCNST.c/self.f)
-        #         if verbose:
-        #             print '\t\tComputed the direction cosine coordinates for the image.'
-        #         grid_lf_P2 = NP.repeat(NP.expand_dims(self.lf_P2, axis=0), self.mf_P2.shape[0], axis=0)
-        #         grid_mf_P2 = NP.repeat(NP.expand_dims(self.mf_P2, axis=1), self.lf_P2.shape[0], axis=1)
-        #         nan_ind = grid_lf_P2**2 + grid_mf_P2**2 > 1.0
-        #         self.holograph_P2[nan_ind] = NP.nan
-        #         self.holograph_PB_P2[nan_ind] = NP.nan
-        #         if verbose:
-        #             print '\t\tImage pixels corresponding to invalid direction cosine coordinates (if any) \n\t\t\thave been flagged as NAN.'
-        #             print '\nImaging completed successfully.\n'
 
         if self.measured_type == 'E-field':
             if pol is None: pol = ['P1', 'P2']
@@ -10141,9 +9094,6 @@ class AntennaArray:
         if self.f0 is None:
             self.f0 = self.antennas.itervalues().next().f0
 
-        # if self.timestamp is None:
-        #     self.timestamp = self.antennas.itervalues().next().timestamp
-
         wavelength = FCNST.c / self.f
         min_lambda = NP.abs(wavelength).min()
 
@@ -10367,10 +9317,6 @@ class AntennaArray:
                                                       remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
                         
                 else:  
-
-                    # self.grid_illumination[apol] = NP.zeros((self.gridu.shape + (self.f.size,)), dtype=NP.complex_)
-                    # self.grid_Ef[apol] = NP.zeros((self.gridu.shape + (self.f.size,)), dtype=NP.complex_)
-
                     ant_dict = self.antenna_positions(pol=apol, flag=None, sort=True)
                     self.ordered_labels = ant_dict['labels']
                     ant_xy = ant_dict['positions'][:,:2] # n_ant x 2
@@ -10400,17 +9346,6 @@ class AntennaArray:
         
                                 reflocs_xy = ant_xy[:,NP.newaxis,:] + wtspos_xy[NP.newaxis,:,:] # n_ant x n_wts x 2 
                                 refwts = wts.reshape(1,-1) * NP.ones((n_ant,1))  # n_ant x n_wts
-                                # refwts_xy = wts.reshape(1,-1) * NP.ones((n_ant,1))  # n_ant x n_wts
-        
-                                # refwts_xy = refwts_xy.reshape(-1,1)  # (n_ant x n_wts) x 1
-                                # reflocs_uv = reflocs_xy[:,NP.newaxis,:] * self.f.reshape(1,-1,1) / FCNST.c  # (n_ant x n_wts) x nchan x 2
-                                # refwts_uv = refwts_xy * NP.ones((1,self.f.size))  # (n_ant x n_wts) x nchan
-                                # Ef_uv = Ef[:,NP.newaxis,:] * NP.ones((1,n_wts,1))  # n_ant x n_wts x nchan
-                                # Ef_uv = Ef_uv.reshape(-1,1)  # (n_ant x n_wts x nchan) x 1
-                                # reflocs_uv = reflocs_uv.reshape(-1,ant_xy.shape[1])  # (n_ant x n_wts x nchan) x 2
-                                # refwts_uv = refwts_uv.reshape(-1,1).ravel()  # (n_ant x n_wts x nchan)
-                                # Ef_uv = Ef_uv.reshape(-1,1).ravel()  # (n_ant x n_wts x nchan)
-    
                             else:
                                 for i,label in enumerate(self.ordered_labels):
                                     ant_wtspos = self.antennas[label].wtspos[apol][0]
@@ -11194,7 +10129,6 @@ class AntennaArray:
                             
                             if not parallel:
                                 self.antennas[dictitem['label']].update(dictitem, verbose)
-                                # self.antennas[dictitem['label']].update(dictitem['label'], dictitem['Et'], dictitem['t'], dictitem['timestamp'], dictitem['location'], dictitem['wtsinfo'], dictitem['flags'], dictitem['gridfunc_freq'], dictitem['delaydict'], dictitem['ref_freq'], dictitem['pol_type'], verbose)
                             else:
                                 list_of_antennas += [self.antennas[dictitem['label']]]
                                 list_of_antenna_updates += [dictitem]
