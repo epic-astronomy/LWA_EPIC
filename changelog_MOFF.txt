@@ -1,3 +1,11 @@
+From b53f0a3:
+============
+
+In antenna_array.py,
+
+(*) Fix ProgressBar bug in member function grid_convolve() of classes
+AntennaArray and InterferometerArray
+
 From f6a5fde:
 ============
 

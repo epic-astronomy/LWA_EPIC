@@ -5038,7 +5038,7 @@ class InterferometerArray:
                                 job_chunk_begin = range(0,num_bl,nproc)
                                 if verbose:
                                     progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=len(job_chunk_begin)).start()
-                                for job_start in job_chunk_begin:
+                                for ijob, job_start in enumerate(job_chunk_begin):
                                     pjobs1 = []
                                     pjobs2 = []
                                     out_q1 = MP.Queue()
@@ -5079,7 +5079,7 @@ class InterferometerArray:
                                     del out_q1, out_q2
                                     
                                     if verbose:
-                                        progress.update(i+1)
+                                        progress.update(ijob+1)
                                 if verbose:
                                     progress.finish()
                                     
@@ -10748,7 +10748,7 @@ class AntennaArray:
                                 job_chunk_begin = range(0,num_ant,nproc)
                                 if verbose:
                                     progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=len(job_chunk_begin)).start()
-                                for job_start in job_chunk_begin:
+                                for ijob, job_start in enumerate(job_chunk_begin):
                                     pjobs = []
                                     out_q = MP.Queue()
     
@@ -10776,7 +10776,7 @@ class AntennaArray:
                                     del out_q
                                     
                                     if verbose:
-                                        progress.update(i+1)
+                                        progress.update(ijob+1)
                                 if verbose:
                                     progress.finish()
 
