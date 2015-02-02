@@ -1,3 +1,13 @@
+From 2197714:
+============
+
+In antenna_array.py,
+
+(*) Make XF() member function of class Interferometer to be 
+compatible with new PolInfo and Antenna classes
+(*) Fix bug in FX() and FX_new() of class Interferometer by
+changing antenna instance polarization attribute from pol to antpol
+
 From 1ce9756:
 ============
 

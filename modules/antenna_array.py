@@ -3169,10 +3169,10 @@ class Interferometer:
 
         self.update_flags()
 
-        self.crosspol.Vf['P11'] = self.A1.pol.Ef['P1'] * self.A2.pol.Ef['P1'].conjugate()
-        self.crosspol.Vf['P12'] = self.A1.pol.Ef['P1'] * self.A2.pol.Ef['P2'].conjugate()
-        self.crosspol.Vf['P21'] = self.A1.pol.Ef['P2'] * self.A2.pol.Ef['P1'].conjugate()
-        self.crosspol.Vf['P22'] = self.A1.pol.Ef['P2'] * self.A2.pol.Ef['P2'].conjugate()
+        self.crosspol.Vf['P11'] = self.A1.antpol.Ef['P1'] * self.A2.antpol.Ef['P1'].conjugate()
+        self.crosspol.Vf['P12'] = self.A1.antpol.Ef['P1'] * self.A2.antpol.Ef['P2'].conjugate()
+        self.crosspol.Vf['P21'] = self.A1.antpol.Ef['P2'] * self.A2.antpol.Ef['P1'].conjugate()
+        self.crosspol.Vf['P22'] = self.A1.antpol.Ef['P2'] * self.A2.antpol.Ef['P2'].conjugate()
 
         # self.crosspol.Vf['P11'] = self.A1.pol.Ef_P1 * self.A2.pol.Ef_P1.conjugate()
         # self.crosspol.Vf['P12'] = self.A1.pol.Ef_P1 * self.A2.pol.Ef_P2.conjugate()
@@ -3200,10 +3200,10 @@ class Interferometer:
 
         self.update_flags()
 
-        self.crosspol.Vf['P11'] = self.A1.pol.Ef['P1'] * self.A2.pol.Ef['P1'].conjugate()
-        self.crosspol.Vf['P12'] = self.A1.pol.Ef['P1'] * self.A2.pol.Ef['P2'].conjugate()
-        self.crosspol.Vf['P21'] = self.A1.pol.Ef['P2'] * self.A2.pol.Ef['P1'].conjugate()
-        self.crosspol.Vf['P22'] = self.A1.pol.Ef['P2'] * self.A2.pol.Ef['P2'].conjugate()
+        self.crosspol.Vf['P11'] = self.A1.antpol.Ef['P1'] * self.A2.antpol.Ef['P1'].conjugate()
+        self.crosspol.Vf['P12'] = self.A1.antpol.Ef['P1'] * self.A2.antpol.Ef['P2'].conjugate()
+        self.crosspol.Vf['P21'] = self.A1.antpol.Ef['P2'] * self.A2.antpol.Ef['P1'].conjugate()
+        self.crosspol.Vf['P22'] = self.A1.antpol.Ef['P2'] * self.A2.antpol.Ef['P2'].conjugate()
 
         # self.crosspol.Vf['P11'] = self.A1.pol.Ef_P1 * self.A2.pol.Ef_P1.conjugate()
         # self.crosspol.Vf['P12'] = self.A1.pol.Ef_P1 * self.A2.pol.Ef_P2.conjugate()
@@ -3231,10 +3231,15 @@ class Interferometer:
 
         self.update_flags()
 
-        self.crosspol.Vt['P11'] = DSP.XC(self.A1.pol.Et_P1, self.A2.pol.Et_P1, shift=False)
-        self.crosspol.Vt['P12'] = DSP.XC(self.A1.pol.Et_P1, self.A2.pol.Et_P2, shift=False)
-        self.crosspol.Vt['P21'] = DSP.XC(self.A1.pol.Et_P2, self.A2.pol.Et_P1, shift=False)
-        self.crosspol.Vt['P22'] = DSP.XC(self.A1.pol.Et_P2, self.A2.pol.Et_P2, shift=False)
+        self.crosspol.Vt['P11'] = DSP.XC(self.A1.antpol.Et['P1'], self.A2.antpol.Et['P1'], shift=False)
+        self.crosspol.Vt['P12'] = DSP.XC(self.A1.antpol.Et['P1'], self.A2.antpol.Et['P2'], shift=False)
+        self.crosspol.Vt['P21'] = DSP.XC(self.A1.antpol.Et['P2'], self.A2.antpol.Et['P1'], shift=False)
+        self.crosspol.Vt['P22'] = DSP.XC(self.A1.antpol.Et['P2'], self.A2.antpol.Et['P2'], shift=False)
+
+        # self.crosspol.Vt['P11'] = DSP.XC(self.A1.pol.Et_P1, self.A2.pol.Et_P1, shift=False)
+        # self.crosspol.Vt['P12'] = DSP.XC(self.A1.pol.Et_P1, self.A2.pol.Et_P2, shift=False)
+        # self.crosspol.Vt['P21'] = DSP.XC(self.A1.pol.Et_P2, self.A2.pol.Et_P1, shift=False)
+        # self.crosspol.Vt['P22'] = DSP.XC(self.A1.pol.Et_P2, self.A2.pol.Et_P2, shift=False)
 
         self.t2f()
 
