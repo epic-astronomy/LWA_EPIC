@@ -1,3 +1,11 @@
+From f6a5fde:
+============
+
+In antenna_array.py,
+
+(*) Make update_flags() member function of class Interferometer to be 
+compatible with new Antenna class
+
 From 2197714:
 ============
 

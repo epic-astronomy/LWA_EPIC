@@ -3320,14 +3320,23 @@ class Interferometer:
 
         # Flags determined from antenna level
 
-        if self.A1.pol.flag_P1 or self.A2.pol.flag_P1:
+        if self.A1.antpol.flag['P1'] or self.A2.antpol.flag['P1']:
             self.crosspol.flag['P11'] = True
-        if self.A1.pol.flag_P2 or self.A2.pol.flag_P1:
+        if self.A1.antpol.flag['P2'] or self.A2.antpol.flag['P1']:
             self.crosspol.flag['P21'] = True
-        if self.A1.pol.flag_P1 or self.A2.pol.flag_P2:
+        if self.A1.antpol.flag['P1'] or self.A2.antpol.flag['P2']:
             self.crosspol.flag['P12'] = True
-        if self.A1.pol.flag_P2 or self.A2.pol.flag_P2:
+        if self.A1.antpol.flag['P2'] or self.A2.antpol.flag['P2']:
             self.crosspol.flag['P22'] = True
+
+        # if self.A1.pol.flag_P1 or self.A2.pol.flag_P1:
+        #     self.crosspol.flag['P11'] = True
+        # if self.A1.pol.flag_P2 or self.A2.pol.flag_P1:
+        #     self.crosspol.flag['P21'] = True
+        # if self.A1.pol.flag_P1 or self.A2.pol.flag_P2:
+        #     self.crosspol.flag['P12'] = True
+        # if self.A1.pol.flag_P2 or self.A2.pol.flag_P2:
+        #     self.crosspol.flag['P22'] = True
 
         # Flags determined from interferometer level
 
