@@ -1,3 +1,17 @@
+From 9216289:
+============
+
+Add new_MOFF_testing_LWA.py to git version control
+
+In antenna_array.py,
+
+(*) Change docstrings to be more accurate
+(*) Make update() member function of class Antenna handle update to
+delay compensation which was not done earlier
+(*) Fix ProgressBar bug in member function grid_convolve() of classes
+AntennaArray and InterferometerArray
+(*) Change behaviour of ProgressBar throughout
+
 From 5b8601b:
 ============
 

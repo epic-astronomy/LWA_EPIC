@@ -11,7 +11,6 @@ import geometry as GEOM
 import my_gridding_modules as GRD
 import my_operations as OPS
 import lookup_operations as LKP
-import ipdb as PDB
 
 ################### Routines essential for parallel processing ################
 
@@ -4811,8 +4810,9 @@ class InterferometerArray:
                             if pp_method == 'queue':  ## Use MP.Queue(): useful for memory intensive parallelizing but can be slow
                                 job_chunk_begin = range(0,self.f.size,nproc)
                                 if verbose:
-                                    progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=len(job_chunk_begin)).start()
-                                for i,job_start in enumerate(job_chunk_begin):
+                                    progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} job chunks '.format(len(job_chunk_begin)), PGB.ETA()], maxval=len(job_chunk_begin)).start()
+
+                                for ijob, job_start in enumerate(job_chunk_begin):
                                     pjobs = []
                                     out_q = MP.Queue()
                                     for job_ind in xrange(job_start, min(job_start+nproc, self.f.size)):    # Start the processes and store outputs in the queue
@@ -4855,7 +4855,7 @@ class InterferometerArray:
                                     del out_q
 
                                     if verbose:
-                                        progress.update(i+1)
+                                        progress.update(ijob+1)
                                 if verbose:
                                     progress.finish()
 
@@ -4905,7 +4905,7 @@ class InterferometerArray:
                         else:    # Use serial processing over frequency to determine gridding convolution
 
                             if verbose:
-                                progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=self.f.size).start()
+                                progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} Frequency channels '.format(self.f.size), PGB.ETA()], maxval=self.f.size).start()
     
                             for i in xrange(self.f.size):
                                 if mapping == 'weighted':
@@ -4955,7 +4955,8 @@ class InterferometerArray:
                                 num_bl = self.grid_mapper[cpol]['bl']['uniq_ind_all'].size
                                 job_chunk_begin = range(0,num_bl,nproc)
                                 if verbose:
-                                    progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=len(job_chunk_begin)).start()
+                                    progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} job chunks '.format(len(job_chunk_begin)), PGB.ETA()], maxval=len(job_chunk_begin)).start()
+
                                 for ijob, job_start in enumerate(job_chunk_begin):
                                     pjobs1 = []
                                     pjobs2 = []
@@ -5056,7 +5057,8 @@ class InterferometerArray:
                         else:    # Use serial processing over baselines to determine baseline-grid mapping of gridded aperture illumination and visibilities
 
                             if verbose:
-                                progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=self.grid_mapper[cpol]['bl']['uniq_ind_all'].size).start()
+                                progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} Baselines '.format(self.grid_mapper[cpol]['bl']['uniq_ind_all'].size), PGB.ETA()], maxval=self.grid_mapper[cpol]['bl']['uniq_ind_all'].size).start()
+
                             for j in xrange(self.grid_mapper[cpol]['bl']['uniq_ind_all'].size):
                                 label = self.ordered_labels[self.grid_mapper[cpol]['bl']['uniq_ind_all'][j]]
                                 if self.grid_mapper[cpol]['bl']['rev_ind_all'][j] < self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]:
@@ -5089,7 +5091,7 @@ class InterferometerArray:
                     else: # Only re-determine gridded visibilities
 
                         if verbose:
-                            progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=self.f.size).start()
+                            progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} Frequency channels '.format(self.f.size), PGB.ETA()], maxval=self.f.size).start()
 
                         for i in xrange(self.f.size): # Only re-estimate visibilities contributed by baselines
                             bl_refwts = self.grid_mapper[cpol]['refwts'][self.grid_mapper[cpol]['refind'][i]]
@@ -5116,8 +5118,9 @@ class InterferometerArray:
                                 num_bl = self.grid_mapper[cpol]['bl']['uniq_ind_all'].size
                                 job_chunk_begin = range(0,num_bl,nproc)
                                 if verbose:
-                                    progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=len(job_chunk_begin)).start()
-                                for job_start in job_chunk_begin:
+                                    progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} job chunks '.format(len(job_chunk_begin)), PGB.ETA()], maxval=len(job_chunk_begin)).start()
+
+                                for ijob, job_start in enumerate(job_chunk_begin):
                                     pjobs = []
                                     out_q = MP.Queue()
     
@@ -5145,7 +5148,7 @@ class InterferometerArray:
                                     del out_q
                                     
                                     if verbose:
-                                        progress.update(i+1)
+                                        progress.update(ijob+1)
                                 if verbose:
                                     progress.finish()
 
@@ -5181,7 +5184,8 @@ class InterferometerArray:
 
                         else:          # use serial processing
                             if verbose:
-                                progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=self.grid_mapper[cpol]['bl']['uniq_ind_all'].size).start()
+                                progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} Baselines '.format(self.grid_mapper[cpol]['bl']['uniq_ind_all'].size), PGB.ETA()], maxval=self.grid_mapper[cpol]['bl']['uniq_ind_all'].size).start()
+
                             for j in xrange(self.grid_mapper[cpol]['bl']['uniq_ind_all'].size): # re-determine gridded visibilities due to each baseline
                                 if self.grid_mapper[cpol]['bl']['rev_ind_all'][j] < self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]:
                                     select_bl_ind = self.grid_mapper[cpol]['bl']['rev_ind_all'][self.grid_mapper[cpol]['bl']['rev_ind_all'][j]:self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]]
@@ -5243,7 +5247,8 @@ class InterferometerArray:
     
             labels = self.grid_mapper[cpol]['labels'].keys()
             if verbose:
-                progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=len(labels)).start()
+                progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} Antennas '.format(len(labels)), PGB.ETA()], maxval=len(labels)).start()
+
             loopcount = 0
             num_unflagged = 0
             for blinfo in self.grid_mapper[cpol]['labels'].itervalues():
@@ -5566,7 +5571,6 @@ class InterferometerArray:
                                         ibind, nnval = LKP.lookup_1NN(reflocs, self.interferometers[key].wts['P11'][0], inplocs,
                                                                       distance_ULIM=distNN*self.f[0]/FCNST.c,
                                                                       remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
-                                        print i, key
                                         roi_ind = NP.unravel_index(ibind, self.gridu.shape)
                                         if normalize:
                                             nnval /= NP.sum(nnval)
@@ -7636,6 +7640,9 @@ class NewImage:
         # self.beam[cpol][nan_ind_unraveled,:] = NP.nan
         # self.img[cpol][nan_ind_unraveled,:] = NP.nan    
 
+        if verbose:
+            print 'Successfully imaged.'
+
     #############################################################################
         
     def save(self, imgfile, pol=None, overwrite=False, verbose=True):
@@ -8340,13 +8347,20 @@ class Antenna:
                        dictionaries under the polarization keys in wtsinfo have 
                        number of elements equal to the number of frequency 
                        channels.
-    
+   
             ref_freq   [Scalar] Positive value (in Hz) of reference frequency 
                        (used if gridfunc_freq is set to None or 'scale') at 
                        which wtspos is provided. If set to None, ref_freq is 
                        assumed to be equal to the center frequency in the class
                        Antenna's attribute. 
-    
+
+            delaydict  [Dictionary] contains information on delay compensation 
+                       to be applied to the fourier transformed electric fields 
+                       under each polarization which are stored under keys 'P1' 
+                       and 'P2'. Default is None (no delay compensation to be 
+                       applied). Refer to the docstring of member function
+                       delay_compensation() of class PolInfo for more details.
+
         verbose    [boolean] If True, prints diagnostic and progress messages. 
                    If False (default), suppress printing such messages.
         -------------------------------------------------------------------------
@@ -8361,6 +8375,7 @@ class Antenna:
         wtsinfo = None
         gridfunc_freq = None
         ref_freq = None
+        delaydict = None
             
         if update_dict is not None:
             if not isinstance(update_dict, dict):
@@ -8375,6 +8390,7 @@ class Antenna:
             if 'wtsinfo' in update_dict: wtsinfo = update_dict['wtsinfo']
             if 'gridfunc_freq' in update_dict: gridfunc_freq = update_dict['gridfunc_freq']
             if 'ref_freq' in update_dict: ref_freq = update_dict['ref_freq']
+            if 'delaydict' in update_dict: delaydict = update_dict['delaydict']
 
         if label is not None: self.label = label
         if location is not None: self.location = location
@@ -8387,8 +8403,8 @@ class Antenna:
         if flags is not None:        
             self.update_flags(flags) 
 
-        if Et is not None:
-            self.antpol.update(Et=Et)
+        if (Et is not None) or (delaydict is not None):
+            self.antpol.update(Et=Et, delaydict=delaydict)
         
         blc_orig = NP.copy(self.blc)
         trc_orig = NP.copy(self.trc)
@@ -8609,9 +8625,8 @@ class AntennaArray:
         array of antennas.
 
         Class attributes initialized are:
-        antennas, ants_blc_P1, ants_trc_P1, ants_blc_P2, ant_trc_P2, gridx_P1,
-        gridy_P1, gridx_P2, gridy_P2, grid_illumination_P1, 
-        grid_illumination_P2, grid_Ef_P1, grid_Ef_P2, f, f0
+        antennas, blc, trc, gridx, gridy, gridu, gridv, grid_ready, timestamp, 
+        grid_illumination, grid_Ef, f, f0, t, ordered_labels, grid_mapper
      
         Read docstring of class AntennaArray for details on these attributes.
         ------------------------------------------------------------------------
@@ -9377,8 +9392,9 @@ class AntennaArray:
                             if pp_method == 'queue':  ## Use MP.Queue(): useful for memory intensive parallelizing but can be slow
                                 job_chunk_begin = range(0,self.f.size,nproc)
                                 if verbose:
-                                    progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=len(job_chunk_begin)).start()
-                                for i,job_start in enumerate(job_chunk_begin):
+                                    progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} job chunks '.format(len(job_chunk_begin)), PGB.ETA()], maxval=len(job_chunk_begin)).start()
+
+                                for ijob, job_start in enumerate(job_chunk_begin):
                                     pjobs = []
                                     out_q = MP.Queue()
                                     for job_ind in xrange(job_start, min(job_start+nproc, self.f.size)):    # Start the processes and store outputs in the queue
@@ -9421,7 +9437,7 @@ class AntennaArray:
                                     del out_q
 
                                     if verbose:
-                                        progress.update(i+1)
+                                        progress.update(ijob+1)
                                 if verbose:
                                     progress.finish()
 
@@ -9471,7 +9487,7 @@ class AntennaArray:
                         else:    # Use serial processing over frequency to determine gridding convolution
 
                             if verbose:
-                                progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=self.f.size).start()
+                                progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} Frequency channels '.format(self.f.size), PGB.ETA()], maxval=self.f.size).start()
     
                             for i in xrange(self.f.size):
                                 if mapping == 'weighted':
@@ -9521,8 +9537,9 @@ class AntennaArray:
                                 num_ant = self.grid_mapper[apol]['ant']['uniq_ind_all'].size
                                 job_chunk_begin = range(0,num_ant,nproc)
                                 if verbose:
-                                    progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=len(job_chunk_begin)).start()
-                                for job_start in job_chunk_begin:
+                                    progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} job chunks '.format(len(job_chunk_begin)), PGB.ETA()], maxval=len(job_chunk_begin)).start()
+
+                                for ijob, job_start in enumerate(job_chunk_begin):
                                     pjobs1 = []
                                     pjobs2 = []
                                     out_q1 = MP.Queue()
@@ -9563,7 +9580,7 @@ class AntennaArray:
                                     del out_q1, out_q2
                                     
                                     if verbose:
-                                        progress.update(i+1)
+                                        progress.update(ijob+1)
                                 if verbose:
                                     progress.finish()
                                     
@@ -9622,7 +9639,8 @@ class AntennaArray:
                         else:    # Use serial processing over antennas to determine antenna-grid mapping of gridded aperture illumination and electric fields
 
                             if verbose:
-                                progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=self.grid_mapper[apol]['ant']['uniq_ind_all'].size).start()
+                                progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} Antennas '.format(self.grid_mapper[apol]['ant']['uniq_ind_all'].size), PGB.ETA()], maxval=self.grid_mapper[apol]['ant']['uniq_ind_all'].size).start()
+
                             for j in xrange(self.grid_mapper[apol]['ant']['uniq_ind_all'].size):
                                 label = self.ordered_labels[self.grid_mapper[apol]['ant']['uniq_ind_all'][j]]
                                 if self.grid_mapper[apol]['ant']['rev_ind_all'][j] < self.grid_mapper[apol]['ant']['rev_ind_all'][j+1]:
@@ -9655,7 +9673,7 @@ class AntennaArray:
                     else: # Only re-determine gridded electric fields
 
                         if verbose:
-                            progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=self.f.size).start()
+                            progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} Frequency channels '.format(self.f.size), PGB.ETA()], maxval=self.f.size).start()
 
                         for i in xrange(self.f.size): # Only re-estimate electric fields contributed by antennas
                             ant_refwts = self.grid_mapper[apol]['refwts'][self.grid_mapper[apol]['refind'][i]]
@@ -9682,7 +9700,8 @@ class AntennaArray:
                                 num_ant = self.grid_mapper[apol]['ant']['uniq_ind_all'].size
                                 job_chunk_begin = range(0,num_ant,nproc)
                                 if verbose:
-                                    progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=len(job_chunk_begin)).start()
+                                    progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} job chunks '.format(len(job_chunk_begin)), PGB.ETA()], maxval=len(job_chunk_begin)).start()
+
                                 for ijob, job_start in enumerate(job_chunk_begin):
                                     pjobs = []
                                     out_q = MP.Queue()
@@ -9747,7 +9766,8 @@ class AntennaArray:
 
                         else:          # use serial processing
                             if verbose:
-                                progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=self.grid_mapper[apol]['ant']['uniq_ind_all'].size).start()
+                                progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} Antennas '.format(self.grid_mapper[apol]['ant']['uniq_ind_all'].size), PGB.ETA()], maxval=self.grid_mapper[apol]['ant']['uniq_ind_all'].size).start()
+
                             for j in xrange(self.grid_mapper[apol]['ant']['uniq_ind_all'].size): # re-determine gridded electric fields due to each antenna
                                 if self.grid_mapper[apol]['ant']['rev_ind_all'][j] < self.grid_mapper[apol]['ant']['rev_ind_all'][j+1]:
                                     select_ant_ind = self.grid_mapper[apol]['ant']['rev_ind_all'][self.grid_mapper[apol]['ant']['rev_ind_all'][j]:self.grid_mapper[apol]['ant']['rev_ind_all'][j+1]]
@@ -9809,7 +9829,7 @@ class AntennaArray:
     
             labels = self.grid_mapper[apol]['labels'].keys()
             if verbose:
-                progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(), PGB.ETA()], maxval=len(labels)).start()
+                progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} Antennas '.format(len(labels)), PGB.ETA()], maxval=len(labels)).start()
             loopcount = 0
             num_unflagged = 0
             # while loopcount < len(labels):
@@ -9824,7 +9844,6 @@ class AntennaArray:
                 progress.update(loopcount+1)
                 loopcount += 1
             progress.finish()
-            print num_unflagged
                 
             if verbose:
                 print 'Gridded aperture illumination and electric fields for polarization {0} from {1:0d} unflagged contributing antennas'.format(apol, num_unflagged)
