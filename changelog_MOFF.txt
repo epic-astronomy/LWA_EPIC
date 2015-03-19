@@ -1,3 +1,11 @@
+From 4aa2abe:
+============
+
+In data_interface.py,
+
+(*) Add docstring to class DataHandler and its member functions
+__init__() and save()
+
 From b5e02d3:
 ============
 

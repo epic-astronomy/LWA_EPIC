@@ -8,7 +8,88 @@ import progressbar as PGB
 
 class DataHandler(object):
 
+    """
+    ----------------------------------------------------------------------------
+    Class to manage Antenna Voltage data
+
+    Attributes:
+
+    latitude    [scalar] Latitude of the antenna locations (in degrees)
+
+    antid       [numpy array of strings] Unique identifier of antennas
+
+    antpos      [numpy array] Antenna positions (in m) specified along local 
+                East, North and Up as a 3-column numpy array
+
+    timestamps  [numpy array of strings] Timestamps 
+
+    sample_rate [scalar] Sampling rate (in Hz)
+
+    center_freq [scalar] Center frequency (in Hz)
+
+    freq        [numpy array] Frequencies in channels (in Hz)
+
+    freq_resolution
+                [scalar] Frequency resolution (in Hz)
+
+    n_timestamps
+                [scalar] Number of timestamps
+
+    n_antennas  [scalar] Number of antennas
+
+    nchan       [scalar] Number of frequency channels
+
+    npol        [scalar] Number of polarizations (fixed to 2)
+
+    data        [numpy array] Complex voltages of shape 
+                n_timestamps x n_antennas x nchan x npol. Places where data is
+                not available, it is filled with NaN.
+
+    Methods:
+
+    __init__()  Initialize instance of class DataHandler 
+
+    save()      Save the antenna voltage data to disk in a "Common Data Format"
+                (CDF)
+    ----------------------------------------------------------------------------
+    """
+
     def __init__(self, indata=None):
+
+        """
+        ------------------------------------------------------------------------
+        Initialize the DataHandler Class which manages reads, manages and writes
+        antenna voltage data. 
+
+        Class attributes initialized are:
+        latitude, antid, antpos, timestamps, sample_rate, center_freq, freq,
+        freq_resolution, n_timestamps, n_antennas, nchan, npol, data
+     
+        Read docstring of class PolInfo for details on these attributes.
+
+        Inputs:
+
+        indata   [str, list of str, dict] Specifies the input data to initialize
+                 from. If string, it must be the FITS file location containing 
+                 data saved by this class (it contains both polarizations) or a 
+                 FITS file containing reformatted LWA data (one polarization).
+                 If provided as a list, it may contain one FITS file location 
+                 saved by this class (contains both polarizations) or the first
+                 polarization of reformatted LWA data. If it contains two 
+                 strings, it must be one for each polarization of reformatted 
+                 LWA data. If specified as dictionary, it must be contain the
+                 following keys and values:
+                 'intype'      [string] specifies type of data. Currently 
+                               accepted values are 'sim' and 'LWA' for 
+                               simulations and LWA respectively. 
+                 'data-block'  [instance of class LWAO.LWAObs] Antenna and 
+                               antenna voltage information. Read docstring of
+                               class LWAO.LWAObs for more information. This is
+                               associated with intype='LWA'. Needs serious
+                               development for intype='sim'
+        ------------------------------------------------------------------------
+        """
+
         self.latitude = None
         self.data = None
         self.cable_delays = None
@@ -230,6 +311,26 @@ class DataHandler(object):
     #############################################################################
 
     def save(self, outfile, tabtype='BinTableHDU', overwrite=True, verbose=True):
+
+        """
+        ------------------------------------------------------------------------
+        outfile     [string] filename with full path to save the antenna voltage 
+                    data to.
+
+        Keyword Input(s):
+
+        tabtype     [string] indicates table type for one of the extensions in 
+                    the FITS file. Allowed values are 'BinTableHDU' and 
+                    'TableHDU' for binary ascii tables respectively. Default is
+                    'BinTableHDU'.
+
+        overwrite   [boolean] True indicates overwrite even if a file already 
+                    exists. Default = True (allow overwrite)
+
+        verbose     [boolean] If True (default), prints diagnostic and progress
+                    messages. If False, suppress printing such messages.
+        ------------------------------------------------------------------------
+        """
 
         try:
             outfile
