@@ -1,3 +1,10 @@
+From 4a32225:
+============
+
+In data_interface.py,
+
+(*) Add __init__() method to class DataHandler
+
 From 63da73a:
 ============
 

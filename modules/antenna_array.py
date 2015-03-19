@@ -252,7 +252,6 @@ class PolInfo_old:
 
         if delaydict is None:
             raise NameError('Delay information must be supplied for delay correction in the dictionary delaydict.')
-
        
         if delaydict['pol'] is None:
             raise KeyError('Key "pol" indicating polarization not found in delaydict holding delay information.')
