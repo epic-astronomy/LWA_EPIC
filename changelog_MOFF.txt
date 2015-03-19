@@ -1,3 +1,11 @@
+From b5e02d3:
+============
+
+In data_interface.py,
+
+(*) Add member function save() to class DataHandler
+(*) Make changes to __init__() member function of class DataHandler
+
 From 4a32225:
 ============
 
