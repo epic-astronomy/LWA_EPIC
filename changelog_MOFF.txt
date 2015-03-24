@@ -1,3 +1,18 @@
+From cd12fcd:
+============
+
+In antenna_array.py,
+
+(*) Remove usage of 'flag' key in attribute grid_mapper in classes 
+AntennaArray and InterferometerArray
+(*) In member function make_grid_cube() of classes InterferometerArray
+and AntennaArray, use attributes interferometers and antennas
+respectively to retrieve flagging information rather than from the
+attribute grid_mapper which does not get updates on flags in every
+iteration
+
+Create new main programs to test out the new module in data_interface.py
+
 From 4aa2abe:
 ============
 

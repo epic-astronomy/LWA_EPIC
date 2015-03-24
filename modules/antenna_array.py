@@ -4968,7 +4968,7 @@ class InterferometerArray:
                                         if self.grid_mapper[cpol]['bl']['rev_ind_all'][job_ind] < self.grid_mapper[cpol]['bl']['rev_ind_all'][job_ind+1]:
         
                                             self.grid_mapper[cpol]['labels'][label] = {}
-                                            self.grid_mapper[cpol]['labels'][label]['flag'] = self.interferometers[label].crosspol.flag[cpol]
+                                            # self.grid_mapper[cpol]['labels'][label]['flag'] = self.interferometers[label].crosspol.flag[cpol]
         
                                             select_bl_ind = self.grid_mapper[cpol]['bl']['rev_ind_all'][self.grid_mapper[cpol]['bl']['rev_ind_all'][job_ind]:self.grid_mapper[cpol]['bl']['rev_ind_all'][job_ind+1]]
                                             gridind_raveled_around_bl = self.grid_mapper[cpol]['grid']['ind_all'][select_bl_ind]
@@ -5016,7 +5016,7 @@ class InterferometerArray:
                                     if self.grid_mapper[cpol]['bl']['rev_ind_all'][j] < self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]:
     
                                         self.grid_mapper[cpol]['labels'][label] = {}
-                                        self.grid_mapper[cpol]['labels'][label]['flag'] = self.interferometers[label].crosspol.flag[cpol]
+                                        # self.grid_mapper[cpol]['labels'][label]['flag'] = self.interferometers[label].crosspol.flag[cpol]
     
                                         select_bl_ind = self.grid_mapper[cpol]['bl']['rev_ind_all'][self.grid_mapper[cpol]['bl']['rev_ind_all'][j]:self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]]
                                         gridind_raveled_around_bl = self.grid_mapper[cpol]['grid']['ind_all'][select_bl_ind]
@@ -5063,7 +5063,7 @@ class InterferometerArray:
                                 if self.grid_mapper[cpol]['bl']['rev_ind_all'][j] < self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]:
                                     select_bl_ind = self.grid_mapper[cpol]['bl']['rev_ind_all'][self.grid_mapper[cpol]['bl']['rev_ind_all'][j]:self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]]
                                     self.grid_mapper[cpol]['labels'][label] = {}
-                                    self.grid_mapper[cpol]['labels'][label]['flag'] = self.interferometers[label].crosspol.flag[cpol]
+                                    # self.grid_mapper[cpol]['labels'][label]['flag'] = self.interferometers[label].crosspol.flag[cpol]
                                     if mapping == 'weighted':
                                         gridind_raveled_around_bl = self.grid_mapper[cpol]['grid']['ind_all'][select_bl_ind]
                                         uniq_gridind_raveled_around_bl = NP.unique(gridind_raveled_around_bl)
@@ -5250,8 +5250,8 @@ class InterferometerArray:
 
             loopcount = 0
             num_unflagged = 0
-            for blinfo in self.grid_mapper[cpol]['labels'].itervalues():
-                if not blinfo['flag']:
+            for bllabel, blinfo in self.grid_mapper[cpol]['labels'].iteritems():
+                if not self.interferometers[bllabel].crosspol.flag[cpol]:
                     num_unflagged += 1
                     gridind_unraveled = NP.unravel_index(blinfo['gridind'], self.gridu.shape+(self.f.size,))
                     self.grid_illumination[cpol][gridind_unraveled] += blinfo['illumination']
@@ -9550,7 +9550,7 @@ class AntennaArray:
                                         if self.grid_mapper[apol]['ant']['rev_ind_all'][job_ind] < self.grid_mapper[apol]['ant']['rev_ind_all'][job_ind+1]:
         
                                             self.grid_mapper[apol]['labels'][label] = {}
-                                            self.grid_mapper[apol]['labels'][label]['flag'] = self.antennas[label].antpol.flag[apol]
+                                            # self.grid_mapper[apol]['labels'][label]['flag'] = self.antennas[label].antpol.flag[apol]
         
                                             select_ant_ind = self.grid_mapper[apol]['ant']['rev_ind_all'][self.grid_mapper[apol]['ant']['rev_ind_all'][job_ind]:self.grid_mapper[apol]['ant']['rev_ind_all'][job_ind+1]]
                                             gridind_raveled_around_ant = self.grid_mapper[apol]['grid']['ind_all'][select_ant_ind]
@@ -9598,7 +9598,7 @@ class AntennaArray:
                                     if self.grid_mapper[apol]['ant']['rev_ind_all'][j] < self.grid_mapper[apol]['ant']['rev_ind_all'][j+1]:
     
                                         self.grid_mapper[apol]['labels'][label] = {}
-                                        self.grid_mapper[apol]['labels'][label]['flag'] = self.antennas[label].antpol.flag[apol]
+                                        # self.grid_mapper[apol]['labels'][label]['flag'] = self.antennas[label].antpol.flag[apol]
     
                                         select_ant_ind = self.grid_mapper[apol]['ant']['rev_ind_all'][self.grid_mapper[apol]['ant']['rev_ind_all'][j]:self.grid_mapper[apol]['ant']['rev_ind_all'][j+1]]
                                         gridind_raveled_around_ant = self.grid_mapper[apol]['grid']['ind_all'][select_ant_ind]
@@ -9645,7 +9645,7 @@ class AntennaArray:
                                 if self.grid_mapper[apol]['ant']['rev_ind_all'][j] < self.grid_mapper[apol]['ant']['rev_ind_all'][j+1]:
                                     select_ant_ind = self.grid_mapper[apol]['ant']['rev_ind_all'][self.grid_mapper[apol]['ant']['rev_ind_all'][j]:self.grid_mapper[apol]['ant']['rev_ind_all'][j+1]]
                                     self.grid_mapper[apol]['labels'][label] = {}
-                                    self.grid_mapper[apol]['labels'][label]['flag'] = self.antennas[label].antpol.flag[apol]
+                                    # self.grid_mapper[apol]['labels'][label]['flag'] = self.antennas[label].antpol.flag[apol]
                                     if mapping == 'weighted':
                                         gridind_raveled_around_ant = self.grid_mapper[apol]['grid']['ind_all'][select_ant_ind]
                                         uniq_gridind_raveled_around_ant = NP.unique(gridind_raveled_around_ant)
@@ -9833,8 +9833,8 @@ class AntennaArray:
             num_unflagged = 0
             # while loopcount < len(labels):
             #     antinfo = self.grid_mapper[apol]['labels'].itervalues().next()
-            for antinfo in self.grid_mapper[apol]['labels'].itervalues():
-                if not antinfo['flag']:
+            for antlabel, antinfo in self.grid_mapper[apol]['labels'].iteritems():
+                if not self.antennas[antlabel].antpol.flag[apol]:
                     num_unflagged += 1
                     gridind_unraveled = NP.unravel_index(antinfo['gridind'], self.gridu.shape+(self.f.size,))
                     self.grid_illumination[apol][gridind_unraveled] += antinfo['illumination']
