@@ -5037,7 +5037,7 @@ class InterferometerArray:
                                 for label,grid_values in IT.izip(list_of_bl_labels, list_of_bl_grid_values):    # Unpack the gridded visibility information from the pool output
                                     self.grid_mapper[cpol]['labels'][label]['Vf'] = grid_values
     
-                                if nproc is None:
+                                if nproc is not None:
                                     pool = MP.Pool(processes=nproc)
                                 else:
                                     pool = MP.Pool()
@@ -9127,8 +9127,9 @@ class AntennaArray:
 
         self.grid_ready = True
 
-    ################################################################################# 
+    ############################################################################ 
 
+    # @profile
     def grid_convolve(self, pol=None, ants=None, unconvolve_existing=False,
                       normalize=False, method='NN', distNN=NP.inf, tol=None,
                       maxmatch=None, identical_antennas=True,
@@ -9619,7 +9620,7 @@ class AntennaArray:
                                 for label,grid_values in IT.izip(list_of_ant_labels, list_of_ant_grid_values):    # Unpack the gridded visibility information from the pool output
                                     self.grid_mapper[apol]['labels'][label]['Ef'] = grid_values
     
-                                if nproc is None:
+                                if nproc is not None:
                                     pool = MP.Pool(processes=nproc)
                                 else:
                                     pool = MP.Pool()
@@ -9884,6 +9885,7 @@ class AntennaArray:
 
     ############################################################################
 
+    # @profile
     def update(self, updates=None, parallel=False, nproc=None, verbose=False):
 
         """

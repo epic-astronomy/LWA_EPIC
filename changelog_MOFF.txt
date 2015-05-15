@@ -1,3 +1,11 @@
+From 224f6dc:
+============
+
+In antenna_array.py,
+
+(*) Change condition check on nproc to call multiprocessing pool()
+with appropriate input
+
 From cd12fcd:
 ============
 
