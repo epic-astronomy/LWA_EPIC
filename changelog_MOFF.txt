@@ -1,3 +1,10 @@
+From 89b28e3:
+============
+
+Added a FX data analysis script LWA_FX_data_analysis.py equivalent
+to LWA_MOFF_data_analysis.py but is untested unlike the latter.
+Committing just to switch focus on another development
+
 From 224f6dc:
 ============
 
