@@ -1,3 +1,12 @@
+From b8a43e8:
+============
+
+In antenna_array.py,
+
+(*) Add Fourier transform functionality on stacked electric field
+time series in FT() member function of class PolInfo. Modify docstring
+accordingly
+
 From d8d7d70:
 ============
 

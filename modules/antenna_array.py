@@ -7847,7 +7847,7 @@ class PolInfo:
 
     ############################################################################ 
 
-    def FT(self, pol=None):
+    def FT(self, pol=None, stack=False):
 
         """
         ------------------------------------------------------------------------
@@ -7860,6 +7860,9 @@ class PolInfo:
         pol     polarization to be Fourier transformed. Set to 'P1' or 'P2'. If 
                 None provided, time series of both polarizations are Fourier 
                 transformed.
+
+        stack   [boolean] If set to True, perform Fourier transform on the 
+                timestamp-stacked electric field time series. Default = False
         ------------------------------------------------------------------------
         """
 
@@ -7870,6 +7873,9 @@ class PolInfo:
             if p in ['P1', 'P2']:
                 Et = NP.pad(self.Et[p], (0,len(self.Et[p])), 'constant', constant_values=(0,0))
                 self.Ef[p] = DSP.FT1D(Et, ax=0, use_real=False, inverse=False, shift=True)
+                if stack is True:
+                    Et_stack = NP.pad(self.Et_stack[p], ((0,0),(0,self.Et_stack[p].shape[1])), 'constant', constant_values=((0,0),(0,0)))
+                    self.Ef_stack[p] = DSP.FT1D(Et_stack, ax=1, use_real=False, inverse=False, shift=True)
             else:
                 raise ValueError('polarization string "{0}" unrecognized. Verify inputs. Aborting {1}.{2}()'.format(p, self.__class__.__name__, 'FT'))
 
