@@ -7759,8 +7759,8 @@ class PolInfo:
 
     Attributes:
 
-    Et       [dictionary] holds measured complex time series under 2 
-             polarizations which are stored under keys 'P1', and 'P2'
+    Et       [dictionary] holds measured complex electric field time series 
+             under 2 polarizations which are stored under keys 'P1', and 'P2'
 
     Ef       [dictionary] holds complex electric field spectra under 2 
              polarizations which are stored under keys 'P1', and 'P2'. The 
@@ -7769,6 +7769,19 @@ class PolInfo:
     flag     [dictionary] holds boolean flags for each of the 2 polarizations
              which are stored under keys 'P1', and 'P2'. Default=True means  
              that polarization is flagged.
+
+    Et_stack [dictionary] holds a stack of complex electric field time series 
+             measured at various time stamps under 2 polarizations which are 
+             stored under keys 'P1' and 'P2'
+
+    Ef_stack [dictionary] holds a stack of complex electric field spectra 
+             measured at various time stamps under 2 polarizations which are 
+             stored under keys 'P1' and 'P2'
+
+    flag_stack
+             [dictionary] holds a stack of flags appropriate for different 
+             time stamps as a numpy array under 2 polarizations which are 
+             stored under keys 'P1' and 'P2'
 
     Member functions:
 
@@ -7795,7 +7808,7 @@ class PolInfo:
         an antenna. 
 
         Class attributes initialized are:
-        Et, Ef, flag
+        Et, Ef, flag, Et_stack, Ef_stack, flag_stack
      
         Read docstring of class PolInfo for details on these attributes.
         ------------------------------------------------------------------------
@@ -7804,6 +7817,10 @@ class PolInfo:
         self.Et = {}
         self.Ef = {}
         self.flag = {}
+
+        self.Et_stack = {}
+        self.Ef_stack = {}
+        self.flag_stack = {} 
 
         if not isinstance(nsamples, int):
             raise TypeError('nsamples must be an integer')
@@ -7818,6 +7835,10 @@ class PolInfo:
             self.Ef[pol].fill(NP.nan)
 
             self.flag[pol] = True
+
+            self.Et_stack[pol] = self.Et[pol].reshape(1,-1)
+            self.Ef_stack[pol] = self.Ef[pol].reshape(1,-1)
+            self.flag_stack[pol] = NP.asarray(self.flag[pol])
 
     ############################################################################ 
 
