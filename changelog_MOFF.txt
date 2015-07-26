@@ -1,3 +1,11 @@
+From d8d7d70:
+============
+
+In antenna_array.py,
+
+(*) Fix bug in printing flags in __str__() member function of class
+PolInfo
+
 From 8e5a19b:
 ============
 
