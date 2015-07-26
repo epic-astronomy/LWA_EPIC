@@ -7968,7 +7968,7 @@ class PolInfo:
 
     ############################################################################ 
 
-    def update_flags(self, flags=None):
+    def update_flags(self, flags=None, stack=True):
 
         """
         ------------------------------------------------------------------------
@@ -7981,6 +7981,11 @@ class PolInfo:
                  Default=None means no new flagging to be applied. If 
                  the value under the polarization key is True, it is to be 
                  flagged and if False, it is to be unflagged.
+
+        stack    [boolean] If True (default), appends the updated flag to the
+                 end of the stack of flags as a function of timestamp. If False,
+                 updates the last flag in the stack with the updated flag and 
+                 does not append
         ------------------------------------------------------------------------
         """
 
@@ -7993,6 +7998,12 @@ class PolInfo:
                         self.flag[pol] = flags[pol]
                     else:
                         raise TypeError('flag values must be boolean')
+
+        for pol in ['P1', 'P2']:
+            if stack is True:
+                self.flag_stack[pol] = NP.append(self.flag_stack[pol], self.flag[pol])
+            else:
+                self.flag_stack[pol][-1] = self.flag[pol]
 
     ############################################################################ 
 
