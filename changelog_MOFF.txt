@@ -1,3 +1,17 @@
+From 94ca972:
+============
+
+In antenna_array.py,
+
+(*) Add and initialize attribute timestamps in __init__() member
+function of class AntennaArray
+(*) Update docstring with description on attributes timestamp and
+timestamps which was missing earlier
+(*) Update docstring of member function __init__() of class
+AntennaArray with description on keyword input antenna_array
+(*) Minor change in update() member function of class Antenna while
+updating attribute timestamps
+
 From d21c854:
 ============
 

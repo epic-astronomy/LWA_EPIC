@@ -8508,7 +8508,7 @@ class Antenna:
         if location is not None: self.location = location
         if timestamp is not None:
             self.timestamp = timestamp
-            self.timestamps += [timestamp]
+            self.timestamps += [copy.deepcopy(timestamp)]
 
         if t is not None:
             self.t = t
@@ -8689,6 +8689,11 @@ class AntennaArray:
 
     f0           [Scalar] Center frequency of the observing band (in Hz)
 
+    timestamp:  [Scalar] String or float representing the timestamp for the 
+                current attributes
+
+    timestamps  [list] list of all timestamps to be held in the stack 
+
     Member Functions:
 
     __init__()        Initializes an instance of class AntennaArray which manages
@@ -8743,6 +8748,16 @@ class AntennaArray:
         grid_illumination, grid_Ef, f, f0, t, ordered_labels, grid_mapper
      
         Read docstring of class AntennaArray for details on these attributes.
+
+        Inputs:
+    
+        antenna_array 
+                   [Instance of class AntennaArray, dictionary holding 
+                   instance(s) instance(s) of class Antenna, list of instances 
+                   of class Antenna, or a single instance of class Antenna] 
+                   Read docstring of member funtion __add__() for more details 
+                   on this input. If provided, this will be used to initialize 
+                   the instance.
         ------------------------------------------------------------------------
         """
 
@@ -8760,6 +8775,7 @@ class AntennaArray:
         self.f0 = None
         self.t = None
         self.timestamp = None
+        self.timestamps = []
 
         self._ant_contribution = {}
 
@@ -8792,6 +8808,7 @@ class AntennaArray:
             self.f = NP.copy(self.antennas.itervalues().next().f0)
             self.t = NP.copy(self.antennas.itervalues().next().t)
             self.timestamp = copy.deepcopy(self.antennas.itervalues().next().timestamp)
+            self.timestamps += [copy.deepcopy(self.timestamp)]
         
     ################################################################################# 
 
