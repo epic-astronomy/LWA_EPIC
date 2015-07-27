@@ -7857,9 +7857,9 @@ class PolInfo:
 
         Keyword Input(s):
 
-        pol     polarization to be Fourier transformed. Set to 'P1' or 'P2'. If 
-                None provided, time series of both polarizations are Fourier 
-                transformed.
+        pol     [scalar or list] polarization to be Fourier transformed. Set 
+                to 'P1' and/or 'P2'. If None (default) provided, time series 
+                of both polarizations are Fourier transformed.
 
         stack   [boolean] If set to True, perform Fourier transform on the 
                 timestamp-stacked electric field time series. Default = False
@@ -7873,7 +7873,7 @@ class PolInfo:
             if p in ['P1', 'P2']:
                 Et = NP.pad(self.Et[p], (0,len(self.Et[p])), 'constant', constant_values=(0,0))
                 self.Ef[p] = DSP.FT1D(Et, ax=0, use_real=False, inverse=False, shift=True)
-                if stack is True:
+                if stack:
                     Et_stack = NP.pad(self.Et_stack[p], ((0,0),(0,self.Et_stack[p].shape[1])), 'constant', constant_values=((0,0),(0,0)))
                     self.Ef_stack[p] = DSP.FT1D(Et_stack, ax=1, use_real=False, inverse=False, shift=True)
             else:
@@ -8280,12 +8280,12 @@ class Antenna:
         self.blc = NP.asarray([self.location.x, self.location.y]).reshape(1,-1)
         self.trc = NP.asarray([self.location.x, self.location.y]).reshape(1,-1)
 
-    #################################################################################
+    #############################################################################
 
     def __str__(self):
         return ' Instance of class "{0}" in module "{1}" \n label: ({2[0]}, {2[1]}) \n location: {3}'.format(self.__class__.__name__, self.__module__, self.label, self.location.__str__())
 
-    #################################################################################
+    #############################################################################
 
     def channels(self):
 
@@ -8304,49 +8304,84 @@ class Antenna:
 
     #############################################################################
 
-    def FT(self, pol=None):
-
-        """
-        ----------------------------------------------------------------------------
-        Computes the Fourier transform of the time series of the antennas in the 
-        antenna array to compute the visibility spectra
-        ----------------------------------------------------------------------------
-        """
-        
-        self.antpol.FT(pol=pol)
-        
-    ################################################################################# 
-
-    def FT_new(self, pol=None):
-
-        """
-        ----------------------------------------------------------------------------
-        Computes the Fourier transform of the time series of the antennas in the 
-        antenna array to compute the visibility spectra
-        ----------------------------------------------------------------------------
-        """
-        
-        self.antpol.FT(pol=pol)
-        return self
-        
-    ################################################################################# 
-
-    def update_flags(self, flags=None):
+    def FT(self, pol=None, stack=False):
 
         """
         ------------------------------------------------------------------------
-        Updates flags for antenna polarizations 
+        Computes the Fourier transform of the time series of the antennas in the 
+        antenna array to compute the visibility spectra. Read docstring of 
+        member function FT() of class PolInfo
+
+        Inputs:
+
+        pol    [scalar or list] Scalar string or list of strings specifying 
+               polarization. Accepted values are 'P1' and/or 'P2'. Default=None 
+               means both time series of electric fields of both polarizations 
+               are Fourier transformed
+
+        stack  [boolean] If set to True, perform Fourier transform on the 
+               timestamp-stacked electric field time series. Default = False
+        ------------------------------------------------------------------------
+        """
+        
+        self.antpol.FT(pol=pol, stack=stack)
+        
+    #############################################################################
+
+    def FT_new(self, pol=None, stack=False):
+
+        """
+        -------------------------------------------------------------------------
+        Computes the Fourier transform of the time series of the antennas in the 
+        antenna array to compute the visibility spectra. Read docstring of member
+        function FT() of class PolInfo. Differs from FT() member function in that
+        here an instance of class Antenna is returned and is mainly used in case 
+        of parallel processing and is not meant to be accessed directly by the 
+        user. Use FT() for all other pruposes.
+
+        Inputs:
+
+        pol    [scalar or list] Scalar string or list of strings specifying 
+               polarization. Accepted values are 'P1' and/or 'P2'. Default=None 
+               means both time series of electric fields of both polarizations 
+               are Fourier transformed
+
+        stack  [boolean] If set to True, perform Fourier transform on the 
+               timestamp-stacked electric field time series. Default = False
+
+        Outputs:
+
+        Instance of class Antenna
+        -------------------------------------------------------------------------
+        """
+        
+        self.antpol.FT(pol=pol, stack=stack)
+        return self
+        
+    #############################################################################
+
+    def update_flags(self, flags=None, stack=True):
+
+        """
+        ------------------------------------------------------------------------
+        Updates flags for antenna polarizations. Invokes member function 
+        update_flags() of class PolInfo
 
         Inputs:
 
         flags  [dictionary] boolean flags for each of the 2 polarizations 
                of the antenna which are stored under keys 'P1' and 'P2',
                Default=None means no updates for flags.
+
+        stack  [boolean] If True (default), appends the updated flag to the
+               end of the stack of flags as a function of timestamp. If False,
+               updates the last flag in the stack with the updated flag and 
+               does not append
         ------------------------------------------------------------------------
         """
 
         if flags is not None:
-            self.antpol.update_flags(flags)
+            self.antpol.update_flags(flags, stack=stack)
 
     ############################################################################
 

@@ -1,3 +1,15 @@
+From ae80d05:
+============
+
+In antenna_array.py,
+
+(*) Add stack as input keyword to member functions FT(), FT_new()
+and update_flags() of class Antenna
+(*) Update docstrings of member function FT() of class PolInfo and
+member functions FT(), FT_new() and update_flags() of class Antenna
+(*) Minor inconsequential change in member function FT() of class
+PolInfo
+
 From 2bb06f1:
 ============
 
