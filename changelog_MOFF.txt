@@ -1,3 +1,13 @@
+From 84fc365:
+============
+
+In antenna_array.py,
+
+(*) Add stacking functionality to member function update() of class
+PolInfo
+(*) Modify previous block slightly to accommodate new functionality
+(*) Modify docstring accordingly
+
 From f963850:
 ============
 

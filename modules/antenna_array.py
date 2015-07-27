@@ -7999,7 +7999,8 @@ class PolInfo:
                     else:
                         raise TypeError('flag values must be boolean')
 
-        for pol in ['P1', 'P2']:
+        # Stack on to last value or update last value in stack
+        for pol in ['P1', 'P2']: 
             if stack is True:
                 self.flag_stack[pol] = NP.append(self.flag_stack[pol], self.flag[pol])
             else:
@@ -8007,7 +8008,7 @@ class PolInfo:
 
     ############################################################################ 
 
-    def update(self, Et=None, Ef=None, flags=None, delaydict=None):
+    def update(self, Et=None, Ef=None, flags=None, delaydict=None, stack=True):
         
         """
         ------------------------------------------------------------------------
@@ -8055,12 +8056,22 @@ class PolInfo:
                       compensation to rightly align with the fft-shifted 
                       electric field spectrum computed in member function 
                       FT(). 
+
+        stack  [boolean] If True (default), appends the updated electric field 
+               time series and spectrum to the end of the respective stacks as 
+               a function of timestamp. If False, updates the last entry in 
+               the stack with the updated electric field data and does not 
+               append
+
         ------------------------------------------------------------------------
         """
 
-        if flags is not None:
-            self.update_flags(flags)
-
+        current_flags = self.flag
+        if flags is None:
+            flags = current_flags
+        # if flags is not None:
+        #     self.update_flags(flags)
+            
         if Et is not None:
             if isinstance(Et, dict):
                 for pol in ['P1', 'P2']:
@@ -8068,7 +8079,8 @@ class PolInfo:
                         self.Et[pol] = Et[pol]
                         if NP.any(NP.isnan(Et[pol])):
                             # self.Et[pol] = NP.nan
-                            self.flag[pol] = True
+                            flags[pol] = True
+                            # self.flag[pol] = True
                 self.FT()  # Update the spectrum
             else:
                 raise TypeError('Input parameter Et must be a dictionary')
@@ -8080,12 +8092,36 @@ class PolInfo:
                         self.Ef[pol] = Ef[pol]
                         if NP.any(NP.isnan(Ef[pol])):
                             # self.Ef[pol] = NP.nan
-                            self.flag[pol] = True
+                            flags[pol] = True
+                            # self.flag[pol] = True
             else:
                 raise TypeError('Input parameter Ef must be a dictionary')
 
         if delaydict is not None:
             self.delay_compensation(delaydict)
+
+        if stack:
+            for pol in ['P1', 'P2']:
+                if Et is not None:
+                    if pol in Et:
+                        self.Et_stack[pol] = NP.vstack((self.Et_stack[pol], self.Et[pol].reshape(1,-1)))
+                        self.Ef_stack[pol] = NP.vstack((self.Ef_stack[pol], self.Ef[pol].reshape(1,-1)))
+                elif Ef is not None:
+                    if pol in Ef:
+                        self.Ef_stack[pol] = NP.vstack((self.Ef_stack[pol], self.Ef[pol].reshape(1,-1)))
+        else:
+            for pol in ['P1', 'P2']:
+                if Et is not None:
+                    if pol in Et:
+                        self.Et_stack[pol][-1,:] = self.Et[pol].reshape(1,-1)
+                        self.Ef_stack[pol][-1,:] = self.Ef[pol].reshape(1,-1)
+                elif Ef is not None:
+                    if pol in Ef:
+                        self.Ef_stack[pol][-1,:] = self.Ef[pol].reshape(1,-1)
+
+        # Update flags including stacked flags
+        self.update_flags(flags, stack=stack)
+            
 
 #################################################################################
 
@@ -10211,7 +10247,6 @@ class AntennaArray:
                         self.antennas[antenna.label] = antenna
                     del updated_antennas
                     
-
             if 'antenna_array' in updates: # contains updates at 'antenna array' level
                 if not isinstance(updates['antenna_array'], dict):
                     raise TypeError('Input parameter in updates for antenna array must be a dictionary with key "antenna_array"')
