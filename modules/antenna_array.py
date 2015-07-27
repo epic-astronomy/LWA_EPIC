@@ -8100,7 +8100,8 @@ class PolInfo:
         if delaydict is not None:
             self.delay_compensation(delaydict)
 
-        if stack:
+        # Handle stacking procedure on electric fields
+        if stack:   # Add on to the stack
             for pol in ['P1', 'P2']:
                 if Et is not None:
                     if pol in Et:
@@ -8109,7 +8110,7 @@ class PolInfo:
                 elif Ef is not None:
                     if pol in Ef:
                         self.Ef_stack[pol] = NP.vstack((self.Ef_stack[pol], self.Ef[pol].reshape(1,-1)))
-        else:
+        else:     # Update the last entry in the stack
             for pol in ['P1', 'P2']:
                 if Et is not None:
                     if pol in Et:
@@ -8143,6 +8144,8 @@ class Antenna:
 
     timestamp:  [Scalar] String or float representing the timestamp for the 
                 current attributes
+
+    timestamps  [list] list of all timestamps to be held in the stack 
 
     t:          [vector] The time axis for the time series of electric fields
 
@@ -8220,7 +8223,7 @@ class Antenna:
 
         Class attributes initialized are:
         label, latitude, location, pol, t, timestamp, f0, f, wts, wtspos, 
-        wtspos_scale, blc, trc, and antpol
+        wtspos_scale, blc, trc, timestamps, and antpol
      
         Read docstring of class Antenna for details on these attributes.
         ------------------------------------------------------------------------
@@ -8259,6 +8262,7 @@ class Antenna:
         self.antpol = PolInfo(nsamples=nsamples)
         self.t = 0.0
         self.timestamp = 0.0
+        self.timestamps = []
         self.f0 = center_freq
         self.f = self.f0
 
