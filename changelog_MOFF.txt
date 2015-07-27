@@ -1,3 +1,14 @@
+From d21c854:
+============
+
+In antenna_array.py,
+
+(*) Update attribute timestamps in member function update() of
+class Antenna
+(*) Invoke stack keyword input inside member function update() of
+class Antenna while updating flags and attributes by calling update()
+and update_flags() of class PolInfo
+
 From ae80d05:
 ============
 

@@ -8506,17 +8506,19 @@ class Antenna:
 
         if label is not None: self.label = label
         if location is not None: self.location = location
-        if timestamp is not None: self.timestamp = timestamp
+        if timestamp is not None:
+            self.timestamp = timestamp
+            self.timestamps += [timestamp]
 
         if t is not None:
             self.t = t
             self.f = self.f0 + self.channels()     
 
         if flags is not None:        
-            self.update_flags(flags) 
+            self.update_flags(flags, stack=True) 
 
         if (Et is not None) or (delaydict is not None):
-            self.antpol.update(Et=Et, delaydict=delaydict)
+            self.antpol.update(Et=Et, delaydict=delaydict, stack=True)
         
         blc_orig = NP.copy(self.blc)
         trc_orig = NP.copy(self.trc)
