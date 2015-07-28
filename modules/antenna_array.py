@@ -7836,8 +7836,8 @@ class PolInfo:
 
             self.flag[pol] = True
 
-            self.Et_stack[pol] = self.Et[pol].reshape(1,-1)
-            self.Ef_stack[pol] = self.Ef[pol].reshape(1,-1)
+            self.Et_stack[pol] = None
+            self.Ef_stack[pol] = None
             self.flag_stack[pol] = NP.asarray(self.flag[pol])
 
     ############################################################################ 
@@ -8105,20 +8105,34 @@ class PolInfo:
             for pol in ['P1', 'P2']:
                 if Et is not None:
                     if pol in Et:
-                        self.Et_stack[pol] = NP.vstack((self.Et_stack[pol], self.Et[pol].reshape(1,-1)))
-                        self.Ef_stack[pol] = NP.vstack((self.Ef_stack[pol], self.Ef[pol].reshape(1,-1)))
+                        if self.Et_stack[pol] is None:
+                            self.Et_stack[pol] = self.Et[pol].reshape(1,-1)
+                            self.Ef_stack[pol] = self.Ef[pol].reshape(1,-1)
+                        else:
+                            self.Et_stack[pol] = NP.vstack((self.Et_stack[pol], self.Et[pol].reshape(1,-1)))
+                            self.Ef_stack[pol] = NP.vstack((self.Ef_stack[pol], self.Ef[pol].reshape(1,-1)))
                 elif Ef is not None:
                     if pol in Ef:
-                        self.Ef_stack[pol] = NP.vstack((self.Ef_stack[pol], self.Ef[pol].reshape(1,-1)))
+                        if self.Ef_stack[pol] is None:
+                            self.Ef_stack[pol] = self.Ef[pol].reshape(1,-1)
+                        else:
+                            self.Ef_stack[pol] = NP.vstack((self.Ef_stack[pol], self.Ef[pol].reshape(1,-1)))
         else:     # Update the last entry in the stack
             for pol in ['P1', 'P2']:
                 if Et is not None:
                     if pol in Et:
-                        self.Et_stack[pol][-1,:] = self.Et[pol].reshape(1,-1)
-                        self.Ef_stack[pol][-1,:] = self.Ef[pol].reshape(1,-1)
+                        if self.Et_stack[pol] is None:
+                            self.Et_stack[pol] = self.Et[pol].reshape(1,-1)
+                            self.Ef_stack[pol] = self.Ef[pol].reshape(1,-1)
+                        else:
+                            self.Et_stack[pol][-1,:] = self.Et[pol].reshape(1,-1)
+                            self.Ef_stack[pol][-1,:] = self.Ef[pol].reshape(1,-1)
                 elif Ef is not None:
                     if pol in Ef:
-                        self.Ef_stack[pol][-1,:] = self.Ef[pol].reshape(1,-1)
+                        if self.Ef_stack[pol] is None:
+                            self.Ef_stack[pol] = self.Ef[pol].reshape(1,-1)
+                        else:
+                            self.Ef_stack[pol][-1,:] = self.Ef[pol].reshape(1,-1)
 
         # Update flags including stacked flags
         self.update_flags(flags, stack=stack)
@@ -10228,6 +10242,7 @@ class AntennaArray:
                 if parallel:
                     list_of_antenna_updates = []
                     list_of_antennas = []
+
                 for dictitem in updates['antennas']:
                     if not isinstance(dictitem, dict):
                         raise TypeError('Updates to {0} instance should be provided in the form of a list of dictionaries.'.format(self.__class__.__name__))

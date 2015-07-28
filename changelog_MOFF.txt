@@ -1,3 +1,13 @@
+From 6b9fd5c:
+============
+
+In antenna_array.py,
+
+(*) Change initialization of attributes Et_stack, Ef_stack in member
+function __init__() of class PolInfo
+(*) Modify updating of attributes Et_stack and Ef_stack in member
+function update() of class PolInfo
+
 From 530e131:
 ============
 
