@@ -2934,6 +2934,10 @@ class Interferometer:
     timestamp:  [Scalar] String or float representing the timestamp for the 
                 current attributes
 
+    timestamps  [dictionary] consists of lists of two sets of timestamps one
+                corresponding to each antenna in the baseline pair under the
+                keys 'A1' and 'A2'
+
     t:          [vector] The time axis for the time series of electric fields
 
     f:          [vector] Frequency axis obtained by a Fourier Transform of
@@ -3033,7 +3037,7 @@ class Interferometer:
 
         Class attributes initialized are:
         label, latitude, location, pol, t, timestamp, f0, f, wts, wtspos, 
-        wtspos_scale, gridinfo, blc, trc
+        wtspos_scale, gridinfo, blc, trc, timestamps
      
         Read docstring of class Antenna for details on these attributes.
         ------------------------------------------------------------------------
@@ -3073,6 +3077,9 @@ class Interferometer:
 
         self.t = 0.0
         self.timestamp = 0.0
+        self.timestamps = {}
+        self.timestamps['A1'] = []
+        self.timestamps['A2'] = []
         
         self.crosspol = CrossPolInfo(self.f.size)
 

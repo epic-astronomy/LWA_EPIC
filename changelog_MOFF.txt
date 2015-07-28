@@ -1,3 +1,12 @@
+From d6bed3b:
+============
+
+In antenna_array.py,
+
+(*) Add and initialize attribute timestamps in member function
+__init__() of class Interferometer
+(*) Update docstring accordingly
+
 From 3a2a05f:
 ============
 
