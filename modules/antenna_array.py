@@ -7838,7 +7838,7 @@ class PolInfo:
 
             self.Et_stack[pol] = None
             self.Ef_stack[pol] = None
-            self.flag_stack[pol] = NP.asarray(self.flag[pol])
+            self.flag_stack[pol] = NP.asarray([])
 
     ############################################################################ 
 
@@ -8004,7 +8004,11 @@ class PolInfo:
             if stack is True:
                 self.flag_stack[pol] = NP.append(self.flag_stack[pol], self.flag[pol])
             else:
-                self.flag_stack[pol][-1] = self.flag[pol]
+                if self.flag_stack[pol].size == 0:
+                    self.flag_stack[pol] = self.flag[pol]
+                else:
+                    self.flag_stack[pol][-1] = self.flag[pol]
+            self.flag_stack[pol] = self.flag_stack[pol].astype(NP.bool)
 
     ############################################################################ 
 
@@ -8101,6 +8105,7 @@ class PolInfo:
             self.delay_compensation(delaydict)
 
         # Handle stacking procedure on electric fields
+        # Ef stacking must always happen after delay compensation
         if stack:   # Add on to the stack
             for pol in ['P1', 'P2']:
                 if Et is not None:
@@ -8135,7 +8140,7 @@ class PolInfo:
                             self.Ef_stack[pol][-1,:] = self.Ef[pol].reshape(1,-1)
 
         # Update flags including stacked flags
-        self.update_flags(flags, stack=stack)
+        self.update_flags(flags=flags, stack=stack)
             
 
 #################################################################################
@@ -8528,11 +8533,11 @@ class Antenna:
             self.t = t
             self.f = self.f0 + self.channels()     
 
-        if flags is not None:        
-            self.update_flags(flags, stack=True) 
+        # if flags is not None:        
+        #     self.update_flags(flags, stack=True) 
 
-        if (Et is not None) or (delaydict is not None):
-            self.antpol.update(Et=Et, delaydict=delaydict, stack=True)
+        if (Et is not None) or (delaydict is not None) or (flags is not None):
+            self.antpol.update(Et=Et, delaydict=delaydict, flags=flags, stack=True)
         
         blc_orig = NP.copy(self.blc)
         trc_orig = NP.copy(self.trc)

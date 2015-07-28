@@ -1,3 +1,15 @@
+From 3a2a05f:
+============
+
+In antenna_array.py,
+
+(*) Change initialization of attribute flag_stack in member function
+__init__() of class PolInfo
+(*) Modify updating of flag stacking in member function update_flags()
+of class PolInfo
+(*) Modify updating of Et and flag stacking in member function
+update() of class Antenna
+
 From 6b9fd5c:
 ============
 
