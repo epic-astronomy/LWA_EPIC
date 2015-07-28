@@ -9985,7 +9985,7 @@ class AntennaArray:
     def update_flags(self, dictflags=None):
 
         """
-        ----------------------------------------------------------------------------
+        ------------------------------------------------------------------------
         Updates all flags in the antenna array followed by any flags that
         need overriding through inputs of specific flag information
 
@@ -10001,7 +10001,7 @@ class AntennaArray:
                    information under each antenna must be of same type as input 
                    parameter flags in member function update_flags() of class 
                    PolInfo
-        ----------------------------------------------------------------------------
+        ------------------------------------------------------------------------
         """
 
         for label in self.antennas:
@@ -10013,7 +10013,7 @@ class AntennaArray:
             
             for label in dictflags:
                 if label in self.antennas:
-                    self.antennas[label].antpol.update_flags(flags=dictflags[label])
+                    self.antennas[label].antpol.update_flags(flags=dictflags[label], stack=False)
 
     ############################################################################
 
@@ -10311,6 +10311,7 @@ class AntennaArray:
                 
                 if 'timestamp' in updates['antenna_array']:
                     self.timestamp = updates['antenna_array']['timestamp']
+                    self.timestamps += [copy.deepcopy(self.timestamp)] # Stacks new timestamp
 
                 if 'do_grid' in updates['antenna_array']:
                     if isinstance(updates['antenna_array']['do_grid'], boolean):
@@ -10320,6 +10321,6 @@ class AntennaArray:
 
         self.t = self.antennas.itervalues().next().t # Update time axis
         self.f = self.antennas.itervalues().next().f # Update frequency axis
-        self.update_flags()
+        self.update_flags()  # Refreshes current flags, no stacking
 
     ############################################################################

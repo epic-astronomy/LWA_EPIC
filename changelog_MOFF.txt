@@ -1,3 +1,12 @@
+From 530e131:
+============
+
+In antenna_array.py,
+
+(*) Handle stacking of flags in update_flags() member function of
+class AntennaArray
+(*) Stack timestamps in update() member function of class AntennaArray
+
 From 94ca972:
 ============
 
