@@ -7997,11 +7997,12 @@ class PolInfo:
 
     ############################################################################ 
 
-    def update_flags(self, flags=None, stack=True):
+    def update_flags(self, flags=None, stack=True, verify=False):
 
         """
         ------------------------------------------------------------------------
-        Updates the flags based on current inputs
+        Updates the flags based on current inputs and verifies and updates flags
+        based on current values of the electric field.
     
         Inputs:
     
@@ -8015,8 +8016,22 @@ class PolInfo:
                  end of the stack of flags as a function of timestamp. If False,
                  updates the last flag in the stack with the updated flag and 
                  does not append
+
+        verify   [boolean] If True, verify and update the flags, if necessary.
+                 Electric fields are checked for NaN values and if found, the
+                 flag in the corresponding polarization is set to True. 
+                 Default=False. 
+
+        Flag verification and re-updating happens if flags is set to None or if
+        verify is set to True.
         ------------------------------------------------------------------------
         """
+
+        if not isinstance(stack, bool):
+            raise TypeError('Input keyword stack must be of boolean type')
+
+        if not isinstance(verify, bool):
+            raise TypeError('Input keyword verify must be of boolean type')
 
         if flags is not None:
             if not isinstance(flags, dict):
@@ -8027,6 +8042,12 @@ class PolInfo:
                         self.flag[pol] = flags[pol]
                     else:
                         raise TypeError('flag values must be boolean')
+
+        # Perform flag verification and re-update current flags
+        if verify or (flags is None):
+            for pol in ['P1', 'P2']:
+                if NP.any(NP.isnan(self.Et[pol])):
+                    self.flag[pol] = True
 
         # Stack on to last value or update last value in stack
         for pol in ['P1', 'P2']: 
@@ -8041,7 +8062,8 @@ class PolInfo:
 
     ############################################################################ 
 
-    def update(self, Et=None, Ef=None, flags=None, delaydict=None, stack=True):
+    def update(self, Et=None, Ef=None, flags=None, delaydict=None, stack=True,
+               verify=False):
         
         """
         ------------------------------------------------------------------------
@@ -8096,6 +8118,10 @@ class PolInfo:
                the stack with the updated electric field data and does not 
                append
 
+        verify [boolean] If True, verify and update the flags, if necessary.
+               Electric fields are checked for NaN values and if found, the
+               flag in the corresponding polarization is set to True. 
+               Default=False. 
         ------------------------------------------------------------------------
         """
 
@@ -8169,9 +8195,8 @@ class PolInfo:
                             self.Ef_stack[pol][-1,:] = self.Ef[pol].reshape(1,-1)
 
         # Update flags including stacked flags
-        self.update_flags(flags=flags, stack=stack)
+        self.update_flags(flags=flags, stack=stack, verify=verify)
             
-
 #################################################################################
 
 class Antenna:
@@ -8408,28 +8433,28 @@ class Antenna:
         
     #############################################################################
 
-    def update_flags(self, flags=None, stack=True):
+    # def update_flags(self, flags=None, stack=True):
 
-        """
-        ------------------------------------------------------------------------
-        Updates flags for antenna polarizations. Invokes member function 
-        update_flags() of class PolInfo
+    #     """
+    #     ------------------------------------------------------------------------
+    #     Updates flags for antenna polarizations. Invokes member function 
+    #     update_flags() of class PolInfo
 
-        Inputs:
+    #     Inputs:
 
-        flags  [dictionary] boolean flags for each of the 2 polarizations 
-               of the antenna which are stored under keys 'P1' and 'P2',
-               Default=None means no updates for flags.
+    #     flags  [dictionary] boolean flags for each of the 2 polarizations 
+    #            of the antenna which are stored under keys 'P1' and 'P2',
+    #            Default=None means no updates for flags.
 
-        stack  [boolean] If True (default), appends the updated flag to the
-               end of the stack of flags as a function of timestamp. If False,
-               updates the last flag in the stack with the updated flag and 
-               does not append
-        ------------------------------------------------------------------------
-        """
+    #     stack  [boolean] If True (default), appends the updated flag to the
+    #            end of the stack of flags as a function of timestamp. If False,
+    #            updates the last flag in the stack with the updated flag and 
+    #            does not append
+    #     ------------------------------------------------------------------------
+    #     """
 
-        if flags is not None:
-            self.antpol.update_flags(flags, stack=stack)
+    #     if flags is not None:
+    #         self.antpol.update_flags(flags, stack=stack)
 
     ############################################################################
 
@@ -8566,7 +8591,7 @@ class Antenna:
         #     self.update_flags(flags, stack=True) 
 
         if (Et is not None) or (delaydict is not None) or (flags is not None):
-            self.antpol.update(Et=Et, delaydict=delaydict, flags=flags, stack=True)
+            self.antpol.update(Et=Et, delaydict=delaydict, flags=flags, stack=True, verify=False)
         
         blc_orig = NP.copy(self.blc)
         trc_orig = NP.copy(self.trc)
@@ -10030,7 +10055,7 @@ class AntennaArray:
 
     ############################################################################ 
 
-    def update_flags(self, dictflags=None):
+    def update_flags(self, dictflags=None, stack=True, verify=False):
 
         """
         ------------------------------------------------------------------------
@@ -10039,29 +10064,39 @@ class AntennaArray:
 
         Inputs:
 
-        dictflags  [dictionary] contains flag information overriding after default
-                   flag updates are determined. Antenna based flags are given as 
-                   further dictionaries with each under under a key which is the
-                   same as the antenna label. Flags for each antenna are
-                   specified as a dictionary holding boolean flags for each of the 
-                   two polarizations which are stored under keys 'P1' and 'P2'. 
-                   An absent key just means it is not a part of the update. Flag 
-                   information under each antenna must be of same type as input 
-                   parameter flags in member function update_flags() of class 
-                   PolInfo
+        dictflags  [dictionary] contains flag information overriding after 
+                   default flag updates are determined. Antenna based flags are 
+                   given as further dictionaries with each under under a key 
+                   which is the same as the antenna label. Flags for each 
+                   antenna are specified as a dictionary holding boolean flags 
+                   for each of the two polarizations which are stored under 
+                   keys 'P1' and 'P2'. An absent key just means it is not a 
+                   part of the update. Flag information under each antenna must 
+                   be of same type as input parameter flags in member function 
+                   update_flags() of class PolInfo
+
+        stack      [boolean] If True (default), appends the updated flag to the
+                   end of the stack of flags as a function of timestamp. If 
+                   False, updates the last flag in the stack with the updated 
+                   flag and does not append
+
+        verify     [boolean] If True, verify and update the flags, if necessary.
+                   Electric fields are checked for NaN values and if found, the
+                   flag in the corresponding polarization is set to True. 
+                   Default=False. 
         ------------------------------------------------------------------------
         """
 
         for label in self.antennas:
-            self.antennas[label].update_flags()
+            self.antennas[label].antpol.update_flags(stack=stack, verify=verify)
 
-        if dictflags is not None:
+        if dictflags is not None:  # Performs flag overriding. Use stack=False
             if not isinstance(dictflags, dict):
                 raise TypeError('Input parameter dictflags must be a dictionary')
             
             for label in dictflags:
                 if label in self.antennas:
-                    self.antennas[label].antpol.update_flags(flags=dictflags[label], stack=False)
+                    self.antennas[label].antpol.update_flags(flags=dictflags[label], stack=False, verify=True)
 
     ############################################################################
 
@@ -10370,6 +10405,6 @@ class AntennaArray:
 
         self.t = self.antennas.itervalues().next().t # Update time axis
         self.f = self.antennas.itervalues().next().f # Update frequency axis
-        self.update_flags()  # Refreshes current flags, no stacking
+        self.update_flags(stack=False, verify=True)  # Refreshes current flags, no stacking
 
     ############################################################################

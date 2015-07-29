@@ -1,3 +1,31 @@
+From d7a20cc:
+============
+
+In antenna_array.py,
+
+(*) Comment out redundant member function update_flags() of class
+Antenna and replace its occurrence throughout classes Antenna and
+AntennaArray by direct use of the member function update_flags() of
+class PolInfo
+(*) Add keyword input stack to member function update_flags() of class
+AntennaArray. Update docstring accordingly
+(*) In member function update() of class AntennaArray, modify the
+invocation of member function update_flags() of class AntennaArray
+to now use the keyword input stack set to False
+(*) Modify stacking of flags in member function update_flags() of
+class PolInfo
+(*) Add input keyword verify to member function update_flags() of
+class PolInfo. Modify docstring accordingly
+(*) Add input keyword verify to member function update() of class
+PolInfo. Modify docstring accordingly
+(*) Add type checking of input keywords stack and verify inside
+member function update_flags() of class PolInfo
+(*) Pass keyword input verify set to False while calling member
+function update_flags() of class PolInfo from inside member function
+update() of class PolInfo
+(*) Make changes in member function update_flags() and update() of
+class AntennaArray to be compatible with changes above
+
 From b8dab4f:
 ============
 
