@@ -1,3 +1,11 @@
+From 00c23e1:
+============
+
+In antenna_array.py,
+
+(*) Add input keywords stack and verify to member function 
+update_flags() of class CrossPolInfo. Modify docstring accordingly
+
 From d7a20cc:
 ============
 

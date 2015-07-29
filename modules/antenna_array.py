@@ -2852,11 +2852,12 @@ class CrossPolInfo:
 
     ############################################################################ 
 
-    def update_flags(self, flags=None):
+    def update_flags(self, flags=None, stack=True, verify=False):
 
         """
         ------------------------------------------------------------------------
-        Updates the flags based on current inputs
+        Updates the flags based on current inputs and verifies and updates flags
+        based on current values of the electric field.
     
         Inputs:
     
@@ -2865,8 +2866,27 @@ class CrossPolInfo:
                  and 'P22'. Default=None means no new flagging to be applied. If 
                  the value under the cross-polarization key is True, it is to be 
                  flagged and if False, it is to be unflagged.
+
+        stack    [boolean] If True (default), appends the updated flag to the
+                 end of the stack of flags as a function of timestamp. If False,
+                 updates the last flag in the stack with the updated flag and 
+                 does not append
+
+        verify   [boolean] If True, verify and update the flags, if necessary.
+                 Visibilities are checked for NaN values and if found, the
+                 flag in the corresponding polarization is set to True. 
+                 Default=False. 
+
+        Flag verification and re-updating happens if flags is set to None or if
+        verify is set to True.
         ------------------------------------------------------------------------
         """
+
+        if not isinstance(stack, bool):
+            raise TypeError('Input keyword stack must be of boolean type')
+
+        if not isinstance(verify, bool):
+            raise TypeError('Input keyword verify must be of boolean type')
 
         if flags is not None:
             if not isinstance(flags, dict):
@@ -2877,6 +2897,23 @@ class CrossPolInfo:
                         self.flag[pol] = flags[pol]
                     else:
                         raise TypeError('flag values must be boolean')
+
+        # Perform flag verification and re-update current flags
+        if verify or (flags is None):
+            for pol in ['P1', 'P2']:
+                if NP.any(NP.isnan(self.Vt[pol])):
+                    self.flag[pol] = True
+                    
+        # Stack on to last value or update last value in stack
+        for pol in ['P1', 'P2']: 
+            if stack is True:
+                self.flag_stack[pol] = NP.append(self.flag_stack[pol], self.flag[pol])
+            else:
+                if self.flag_stack[pol].size == 0:
+                    self.flag_stack[pol] = self.flag[pol]
+                else:
+                    self.flag_stack[pol][-1] = self.flag[pol]
+            self.flag_stack[pol] = self.flag_stack[pol].astype(NP.bool)
 
     ############################################################################ 
 
