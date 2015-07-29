@@ -2777,6 +2777,20 @@ class CrossPolInfo:
              polarizations which are stored under keys 'P11', 'P12', 'P21', and
              'P22'. Default=True means it is flagged.
 
+    Vt_stack [dictionary] holds a stack of complex visibility time series 
+             measured at various time stamps under 4 polarizations which are 
+             stored under keys 'P11', 'P12', 'P21', and 'P2'
+
+    Vf_stack [dictionary] holds a stack of complex visibility spectra 
+             measured at various time stamps under 4 polarizations which are 
+             stored under keys 'P11', 'P12', 'P21' and 'P22'
+
+    flag_stack
+             [dictionary] holds a stack of flags appropriate for different 
+             time stamps as a numpy array under 4 polarizations which are 
+             stored under keys 'P11', 'P12', 'P21' and 'P22'
+
+
     Member functions:
 
     __init__()     Initializes an instance of class CrossPolInfo
@@ -2810,6 +2824,10 @@ class CrossPolInfo:
         self.Vf = {}
         self.flag = {}
 
+        self.Et_stack = {}
+        self.Ef_stack = {}
+        self.flag_stack = {} 
+
         if not isinstance(nsamples, int):
             raise TypeError('nsamples must be an integer')
         elif nsamples <= 0:
@@ -2822,6 +2840,10 @@ class CrossPolInfo:
             self.Vf[pol].fill(NP.nan)
             
             self.flag[pol] = True
+
+            self.Vt_stack[pol] = None
+            self.Vf_stack[pol] = None
+            self.flag_stack[pol] = NP.asarray([])
 
     ############################################################################ 
 
