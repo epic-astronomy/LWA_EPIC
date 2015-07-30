@@ -1,3 +1,18 @@
+From 3587025:
+===========
+
+In antenna_array.py,
+
+(*) Add keyword inputs stack and verify to member function update()
+of class CrossPolInfo
+(*) Add stack handling functionality to member function update() of
+class CrossPolInfo
+(*) Modify slightly member function update() of class CrossPolInfo
+(*) Update docstring of member function update() of class CrossPolInfo
+accordingly
+(*) Minor modifications inside member function update() of class
+PolInfo
+
 From 00c23e1:
 ============
 

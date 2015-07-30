@@ -2917,7 +2917,7 @@ class CrossPolInfo:
 
     ############################################################################ 
 
-    def update(self, Vt=None, Vf=None, flags=None):
+    def update(self, Vt=None, Vf=None, flags=None, stack=True, verify=False):
         
         """
         ------------------------------------------------------------------------
@@ -2937,11 +2937,24 @@ class CrossPolInfo:
         flag   [dictionary] holds boolean flags for each of the 4 cross-
                polarizations which are stored under keys 'P11', 'P12', 'P21', 
                and 'P22'. Default=None means no updates for flags.
+
+        stack  [boolean] If True (default), appends the updated visibility 
+               time series and spectrum to the end of the respective stacks as 
+               a function of timestamp. If False, updates the last entry in 
+               the stack with the updated visibility data and does not append
+
+        verify [boolean] If True, verify and update the flags, if necessary.
+               Visibilities are checked for NaN values and if found, the
+               flag in the corresponding polarization is set to True. 
+               Default=False. 
         ------------------------------------------------------------------------
         """
 
-        if flags is not None:
-            self.update_flags(flags)
+        current_flags = copy.deepcopy(self.flag)
+        if flags is None:
+            flags = copy.deepcopy(current_flags)
+        # if flags is not None:
+        #     self.update_flags(flags)
 
         if Vt is not None:
             if isinstance(Vt, dict):
@@ -2950,7 +2963,8 @@ class CrossPolInfo:
                         self.Vt[pol] = Vt[pol]
                         if NP.any(NP.isnan(Vt[pol])):
                             # self.Vt[pol] = NP.nan
-                            self.flag[pol] = True
+                            flags[pol] = True
+                            # self.flag[pol] = True
             else:
                 raise TypeError('Input parameter Vt must be a dictionary')
 
@@ -2961,9 +2975,47 @@ class CrossPolInfo:
                         self.Vf[pol] = Vf[pol]
                         if NP.any(NP.isnan(Vf[pol])):
                             # self.Vf[pol] = NP.nan
-                            self.flag[pol] = True
+                            flags[pol] = True
+                            # self.flag[pol] = True
             else:
                 raise TypeError('Input parameter Vf must be a dictionary')
+
+        # Handle stacking procedure on electric fields
+        if stack:   # Add on to the stack
+            for pol in ['P11', 'P12', 'P21', 'P22']:
+                if Vt is not None:
+                    if pol in Vt:
+                        if self.Vt_stack[pol] is None:
+                            self.Vt_stack[pol] = self.Vt[pol].reshape(1,-1)
+                            self.Vf_stack[pol] = self.Vf[pol].reshape(1,-1)
+                        else:
+                            self.Vt_stack[pol] = NP.vstack((self.Vt_stack[pol], self.Vt[pol].reshape(1,-1)))
+                            self.Vf_stack[pol] = NP.vstack((self.Vf_stack[pol], self.Vf[pol].reshape(1,-1)))
+                elif Vf is not None:
+                    if pol in Vf:
+                        if self.Vf_stack[pol] is None:
+                            self.Vf_stack[pol] = self.Vf[pol].reshape(1,-1)
+                        else:
+                            self.Vf_stack[pol] = NP.vstack((self.Vf_stack[pol], self.Vf[pol].reshape(1,-1)))
+        else:     # Update the last entry in the stack
+            for pol in ['P11', 'P12', 'P21', 'P22']:
+                if Vt is not None:
+                    if pol in Vt:
+                        if self.Vt_stack[pol] is None:
+                            self.Vt_stack[pol] = self.Vt[pol].reshape(1,-1)
+                            self.Vf_stack[pol] = self.Vf[pol].reshape(1,-1)
+                        else:
+                            self.Vt_stack[pol][-1,:] = self.Vt[pol].reshape(1,-1)
+                            self.Vf_stack[pol][-1,:] = self.Vf[pol].reshape(1,-1)
+                elif Vf is not None:
+                    if pol in Vf:
+                        if self.Vf_stack[pol] is None:
+                            self.Vf_stack[pol] = self.Vf[pol].reshape(1,-1)
+                        else:
+                            self.Vf_stack[pol][-1,:] = self.Vf[pol].reshape(1,-1)
+
+        # Update flags including stacked flags
+        self.update_flags(flags=flags, stack=stack, verify=verify)
 
 #################################################################################
 
@@ -8162,9 +8214,9 @@ class PolInfo:
         ------------------------------------------------------------------------
         """
 
-        current_flags = self.flag
+        current_flags = copy.deepcopy(self.flag)
         if flags is None:
-            flags = current_flags
+            flags = copy.deepcopy(current_flags)
         # if flags is not None:
         #     self.update_flags(flags)
             
