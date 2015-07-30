@@ -2777,20 +2777,6 @@ class CrossPolInfo:
              polarizations which are stored under keys 'P11', 'P12', 'P21', and
              'P22'. Default=True means it is flagged.
 
-    Vt_stack [dictionary] holds a stack of complex visibility time series 
-             measured at various time stamps under 4 polarizations which are 
-             stored under keys 'P11', 'P12', 'P21', and 'P22'
-
-    Vf_stack [dictionary] holds a stack of complex visibility spectra 
-             measured at various time stamps under 4 polarizations which are 
-             stored under keys 'P11', 'P12', 'P21' and 'P22'
-
-    flag_stack
-             [dictionary] holds a stack of flags appropriate for different 
-             time stamps as a numpy array under 4 polarizations which are 
-             stored under keys 'P11', 'P12', 'P21' and 'P22'
-
-
     Member functions:
 
     __init__()     Initializes an instance of class CrossPolInfo
@@ -2824,10 +2810,6 @@ class CrossPolInfo:
         self.Vf = {}
         self.flag = {}
 
-        self.Vt_stack = {}
-        self.Vf_stack = {}
-        self.flag_stack = {} 
-
         if not isinstance(nsamples, int):
             raise TypeError('nsamples must be an integer')
         elif nsamples <= 0:
@@ -2841,10 +2823,6 @@ class CrossPolInfo:
             
             self.flag[pol] = True
 
-            self.Vt_stack[pol] = None
-            self.Vf_stack[pol] = None
-            self.flag_stack[pol] = NP.asarray([])
-
     ############################################################################ 
 
     def __str__(self):
@@ -2852,7 +2830,7 @@ class CrossPolInfo:
 
     ############################################################################ 
 
-    def update_flags(self, flags=None, stack=True, verify=False):
+    def update_flags(self, flags=None, verify=False):
 
         """
         ------------------------------------------------------------------------
@@ -2866,11 +2844,6 @@ class CrossPolInfo:
                  and 'P22'. Default=None means no new flagging to be applied. If 
                  the value under the cross-polarization key is True, it is to be 
                  flagged and if False, it is to be unflagged.
-
-        stack    [boolean] If True (default), appends the updated flag to the
-                 end of the stack of flags as a function of timestamp. If False,
-                 updates the last flag in the stack with the updated flag and 
-                 does not append
 
         verify   [boolean] If True, verify and update the flags, if necessary.
                  Visibilities are checked for NaN values and if found, the
@@ -2904,20 +2877,20 @@ class CrossPolInfo:
                 if NP.any(NP.isnan(self.Vt[pol])):
                     self.flag[pol] = True
                     
-        # Stack on to last value or update last value in stack
-        for pol in ['P11', 'P12', 'P21', 'P22']: 
-            if stack is True:
-                self.flag_stack[pol] = NP.append(self.flag_stack[pol], self.flag[pol])
-            else:
-                if self.flag_stack[pol].size == 0:
-                    self.flag_stack[pol] = self.flag[pol]
-                else:
-                    self.flag_stack[pol][-1] = self.flag[pol]
-            self.flag_stack[pol] = self.flag_stack[pol].astype(NP.bool)
+        # # Stack on to last value or update last value in stack
+        # for pol in ['P11', 'P12', 'P21', 'P22']: 
+        #     if stack is True:
+        #         self.flag_stack[pol] = NP.append(self.flag_stack[pol], self.flag[pol])
+        #     else:
+        #         if self.flag_stack[pol].size == 0:
+        #             self.flag_stack[pol] = self.flag[pol]
+        #         else:
+        #             self.flag_stack[pol][-1] = self.flag[pol]
+        #     self.flag_stack[pol] = self.flag_stack[pol].astype(NP.bool)
 
     ############################################################################ 
 
-    def update(self, Vt=None, Vf=None, flags=None, stack=True, verify=False):
+    def update(self, Vt=None, Vf=None, flags=None, verify=False):
         
         """
         ------------------------------------------------------------------------
@@ -2937,11 +2910,6 @@ class CrossPolInfo:
         flag   [dictionary] holds boolean flags for each of the 4 cross-
                polarizations which are stored under keys 'P11', 'P12', 'P21', 
                and 'P22'. Default=None means no updates for flags.
-
-        stack  [boolean] If True (default), appends the updated visibility 
-               time series and spectrum to the end of the respective stacks as 
-               a function of timestamp. If False, updates the last entry in 
-               the stack with the updated visibility data and does not append
 
         verify [boolean] If True, verify and update the flags, if necessary.
                Visibilities are checked for NaN values and if found, the
@@ -2980,43 +2948,46 @@ class CrossPolInfo:
             else:
                 raise TypeError('Input parameter Vf must be a dictionary')
 
-        # Handle stacking procedure on electric fields
-        if stack:   # Add on to the stack
-            for pol in ['P11', 'P12', 'P21', 'P22']:
-                if Vt is not None:
-                    if pol in Vt:
-                        if self.Vt_stack[pol] is None:
-                            self.Vt_stack[pol] = self.Vt[pol].reshape(1,-1)
-                            self.Vf_stack[pol] = self.Vf[pol].reshape(1,-1)
-                        else:
-                            self.Vt_stack[pol] = NP.vstack((self.Vt_stack[pol], self.Vt[pol].reshape(1,-1)))
-                            self.Vf_stack[pol] = NP.vstack((self.Vf_stack[pol], self.Vf[pol].reshape(1,-1)))
-                elif Vf is not None:
-                    if pol in Vf:
-                        if self.Vf_stack[pol] is None:
-                            self.Vf_stack[pol] = self.Vf[pol].reshape(1,-1)
-                        else:
-                            self.Vf_stack[pol] = NP.vstack((self.Vf_stack[pol], self.Vf[pol].reshape(1,-1)))
-        else:     # Update the last entry in the stack
-            for pol in ['P11', 'P12', 'P21', 'P22']:
-                if Vt is not None:
-                    if pol in Vt:
-                        if self.Vt_stack[pol] is None:
-                            self.Vt_stack[pol] = self.Vt[pol].reshape(1,-1)
-                            self.Vf_stack[pol] = self.Vf[pol].reshape(1,-1)
-                        else:
-                            self.Vt_stack[pol][-1,:] = self.Vt[pol].reshape(1,-1)
-                            self.Vf_stack[pol][-1,:] = self.Vf[pol].reshape(1,-1)
-                elif Vf is not None:
-                    if pol in Vf:
-                        if self.Vf_stack[pol] is None:
-                            self.Vf_stack[pol] = self.Vf[pol].reshape(1,-1)
-                        else:
-                            self.Vf_stack[pol][-1,:] = self.Vf[pol].reshape(1,-1)
+        # # Handle stacking procedure on electric fields
+        # if stack:   # Add on to the stack
+        #     for pol in ['P11', 'P12', 'P21', 'P22']:
+        #         if Vt is not None:
+        #             if pol in Vt:
+        #                 if self.Vt_stack[pol] is None:
+        #                     self.Vt_stack[pol] = self.Vt[pol].reshape(1,-1)
+        #                     self.Vf_stack[pol] = self.Vf[pol].reshape(1,-1)
+        #                 else:
+        #                     self.Vt_stack[pol] = NP.vstack((self.Vt_stack[pol], self.Vt[pol].reshape(1,-1)))
+        #                     self.Vf_stack[pol] = NP.vstack((self.Vf_stack[pol], self.Vf[pol].reshape(1,-1)))
+        #         elif Vf is not None:
+        #             if pol in Vf:
+        #                 if self.Vf_stack[pol] is None:
+        #                     self.Vf_stack[pol] = self.Vf[pol].reshape(1,-1)
+        #                 else:
+        #                     self.Vf_stack[pol] = NP.vstack((self.Vf_stack[pol], self.Vf[pol].reshape(1,-1)))
+        # else:     # Update the last entry in the stack
+        #     for pol in ['P11', 'P12', 'P21', 'P22']:
+        #         if Vt is not None:
+        #             if pol in Vt:
+        #                 if self.Vt_stack[pol] is None:
+        #                     self.Vt_stack[pol] = self.Vt[pol].reshape(1,-1)
+        #                     self.Vf_stack[pol] = self.Vf[pol].reshape(1,-1)
+        #                 else:
+        #                     self.Vt_stack[pol][-1,:] = self.Vt[pol].reshape(1,-1)
+        #                     self.Vf_stack[pol][-1,:] = self.Vf[pol].reshape(1,-1)
+        #         elif Vf is not None:
+        #             if pol in Vf:
+        #                 if self.Vf_stack[pol] is None:
+        #                     self.Vf_stack[pol] = self.Vf[pol].reshape(1,-1)
+        #                 else:
+        #                     self.Vf_stack[pol][-1,:] = self.Vf[pol].reshape(1,-1)
 
-        # Update flags including stacked flags
-        self.update_flags(flags=flags, stack=stack, verify=verify)
+        # # Update flags including stacked flags
+        # self.update_flags(flags=flags, stack=stack, verify=verify)
 
+        # Update flags
+        self.update_flags(flags=flags, verify=verify)
+        
 #################################################################################
 
 class Interferometer:
@@ -3058,6 +3029,18 @@ class Interferometer:
 
     crosspol:   [Instance of class CrossPolInfo] polarization information for the 
                 interferometer. Read docstring of class CrossPolInfo for details
+
+    Vt_stack    [dictionary] holds a stack of complex visibility time series 
+                measured at various time stamps under 4 polarizations which are 
+                stored under keys 'P11', 'P12', 'P21', and 'P22'
+                
+    Vf_stack    [dictionary] holds a stack of complex visibility spectra 
+                measured at various time stamps under 4 polarizations which are 
+                stored under keys 'P11', 'P12', 'P21' and 'P22'
+
+    flag_stack  [dictionary] holds a stack of flags appropriate for different 
+                time stamps as a numpy array under 4 polarizations which are 
+                stored under keys 'P11', 'P12', 'P21' and 'P22'
 
     wts:        [dictionary] The gridding weights for interferometer. Different 
                 cross-polarizations 'P11', 'P12', 'P21' and 'P22' form the keys 
@@ -3194,11 +3177,20 @@ class Interferometer:
         
         self.crosspol = CrossPolInfo(self.f.size)
 
+        self.Vt_stack = {}
+        self.Vf_stack = {}
+        self.flag_stack = {} 
+
         self.wtspos = {}
         self.wts = {}
         self.wtspos_scale = {}
         self._gridinfo = {}
+
         for pol in ['P11', 'P12', 'P21', 'P22']:
+            self.Vt_stack[pol] = None
+            self.Vf_stack[pol] = None
+            self.flag_stack[pol] = NP.asarray([])
+
             self.wtspos[pol] = []
             self.wts[pol] = []
             self.wtspos_scale[pol] = None

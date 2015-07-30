@@ -1,3 +1,15 @@
+From c55195f:
+============
+
+In antenna_array.py,
+
+(*) Remove attributes Vt_stack, Vf_stack, and flag_stack from class
+CrossPolInfo and insert them under class Interferometer. Change the
+respective __init__() member functions and docstrings accordingly
+(*) Remove stack keyword input and stacking procedure from member
+functions update() and update_flags() of class CrossPolInfo. Change
+docstring accordingly
+
 From 093042e:
 ============
 
