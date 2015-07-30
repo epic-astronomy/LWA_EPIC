@@ -1,3 +1,14 @@
+From 093042e:
+============
+
+In antenna_array.py,
+
+(*) Fix bug by initialization of correct variables in member function
+__init__() of class CrossPolInfo
+(*) Minor change in docstring of class CrossPolInfo
+(*) Fix bug in polarizations in member function update_flags() of
+class CrossPolInfo
+
 From 3587025:
 ===========
 

@@ -2779,7 +2779,7 @@ class CrossPolInfo:
 
     Vt_stack [dictionary] holds a stack of complex visibility time series 
              measured at various time stamps under 4 polarizations which are 
-             stored under keys 'P11', 'P12', 'P21', and 'P2'
+             stored under keys 'P11', 'P12', 'P21', and 'P22'
 
     Vf_stack [dictionary] holds a stack of complex visibility spectra 
              measured at various time stamps under 4 polarizations which are 
@@ -2824,8 +2824,8 @@ class CrossPolInfo:
         self.Vf = {}
         self.flag = {}
 
-        self.Et_stack = {}
-        self.Ef_stack = {}
+        self.Vt_stack = {}
+        self.Vf_stack = {}
         self.flag_stack = {} 
 
         if not isinstance(nsamples, int):
@@ -2900,12 +2900,12 @@ class CrossPolInfo:
 
         # Perform flag verification and re-update current flags
         if verify or (flags is None):
-            for pol in ['P1', 'P2']:
+            for pol in ['P11', 'P12', 'P21', 'P22']:
                 if NP.any(NP.isnan(self.Vt[pol])):
                     self.flag[pol] = True
                     
         # Stack on to last value or update last value in stack
-        for pol in ['P1', 'P2']: 
+        for pol in ['P11', 'P12', 'P21', 'P22']: 
             if stack is True:
                 self.flag_stack[pol] = NP.append(self.flag_stack[pol], self.flag[pol])
             else:
@@ -3231,13 +3231,18 @@ class Interferometer:
 
     #############################################################################
 
-    def FX(self):
+    def FX(self, stack=False):
 
         """
         -------------------------------------------------------------------------
         Computes the visibility spectrum using an FX operation, i.e., Fourier 
         transform (F) followed by multiplication (X). All four cross
         polarizations are computed.
+
+        Inputs:
+
+        stack  [boolean] If set to True, perform Fourier transform on the 
+               timestamp-stacked visibility lag series. Default = False
         -------------------------------------------------------------------------
         """
 
@@ -3252,6 +3257,20 @@ class Interferometer:
         self.crosspol.Vf['P22'] = self.A1.antpol.Ef['P2'] * self.A2.antpol.Ef['P2'].conjugate()
 
         self.f2t()
+
+        # # Handle stacking of visibilities
+        # for pol in ['P11', 'P12', 'P21', 'P22']:
+        #     if self.Vt_stack[pol] is None:
+        #         self.Vt_stack[pol] = self.Vt[pol].reshape(1,-1)
+        #         self.Vf_stack[pol] = self.Vf[pol].reshape(1,-1)
+        #     else:
+        #         if stack:
+        #             self.Vt_stack[pol] = NP.vstack((self.Vt_stack[pol], self.Vt[pol].reshape(1,-1)))
+        #             self.Vf_stack[pol] = NP.vstack((self.Vf_stack[pol], self.Vf[pol].reshape(1,-1)))
+        #         else:
+        #             self.Vt_stack[pol][-1,:] = self.Vt[pol].reshape(1,-1)
+        #             self.Vf_stack[pol][-1,:] = self.Vf[pol].reshape(1,-1)
+
 
     #############################################################################
 
