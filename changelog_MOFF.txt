@@ -1,3 +1,11 @@
+From 2f23075:
+============
+
+In antenna_array.py,
+
+(*) Remove commented lines on stacking in classes CrossPolInfo and
+PolInfo
+
 From 1a50cb3:
 ============
 
