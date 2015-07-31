@@ -8013,7 +8013,7 @@ class PolInfo:
 
     ############################################################################ 
 
-    def FT(self, pol=None, stack=False):
+    def FT(self, pol=None):
 
         """
         ------------------------------------------------------------------------
@@ -8027,8 +8027,8 @@ class PolInfo:
                 to 'P1' and/or 'P2'. If None (default) provided, time series 
                 of both polarizations are Fourier transformed.
 
-        stack   [boolean] If set to True, perform Fourier transform on the 
-                timestamp-stacked electric field time series. Default = False
+        # stack   [boolean] If set to True, perform Fourier transform on the 
+        #         timestamp-stacked electric field time series. Default = False
         ------------------------------------------------------------------------
         """
 
@@ -8039,9 +8039,9 @@ class PolInfo:
             if p in ['P1', 'P2']:
                 Et = NP.pad(self.Et[p], (0,len(self.Et[p])), 'constant', constant_values=(0,0))
                 self.Ef[p] = DSP.FT1D(Et, ax=0, use_real=False, inverse=False, shift=True)
-                if stack:
-                    Et_stack = NP.pad(self.Et_stack[p], ((0,0),(0,self.Et_stack[p].shape[1])), 'constant', constant_values=((0,0),(0,0)))
-                    self.Ef_stack[p] = DSP.FT1D(Et_stack, ax=1, use_real=False, inverse=False, shift=True)
+                # if stack:
+                #     Et_stack = NP.pad(self.Et_stack[p], ((0,0),(0,self.Et_stack[p].shape[1])), 'constant', constant_values=((0,0),(0,0)))
+                #     self.Ef_stack[p] = DSP.FT1D(Et_stack, ax=1, use_real=False, inverse=False, shift=True)
             else:
                 raise ValueError('polarization string "{0}" unrecognized. Verify inputs. Aborting {1}.{2}()'.format(p, self.__class__.__name__, 'FT'))
 
@@ -8134,7 +8134,7 @@ class PolInfo:
 
     ############################################################################ 
 
-    def update_flags(self, flags=None, stack=True, verify=False):
+    def update_flags(self, flags=None, verify=False):
 
         """
         ------------------------------------------------------------------------
@@ -8149,10 +8149,10 @@ class PolInfo:
                  the value under the polarization key is True, it is to be 
                  flagged and if False, it is to be unflagged.
 
-        stack    [boolean] If True (default), appends the updated flag to the
-                 end of the stack of flags as a function of timestamp. If False,
-                 updates the last flag in the stack with the updated flag and 
-                 does not append
+        # stack    [boolean] If True (default), appends the updated flag to the
+        #          end of the stack of flags as a function of timestamp. If False,
+        #          updates the last flag in the stack with the updated flag and 
+        #          does not append
 
         verify   [boolean] If True, verify and update the flags, if necessary.
                  Electric fields are checked for NaN values and if found, the
@@ -8164,8 +8164,8 @@ class PolInfo:
         ------------------------------------------------------------------------
         """
 
-        if not isinstance(stack, bool):
-            raise TypeError('Input keyword stack must be of boolean type')
+        # if not isinstance(stack, bool):
+        #     raise TypeError('Input keyword stack must be of boolean type')
 
         if not isinstance(verify, bool):
             raise TypeError('Input keyword verify must be of boolean type')
@@ -8186,21 +8186,20 @@ class PolInfo:
                 if NP.any(NP.isnan(self.Et[pol])):
                     self.flag[pol] = True
 
-        # Stack on to last value or update last value in stack
-        for pol in ['P1', 'P2']: 
-            if stack is True:
-                self.flag_stack[pol] = NP.append(self.flag_stack[pol], self.flag[pol])
-            else:
-                if self.flag_stack[pol].size == 0:
-                    self.flag_stack[pol] = self.flag[pol]
-                else:
-                    self.flag_stack[pol][-1] = self.flag[pol]
-            self.flag_stack[pol] = self.flag_stack[pol].astype(NP.bool)
+        # # Stack on to last value or update last value in stack
+        # for pol in ['P1', 'P2']: 
+        #     if stack is True:
+        #         self.flag_stack[pol] = NP.append(self.flag_stack[pol], self.flag[pol])
+        #     else:
+        #         if self.flag_stack[pol].size == 0:
+        #             self.flag_stack[pol] = self.flag[pol]
+        #         else:
+        #             self.flag_stack[pol][-1] = self.flag[pol]
+        #     self.flag_stack[pol] = self.flag_stack[pol].astype(NP.bool)
 
     ############################################################################ 
 
-    def update(self, Et=None, Ef=None, flags=None, delaydict=None, stack=True,
-               verify=False):
+    def update(self, Et=None, Ef=None, flags=None, delaydict=None, verify=False):
         
         """
         ------------------------------------------------------------------------
@@ -8249,11 +8248,11 @@ class PolInfo:
                       electric field spectrum computed in member function 
                       FT(). 
 
-        stack  [boolean] If True (default), appends the updated electric field 
-               time series and spectrum to the end of the respective stacks as 
-               a function of timestamp. If False, updates the last entry in 
-               the stack with the updated electric field data and does not 
-               append
+        # stack  [boolean] If True (default), appends the updated electric field 
+        #        time series and spectrum to the end of the respective stacks as 
+        #        a function of timestamp. If False, updates the last entry in 
+        #        the stack with the updated electric field data and does not 
+        #        append
 
         verify [boolean] If True, verify and update the flags, if necessary.
                Electric fields are checked for NaN values and if found, the
@@ -8296,43 +8295,43 @@ class PolInfo:
         if delaydict is not None:
             self.delay_compensation(delaydict)
 
-        # Handle stacking procedure on electric fields
-        # Ef stacking must always happen after delay compensation
-        if stack:   # Add on to the stack
-            for pol in ['P1', 'P2']:
-                if Et is not None:
-                    if pol in Et:
-                        if self.Et_stack[pol] is None:
-                            self.Et_stack[pol] = self.Et[pol].reshape(1,-1)
-                            self.Ef_stack[pol] = self.Ef[pol].reshape(1,-1)
-                        else:
-                            self.Et_stack[pol] = NP.vstack((self.Et_stack[pol], self.Et[pol].reshape(1,-1)))
-                            self.Ef_stack[pol] = NP.vstack((self.Ef_stack[pol], self.Ef[pol].reshape(1,-1)))
-                elif Ef is not None:
-                    if pol in Ef:
-                        if self.Ef_stack[pol] is None:
-                            self.Ef_stack[pol] = self.Ef[pol].reshape(1,-1)
-                        else:
-                            self.Ef_stack[pol] = NP.vstack((self.Ef_stack[pol], self.Ef[pol].reshape(1,-1)))
-        else:     # Update the last entry in the stack
-            for pol in ['P1', 'P2']:
-                if Et is not None:
-                    if pol in Et:
-                        if self.Et_stack[pol] is None:
-                            self.Et_stack[pol] = self.Et[pol].reshape(1,-1)
-                            self.Ef_stack[pol] = self.Ef[pol].reshape(1,-1)
-                        else:
-                            self.Et_stack[pol][-1,:] = self.Et[pol].reshape(1,-1)
-                            self.Ef_stack[pol][-1,:] = self.Ef[pol].reshape(1,-1)
-                elif Ef is not None:
-                    if pol in Ef:
-                        if self.Ef_stack[pol] is None:
-                            self.Ef_stack[pol] = self.Ef[pol].reshape(1,-1)
-                        else:
-                            self.Ef_stack[pol][-1,:] = self.Ef[pol].reshape(1,-1)
+        # # Handle stacking procedure on electric fields
+        # # Ef stacking must always happen after delay compensation
+        # if stack:   # Add on to the stack
+        #     for pol in ['P1', 'P2']:
+        #         if Et is not None:
+        #             if pol in Et:
+        #                 if self.Et_stack[pol] is None:
+        #                     self.Et_stack[pol] = self.Et[pol].reshape(1,-1)
+        #                     self.Ef_stack[pol] = self.Ef[pol].reshape(1,-1)
+        #                 else:
+        #                     self.Et_stack[pol] = NP.vstack((self.Et_stack[pol], self.Et[pol].reshape(1,-1)))
+        #                     self.Ef_stack[pol] = NP.vstack((self.Ef_stack[pol], self.Ef[pol].reshape(1,-1)))
+        #         elif Ef is not None:
+        #             if pol in Ef:
+        #                 if self.Ef_stack[pol] is None:
+        #                     self.Ef_stack[pol] = self.Ef[pol].reshape(1,-1)
+        #                 else:
+        #                     self.Ef_stack[pol] = NP.vstack((self.Ef_stack[pol], self.Ef[pol].reshape(1,-1)))
+        # else:     # Update the last entry in the stack
+        #     for pol in ['P1', 'P2']:
+        #         if Et is not None:
+        #             if pol in Et:
+        #                 if self.Et_stack[pol] is None:
+        #                     self.Et_stack[pol] = self.Et[pol].reshape(1,-1)
+        #                     self.Ef_stack[pol] = self.Ef[pol].reshape(1,-1)
+        #                 else:
+        #                     self.Et_stack[pol][-1,:] = self.Et[pol].reshape(1,-1)
+        #                     self.Ef_stack[pol][-1,:] = self.Ef[pol].reshape(1,-1)
+        #         elif Ef is not None:
+        #             if pol in Ef:
+        #                 if self.Ef_stack[pol] is None:
+        #                     self.Ef_stack[pol] = self.Ef[pol].reshape(1,-1)
+        #                 else:
+        #                     self.Ef_stack[pol][-1,:] = self.Ef[pol].reshape(1,-1)
 
-        # Update flags including stacked flags
-        self.update_flags(flags=flags, stack=stack, verify=verify)
+        # Verify and update flags
+        self.update_flags(flags=flags, verify=verify)
             
 #################################################################################
 

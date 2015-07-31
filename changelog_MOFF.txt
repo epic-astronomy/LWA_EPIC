@@ -1,3 +1,11 @@
+From b2dc205:
+============
+
+In antenna_array.py,
+
+(*) Comment out stacking in class PolInfo and its docstrings as well
+as stacking will be moved to class Antenna in future commits
+
 From c74fc02:
 ============
 
