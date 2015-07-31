@@ -1,4 +1,17 @@
-from 34c9b98:
+From aeea7df:
+============
+
+In antenna_array.py,
+
+(*) Modify attribute timestamps from being a dictionary to be a list
+in class Interferometer. Modify __init__() member function and
+docstring accordingly
+(*) Modify update() member function of class Interferometer to proceed
+only if timestamp aligns with that of both antennas
+(*) Modify update() member function of class Interferometer to update
+visibility and flag stacking
+
+From 34c9b98:
 ============
 
 In antenna_array.py,
