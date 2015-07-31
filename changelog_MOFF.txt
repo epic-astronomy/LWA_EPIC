@@ -1,3 +1,26 @@
+From 1a50cb3:
+============
+
+In antenna_array.py,
+
+(*) Remove input keyword stack and comment stacking lines from
+member functions FT() and FT_new() of class Antenna. Modify
+docstring accordingly
+(*) Reactivate discontinued member function update_flags() of class
+Antenna and add input keywords stack and verify and stacking
+functionality. Modify docstring accordingly
+(*) Remove keyword input stack and commented stacking lines from
+member function FX() of class Interferometer. Change docstring
+accordingly
+(*) Modify update() member functions of class Antenna to perform flag
+and data stacking, and flag verification
+(*) Add visibility stacking inside update() member function of class
+Interferometer which was missing this earlier
+(*) Modify docstring of member function update_new() of class
+Interferometer
+(*) Fix minor bugs in initialization of inputs stack and verify_flags 
+in member function update_new() of class Interferometer
+
 From b2dc205:
 ============
 

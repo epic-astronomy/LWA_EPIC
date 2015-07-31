@@ -3210,18 +3210,13 @@ class Interferometer:
 
     #############################################################################
 
-    def FX(self, stack=False):
+    def FX(self):
 
         """
         -------------------------------------------------------------------------
         Computes the visibility spectrum using an FX operation, i.e., Fourier 
         transform (F) followed by multiplication (X). All four cross
         polarizations are computed.
-
-        Inputs:
-
-        stack  [boolean] If set to True, perform Fourier transform on the 
-               timestamp-stacked visibility lag series. Default = False
         -------------------------------------------------------------------------
         """
 
@@ -3236,20 +3231,6 @@ class Interferometer:
         self.crosspol.Vf['P22'] = self.A1.antpol.Ef['P2'] * self.A2.antpol.Ef['P2'].conjugate()
 
         self.f2t()
-
-        # # Handle stacking of visibilities
-        # for pol in ['P11', 'P12', 'P21', 'P22']:
-        #     if self.Vt_stack[pol] is None:
-        #         self.Vt_stack[pol] = self.Vt[pol].reshape(1,-1)
-        #         self.Vf_stack[pol] = self.Vf[pol].reshape(1,-1)
-        #     else:
-        #         if stack:
-        #             self.Vt_stack[pol] = NP.vstack((self.Vt_stack[pol], self.Vt[pol].reshape(1,-1)))
-        #             self.Vf_stack[pol] = NP.vstack((self.Vf_stack[pol], self.Vf[pol].reshape(1,-1)))
-        #         else:
-        #             self.Vt_stack[pol][-1,:] = self.Vt[pol].reshape(1,-1)
-        #             self.Vf_stack[pol][-1,:] = self.Vf[pol].reshape(1,-1)
-
 
     #############################################################################
 
@@ -3502,10 +3483,10 @@ class Interferometer:
                    operation) and 'XF' (for XF operation). Default=None means
                    no correlating operation is to be performed after updates.
 
-        stack      [boolean] If True, appends the updated flag to the
-                   end of the stack of flags as a function of timestamp. If 
-                   False, updates the last flag in the stack with the updated 
-                   flag and does not append. Default=False
+        stack      [boolean] If True, appends the updated data and flag to the
+                   end of the respective stacks as a function of timestamp. If 
+                   False, updates the last entry in the stack with the updated 
+                   flag and data and does not append. Default=False
                    
         verify_flags     
                    [boolean] If True, verify and update the flags, if necessary.
@@ -3552,7 +3533,18 @@ class Interferometer:
                     raise ValueError('Invalid specification for input parameter do_correlate.')
     
             self.update_flags(flags=None, stack=stack, verify=True)  # Re-check flags and stack
-    
+            for pol in ['P11', 'P12', 'P21', 'P22']:
+                if self.Vt_stack[pol] is None:
+                    self.Vt_stack[pol] = copy.deepcopy(self.crosspol.Vt[pol].reshape(1,-1))
+                    self.Vf_stack[pol] = copy.deepcopy(self.crosspol.Vf[pol].reshape(1,-1))
+                else:
+                    if stack:
+                        self.Vt_stack[pol] = NP.vstack((self.Vt_stack[pol], self.crosspol.Vt[pol].reshape(1,-1)))
+                        self.Vf_stack[pol] = NP.vstack((self.Vf_stack[pol], self.crosspol.Vf[pol].reshape(1,-1)))
+                    else:
+                        self.Vt_stack[pol][-1,:] = copy.deepcopy(self.crosspol.Vt[pol].reshape(1,-1))
+                        self.Vf_stack[pol][-1,:] = copy.deepcopy(self.crosspol.Vf[pol].reshape(1,-1))
+
             blc_orig = NP.copy(self.blc)
             trc_orig = NP.copy(self.trc)
             eps = 1e-6
@@ -3631,84 +3623,90 @@ class Interferometer:
 
         Inputs:
 
-        label      [Scalar] A unique identifier (preferably a string) for the 
-                   interferometer. Default=None means no update to apply
+        update_dict [dictionary] contains the following keys and values:
 
-        latitude   [Scalar] Latitude of the interferometer's location. 
-                   Default=None means no update to apply
-
-        location   [Instance of GEOM.Point class] The location of the 
-                   interferometer in local East, North, Up (ENU) coordinate 
-                   system. Default=None means no update to apply
-
-        timestamp  [Scalar] String or float representing the timestamp for the 
-                   current attributes. Default=None means no update to apply
-
-        t          [vector] The time axis for the visibility time series. 
-                   Default=None means no update to apply
-
-        flags      [dictionary] holds boolean flags for each of the 4 cross-
-                   polarizations which are stored under keys 'P11', 'P12', 'P21', 
-                   and 'P22'. Default=None means no updates for flags.
-
-        Vt         [dictionary] holds cross-correlation time series under 4 
-                   cross-polarizations which are stored under keys 'P11', 'P12', 
-                   'P21', and 'P22'. Default=None implies no updates for Vt.
-
-        wtsinfo    [dictionary] consists of weights information for each of the
-                   four cross-polarizations under keys 'P11', 'P12', 'P21', and 
-                   'P22'. Each of the values under the keys is a list of 
-                   dictionaries. Length of list is equal to the number
-                   of frequency channels or one (equivalent to setting
-                   wtspos_scale to 'scale'.). The list is indexed by 
-                   the frequency channel number. Each element in the list
-                   consists of a dictionary corresponding to that frequency
-                   channel. Each dictionary consists of these items with the
-                   following keys:
-                   wtspos      [2-column Numpy array, optional] u- and v- 
-                               positions for the gridding weights. Units
-                               are in number of wavelengths.
-                   wts         [Numpy array] Complex gridding weights. Size is
-                               equal to the number of rows in wtspos above
-                   orientation [scalar] Orientation (in radians) of the wtspos 
-                               coordinate system relative to the local ENU 
-                               coordinate system. It is measured North of East. 
-                   lookup      [string] If set, refers to a file location
-                               containing the wtspos and wts information above as
-                               columns (x-loc [float], y-loc [float], wts
-                               [real], wts[imag if any]). If set, wtspos and wts 
-                               information are obtained from this lookup table 
-                               and the wtspos and wts keywords in the dictionary
-                               are ignored. Note that wtspos values are obtained
-                               after dividing x- and y-loc lookup values by the
-                               wavelength
-
-        gridfunc_freq
-                   [String scalar] If set to None (not provided) or to 'scale'
-                   assumes that wtspos in wtsinfo are given for a
-                   reference frequency which need to be scaled for the frequency
-                   channels. Will be ignored if the list of dictionaries under 
-                   the cross-polarization keys in wtsinfo have number of elements 
-                   equal to the number of frequency channels.
-
-        ref_freq   [Scalar] Positive value (in Hz) of reference frequency (used
-                   if gridfunc_freq is set to None or 'scale') at which
-                   wtspos is provided. If set to None, ref_freq is assumed to be 
-                   equal to the center frequency in the class Interferometer's 
-                   attribute. 
-
-        do_correlate
-                   [string] Indicates whether correlation operation is to be
-                   performed after updates. Accepted values are 'FX' (for FX
-                   operation) and 'XF' (for XF operation). Default=None means
-                   no correlating operation is to be performed after updates.
-
-        stack      [boolean] If True, appends the updated flag to the
-                   end of the stack of flags as a function of timestamp. If 
-                   False, updates the last flag in the stack with the updated 
-                   flag and does not append. Default=False
-                   
-        verify_flags     
+            label      [Scalar] A unique identifier (preferably a string) for the 
+                       interferometer. Default=None means no update to apply
+            
+            latitude   [Scalar] Latitude of the interferometer's location. 
+                       Default=None means no update to apply
+            
+            location   [Instance of GEOM.Point class] The location of the 
+                       interferometer in local East, North, Up (ENU) coordinate 
+                       system. Default=None means no update to apply
+            
+            timestamp  [Scalar] String or float representing the timestamp for 
+                       the current attributes. Default=None means no update to 
+                       apply
+            
+            t          [vector] The time axis for the visibility time series. 
+                       Default=None means no update to apply
+            
+            flags      [dictionary] holds boolean flags for each of the 4 cross-
+                       polarizations which are stored under keys 'P11', 'P12', 
+                       'P21', and 'P22'. Default=None means no updates for flags.
+            
+            Vt         [dictionary] holds cross-correlation time series under 4 
+                       cross-polarizations which are stored under keys 'P11', 
+                       'P12', 'P21', and 'P22'. Default=None implies no updates 
+                       for Vt.
+            
+            wtsinfo    [dictionary] consists of weights information for each of 
+                       the four cross-polarizations under keys 'P11', 'P12', 
+                       'P21', and 'P22'. Each of the values under the keys is a 
+                       list of dictionaries. Length of list is equal to the 
+                       number of frequency channels or one (equivalent to setting
+                       wtspos_scale to 'scale'.). The list is indexed by 
+                       the frequency channel number. Each element in the list
+                       consists of a dictionary corresponding to that frequency
+                       channel. Each dictionary consists of these items with the
+                       following keys:
+                       wtspos      [2-column Numpy array, optional] u- and v- 
+                                   positions for the gridding weights. Units
+                                   are in number of wavelengths.
+                       wts         [Numpy array] Complex gridding weights. Size 
+                                   is equal to the number of rows in wtspos above
+                       orientation [scalar] Orientation (in radians) of the 
+                                   wtspos coordinate system relative to the local 
+                                   ENU coordinate system. It is measured North of 
+                                   East. 
+                       lookup      [string] If set, refers to a file location
+                                   containing the wtspos and wts information 
+                                   above as columns (x-loc [float], y-loc 
+                                   [float], wts[real], wts[imag if any]). If set, 
+                                   wtspos and wts information are obtained from 
+                                   this lookup table and the wtspos and wts 
+                                   keywords in the dictionary are ignored. Note 
+                                   that wtspos values are obtained after dividing 
+                                   x- and y-loc lookup values by the wavelength
+            
+            gridfunc_freq
+                       [String scalar] If set to None (not provided) or to 
+                       'scale' assumes that wtspos in wtsinfo are given for a
+                       reference frequency which need to be scaled for the 
+                       frequency channels. Will be ignored if the list of 
+                       dictionaries under the cross-polarization keys in wtsinfo 
+                       have number of elements equal to the number of frequency 
+                       channels.
+            
+            ref_freq   [Scalar] Positive value (in Hz) of reference frequency 
+                       (used if gridfunc_freq is set to None or 'scale') at which
+                       wtspos is provided. If set to None, ref_freq is assumed to 
+                       be equal to the center frequency in the class 
+                       Interferometer's attribute. 
+            
+            do_correlate
+                       [string] Indicates whether correlation operation is to be
+                       performed after updates. Accepted values are 'FX' (for FX
+                       operation) and 'XF' (for XF operation). Default=None means
+                       no correlating operation is to be performed after updates.
+            
+            stack      [boolean] If True, appends the updated flag to the
+                       end of the stack of flags as a function of timestamp. If 
+                       False, updates the last flag in the stack with the updated 
+                       flag and does not append. Default=False
+                       
+            verify_flags     
                    [boolean] If True, verify and update the flags, if necessary.
                    Visibilities are checked for NaN values and if found, the
                    flag in the corresponding polarization is set to True. Flags 
@@ -3730,6 +3728,8 @@ class Interferometer:
         wtsinfo = None
         gridfunc_freq = None
         ref_freq = None
+        stack = False
+        verify_flags = True
             
         if update_dict is not None:
             if not isinstance(update_dict, dict):
@@ -3741,6 +3741,8 @@ class Interferometer:
             if 't' in update_dict: t = update_dict['t']
             if 'Vt' in update_dict: Vt = update_dict['Vt']
             if 'flags' in update_dict: flags = update_dict['flags']
+            if 'stack' in update_dict: stack = update_dict['stack']
+            if 'verify_flags' in update_dict: verify_flags = update_dict['verify_flags']            
             if 'do_correlate' in update_dict: do_correlate = update_dict['do_correlate']
             if 'wtsinfo' in update_dict: wtsinfo = update_dict['wtsinfo']
             if 'gridfunc_freq' in update_dict: gridfunc_freq = update_dict['gridfunc_freq']
@@ -3763,12 +3765,6 @@ class Interferometer:
             if (Vt is not None) or (flags is not None):
                 self.crosspol.update(Vt=Vt, flags=flags, verify=verify_flags)
     
-            # if flags is not None:        # Flags determined from interferometer level
-            #     self.update_flags(flags) 
-    
-            # if Vt is not None:
-            #     self.crosspol.update(Vt=Vt)
-            
             if do_correlate is not None:
                 if do_correlate == 'FX':
                     self.FX()
@@ -3778,6 +3774,17 @@ class Interferometer:
                     raise ValueError('Invalid specification for input parameter do_correlate.')
     
             self.update_flags(flags=None, stack=stack, verify=True)  # Re-check flags and stack
+            for pol in ['P11', 'P12', 'P21', 'P22']:
+                if self.Vt_stack[pol] is None:
+                    self.Vt_stack[pol] = copy.deepcopy(self.crosspol.Vt[pol].reshape(1,-1))
+                    self.Vf_stack[pol] = copy.deepcopy(self.crosspol.Vf[pol].reshape(1,-1))
+                else:
+                    if stack:
+                        self.Vt_stack[pol] = NP.vstack((self.Vt_stack[pol], self.crosspol.Vt[pol].reshape(1,-1)))
+                        self.Vf_stack[pol] = NP.vstack((self.Vf_stack[pol], self.crosspol.Vf[pol].reshape(1,-1)))
+                    else:
+                        self.Vt_stack[pol][-1,:] = copy.deepcopy(self.crosspol.Vt[pol].reshape(1,-1))
+                        self.Vf_stack[pol][-1,:] = copy.deepcopy(self.crosspol.Vf[pol].reshape(1,-1))
     
             blc_orig = NP.copy(self.blc)
             trc_orig = NP.copy(self.trc)
@@ -8535,7 +8542,7 @@ class Antenna:
 
     #############################################################################
 
-    def FT(self, pol=None, stack=False):
+    def FT(self, pol=None):
 
         """
         ------------------------------------------------------------------------
@@ -8550,16 +8557,16 @@ class Antenna:
                means both time series of electric fields of both polarizations 
                are Fourier transformed
 
-        stack  [boolean] If set to True, perform Fourier transform on the 
-               timestamp-stacked electric field time series. Default = False
+        # stack  [boolean] If set to True, perform Fourier transform on the 
+        #        timestamp-stacked electric field time series. Default = False
         ------------------------------------------------------------------------
         """
         
-        self.antpol.FT(pol=pol, stack=stack)
+        self.antpol.FT(pol=pol)
         
     #############################################################################
 
-    def FT_new(self, pol=None, stack=False):
+    def FT_new(self, pol=None):
 
         """
         -------------------------------------------------------------------------
@@ -8577,8 +8584,8 @@ class Antenna:
                means both time series of electric fields of both polarizations 
                are Fourier transformed
 
-        stack  [boolean] If set to True, perform Fourier transform on the 
-               timestamp-stacked electric field time series. Default = False
+        # stack  [boolean] If set to True, perform Fourier transform on the 
+        #        timestamp-stacked electric field time series. Default = False
 
         Outputs:
 
@@ -8586,33 +8593,53 @@ class Antenna:
         -------------------------------------------------------------------------
         """
         
-        self.antpol.FT(pol=pol, stack=stack)
+        self.antpol.FT(pol=pol)
         return self
         
     #############################################################################
 
-    # def update_flags(self, flags=None, stack=True):
+    def update_flags(self, flags=None, stack=False, verify=True):
 
-    #     """
-    #     ------------------------------------------------------------------------
-    #     Updates flags for antenna polarizations. Invokes member function 
-    #     update_flags() of class PolInfo
+        """
+        ------------------------------------------------------------------------
+        Updates flags for antenna polarizations. Invokes member function 
+        update_flags() of class PolInfo
 
-    #     Inputs:
+        Inputs:
 
-    #     flags  [dictionary] boolean flags for each of the 2 polarizations 
-    #            of the antenna which are stored under keys 'P1' and 'P2',
-    #            Default=None means no updates for flags.
+        flags  [dictionary] boolean flags for each of the 2 polarizations 
+               of the antenna which are stored under keys 'P1' and 'P2',
+               Default=None means no updates for flags.
 
-    #     stack  [boolean] If True (default), appends the updated flag to the
-    #            end of the stack of flags as a function of timestamp. If False,
-    #            updates the last flag in the stack with the updated flag and 
-    #            does not append
-    #     ------------------------------------------------------------------------
-    #     """
+        stack  [boolean] If True (default), appends the updated flag to the
+               end of the stack of flags as a function of timestamp. If False,
+               updates the last flag in the stack with the updated flag and 
+               does not append
 
-    #     if flags is not None:
-    #         self.antpol.update_flags(flags, stack=stack)
+        verify [boolean] If True, verify and update the flags, if necessary.
+               Electric fields are checked for NaN values and if found, the
+               flag in the corresponding polarization is set to True. 
+               Default=True 
+        ------------------------------------------------------------------------
+        """
+
+        # By default carry over the flags from previous timestamp
+
+        if flags is None:
+            flags = copy.deepcopy(self.antpol.flag)
+
+        self.antpol.update_flags(flags=flags, verify=verify)
+
+        # Stack on to last value or update last value in stack
+        for pol in ['P1', 'P2']: 
+            if stack is True:
+                self.flag_stack[pol] = NP.append(self.flag_stack[pol], self.antpol.flag[pol])
+            else:
+                if self.flag_stack[pol].size == 0:
+                    self.flag_stack[pol] = self.antpol.flag[pol]
+                else:
+                    self.flag_stack[pol][-1] = self.antpol.flag[pol]
+            self.flag_stack[pol] = self.flag_stack[pol].astype(NP.bool)
 
     ############################################################################
 
@@ -8704,6 +8731,16 @@ class Antenna:
                        applied). Refer to the docstring of member function
                        delay_compensation() of class PolInfo for more details.
 
+            stack      [boolean] If True (default), appends the updated flag to 
+                       the end of the stack of flags as a function of timestamp. 
+                       If False, updates the last flag in the stack with the 
+                       updated flag and does not append
+                       
+            verify     [boolean] If True, verify and update the flags, if 
+                       necessary. Electric fields are checked for NaN values and 
+                       if found, the flag in the corresponding polarization is 
+                       set to True. Default=True 
+
         verbose    [boolean] If True, prints diagnostic and progress messages. 
                    If False (default), suppress printing such messages.
         -------------------------------------------------------------------------
@@ -8714,6 +8751,8 @@ class Antenna:
         timestamp = None
         t = None
         flags = None
+        stack = False
+        verify_flags = True
         Et = None
         wtsinfo = None
         gridfunc_freq = None
@@ -8730,6 +8769,8 @@ class Antenna:
             if 't' in update_dict: t = update_dict['t']
             if 'Et' in update_dict: Et = update_dict['Et']
             if 'flags' in update_dict: flags = update_dict['flags']
+            if 'stack' in update_dict: stack = update_dict['stack']
+            if 'verify_flags' in update_dict: verify_flags = update_dict['verify_flags']            
             if 'wtsinfo' in update_dict: wtsinfo = update_dict['wtsinfo']
             if 'gridfunc_freq' in update_dict: gridfunc_freq = update_dict['gridfunc_freq']
             if 'ref_freq' in update_dict: ref_freq = update_dict['ref_freq']
@@ -8745,11 +8786,23 @@ class Antenna:
             self.t = t
             self.f = self.f0 + self.channels()     
 
-        # if flags is not None:        
-        #     self.update_flags(flags, stack=True) 
-
+        # Updates, Et, Ef, delays, flags and verifies flags
         if (Et is not None) or (delaydict is not None) or (flags is not None):
-            self.antpol.update(Et=Et, delaydict=delaydict, flags=flags, stack=True, verify=False)
+            self.antpol.update(Et=Et, delaydict=delaydict, flags=flags, verify=verify_flags) 
+
+        # Stack flags and data
+        self.update_flags(flags=None, stack=stack, verify=True)  
+        for pol in ['P1', 'P2']:
+            if self.Et_stack[pol] is None:
+                self.Et_stack[pol] = copy.deepcopy(self.antpol.Et[pol].reshape(1,-1))
+                self.Ef_stack[pol] = copy.deepcopy(self.antpol.Ef[pol].reshape(1,-1))
+            else:
+                if stack:
+                    self.Et_stack[pol] = NP.vstack((self.Et_stack[pol], self.antpol.Et[pol].reshape(1,-1)))
+                    self.Ef_stack[pol] = NP.vstack((self.Ef_stack[pol], self.antpol.Ef[pol].reshape(1,-1)))
+                else:
+                    self.Et_stack[pol][-1,:] = copy.deepcopy(self.antpol.Et[pol].reshape(1,-1))
+                    self.Ef_stack[pol][-1,:] = copy.deepcopy(self.antpol.Ef[pol].reshape(1,-1))
         
         blc_orig = NP.copy(self.blc)
         trc_orig = NP.copy(self.trc)
