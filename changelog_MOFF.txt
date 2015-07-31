@@ -1,3 +1,18 @@
+from 34c9b98:
+============
+
+In antenna_array.py,
+
+(*) Add keyword inputs verify and stack to member function
+update_flags() of class Interferometer to perform flag verification
+and stacking respectively. Change docstring accordingly
+(*) Change default assignment of flags to False with a migration of
+current values of flags inside member function update_flags() of class
+Interferometer
+(*) Change default value of input keyword verify from False to True
+in member function update_flags() of class CrossPolInfo. Change
+docstring accordingly
+
 From c55195f:
 ============
 

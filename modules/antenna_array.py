@@ -2830,7 +2830,7 @@ class CrossPolInfo:
 
     ############################################################################ 
 
-    def update_flags(self, flags=None, verify=False):
+    def update_flags(self, flags=None, verify=True):
 
         """
         ------------------------------------------------------------------------
@@ -2848,7 +2848,7 @@ class CrossPolInfo:
         verify   [boolean] If True, verify and update the flags, if necessary.
                  Visibilities are checked for NaN values and if found, the
                  flag in the corresponding polarization is set to True. 
-                 Default=False. 
+                 Default=True. 
 
         Flag verification and re-updating happens if flags is set to None or if
         verify is set to True.
@@ -2877,17 +2877,6 @@ class CrossPolInfo:
                 if NP.any(NP.isnan(self.Vt[pol])):
                     self.flag[pol] = True
                     
-        # # Stack on to last value or update last value in stack
-        # for pol in ['P11', 'P12', 'P21', 'P22']: 
-        #     if stack is True:
-        #         self.flag_stack[pol] = NP.append(self.flag_stack[pol], self.flag[pol])
-        #     else:
-        #         if self.flag_stack[pol].size == 0:
-        #             self.flag_stack[pol] = self.flag[pol]
-        #         else:
-        #             self.flag_stack[pol][-1] = self.flag[pol]
-        #     self.flag_stack[pol] = self.flag_stack[pol].astype(NP.bool)
-
     ############################################################################ 
 
     def update(self, Vt=None, Vf=None, flags=None, verify=False):
@@ -3370,7 +3359,7 @@ class Interferometer:
        
     ############################################################################
 
-    def update_flags(self, flags=None):
+    def update_flags(self, flags=None stack=False, verify=True):
 
         """
         ------------------------------------------------------------------------
@@ -3383,27 +3372,51 @@ class Interferometer:
         flags  [dictionary] boolean flags for each of the 4 cross-polarizations 
                of the interferometer which are stored under keys 'P11', 'P12',
                'P21', and 'P22'. Default=None means no updates for flags.
+
+        stack  [boolean] If True, appends the updated flag to the
+               end of the stack of flags as a function of timestamp. If False,
+               updates the last flag in the stack with the updated flag and 
+               does not append. Default=False
+
+        verify [boolean] If True, verify and update the flags, if necessary.
+               Visibilities are checked for NaN values and if found, the
+               flag in the corresponding polarization is set to True. Flags of
+               individual antennas forming a pair are checked and transferred
+               to the visibility flags. Default=True 
         ------------------------------------------------------------------------
         """
 
-        for cpol in ['P11', 'P12', 'P21', 'P22']:
-            self.crosspol.flag[cpol] = False
+        # By default carry over the flags from previous timestamp
+        # unless updated in this timestamp as below
+        # Flags determined from interferometer level
+
+        if flags is None:
+            flags = copy.deepcopy(self.crosspol.flag)
+
+        self.crosspol.update_flags(flags=flags, verify=verify)
 
         # Flags determined from antenna level
 
-        if self.A1.antpol.flag['P1'] or self.A2.antpol.flag['P1']:
-            self.crosspol.flag['P11'] = True
-        if self.A1.antpol.flag['P2'] or self.A2.antpol.flag['P1']:
-            self.crosspol.flag['P21'] = True
-        if self.A1.antpol.flag['P1'] or self.A2.antpol.flag['P2']:
-            self.crosspol.flag['P12'] = True
-        if self.A1.antpol.flag['P2'] or self.A2.antpol.flag['P2']:
-            self.crosspol.flag['P22'] = True
+        if verify or (flags is None):
+           if self.A1.antpol.flag['P1'] or self.A2.antpol.flag['P1']:
+               self.crosspol.flag['P11'] = True
+           if self.A1.antpol.flag['P2'] or self.A2.antpol.flag['P1']:
+               self.crosspol.flag['P21'] = True
+           if self.A1.antpol.flag['P1'] or self.A2.antpol.flag['P2']:
+               self.crosspol.flag['P12'] = True
+           if self.A1.antpol.flag['P2'] or self.A2.antpol.flag['P2']:
+               self.crosspol.flag['P22'] = True
 
-        # Flags determined from interferometer level
-
-        if flags is not None:
-            self.crosspol.update_flags(flags)
+        # Stack on to last value or update last value in stack
+        for pol in ['P11', 'P12', 'P21', 'P22']: 
+            if stack is True:
+                self.flag_stack[pol] = NP.append(self.flag_stack[pol], self.crosspol.flag[pol])
+            else:
+                if self.flag_stack[pol].size == 0:
+                    self.flag_stack[pol] = self.crosspol.flag[pol]
+                else:
+                    self.flag_stack[pol][-1] = self.crosspol.flag[pol]
+            self.flag_stack[pol] = self.flag_stack[pol].astype(NP.bool)
 
     ############################################################################
 
