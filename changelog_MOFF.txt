@@ -1,3 +1,15 @@
+From f96d15d:
+============
+
+In antenna_array.py,
+
+(*) Modify update_new() member function of class Interferometer to 
+proceed only if timestamp aligns with that of both antennas
+(*) Modify update_new() member function of class Interferometer to 
+update visibility and flag stacking
+(*) Update docstring accordingly in member functions update() and
+update_new() of class Interferometer
+
 From aeea7df:
 ============
 

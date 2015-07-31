@@ -3501,6 +3501,18 @@ class Interferometer:
                    operation) and 'XF' (for XF operation). Default=None means
                    no correlating operation is to be performed after updates.
 
+        stack      [boolean] If True, appends the updated flag to the
+                   end of the stack of flags as a function of timestamp. If 
+                   False, updates the last flag in the stack with the updated 
+                   flag and does not append. Default=False
+                   
+        verify_flags     
+                   [boolean] If True, verify and update the flags, if necessary.
+                   Visibilities are checked for NaN values and if found, the
+                   flag in the corresponding polarization is set to True. Flags 
+                   of individual antennas forming a pair are checked and 
+                   transferred to the visibility flags. Default=True 
+
         verbose    [boolean] If True, prints diagnostic and progress messages. 
                    If False (default), suppress printing such messages.
         -------------------------------------------------------------------------
@@ -3690,6 +3702,18 @@ class Interferometer:
                    operation) and 'XF' (for XF operation). Default=None means
                    no correlating operation is to be performed after updates.
 
+        stack      [boolean] If True, appends the updated flag to the
+                   end of the stack of flags as a function of timestamp. If 
+                   False, updates the last flag in the stack with the updated 
+                   flag and does not append. Default=False
+                   
+        verify_flags     
+                   [boolean] If True, verify and update the flags, if necessary.
+                   Visibilities are checked for NaN values and if found, the
+                   flag in the corresponding polarization is set to True. Flags 
+                   of individual antennas forming a pair are checked and 
+                   transferred to the visibility flags. Default=True 
+
         verbose    [boolean] If True, prints diagnostic and progress messages. 
                    If False (default), suppress printing such messages.
         -------------------------------------------------------------------------
@@ -3725,92 +3749,103 @@ class Interferometer:
         if location is not None: self.location = location
         if timestamp is not None: self.timestamp = timestamp
 
-        if t is not None:
-            self.t = t
-            self.f = self.f0 + self.channels()     
-
-        if flags is not None:        # Flags determined from interferometer level
-            self.update_flags(flags) 
-
-        if Vt is not None:
-            self.crosspol.update(Vt=Vt)
-        
-        if do_correlate is not None:
-            if do_correlate == 'FX':
-                self.FX()
-            elif do_correlate == 'XF':
-                self.XF()
-            else:
-                raise ValueError('Invalid specification for input parameter do_correlate.')
-
-        blc_orig = NP.copy(self.blc)
-        trc_orig = NP.copy(self.trc)
-        eps = 1e-6
-
-        if wtsinfo is not None:
-            if not isinstance(wtsinfo, dict):
-                raise TypeError('Input parameter wtsinfo must be a dictionary.')
-
-            self.wtspos = {}
-            self.wts = {}
-            self.wtspos_scale = {}
-            angles = []
-            
-            max_wtspos = []
-            for pol in ['P11', 'P12', 'P21', 'P22']:
-                self.wts[pol] = []
-                self.wtspos[pol] = []
-                self.wtspos_scale[pol] = None
-                if pol in wtsinfo:
-                    if len(wtsinfo[pol]) == len(self.f):
-                        angles += [elem['orientation'] for elem in wtsinfo[pol]]
-                        for i in xrange(len(self.f)):
-                            rotation_matrix = NP.asarray([[NP.cos(-angles[i]),  NP.sin(-angles[i])],
-                                                          [-NP.sin(-angles[i]), NP.cos(-angles[i])]])
-                            if ('lookup' not in wtsinfo[pol][i]) or (wtsinfo[pol][i]['lookup'] is None):
-                                self.wts[pol] += [wtsinfo[pol][i]['wts']]
-                                wtspos = wtsinfo[pol][i]['wtspos']
-                            else:
-                                lookupdata = LKP.read_lookup(wtsinfo[pol][i]['lookup'])
-                                wtspos = NP.hstack((lookupdata[0].reshape(-1,1),lookupdata[1].reshape(-1,1))) * (self.f[i]/FCNST.c)
-                                self.wts[pol] += [lookupdata[2]]
-                            self.wtspos[pol] += [ NP.dot(NP.asarray(wtspos), rotation_matrix.T) ]
-                            max_wtspos += [NP.amax(NP.abs(self.wtspos[pol][-1]), axis=0)]
-                    elif len(wtsinfo[pol]) == 1:
-                        if (gridfunc_freq is None) or (gridfunc_freq == 'scale'):
-                            self.wtspos_scale[pol] = 'scale'
-                            if ref_freq is None:
-                                ref_freq = self.f0
-                            angles = wtsinfo[pol][0]['orientation']
-                            rotation_matrix = NP.asarray([[NP.cos(-angles),  NP.sin(-angles)],
-                                                          [-NP.sin(-angles), NP.cos(-angles)]])
-                            if ('lookup' not in wtsinfo[pol][0]) or (wtsinfo[pol][0]['lookup'] is None):
-                                self.wts[pol] += [ wtsinfo[pol][0]['wts'] ]
-                                wtspos = wtsinfo[pol][0]['wtspos']
-                            else:
-                                lookupdata = LKP.read_lookup(wtsinfo[pol][0]['lookup'])
-                                wtspos = NP.hstack((lookupdata[0].reshape(-1,1),lookupdata[1].reshape(-1,1))) * (ref_freq/FCNST.c)
-                                self.wts[pol] += [lookupdata[2]]
-                            self.wtspos[pol] += [ (self.f[0]/ref_freq) * NP.dot(NP.asarray(wtspos), rotation_matrix.T) ]     
-                            max_wtspos += [NP.amax(NP.abs(self.wtspos[pol][-1]), axis=0)]
-                        else:
-                            raise ValueError('gridfunc_freq must be set to None, "scale" or "noscale".')
-    
-                        self.blc = NP.asarray([self.location.x, self.location.y]).reshape(1,-1) - FCNST.c/self.f.min() * NP.amin(NP.abs(self.wtspos[pol][0]), 0)
-                        self.trc = NP.asarray([self.location.x, self.location.y]).reshape(1,-1) + FCNST.c/self.f.min() * NP.amax(NP.abs(self.wtspos[pol][0]), 0)
-    
-                    else:
-                        raise ValueError('Number of elements in wtsinfo for {0} is incompatible with the number of channels.'.format(pol))
-               
-            max_wtspos = NP.amax(NP.asarray(max_wtspos).reshape(-1,blc_orig.size), axis=0)
-            self.blc = NP.asarray([self.location.x, self.location.y]).reshape(1,-1) - FCNST.c/self.f.min() * max_wtspos
-            self.trc = NP.asarray([self.location.x, self.location.y]).reshape(1,-1) + FCNST.c/self.f.min() * max_wtspos
-
-        if (NP.abs(NP.linalg.norm(blc_orig)-NP.linalg.norm(self.blc)) > eps) or (NP.abs(NP.linalg.norm(trc_orig)-NP.linalg.norm(self.trc)) > eps):
+        # Proceed with interferometer updates only if timestamps align
+        if (self.timestamp != self.A1.timestamp) or (self.timestamp != self.A2.timestamp):
             if verbose:
-                print 'Grid corner(s) of interferometer {0} have changed. Should re-grid the interferometer array.'.format(self.label)
-
-        return self
+                print 'Interferometer timestamp does not match with the component antenna timestamp(s). Update for interferometer {0} will be skipped.'.format(self.label)
+        else:
+            self.timestamps += [copy.deepcopy(self.timestamp)]
+            if t is not None:
+                self.t = t
+                self.f = self.f0 + self.channels()     
+    
+            if (Vt is not None) or (flags is not None):
+                self.crosspol.update(Vt=Vt, flags=flags, verify=verify_flags)
+    
+            # if flags is not None:        # Flags determined from interferometer level
+            #     self.update_flags(flags) 
+    
+            # if Vt is not None:
+            #     self.crosspol.update(Vt=Vt)
+            
+            if do_correlate is not None:
+                if do_correlate == 'FX':
+                    self.FX()
+                elif do_correlate == 'XF':
+                    self.XF()
+                else:
+                    raise ValueError('Invalid specification for input parameter do_correlate.')
+    
+            self.update_flags(flags=None, stack=stack, verify=True)  # Re-check flags and stack
+    
+            blc_orig = NP.copy(self.blc)
+            trc_orig = NP.copy(self.trc)
+            eps = 1e-6
+    
+            if wtsinfo is not None:
+                if not isinstance(wtsinfo, dict):
+                    raise TypeError('Input parameter wtsinfo must be a dictionary.')
+    
+                self.wtspos = {}
+                self.wts = {}
+                self.wtspos_scale = {}
+                angles = []
+                
+                max_wtspos = []
+                for pol in ['P11', 'P12', 'P21', 'P22']:
+                    self.wts[pol] = []
+                    self.wtspos[pol] = []
+                    self.wtspos_scale[pol] = None
+                    if pol in wtsinfo:
+                        if len(wtsinfo[pol]) == len(self.f):
+                            angles += [elem['orientation'] for elem in wtsinfo[pol]]
+                            for i in xrange(len(self.f)):
+                                rotation_matrix = NP.asarray([[NP.cos(-angles[i]),  NP.sin(-angles[i])],
+                                                              [-NP.sin(-angles[i]), NP.cos(-angles[i])]])
+                                if ('lookup' not in wtsinfo[pol][i]) or (wtsinfo[pol][i]['lookup'] is None):
+                                    self.wts[pol] += [wtsinfo[pol][i]['wts']]
+                                    wtspos = wtsinfo[pol][i]['wtspos']
+                                else:
+                                    lookupdata = LKP.read_lookup(wtsinfo[pol][i]['lookup'])
+                                    wtspos = NP.hstack((lookupdata[0].reshape(-1,1),lookupdata[1].reshape(-1,1))) * (self.f[i]/FCNST.c)
+                                    self.wts[pol] += [lookupdata[2]]
+                                self.wtspos[pol] += [ NP.dot(NP.asarray(wtspos), rotation_matrix.T) ]
+                                max_wtspos += [NP.amax(NP.abs(self.wtspos[pol][-1]), axis=0)]
+                        elif len(wtsinfo[pol]) == 1:
+                            if (gridfunc_freq is None) or (gridfunc_freq == 'scale'):
+                                self.wtspos_scale[pol] = 'scale'
+                                if ref_freq is None:
+                                    ref_freq = self.f0
+                                angles = wtsinfo[pol][0]['orientation']
+                                rotation_matrix = NP.asarray([[NP.cos(-angles),  NP.sin(-angles)],
+                                                              [-NP.sin(-angles), NP.cos(-angles)]])
+                                if ('lookup' not in wtsinfo[pol][0]) or (wtsinfo[pol][0]['lookup'] is None):
+                                    self.wts[pol] += [ wtsinfo[pol][0]['wts'] ]
+                                    wtspos = wtsinfo[pol][0]['wtspos']
+                                else:
+                                    lookupdata = LKP.read_lookup(wtsinfo[pol][0]['lookup'])
+                                    wtspos = NP.hstack((lookupdata[0].reshape(-1,1),lookupdata[1].reshape(-1,1))) * (ref_freq/FCNST.c)
+                                    self.wts[pol] += [lookupdata[2]]
+                                self.wtspos[pol] += [ (self.f[0]/ref_freq) * NP.dot(NP.asarray(wtspos), rotation_matrix.T) ]     
+                                max_wtspos += [NP.amax(NP.abs(self.wtspos[pol][-1]), axis=0)]
+                            else:
+                                raise ValueError('gridfunc_freq must be set to None, "scale" or "noscale".')
+        
+                            self.blc = NP.asarray([self.location.x, self.location.y]).reshape(1,-1) - FCNST.c/self.f.min() * NP.amin(NP.abs(self.wtspos[pol][0]), 0)
+                            self.trc = NP.asarray([self.location.x, self.location.y]).reshape(1,-1) + FCNST.c/self.f.min() * NP.amax(NP.abs(self.wtspos[pol][0]), 0)
+        
+                        else:
+                            raise ValueError('Number of elements in wtsinfo for {0} is incompatible with the number of channels.'.format(pol))
+                   
+                max_wtspos = NP.amax(NP.asarray(max_wtspos).reshape(-1,blc_orig.size), axis=0)
+                self.blc = NP.asarray([self.location.x, self.location.y]).reshape(1,-1) - FCNST.c/self.f.min() * max_wtspos
+                self.trc = NP.asarray([self.location.x, self.location.y]).reshape(1,-1) + FCNST.c/self.f.min() * max_wtspos
+    
+            if (NP.abs(NP.linalg.norm(blc_orig)-NP.linalg.norm(self.blc)) > eps) or (NP.abs(NP.linalg.norm(trc_orig)-NP.linalg.norm(self.trc)) > eps):
+                if verbose:
+                    print 'Grid corner(s) of interferometer {0} have changed. Should re-grid the interferometer array.'.format(self.label)
+    
+            return self
 
     #############################################################################
 
