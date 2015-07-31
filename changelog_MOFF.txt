@@ -1,3 +1,14 @@
+From c74fc02:
+============
+
+In antenna_array.py,
+
+(*) Remove attributes Et_stack, Ef_stack, and flag_stack from class
+PolInfo and insert them under class Antenna. Change the respective
+__init__() member functions and docstrings accordingly
+(*) Minor change to docstring of member function __init__() of class
+Interferometer
+
 From f96d15d:
 ============
 

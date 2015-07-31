@@ -3119,7 +3119,8 @@ class Interferometer:
 
         Class attributes initialized are:
         label, latitude, location, pol, t, timestamp, f0, f, wts, wtspos, 
-        wtspos_scale, gridinfo, blc, trc, timestamps
+        wtspos_scale, gridinfo, blc, trc, timestamps, Vt_stack, Vf_stack, and 
+        flag_stack
      
         Read docstring of class Antenna for details on these attributes.
         ------------------------------------------------------------------------
@@ -7956,19 +7957,6 @@ class PolInfo:
              which are stored under keys 'P1', and 'P2'. Default=True means  
              that polarization is flagged.
 
-    Et_stack [dictionary] holds a stack of complex electric field time series 
-             measured at various time stamps under 2 polarizations which are 
-             stored under keys 'P1' and 'P2'
-
-    Ef_stack [dictionary] holds a stack of complex electric field spectra 
-             measured at various time stamps under 2 polarizations which are 
-             stored under keys 'P1' and 'P2'
-
-    flag_stack
-             [dictionary] holds a stack of flags appropriate for different 
-             time stamps as a numpy array under 2 polarizations which are 
-             stored under keys 'P1' and 'P2'
-
     Member functions:
 
     __init__():    Initializes an instance of class PolInfo
@@ -7994,7 +7982,7 @@ class PolInfo:
         an antenna. 
 
         Class attributes initialized are:
-        Et, Ef, flag, Et_stack, Ef_stack, flag_stack
+        Et, Ef, flag
      
         Read docstring of class PolInfo for details on these attributes.
         ------------------------------------------------------------------------
@@ -8003,10 +7991,6 @@ class PolInfo:
         self.Et = {}
         self.Ef = {}
         self.flag = {}
-
-        self.Et_stack = {}
-        self.Ef_stack = {}
-        self.flag_stack = {} 
 
         if not isinstance(nsamples, int):
             raise TypeError('nsamples must be an integer')
@@ -8021,10 +8005,6 @@ class PolInfo:
             self.Ef[pol].fill(NP.nan)
 
             self.flag[pol] = True
-
-            self.Et_stack[pol] = None
-            self.Ef_stack[pol] = None
-            self.flag_stack[pol] = NP.asarray([])
 
     ############################################################################ 
 
@@ -8387,6 +8367,19 @@ class Antenna:
     antpol:     [Instance of class PolInfo] polarization information for the 
                 antenna. Read docstring of class PolInfo for details
 
+    Et_stack    [dictionary] holds a stack of complex electric field time series 
+                measured at various time stamps under 2 polarizations which are 
+                stored under keys 'P1' and 'P2'
+                
+    Ef_stack    [dictionary] holds a stack of complex electric field spectra 
+                measured at various time stamps under 2 polarizations which are 
+                stored under keys 'P1' and 'P2'
+
+    flag_stack
+                [dictionary] holds a stack of flags appropriate for different 
+                time stamps as a numpy array under 2 polarizations which are 
+                stored under keys 'P1' and 'P2'
+
     wts:        [dictionary] The gridding weights for antenna. Different 
                 polarizations 'P1' and 'P2' form the keys 
                 of this dictionary. These values are in general complex. Under 
@@ -8453,7 +8446,8 @@ class Antenna:
 
         Class attributes initialized are:
         label, latitude, location, pol, t, timestamp, f0, f, wts, wtspos, 
-        wtspos_scale, blc, trc, timestamps, and antpol
+        wtspos_scale, blc, trc, timestamps, antpol, Et_stack, Ef_stack, and
+        flag_stack
      
         Read docstring of class Antenna for details on these attributes.
         ------------------------------------------------------------------------
@@ -8496,12 +8490,20 @@ class Antenna:
         self.f0 = center_freq
         self.f = self.f0
 
+        self.Et_stack = {}
+        self.Ef_stack = {}
+        self.flag_stack = {} 
+
         self.wts = {}
         self.wtspos = {}
         self.wtspos_scale = {}
         self._gridinfo = {}
 
         for pol in ['P1', 'P2']:
+            self.Et_stack[pol] = None
+            self.Ef_stack[pol] = None
+            self.flag_stack[pol] = NP.asarray([])
+
             self.wtspos[pol] = []
             self.wts[pol] = []
             self.wtspos_scale[pol] = None
