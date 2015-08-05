@@ -1,3 +1,22 @@
+From 26cac81:
+============
+
+In antenna_array.py,
+
+(*) Update member function update() of class Interferometer by
+combining an earlier range of inputs to a single input dictionary
+called update_dict. Change docstring accordingly. This is on lines
+similar to update() member function of class Antenna
+(*) Update member function update_pp() of class Interferometer to
+now act as a simple wrapper of member function update(). Change
+docstring accordingly.
+(*) Modify update() member function of class InterferometerArray to
+call the modified member function update() of class Interferometer
+with appropriate inputs
+(*) Renamed the previous versions of these modified member functions
+of class Interferometer with a suffix '_old' and will be removed in
+future revisions after the modified versions are verified to work
+
 From 93e1746:
 ============
 
