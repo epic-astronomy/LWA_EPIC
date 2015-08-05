@@ -1,3 +1,12 @@
+From 93e1746:
+============
+
+In antenna_array.py,
+
+(*) Accumulate and average only unflagged visibilities in member
+function accumulate() of class Interferometer
+(*) Trim some commented lines to within 80 characters
+
 From ebe643a:
 ============
 

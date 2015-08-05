@@ -87,7 +87,7 @@ def baseline_grid_mapper(gridind_raveled, values, bins, label, outq):
 def find_1NN_arg_splitter(args, **kwargs):
     return LKP.find_1NN(*args, **kwargs)
 
-#################################################################################  
+###############################################################################
 
 class PolInfo_old:
 
@@ -162,12 +162,12 @@ class PolInfo_old:
         self.flag_P2 = True
         self.pol_type = ''
 
-    ############################################################################ 
+    ###########################################################################
 
     def __str__(self):
         return ' Instance of class "{0}" in module "{1}" \n flag (P1): {2} \n flag (P2): {3} \n Polarization type: {4} '.format(self.__class__.__name__, self.__module__, self.flag_P1, self.flag_P2, self.pol_type)
 
-    ############################################################################ 
+    ###########################################################################
 
     def temporal_F(self, pol=None):
 
@@ -213,7 +213,7 @@ class PolInfo_old:
     def delay_compensation(self, delaydict=None):
         
         """
-        -------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         Routine to apply delay compensation to Electric field spectra through
         additional phase.
 
@@ -247,7 +247,7 @@ class PolInfo_old:
                            align with the fft-shifted electric field spectrum
                            computed in member function temporal_F().
 
-        -------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         """
 
         if delaydict is None:
@@ -375,7 +375,7 @@ class PolInfo_old:
         if flag_P2 is not None: self.flag_P2 = flag_P2
         if pol_type is not None: self.pol_type = pol_type
 
-#####################################################################################
+###############################################################################
 
 class Antenna_old:
 
@@ -577,12 +577,12 @@ class Antenna_old:
         self.blc_P2 = NP.asarray([self.location.x, self.location.y]).reshape(1,2)
         self.trc_P2 = NP.asarray([self.location.x, self.location.y]).reshape(1,2)
 
-    #################################################################################
+    ###########################################################################
 
     def __str__(self):
         return ' Instance of class "{0}" in module "{1}" \n label: {2} \n location: {3}'.format(self.__class__.__name__, self.__module__, self.label, self.location.__str__())
 
-    #################################################################################
+    ###########################################################################
 
     def channels(self):
         """
@@ -600,7 +600,7 @@ class Antenna_old:
 
         return DSP.spectax(2*len(self.t), self.t[1]-self.t[0], shift=True)
 
-    #################################################################################
+    ###########################################################################
 
     def update(self, label=None, Et_P1=None, Et_P2=None, t=None, timestamp=None,
                location=None, wtsinfo_P1=None, wtsinfo_P2=None, flag_P1=None,
@@ -608,7 +608,7 @@ class Antenna_old:
                delaydict_P2=None, ref_freq=None, pol_type='Linear',
                verbose=False):
         """
-        -------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         Routine to update all or some of the antenna information 
 
         Inputs:
@@ -856,13 +856,13 @@ class Antenna_old:
         if verbose:
             print 'Updated antenna {0}.'.format(self.label)
 
-    #############################################################################
+    ###########################################################################
 
     def save(self, antfile, pol=None, tabtype='BinTableHDU', overwrite=False,
              verbose=True):
 
         """
-        -------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         Saves the antenna information to disk. 
 
         Input:
@@ -886,7 +886,7 @@ class Antenna_old:
 
         verbose     [boolean] If True (default), prints diagnostic and progress
                     messages. If False, suppress printing such messages.
-        ----------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         """
 
         try:
@@ -1000,12 +1000,12 @@ class Antenna_old:
             print '\tNow writing FITS file to disk:\n\t\t{0}'.format(filename)
             print '\tData for antenna {0} written successfully to FITS file on disk:\n\t\t{1}\n'.format(self.label, filename)
 
-#####################################################################  
+###############################################################################
 
 class AntennaArray_old:
 
     """
-    ----------------------------------------------------------------------------
+    ---------------------------------------------------------------------------
     Class to manage collective information on a group of antennas.
 
     Attributes:
@@ -1163,7 +1163,7 @@ class AntennaArray_old:
         self.t = None
         self.timestamp = None
         
-    ################################################################################# 
+    ###########################################################################
 
     def __str__(self):
         printstr = '\n-----------------------------------------------------------------'
@@ -1174,12 +1174,12 @@ class AntennaArray_old:
         printstr += '\n-----------------------------------------------------------------'
         return printstr
 
-    ################################################################################# 
+    ###########################################################################
 
     def __add__(self, others):
 
         """
-        ----------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         Operator overloading for adding antenna(s)
     
         Inputs:
@@ -1192,7 +1192,7 @@ class AntennaArray_old:
                    valid instances of class Antenna. These instance(s) of class
                    Antenna will be added to the existing instance of AntennaArray
                    class.
-        ----------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         """
 
         retval = self
@@ -1238,12 +1238,12 @@ class AntennaArray_old:
 
         return retval
 
-    ################################################################################# 
+    ###########################################################################
 
     def __radd__(self, others):
 
         """
-        ----------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         Operator overloading for adding antenna(s)
     
         Inputs:
@@ -1256,16 +1256,16 @@ class AntennaArray_old:
                    valid instances of class Antenna. These instance(s) of class
                    Antenna will be added to the existing instance of AntennaArray
                    class.
-        ----------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         """
 
         return self.__add__(others)
 
-    ################################################################################# 
+    ###########################################################################
 
     def __sub__(self, others):
         """
-        ----------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         Operator overloading for removing antenna(s)
     
         Inputs:
@@ -1278,7 +1278,7 @@ class AntennaArray_old:
                    Antenna. If a list is provided, it should be a list of valid
                    instances of class Antenna. These instance(s) of class Antenna
                    will be removed from the existing instance of AntennaArray class.
-        ----------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         """
 
         retval = self
@@ -1318,12 +1318,12 @@ class AntennaArray_old:
 
         return retval
 
-    ################################################################################# 
+    ###########################################################################
 
     def add_antennas(self, A=None):
 
         """
-        ----------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         Routine to add antenna(s) to the antenna array instance. A wrapper for
         operator overloading __add__() and __radd__()
     
@@ -1337,7 +1337,7 @@ class AntennaArray_old:
                    valid instances of class Antenna. These instance(s) of class
                    Antenna will be added to the existing instance of AntennaArray
                    class.
-        ----------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         """
 
         if A is None:
@@ -1347,26 +1347,27 @@ class AntennaArray_old:
         else:
             print 'Input(s) is/are not instance(s) of class Antenna.'
 
-    ################################################################################# 
+    ###########################################################################
 
     def remove_antennas(self, A=None):
 
         """
-        ----------------------------------------------------------------------------
-        Routine to remove antenna(s) from the antenna array instance. A wrapper for
-        operator overloading __sub__()
+        -----------------------------------------------------------------------
+        Routine to remove antenna(s) from the antenna array instance. A wrapper
+        for operator overloading __sub__()
     
         Inputs:
     
-        A          [Instance of class AntennaArray, dictionary holding instance(s)
-                   of class Antenna, list of instances of class Antenna, or a single
-                   instance of class Antenna] If a dictionary is provided, the keys
-                   should be the antenna labels and the values should be instances 
-                   of class Antenna. If a list is provided, it should be a list of 
-                   valid instances of class Antenna. These instance(s) of class
-                   Antenna will be removed from the existing instance of AntennaArray
-                   class.
-        ----------------------------------------------------------------------------
+        A          [Instance of class AntennaArray, dictionary holding 
+                   instance(s) of class Antenna, list of instances of class 
+                   Antenna, or a single instance of class Antenna] If a 
+                   dictionary is provided, the keys should be the antenna 
+                   labels and the values should be instances of class Antenna. 
+                   If a list is provided, it should be a list of valid 
+                   instances of class Antenna. These instance(s) of class 
+                   Antenna will be removed from the existing instance of 
+                   AntennaArray class.
+        -----------------------------------------------------------------------
         """
 
         if A is None:
@@ -1374,7 +1375,7 @@ class AntennaArray_old:
         else:
             self = self.__sub__(A)
 
-    ################################################################################# 
+    ###########################################################################
 
     def antenna_positions(self, sort=False):
         
@@ -2824,12 +2825,12 @@ class CrossPolInfo:
             
             self.flag[pol] = True
 
-    ############################################################################ 
+    ###########################################################################
 
     def __str__(self):
         return ' Instance of class "{0}" in module "{1}" \n flag (P11): {2} \n flag (P12): {3} \n flag (P21): {4} \n flag (P22): {5} '.format(self.__class__.__name__, self.__module__, self.flag['P11'], self.flag['P12'], self.flag['P21'], self.flag['P22'])
 
-    ############################################################################ 
+    ###########################################################################
 
     def update_flags(self, flags=None, verify=True):
 
@@ -2878,7 +2879,7 @@ class CrossPolInfo:
                 if NP.any(NP.isnan(self.Vt[pol])):
                     self.flag[pol] = True
                     
-    ############################################################################ 
+    ###########################################################################
 
     def update(self, Vt=None, Vf=None, flags=None, verify=False):
         
@@ -2941,12 +2942,12 @@ class CrossPolInfo:
         # Update flags
         self.update_flags(flags=flags, verify=verify)
         
-#################################################################################
+###############################################################################
 
 class Interferometer:
 
     """
-    ----------------------------------------------------------------------------
+    ---------------------------------------------------------------------------
     Class to manage individual 2-element interferometer information.
 
     Attributes:
@@ -3197,12 +3198,12 @@ class Interferometer:
         self.blc = NP.asarray([self.location.x, self.location.y]).reshape(1,-1)
         self.trc = NP.asarray([self.location.x, self.location.y]).reshape(1,-1)
 
-    #################################################################################
+    ###########################################################################
 
     def __str__(self):
         return ' Instance of class "{0}" in module "{1}" \n label: ({2[0]}, {2[1]}) \n location: {3}'.format(self.__class__.__name__, self.__module__, self.label, self.location.__str__())
 
-    #################################################################################
+    ###########################################################################
 
     def channels(self):
 
@@ -3219,16 +3220,16 @@ class Interferometer:
 
         return DSP.spectax(self.A1.t.size + self.A2.t.size, resolution=self.A1.t[1]-self.A1.t[0], shift=True)
 
-    #############################################################################
+    ###########################################################################
 
     def FX(self):
 
         """
-        -------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         Computes the visibility spectrum using an FX operation, i.e., Fourier 
         transform (F) followed by multiplication (X). All four cross
         polarizations are computed.
-        -------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         """
 
         self.t = NP.hstack((self.A1.t.ravel(), self.A1.t.max()+self.A2.t.ravel()))
@@ -3243,17 +3244,17 @@ class Interferometer:
 
         self.f2t()
 
-    #############################################################################
+    ###########################################################################
 
     def FX_pp(self):
 
         """
-        -------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         Computes the visibility spectrum using an FX operation, i.e., Fourier 
         transform (F) followed by multiplication (X). All four cross
         polarizations are computed. To be used internally for parallel processing
         and not by the user directly
-        -------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         """
 
         self.t = NP.hstack((self.A1.t.ravel(), self.A1.t.max()+self.A2.t.ravel()))
@@ -3270,16 +3271,16 @@ class Interferometer:
 
         return self
 
-    #############################################################################
+    ###########################################################################
 
     def XF(self):
 
         """
-        -------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         Computes the visibility spectrum using an XF operation, i.e., Correlation 
         (X) followed by Fourier transform (X). All four cross polarizations are
         computed.
-        -------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         """
 
         self.t = NP.hstack((self.A1.t.ravel(), self.A1.t.max()+self.A2.t.ravel()))
@@ -3294,45 +3295,45 @@ class Interferometer:
 
         self.t2f()
 
-    #############################################################################
+    ###########################################################################
 
     def f2t(self):
 
         """
-        -------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         Computes the visibility time-series from the spectra for each cross-
         polarization
-        -------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         """
         
         for pol in ['P11', 'P12', 'P21', 'P22']:
 
             self.crosspol.Vt[pol] = DSP.FT1D(NP.fft.fftshift(self.crosspol.Vf[pol]), inverse=True, shift=True, verbose=False)
 
-    #############################################################################
+    ###########################################################################
 
     def t2f(self):
         
         """
-        -------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         Computes the visibility spectra from the time-series for each cross-
         polarization
-        -------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         """
 
         for pol in ['P11', 'P12', 'P21', 'P22']:
 
             self.crosspol.Vf[pol] = DSP.FT1D(NP.fft.ifftshift(self.crosspol.Vt[pol]), shift=True, verbose=False)
 
-    ############################################################################ 
+    ###########################################################################
 
     def flip_antenna_pair(self):
         
         """
-        -------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         Flip the antenna pair in the interferometer. This inverts the baseline
         vector and conjugates the visibility spectra
-        -------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         """
 
         self.A1, self.A2 = self.A2, self.A1 # Flip antenna instances
@@ -3417,7 +3418,7 @@ class Interferometer:
                verbose=False):
 
         """
-        -------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         Updates the interferometer instance with newer attribute values. Updates 
         the visibility spectrum and timeseries and applies FX or XF operation.
 
@@ -3509,7 +3510,7 @@ class Interferometer:
 
         verbose    [boolean] If True, prints diagnostic and progress messages. 
                    If False (default), suppress printing such messages.
-        -------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         """
 
         if label is not None: self.label = label
@@ -3618,12 +3619,12 @@ class Interferometer:
                 if verbose:
                     print 'Grid corner(s) of interferometer {0} have changed. Should re-grid the interferometer array.'.format(self.label)
 
-    #############################################################################
+    ###########################################################################
 
     def update_pp(self, update_dict=None, verbose=True):
 
         """
-        -------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         Updates the interferometer instance with newer attribute values. Updates 
         the visibility spectrum and timeseries and applies FX or XF operation.
         Used internally when parallel processing is used. Not to be used by the
@@ -3723,7 +3724,7 @@ class Interferometer:
 
         verbose    [boolean] If True, prints diagnostic and progress messages. 
                    If False (default), suppress printing such messages.
-        -------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         """
 
         label = None
@@ -3896,10 +3897,12 @@ class Interferometer:
 
         if tbinsize is None:   # Average visibilities across all timestamps
             for pol in ['P11', 'P12', 'P21', 'P22']:
-                Vf_acc[pol] = NP.nansum(self.Vf_stack[pol], axis=0, keepdims=True)
-                twts[pol] = NP.asarray(len(self.timestamps) - NP.sum(self.flag_stack[pol])).reshape(-1,1)
+                unflagged_ind = NP.logical_not(self.flag_stack[pol])
+                Vf_acc[pol] = NP.nansum(self.Vf_stack[pol][unflagged_ind,:], axis=0, keepdims=True)
+                twts[pol] = NP.sum(unflagged_ind).reshape(-1,1)
+                # twts[pol] = NP.asarray(len(self.timestamps) - NP.sum(self.flag_stack[pol])).reshape(-1,1)
             self.tbinsize = tbinsize
-        elif isinstance(tbinsize, (int, float)): # Apply same time bin size to all polarizations
+        elif isinstance(tbinsize, (int, float)): # Apply same time bin size to all polarizations 
             eps = 1e-10
             tbins = NP.arange(timestamps.min(), timestamps.max(), tbinsize)
             tbins = NP.append(tbins, timestamps.max()+eps)
@@ -3907,19 +3910,23 @@ class Interferometer:
                 counts, tbin_edges, tbinnum, ri = OPS.binned_statistic(timestamps, statistic='count', bins=tbins)
                 for binnum in range(counts.size):
                     ind = ri[ri[binnum]:ri[binnum+1]]
-                    twts[pol] += [counts[binnum] - NP.sum(self.flag_stack[pol][ind])]
+                    unflagged_ind = NP.logical_not(self.flag_stack[pol][ind])
+                    twts[pol] += [NP.sum(unflagged_ind)]
+                    # twts[pol] += [counts[binnum] - NP.sum(self.flag_stack[pol][ind])]
                     if Vf_acc[pol] is None:
-                        Vf_acc[pol] = NP.nansum(self.Vf_stack[pol][ind,:], axis=0, keepdims=True)
+                        Vf_acc[pol] = NP.nansum(self.Vf_stack[pol][ind[unflagged_ind],:], axis=0, keepdims=True)
                     else:
-                        Vf_acc[pol] = NP.vstack((Vf_acc[pol], NP.nansum(self.Vf_stack[pol][ind,:], axis=0, keepdims=True)))
+                        Vf_acc[pol] = NP.vstack((Vf_acc[pol], NP.nansum(self.Vf_stack[pol][ind[unflagged_ind],:], axis=0, keepdims=True)))
                 twts[pol] = NP.asarray(twts[pol]).reshape(-1,1)
             self.tbinsize = tbinsize
         elif isinstance(tbinsize, dict): # Apply different time binsizes to corresponding polarizations
             tbsize = {}
             for pol in ['P11', 'P12', 'P21', 'P22']:
                 if pol not in tbinsize:
-                    Vf_acc[pol] = NP.nansum(self.Vf_stack[pol], axis=0, keepdims=True)
-                    twts[pol] = NP.asarray(len(self.timestamps) - NP.sum(self.flag_stack[pol])).reshape(-1,1)
+                    unflagged_ind = NP.logical_not(self.flag_stack[pol])
+                    Vf_acc[pol] = NP.nansum(self.Vf_stack[pol][unflagged_ind,:], axis=0, keepdims=True)
+                    twts[pol] = NP.sum(unflagged_ind).reshape(-1,1)
+                    # twts[pol] = NP.asarray(len(self.timestamps) - NP.sum(self.flag_stack[pol])).reshape(-1,1)
                     tbsize[pol] = None
                 elif isinstance(tbinsize[pol], (int,float)):
                     eps = 1e-10
@@ -3929,16 +3936,20 @@ class Interferometer:
                     counts, tbin_edges, tbinnum, ri = OPS.binned_statistic(timestamps, statistic='count', bins=tbins)
                     for binnum in range(counts.size):
                         ind = ri[ri[binnum]:ri[binnum+1]]
-                        twts[pol] += [counts[binnum] - NP.sum(self.flag_stack[pol][ind])]
+                        unflagged_ind = NP.logical_not(self.flag_stack[pol][ind])
+                        twts[pol] += [NP.sum(unflagged_ind)]
+                        # twts[pol] += [counts[binnum] - NP.sum(self.flag_stack[pol][ind])]
                         if Vf_acc[pol] is None:
-                            Vf_acc[pol] = NP.nansum(self.Vf_stack[pol][ind,:], axis=0, keepdims=True)
+                            Vf_acc[pol] = NP.nansum(self.Vf_stack[pol][ind[unflagged_ind],:], axis=0, keepdims=True)
                         else:
-                            Vf_acc[pol] = NP.vstack((Vf_acc[pol], NP.nansum(self.Vf_stack[pol][ind,:], axis=0, keepdims=True)))
+                            Vf_acc[pol] = NP.vstack((Vf_acc[pol], NP.nansum(self.Vf_stack[pol][ind[unflagged_ind],:], axis=0, keepdims=True)))
                     twts[pol] = NP.asarray(twts[pol]).reshape(-1,1)
                     tbsize[pol] = tbinsize[pol]
                 else:
-                    Vf_acc[pol] = NP.nansum(self.Vf_stack[pol], axis=0, keepdims=True)
-                    twts[pol] = NP.asarray(len(self.timestamps) - NP.sum(self.flag_stack[pol])).reshape(-1,1)
+                    unflagged_ind = NP.logical_not(self.flag_stack[pol])
+                    Vf_acc[pol] = NP.nansum(self.Vf_stack[pol][unflagged_ind,:], axis=0, keepdims=True)
+                    twts[pol] = NP.sum(unflagged_ind).reshape(-1,1)
+                    # twts[pol] = NP.asarray(len(self.timestamps) - NP.sum(self.flag_stack[pol])).reshape(-1,1)
                     tbsize[pol] = None
             self.tbinsize = tbsize
 
@@ -4294,7 +4305,7 @@ class InterferometerArray:
         self.t = None
         self.timestamp = self.antenna_array.timestamp
 
-    ################################################################################# 
+    ###########################################################################
 
     def __str__(self):
         printstr = '\n-----------------------------------------------------------------'
@@ -4306,12 +4317,12 @@ class InterferometerArray:
         printstr += '\n-----------------------------------------------------------------'
         return printstr
 
-    ################################################################################# 
+    ###########################################################################
 
     def __add__(self, others):
 
         """
-        ----------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         Operator overloading for adding interferometer(s)
     
         Inputs:
@@ -4325,7 +4336,7 @@ class InterferometerArray:
                    class Interferometer. These instance(s) of class Interferometer 
                    will be added to the existing instance of InterferometerArray
                    class.
-        ----------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         """
 
         retval = self
@@ -4371,12 +4382,12 @@ class InterferometerArray:
 
         return retval
 
-    ################################################################################# 
+    ###########################################################################
 
     def __radd__(self, others):
 
         """
-        ----------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         Operator overloading for adding interferometer(s)
     
         Inputs:
@@ -4390,17 +4401,17 @@ class InterferometerArray:
                    of valid instances of class Interferometer. These instance(s) 
                    of class Interferometer will be added to the existing instance 
                    of InterferometerArray class.
-        ----------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         """
 
         return self.__add__(others)
 
-    ################################################################################# 
+    ###########################################################################
 
     def __sub__(self, others):
 
         """
-        ----------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         Operator overloading for removing interferometer(s)
     
         Inputs:
@@ -4415,7 +4426,7 @@ class InterferometerArray:
                    Interferometer. These instance(s) of class Interferometer will 
                    be removed from the existing instance of InterferometerArray 
                    class.
-        ----------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         """
 
         retval = self
@@ -4455,12 +4466,12 @@ class InterferometerArray:
 
         return retval
 
-    ################################################################################# 
+    ###########################################################################
 
     def add_interferometers(self, A=None):
 
         """
-        ----------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         Routine to add interferometer(s) to the interferometer array instance. 
         A wrapper for operator overloading __add__() and __radd__()
     
@@ -4475,7 +4486,7 @@ class InterferometerArray:
                    valid instances of class Interferometer. These instance(s) of 
                    class Interferometer will be added to the existing instance of 
                    InterferometerArray class.
-        ----------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         """
 
         if A is None:
@@ -4485,12 +4496,12 @@ class InterferometerArray:
         else:
             print 'Input(s) is/are not instance(s) of class Interferometer.'
 
-    ################################################################################# 
+    ###########################################################################
 
     def remove_interferometers(self, A=None):
 
         """
-        ----------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         Routine to remove interferometer(s) from the interferometer array instance. 
         A wrapper for operator overloading __sub__()
     
@@ -4505,7 +4516,7 @@ class InterferometerArray:
                    valid instances of class Interferometer. These instance(s) of 
                    class Interferometer will be removed from the existing instance 
                    of InterferometerArray class.
-        ----------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         """
 
         if A is None:
@@ -4513,12 +4524,12 @@ class InterferometerArray:
         else:
             self = self.__sub__(A)
 
-    ################################################################################# 
+    ###########################################################################
 
     def interferometers_containing_antenna(self, antenna_label):
 
         """
-        ----------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         Find interferometer pairs which contain the specified antenna labels
 
         Inputs:
@@ -4537,7 +4548,7 @@ class InterferometerArray:
                       antenna label appears as the first antenna in the antenna 
                       pair, ant_order is assigned to 1 and if it is the second 
                       antenna in the pair, it is assigned to 2.
-        ----------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         """
 
         ant_pair_labels = [ant_pair_label for ant_pair_label in self.interferometers if antenna_label in ant_pair_label]
@@ -4545,12 +4556,12 @@ class InterferometerArray:
 
         return (ant_pair_labels, ant_order)
 
-    ################################################################################# 
+    ###########################################################################
 
     def baseline_vectors(self, pol=None, flag=False, sort=True):
         
         """
-        ----------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         Routine to return the interferometer label and baseline vectors (sorted by
         interferometer label if specified)
 
@@ -4576,7 +4587,7 @@ class InterferometerArray:
                               labels
                  'baselines': baseline vectors of interferometers (3-column 
                               array)
-        ----------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         """
 
         if not isinstance(sort, bool):
