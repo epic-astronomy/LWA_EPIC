@@ -15,16 +15,16 @@ import lookup_operations as LKP
 ################### Routines essential for parallel processing ################
 
 def unwrap_antenna_FT(arg, **kwarg):
-    return Antenna.FT_new(*arg, **kwarg)
+    return Antenna.FT_pp(*arg, **kwarg)
 
 def unwrap_interferometer_FX(arg, **kwarg):
-    return Interferometer.FX_new(*arg, **kwarg)
+    return Interferometer.FX_pp(*arg, **kwarg)
 
 def unwrap_antenna_update(arg, **kwarg):
-    return Antenna.update_new(*arg, **kwarg)
+    return Antenna.update_pp(*arg, **kwarg)
 
 def unwrap_interferometer_update(arg, **kwarg):
-    return Interferometer.update_new(*arg, **kwarg)
+    return Interferometer.update_pp(*arg, **kwarg)
 
 def antenna_grid_mapping(gridind_raveled, values, bins=None):
     if bins is None:
@@ -3072,7 +3072,7 @@ class Interferometer:
                  using antenna information in attributes A1 and A2. All four 
                  cross polarizations are computed.
 
-    FX_new()     Computes the visibility spectrum using an FX operation, 
+    FX_pp()      Computes the visibility spectrum using an FX operation, 
                  i.e., Fourier transform (F) followed by multiplication (X). 
                  All four cross polarizations are computed. To be used 
                  internally for parallel processing and not by the user directly
@@ -3101,7 +3101,7 @@ class Interferometer:
                  Updates the visibility spectrum and timeseries and applies FX
                  or XF operation.
 
-    update_new() Updates the interferometer instance with newer attribute 
+    update_pp()  Updates the interferometer instance with newer attribute 
                  values. Updates the visibility spectrum and timeseries and 
                  applies FX or XF operation. Used internally when parallel 
                  processing is used. Not to be used by the user directly.
@@ -3245,7 +3245,7 @@ class Interferometer:
 
     #############################################################################
 
-    def FX_new(self):
+    def FX_pp(self):
 
         """
         -------------------------------------------------------------------------
@@ -3620,7 +3620,7 @@ class Interferometer:
 
     #############################################################################
 
-    def update_new(self, update_dict=None, verbose=True):
+    def update_pp(self, update_dict=None, verbose=True):
 
         """
         -------------------------------------------------------------------------
@@ -8474,7 +8474,7 @@ class Antenna:
                  spectra. Read docstring of member function FT() of class 
                  PolInfo
 
-    FT_new()     Computes the Fourier transform of the time series of the 
+    FT_pp()     Computes the Fourier transform of the time series of the 
                  antennas in the antenna array to compute the visibility 
                  spectra. Read docstring of member function FT() of class 
                  PolInfo. Differs from FT() member function in that here 
@@ -8489,7 +8489,7 @@ class Antenna:
                  Updates the electric field spectrum and timeseries. It also
                  applies Fourier transform if timeseries is updated
 
-    update_new() Wrapper for member function update() and returns the updated 
+    update_pp()  Wrapper for member function update() and returns the updated 
                  instance of this class. Mostly intended to be used when 
                  parallel processing is applicable and not to be used directly.
                  Use update() instead when updates are to be applied directly.
@@ -8623,7 +8623,7 @@ class Antenna:
         
     #############################################################################
 
-    def FT_new(self, pol=None):
+    def FT_pp(self, pol=None):
 
         """
         -------------------------------------------------------------------------
@@ -8931,17 +8931,17 @@ class Antenna:
 
     ############################################################################
 
-    def update_new(self, update_dict=None, verbose=True):
+    def update_pp(self, update_dict=None, verbose=True):
 
         """
-        -------------------------------------------------------------------------
-        Wrapper for member function update() and returns the updated instance of
-        this class. Mostly intended to be used when parallel processing is 
+        -----------------------------------------------------------------------
+        Wrapper for member function update() and returns the updated instance 
+        of this class. Mostly intended to be used when parallel processing is 
         applicable and not to be used directly. Use update() instead when 
         updates are to be applied directly.
 
         See member function update() for details on inputs.
-        -------------------------------------------------------------------------
+        -----------------------------------------------------------------------
         """
 
         self.update(update_dict=update_dict, verbose=verbose)

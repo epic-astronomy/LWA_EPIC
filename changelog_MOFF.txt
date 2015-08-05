@@ -1,3 +1,23 @@
+From ebe643a:
+============
+
+In antenna_array.py,
+
+(*) Rename member function FX_new() to FX_pp() of class 
+Interferometer. Update docstring of class Interferometer accordingly
+(*) Replace all occurrences of FX_new() with FX_pp() throughout
+including inside unwrap_interferometer_FX()
+(*) Rename member function FT_new() to FT_pp() of class Antenna.
+Update docstring of class Antenna accordingly
+(*) Replace all occurrences of FT_new() with FT_pp() throughout
+including inside unwrap_antenna_FT()
+(*) Rename member function update_new() to update_pp() of classes
+Antenna and Interferometer. Update docstrings of classes Antenna and
+Interferometer accordingly
+(*) Replace all occurrences of update_new() with update_pp() throughout
+including inside unwrap_interferometer_update() and
+unwrap_antenna_update()
+
 From 6a239ea:
 ============
 
