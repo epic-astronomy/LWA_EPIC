@@ -2983,15 +2983,44 @@ class Interferometer:
 
     Vt_stack    [dictionary] holds a stack of complex visibility time series 
                 measured at various time stamps under 4 polarizations which are 
-                stored under keys 'P11', 'P12', 'P21', and 'P22'
+                stored under keys 'P11', 'P12', 'P21', and 'P22'. Each value 
+                under the polarization key is stored as numpy array with rows 
+                equal to the number of timestamps and columns equal to the 
+                number of samples in a timeseries
                 
     Vf_stack    [dictionary] holds a stack of complex visibility spectra 
                 measured at various time stamps under 4 polarizations which are 
-                stored under keys 'P11', 'P12', 'P21' and 'P22'
+                stored under keys 'P11', 'P12', 'P21' and 'P22'. Each value 
+                under the polarization key is stored as numpy array with rows 
+                equal to the number of timestamps and columns equal to the 
+                number of spectral channels
 
     flag_stack  [dictionary] holds a stack of flags appropriate for different 
                 time stamps as a numpy array under 4 polarizations which are 
-                stored under keys 'P11', 'P12', 'P21' and 'P22'
+                stored under keys 'P11', 'P12', 'P21' and 'P22'. Each value 
+                under the polarization key is stored as numpy array with 
+                number of elements equal to the number of timestamps
+
+    Vf_avg      [dictionary] holds in keys 'P11', 'P12', 'P21', 'P22' for each
+                polarization the stacked and averaged complex visibility spectra
+                as a numpy array where the number of rows is the number of time
+                bins after averaging visibilities in those time bins and the 
+                number of columns is equal to the number of spectral channels 
+                (same as in Vf_stack)
+
+    twts        [dictionary] holds in keys 'P11', 'P12', 'P21', 'P22' for each
+                polarization the number of unflagged timestamps in each time 
+                bin that contributed to the averaging of visibilities stored in
+                Vf_avg. Each array size equal to the number of rows in Vf_avg
+                under the corresponding polarization.
+
+    tbinsize    [scalar or dictionary] Contains bin size of timestamps while
+                stacking. Default = None means all visibility spectra over all
+                timestamps are averaged. If scalar, the same (positive) value 
+                applies to all polarizations. If dictionary, timestamp bin size
+                (positive) is provided under each key 'P11', 'P12', 'P21', 
+                'P22'. If any of the keys is missing the visibilities for that 
+                polarization are averaged over all timestamps.
 
     wts:        [dictionary] The gridding weights for interferometer. Different 
                 cross-polarizations 'P11', 'P12', 'P21' and 'P22' form the keys 
@@ -3000,25 +3029,25 @@ class Interferometer:
                 where each vector corresponds to a frequency channel. See 
                 wtspos_scale for more requirements.
 
-    wtspos      [dictionary] two-dimensional locations of the gridding weights in
-                wts for each cross-polarization under keys 'P11', 'P12', 'P21',
-                and 'P22'. The locations are in ENU coordinate system as a list of
-                2-column numpy arrays. Each 2-column array in the list is the 
-                position of the gridding weights for a corresponding frequency 
-                channel. The size of the list must be the same as wts and the 
-                number of channels. Units are in number of wavelengths. See 
-                wtspos_scale for more requirements.
+    wtspos      [dictionary] two-dimensional locations of the gridding weights 
+                in wts for each cross-polarization under keys 'P11', 'P12', 
+                'P21', and 'P22'. The locations are in ENU coordinate system 
+                as a list of 2-column numpy arrays. Each 2-column array in the 
+                list is the position of the gridding weights for a corresponding
+                frequency channel. The size of the list must be the same as wts
+                and the number of channels. Units are in number of wavelengths.
+                See wtspos_scale for more requirements.
 
-    wtspos_scale [dictionary] The scaling of weights is specified for each cross-
-                 polarization under one of the keys 'P11', 'P12', 'P21' or 'P22'. 
-                 The values under these keys can be either None (default) or 
-                 'scale'. If None, numpy vectors in wts and wtspos under
-                 corresponding keys are provided for each frequency channel. If 
-                 set to 'scale' wts and wtspos contain a list of only one 
-                 numpy array corresponding to a reference frequency. This is
-                 scaled internally to correspond to the first channel.
-                 The gridding positions are correspondingly scaled to all the 
-                 frequency channels.
+    wtspos_scale [dictionary] The scaling of weights is specified for each 
+                 cross-polarization under one of the keys 'P11', 'P12', 'P21' 
+                 or 'P22'. The values under these keys can be either None 
+                 (default) or 'scale'. If None, numpy vectors in wts and 
+                 wtspos under corresponding keys are provided for each 
+                 frequency channel. If set to 'scale' wts and wtspos contain a 
+                 list of only one numpy array corresponding to a reference 
+                 frequency. This is scaled internally to correspond to the 
+                 first channel. The gridding positions are correspondingly 
+                 scaled to all the frequency channels.
 
     blc          [2-element numpy array] Bottom Left corner where the
                  interferometer contributes non-zero weight to the grid. Same 
@@ -3041,6 +3070,11 @@ class Interferometer:
                  i.e., Fourier transform (F) followed by multiplication (X)
                  using antenna information in attributes A1 and A2. All four 
                  cross polarizations are computed.
+
+    FX_new()     Computes the visibility spectrum using an FX operation, 
+                 i.e., Fourier transform (F) followed by multiplication (X). 
+                 All four cross polarizations are computed. To be used 
+                 internally for parallel processing and not by the user directly
 
     XF()         Computes the visibility spectrum using an XF operation, 
                  i.e., corss-correlation (X) followed by Fourier transform 
@@ -3066,6 +3100,15 @@ class Interferometer:
                  Updates the visibility spectrum and timeseries and applies FX
                  or XF operation.
 
+    update_new() Updates the interferometer instance with newer attribute 
+                 values. Updates the visibility spectrum and timeseries and 
+                 applies FX or XF operation. Used internally when parallel 
+                 processing is used. Not to be used by the user directly.
+
+    accumulate() Accumulate and average visibility spectra across timestamps 
+                 under different polarizations depending on the time bin size 
+                 for the corresponding polarization.
+
     save():      Saves the interferometer information to disk. Needs serious 
                  development. 
 
@@ -3082,8 +3125,8 @@ class Interferometer:
 
         Class attributes initialized are:
         label, latitude, location, pol, t, timestamp, f0, f, wts, wtspos, 
-        wtspos_scale, gridinfo, blc, trc, timestamps, Vt_stack, Vf_stack, and 
-        flag_stack
+        wtspos_scale, gridinfo, blc, trc, timestamps, Vt_stack, Vf_stack, 
+        flag_stack, Vf_avg, twts, tbinsize
      
         Read docstring of class Antenna for details on these attributes.
         ------------------------------------------------------------------------
@@ -3129,7 +3172,11 @@ class Interferometer:
 
         self.Vt_stack = {}
         self.Vf_stack = {}
-        self.flag_stack = {} 
+        self.flag_stack = {}
+
+        self.Vf_avg = {}
+        self.twts = {}
+        self.tbinsize = None
 
         self.wtspos = {}
         self.wts = {}
@@ -3203,7 +3250,8 @@ class Interferometer:
         -------------------------------------------------------------------------
         Computes the visibility spectrum using an FX operation, i.e., Fourier 
         transform (F) followed by multiplication (X). All four cross
-        polarizations are computed.
+        polarizations are computed. To be used internally for parallel processing
+        and not by the user directly
         -------------------------------------------------------------------------
         """
 
@@ -3577,6 +3625,8 @@ class Interferometer:
         -------------------------------------------------------------------------
         Updates the interferometer instance with newer attribute values. Updates 
         the visibility spectrum and timeseries and applies FX or XF operation.
+        Used internally when parallel processing is used. Not to be used by the
+        user directly.
 
         Inputs:
 
@@ -3811,6 +3861,92 @@ class Interferometer:
                     print 'Grid corner(s) of interferometer {0} have changed. Should re-grid the interferometer array.'.format(self.label)
     
             return self
+
+    ############################################################################
+
+    def accumulate(self, tbinsize=None):
+
+        """
+        ------------------------------------------------------------------------
+        Accumulate and average visibility spectra across timestamps under 
+        different polarizations depending on the time bin size for the 
+        corresponding polarization.
+
+        Inputs:
+
+        tbinsize [scalar or dictionary] Contains bin size of timestamps while
+                 stacking. Default = None means all visibility spectra over all
+                 timestamps are averaged. If scalar, the same (positive) value 
+                 applies to all polarizations. If dictionary, timestamp bin size
+                 (positive) is provided under each key 'P11', 'P12', 'P21', 
+                 'P22'. If any of the keys is missing the visibilities for that 
+                 polarization are averaged over all timestamps.
+        ------------------------------------------------------------------------
+        """
+
+        timestamps = NP.asarray(self.timestamps).astype(NP.float)
+        Vf_acc = {}
+        twts = {}
+        Vf_avg = {}
+        for pol in ['P11', 'P12', 'P21', 'P22']:
+            Vf_acc[pol] = None
+            Vf_avg[pol] = None
+            twts[pol] = []
+
+        if tbinsize is None:   # Average visibilities across all timestamps
+            for pol in ['P11', 'P12', 'P21', 'P22']:
+                Vf_acc[pol] = NP.nansum(self.Vf_stack[pol], axis=0, keepdims=True)
+                twts[pol] = NP.asarray(len(self.timestamps) - NP.sum(self.flag_stack[pol])).reshape(-1,1)
+            self.tbinsize = tbinsize
+        elif isinstance(tbinsize, (int, float)): # Apply same time bin size to all polarizations
+            eps = 1e-10
+            tbins = NP.arange(timestamps.min(), timestamps.max(), tbinsize)
+            tbins = NP.append(tbins, timestamps.max()+eps)
+            for pol in ['P11', 'P12', 'P21', 'P22']:
+                counts, tbin_edges, tbinnum, ri = OPS.binned_statistic(timestamps, statistic='count', bins=tbins)
+                for binnum in range(counts.size):
+                    ind = ri[ri[binnum]:ri[binnum+1]]
+                    twts[pol] += [counts[binnum] - NP.sum(self.flag_stack[pol][ind])]
+                    if Vf_acc[pol] is None:
+                        Vf_acc[pol] = NP.nansum(self.Vf_stack[pol][ind,:], axis=0, keepdims=True)
+                    else:
+                        Vf_acc[pol] = NP.vstack((Vf_acc[pol], NP.nansum(self.Vf_stack[pol][ind,:], axis=0, keepdims=True)))
+                twts[pol] = NP.asarray(twts[pol]).reshape(-1,1)
+            self.tbinsize = tbinsize
+        elif isinstance(tbinsize, dict): # Apply different time binsizes to corresponding polarizations
+            tbsize = {}
+            for pol in ['P11', 'P12', 'P21', 'P22']:
+                if pol not in tbinsize:
+                    Vf_acc[pol] = NP.nansum(self.Vf_stack[pol], axis=0, keepdims=True)
+                    twts[pol] = NP.asarray(len(self.timestamps) - NP.sum(self.flag_stack[pol])).reshape(-1,1)
+                    tbsize[pol] = None
+                elif isinstance(tbinsize[pol], (int,float)):
+                    eps = 1e-10
+                    tbins = NP.arange(timestamps.min(), timestamps.max(), tbinsize[pol])
+                    tbins = NP.append(tbins, timestamps.max()+eps)
+                    
+                    counts, tbin_edges, tbinnum, ri = OPS.binned_statistic(timestamps, statistic='count', bins=tbins)
+                    for binnum in range(counts.size):
+                        ind = ri[ri[binnum]:ri[binnum+1]]
+                        twts[pol] += [counts[binnum] - NP.sum(self.flag_stack[pol][ind])]
+                        if Vf_acc[pol] is None:
+                            Vf_acc[pol] = NP.nansum(self.Vf_stack[pol][ind,:], axis=0, keepdims=True)
+                        else:
+                            Vf_acc[pol] = NP.vstack((Vf_acc[pol], NP.nansum(self.Vf_stack[pol][ind,:], axis=0, keepdims=True)))
+                    twts[pol] = NP.asarray(twts[pol]).reshape(-1,1)
+                    tbsize[pol] = tbinsize[pol]
+                else:
+                    Vf_acc[pol] = NP.nansum(self.Vf_stack[pol], axis=0, keepdims=True)
+                    twts[pol] = NP.asarray(len(self.timestamps) - NP.sum(self.flag_stack[pol])).reshape(-1,1)
+                    tbsize[pol] = None
+            self.tbinsize = tbsize
+
+        # Compute the average from the accumulated visibilities
+        for pol in ['P11', 'P12', 'P21', 'P22']:
+            Vf_avg[pol] = Vf_acc[pol] / twts[pol]
+
+        self.Vf_avg = Vf_avg
+        self.twts = twts
 
 ################################################################################
 

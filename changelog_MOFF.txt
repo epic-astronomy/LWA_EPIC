@@ -1,3 +1,24 @@
+From 98c9abc:
+============
+
+In antenna_array.py,
+
+(*) Add attributes Vf_avg, twts, tbinsize to class Interferometer and
+initialize them in __init__() member function. Modify docstring
+accordingly
+(*) Add member function accumulate() to class Interferometer to
+accumulate and average visibilities. Create an appropriate docstring.
+(*) Modify docstring of class Interferometer to include description on
+member function accumulate()
+(*) Update docstring of member function update_new() of class
+Interferometer
+(*) Modify docstring of class Interferometer to include description on
+member function update_new()
+(*) Update docstring of member function FX_new() of class
+Interferometer
+(*) Modify docstring of class Interferometer to include description on
+member function FX_new()
+
 From 2f23075:
 ============
 
