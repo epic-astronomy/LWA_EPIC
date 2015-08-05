@@ -1,3 +1,17 @@
+From 6a239ea:
+============
+
+In antenna_array.py,
+
+(*) Update docstring of member function update() of class Antenna
+(*) Update docstring of class Antenna to include descriptions of
+member functions FT(), FT_new(), and update_new()
+(*) Minor change to docstring of meber function delay_compensation(),
+FT(), update() of class PolInfo
+(*) Update docstring of class PolInfo to include descriptions of
+member functions FT(), update_flags() 
+(*) Minor change to docstring of class CrossPolInfo
+
 From 98c9abc:
 ============
 

@@ -2783,7 +2783,8 @@ class CrossPolInfo:
 
     __str__()      Prints a summary of current attributes.
 
-    update_flags() Updates the flags based on current inputs
+    update_flags() Updates the flags based on current inputs and verifies and 
+                   updates flags based on current values of the electric field.
 
     update()       Updates the visibility time series and spectra for different
                    cross-polarizations
@@ -8064,12 +8065,20 @@ class PolInfo:
     __str__():     Prints a summary of current attributes.
 
     FT():          Perform a Fourier transform of an Electric field time series
+                   after doubling the length of the sequence with zero padding 
+                   (in order to be identical to what would be obtained from a 
+                   XF operation)
 
-    update():      Routine to update the Electric field and flag information.
+    update_flags() Updates the flags based on current inputs and verifies and 
+                   updates flags based on current values of the electric field.
+
+    update():      Updates the electric field time series and spectra, and 
+                   flags for different polarizations
     
     delay_compensation():
-                   Routine to apply delay compensation to Electric field spectra 
-                   through additional phase.
+                   Routine to apply delay compensation to Electric field 
+                   spectra through additional phase. This assumes that the 
+                   spectra have already been made
 
     Read the member function docstrings for details. 
     ----------------------------------------------------------------------------
@@ -8119,7 +8128,7 @@ class PolInfo:
         ------------------------------------------------------------------------
         Perform a Fourier transform of an Electric field time series after 
         doubling the length of the sequence with zero padding (in order to be 
-        identical to what would be obtained from a XF oepration)
+        identical to what would be obtained from a XF operation)
 
         Keyword Input(s):
 
@@ -8281,8 +8290,8 @@ class PolInfo:
         
         """
         ------------------------------------------------------------------------
-        Updates the electric field time series and spectra for different
-        polarizations
+        Updates the electric field time series and spectra, and flags for 
+        different polarizations
 
         Inputs:
         
@@ -8460,12 +8469,30 @@ class Antenna:
     channels():  Computes the frequency channels from a temporal Fourier 
                  Transform
 
+    FT()         Computes the Fourier transform of the time series of the 
+                 antennas in the antenna array to compute the visibility 
+                 spectra. Read docstring of member function FT() of class 
+                 PolInfo
+
+    FT_new()     Computes the Fourier transform of the time series of the 
+                 antennas in the antenna array to compute the visibility 
+                 spectra. Read docstring of member function FT() of class 
+                 PolInfo. Differs from FT() member function in that here 
+                 an instance of class Antenna is returned and is mainly used 
+                 in case of parallel processing and is not meant to be 
+                 accessed directly by the user. Use FT() for all other pruposes.
+
     update_flags()
                  Updates flags for polarizations provided as input parameters
 
     update():    Updates the antenna instance with newer attribute values
                  Updates the electric field spectrum and timeseries. It also
                  applies Fourier transform if timeseries is updated
+
+    update_new() Wrapper for member function update() and returns the updated 
+                 instance of this class. Mostly intended to be used when 
+                 parallel processing is applicable and not to be used directly.
+                 Use update() instead when updates are to be applied directly.
 
     save():      Saves the antenna information to disk. Needs serious 
                  development. 
@@ -8678,7 +8705,8 @@ class Antenna:
         """
         -------------------------------------------------------------------------
         Updates the antenna instance with newer attribute values. Updates 
-        the electric field spectrum and timeseries
+        the electric field spectrum and timeseries. It also applies Fourier 
+        transform if timeseries is updated
 
         Inputs:
 
