@@ -3351,7 +3351,7 @@ class Interferometer:
        
     ############################################################################
 
-    def update_flags(self, flags=None stack=False, verify=True):
+    def update_flags(self, flags=None, stack=False, verify=True):
 
         """
         ------------------------------------------------------------------------
@@ -3405,7 +3405,7 @@ class Interferometer:
                 self.flag_stack[pol] = NP.append(self.flag_stack[pol], self.crosspol.flag[pol])
             else:
                 if self.flag_stack[pol].size == 0:
-                    self.flag_stack[pol] = self.crosspol.flag[pol]
+                    self.flag_stack[pol] = NP.asarray(self.crosspol.flag[pol]).reshape(-1)
                 else:
                     self.flag_stack[pol][-1] = self.crosspol.flag[pol]
             self.flag_stack[pol] = self.flag_stack[pol].astype(NP.bool)
@@ -6693,45 +6693,57 @@ class InterferometerArray:
             else:
                 raise TypeError('antpairs must be an instance of InterferometerArray, a dictionary of Interferometer instances, a list of Interferometer instances, an Interferometer instance, or a list of antenna labels.')
 
-    ##################################################################################
+    ############################################################################
 
-    def update_flags(self, dictflags=None):
+    def update_flags(self, dictflags=None, stack=True, verify=False):
 
         """
-        ----------------------------------------------------------------------------
+        ------------------------------------------------------------------------
         Updates all flags in the interferometer array followed by any flags that
         need overriding through inputs of specific flag information
 
         Inputs:
 
-        dictflags  [dictionary] contains flag information overriding after default
-                   flag updates are determined. Baseline based flags are given as 
-                   further dictionaries with each under under a key which is the
-                   same as the interferometer label. Flags for each baseline are
-                   specified as a dictionary holding boolean flags for each of the 
-                   four cross-polarizations which are stored under keys 'P11', 
-                   'P12', 'P21', and 'P22'. An absent key just means it is not a
-                   part of the update. Flag information under each baseline must be 
-                   of same type as input parameter flags in member function 
-                   update_flags() of class CrossPolInfo
-        ----------------------------------------------------------------------------
+        dictflags  [dictionary] contains flag information overriding after 
+                   default flag updates are determined. Baseline based flags 
+                   are given as further dictionaries with each under under a 
+                   key which is the same as the interferometer label. Flags for 
+                   each baseline are specified as a dictionary holding boolean 
+                   flags for each of the four cross-polarizations which are 
+                   stored under keys 'P11', 'P12', 'P21', and 'P22'. An absent 
+                   key just means it is not a part of the update. Flag 
+                   information under each baseline must be of same type as 
+                   input parameter flags in member function update_flags() of 
+                   class CrossPolInfo
+
+        stack      [boolean] If True (default), appends the updated flag to the
+                   end of the stack of flags as a function of timestamp. If 
+                   False, updates the last flag in the stack with the updated 
+                   flag and does not append
+
+        verify     [boolean] If True, verify and update the flags, if necessary.
+                   Visibilities are checked for NaN values and if found, the
+                   flag in the corresponding polarization is set to True. 
+                   Default=False. 
+        ------------------------------------------------------------------------
         """
 
         for label in self.interferometers:
-            self.interferometers[label].update_flags()
+            self.interferometers[label].update_flags(stack=stack, verify=verify)
 
-        if dictflags is not None:
+        if dictflags is not None: # Performs flag overriding. Use stack=False
             if not isinstance(dictflags, dict):
                 raise TypeError('Input parameter dictflags must be a dictionary')
             
             for label in dictflags:
                 if label in self.interferometers:
-                    self.interferometers[label].crosspol.update_flags(flags=dictflags[label])
+                    self.interferometers[label].update_flags(flags=dictflags[label], stack=False, verify=True)
 
-    ##################################################################################
+    ############################################################################
 
-    def update(self, antenna_level_updates=None, interferometer_level_updates=None,
-               do_correlate=None, parallel=False, nproc=None, verbose=False):
+    def update(self, interferometer_level_updates=None,
+               antenna_level_updates=None, do_correlate=None, parallel=False,
+               nproc=None, verbose=False):
 
         """
         -------------------------------------------------------------------------
@@ -8971,7 +8983,7 @@ class Antenna:
                 self.flag_stack[pol] = NP.append(self.flag_stack[pol], self.antpol.flag[pol])
             else:
                 if self.flag_stack[pol].size == 0:
-                    self.flag_stack[pol] = self.antpol.flag[pol]
+                    self.flag_stack[pol] = NP.asarray(self.antpol.flag[pol]).reshape(-1)
                 else:
                     self.flag_stack[pol][-1] = self.antpol.flag[pol]
             self.flag_stack[pol] = self.flag_stack[pol].astype(NP.bool)
@@ -10635,7 +10647,7 @@ class AntennaArray:
         """
 
         for label in self.antennas:
-            self.antennas[label].antpol.update_flags(stack=stack, verify=verify)
+            self.antennas[label].update_flags(stack=stack, verify=verify)
 
         if dictflags is not None:  # Performs flag overriding. Use stack=False
             if not isinstance(dictflags, dict):
@@ -10643,7 +10655,7 @@ class AntennaArray:
             
             for label in dictflags:
                 if label in self.antennas:
-                    self.antennas[label].antpol.update_flags(flags=dictflags[label], stack=False, verify=True)
+                    self.antennas[label].update_flags(flags=dictflags[label], stack=False, verify=True)
 
     ############################################################################
 

@@ -1,3 +1,22 @@
+From a48e77c:
+============
+
+In antenna_array.py,
+
+(*) Fix bug in member function update_flags() of classes Antenna and
+Interferometer to convert the first entry into attribute flag_stack 
+from a boolean scalar to a boolean numpy array
+(*) Add stack and verify input keywrods to member function
+update_flags() of class InterferometerArray
+(*) Fix bug in function definition of member function update_flags()
+of class Interferometer
+(*) Call update_flags() member function of class Antenna from inside
+update_flags() member function of class AntennaArray instead of
+calling the one under class PolInfo directly
+(*) Call update_flags() member function of class Interferometer from 
+inside update_flags() member function of class InterferometerArray 
+instead of calling the one under class CrossPolInfo directly
+
 From 26cac81:
 ============
 
