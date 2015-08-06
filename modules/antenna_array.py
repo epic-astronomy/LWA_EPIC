@@ -3496,11 +3496,11 @@ class Interferometer:
                    operation) and 'XF' (for XF operation). Default=None means
                    no correlating operation is to be performed after updates.
 
-        stack      [boolean] If True, appends the updated data and flag to the
-                   end of the respective stacks as a function of timestamp. If 
-                   False, updates the last entry in the stack with the updated 
-                   flag and data and does not append. Default=False
-                   
+        stack      [boolean] If True (default), appends the updated flag 
+                   and data to the end of the stack as a function of 
+                   timestamp. If False, updates the last flag and data in 
+                   the stack and does not append
+
         verify_flags     
                    [boolean] If True, verify and update the flags, if necessary.
                    Visibilities are checked for NaN values and if found, the
@@ -3712,12 +3712,11 @@ class Interferometer:
                        means no correlating operation is to be performed after 
                        updates.
     
-            stack      [boolean] If True, appends the updated data and flag to 
-                       the end of the respective stacks as a function of 
-                       timestamp. If False, updates the last entry in the stack 
-                       with the updated flag and data and does not append. 
-                       Default=False
-                       
+            stack      [boolean] If True (default), appends the updated flag 
+                       and data to the end of the stack as a function of 
+                       timestamp. If False, updates the last flag and data in 
+                       the stack and does not append
+
             verify_flags     
                        [boolean] If True, verify and update the flags, if 
                        necessary. Visibilities are checked for NaN values and if 
@@ -3958,11 +3957,11 @@ class Interferometer:
                        operation) and 'XF' (for XF operation). Default=None means
                        no correlating operation is to be performed after updates.
             
-            stack      [boolean] If True, appends the updated flag to the
-                       end of the stack of flags as a function of timestamp. If 
-                       False, updates the last flag in the stack with the updated 
-                       flag and does not append. Default=False
-                       
+           stack       [boolean] If True (default), appends the updated flag 
+                       and data to the end of the stack as a function of 
+                       timestamp. If False, updates the last flag and data in 
+                       the stack and does not append
+
             verify_flags     
                    [boolean] If True, verify and update the flags, if necessary.
                    Visibilities are checked for NaN values and if found, the
@@ -9079,11 +9078,11 @@ class Antenna:
                        applied). Refer to the docstring of member function
                        delay_compensation() of class PolInfo for more details.
 
-            stack      [boolean] If True (default), appends the updated flag to 
-                       the end of the stack of flags as a function of timestamp. 
-                       If False, updates the last flag in the stack with the 
-                       updated flag and does not append
-                       
+            stack      [boolean] If True (default), appends the updated flag 
+                       and data to the end of the stack as a function of 
+                       timestamp. If False, updates the last flag and data in 
+                       the stack and does not append
+
             verify     [boolean] If True, verify and update the flags, if 
                        necessary. Electric fields are checked for NaN values and 
                        if found, the flag in the corresponding polarization is 
@@ -10729,6 +10728,12 @@ class AntennaArray:
                                               if set and if 'action' key value 
                                               is set to 'modify'. 
                                               Default = None.
+                                'stack'       [boolean] If True (default), 
+                                              appends the updated flag and data 
+                                              to the end of the stack as a 
+                                              function of timestamp. If False, 
+                                              updates the last flag and data in 
+                                              the stack and does not append
                                 't'           [Optional. Numpy array] Time axis 
                                               of the time series. Is used only 
                                               if set and if 'action' key value is
@@ -10912,6 +10917,7 @@ class AntennaArray:
                             if 'location' not in dictitem: dictitem['location']=None
                             if 'wtsinfo' not in dictitem: dictitem['wtsinfo']=None
                             if 'flags' not in dictitem: dictitem['flags']=None
+                            if 'stack' not in dictitem: dictitem['stack']=True
                             if 'gridfunc_freq' not in dictitem: dictitem['gridfunc_freq']=None
                             if 'ref_freq' not in dictitem: dictitem['ref_freq']=None
                             if 'pol_type' not in dictitem: dictitem['pol_type']=None

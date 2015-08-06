@@ -1,3 +1,16 @@
+From 575447c:
+============
+
+In antenna_array.py,
+
+(*) Update docstring description of input keyword 'stack' in update()
+member functions of classes Antenna and Interferometer
+(*) Add key 'stack' under key 'antennas' of input dictionary updates
+in member function update() of class AntennaArray
+(*) Modify update() member function of class AntennaArray to pass
+keyword stack while updating the individual antenna attributes
+(*) Test stacking at antenna level which is found to work
+
 From a48e77c:
 ============
 
