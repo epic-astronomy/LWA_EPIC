@@ -3103,8 +3103,12 @@ class Interferometer:
                  (X). All four cross-polarizations are computed.
 
     f2t_on_stack()
-                 Computes the visibility time-series from the spectra for each 
+                 Computes the visibility lags from the spectra for each 
                  cross-polarization from time-stacked visibilities
+
+    t2f_on_stack() 
+                 Computes the visibility spectra from the time-series for each 
+                 cross-polarization from time-stacked visibility lags
 
     flip_antenna_pair()
                  Flip the antenna pair in the interferometer. This inverts the
@@ -3383,13 +3387,29 @@ class Interferometer:
 
         """
         -----------------------------------------------------------------------
-        Computes the visibility time-series from the spectra for each cross-
+        Computes the visibility lags from the spectra for each cross-
         polarization from time-stacked visibilities
         -----------------------------------------------------------------------
         """
         for pol in ['P11', 'P12', 'P21', 'P22']:
+            self.Vt_stack[pol] = DSP.FT1D(NP.fft.fftshift(self.Vf_stack[pol]),
+                                          axis=1, inverse=True, shift=True,
+                                          verbose=False)
 
-            self.Vt_stack[pol] = DSP.FT1D(NP.fft.fftshift(self.Vf_stack[pol]), axis=1, inverse=True, shift=True, verbose=False)
+    ###########################################################################
+
+    def t2f_on_stack(self):
+        
+        """
+        -----------------------------------------------------------------------
+        Computes the visibility spectra from the time-series for each cross-
+        polarization from time-stacked visibility lags
+        -----------------------------------------------------------------------
+        """
+
+        for pol in ['P11', 'P12', 'P21', 'P22']:
+            self.Vf_stack[pol] = DSP.FT1D(NP.fft.ifftshift(self.Vt_stack[pol]),
+                                          axis=1, shift=True, verbose=False)
 
     ###########################################################################
 

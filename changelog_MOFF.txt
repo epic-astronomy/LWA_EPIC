@@ -1,3 +1,15 @@
+From c2956de:
+============
+
+In antenna_array.py,
+
+(*) Create member function t2f_on_stack() under class Interferometer
+to compute visibility spectra from time-stacked visibility lags.
+Update docstring of class Interferometer accordingly
+(*) Minor change to docstring of f2t_on_stack() member function of
+class Interferometer and correspondingly in the docstring of class
+Interferometer
+
 From 3055040:
 ============
 
