@@ -1,3 +1,11 @@
+From 7e31571:
+============
+
+(*) Create member function XF_on_stack() for class Interferometer
+to convert time-stacked electric fields time series to visibility
+spectra. Currently it will not work because the underlying correlate()
+function of numpy only supports 1D arrays. Needs serious development
+
 From c2956de:
 ============
 

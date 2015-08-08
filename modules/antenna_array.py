@@ -3102,6 +3102,13 @@ class Interferometer:
                  pair, i.e., Fourier transform (F) followed by multiplication 
                  (X). All four cross-polarizations are computed.
 
+    XF_on_stack()
+                 Computes the visibility lags using an XF operation on the 
+                 time-stacked electric fields time-series in the individual 
+                 antennas in the pair, i.e., Cross-correlation (X) followed by 
+                 Fourier transform (F). All four cross-polarizations are 
+                 computed.
+
     f2t_on_stack()
                  Computes the visibility lags from the spectra for each 
                  cross-polarization from time-stacked visibilities
@@ -3380,6 +3387,41 @@ class Interferometer:
         self.Vf_stack['P22'] = self.A1.Ef_stack['P2'][ind1,:] * self.A2.Ef_stack['P2'][ind2,:].conjugate()
 
         self.f2t_on_stack()
+
+    ###########################################################################
+
+    def XF_on_stack(self):
+
+        """
+        -----------------------------------------------------------------------
+        Computes the visibility lags using an XF operation on the time-stacked 
+        electric fields time-series in the individual antennas in the pair, 
+        i.e., Cross-correlation (X) followed by Fourier transform (F). All four 
+        cross-polarizations are computed. 
+
+        THIS WILL NOT WORK IN ITS CURRENT FORM BECAUSE THE ENGINE OF THIS IS 
+        THE CORRELATE FUNCTION OF NUMPY WRAPPED INSIDE XC() IN MY_DSP_MODULE 
+        AND CURRENTLY IT CAN HANDLE ONLY 1D ARRAYS. NEEDS SERIOUS DEVELOPMENT!
+        -----------------------------------------------------------------------
+        """
+
+        self.t = NP.hstack((self.A1.t.ravel(), self.A1.t.max()+self.A2.t.ravel()))
+        self.f = self.f0 + self.channels()
+
+        ts1 = NP.asarray(self.A1.timestamps)
+        ts2 = NP.asarray(self.A2.timestamps)
+        common_ts = NP.intersect1d(ts1, ts2, assume_unique=True)
+        ind1 = NP.in1d(ts1, common_ts, assume_unique=True)
+        ind2 = NP.in1d(ts2, common_ts, assume_unique=True)
+
+        self.timestamps = common_ts.tolist()
+
+        self.Vt_stack['P11'] = DSP.XC(self.A1.Et_stack['P1'], self.A2.Et_stack['P1'], shift=False)
+        self.Vt_stack['P12'] = DSP.XC(self.A1.Et_stack['P1'], self.A2.Et_stack['P2'], shift=False)
+        self.Vt_stack['P21'] = DSP.XC(self.A1.Et_stack['P2'], self.A2.Et_stack['P1'], shift=False)
+        self.Vt_stack['P22'] = DSP.XC(self.A1.Et_stack['P2'], self.A2.Et_stack['P2'], shift=False)
+
+        self.t2f_on_stack()
 
     ###########################################################################
 
