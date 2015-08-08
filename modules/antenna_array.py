@@ -3102,6 +3102,11 @@ class Interferometer:
                  pair, i.e., Fourier transform (F) followed by multiplication 
                  (X). All four cross-polarizations are computed.
 
+    flags_on_stack()
+                 Computes the visibility flags from the time-stacked electric 
+                 fields for the common timestamps between the pair of antennas. 
+                 All four cross-polarizations are computed.
+
     XF_on_stack()
                  Computes the visibility lags using an XF operation on the 
                  time-stacked electric fields time-series in the individual 
@@ -3390,6 +3395,33 @@ class Interferometer:
 
     ###########################################################################
 
+    def flags_on_stack(self):
+        
+        """
+        -----------------------------------------------------------------------
+        Computes the visibility flags from the time-stacked electric fields for 
+        the common timestamps between the pair of antennas. All four 
+        cross-polarizations are computed.
+        -----------------------------------------------------------------------
+        """
+
+        ts1 = NP.asarray(self.A1.timestamps)
+        ts2 = NP.asarray(self.A2.timestamps)
+        common_ts = NP.intersect1d(ts1, ts2, assume_unique=True)
+        ind1 = NP.in1d(ts1, common_ts, assume_unique=True)
+        ind2 = NP.in1d(ts2, common_ts, assume_unique=True)
+
+        self.flag_stack['P11'] = NP.logical_or(self.A1.flag_stack['P1'][ind1],
+                                               self.A2.flag_stack['P1'][ind2])
+        self.flag_stack['P12'] = NP.logical_or(self.A1.flag_stack['P1'][ind1],
+                                               self.A2.flag_stack['P2'][ind2])
+        self.flag_stack['P21'] = NP.logical_or(self.A1.flag_stack['P2'][ind1],
+                                               self.A2.flag_stack['P1'][ind2])
+        self.flag_stack['P22'] = NP.logical_or(self.A1.flag_stack['P2'][ind1],
+                                               self.A2.flag_stack['P2'][ind2])
+
+    ###########################################################################
+    
     def XF_on_stack(self):
 
         """

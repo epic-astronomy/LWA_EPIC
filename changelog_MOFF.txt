@@ -1,10 +1,19 @@
+From 81071a1:
+============
+
+(*) Create member function flags_on_stack() for class Interferometer
+to compute visibility flags from time-stacked electric fields from
+the common timestamps between the pair of antennas. Update docstring
+of class Interferometer accordingly
+
 From 7e31571:
 ============
 
 (*) Create member function XF_on_stack() for class Interferometer
 to convert time-stacked electric fields time series to visibility
 spectra. Currently it will not work because the underlying correlate()
-function of numpy only supports 1D arrays. Needs serious development
+function of numpy only supports 1D arrays. Needs serious development.
+Modify docstring of class Interferometer accordingly
 
 From c2956de:
 ============
