@@ -3102,6 +3102,10 @@ class Interferometer:
                  pair, i.e., Fourier transform (F) followed by multiplication 
                  (X). All four cross-polarizations are computed.
 
+    f2t_on_stack()
+                 Computes the visibility time-series from the spectra for each 
+                 cross-polarization from time-stacked visibilities
+
     flip_antenna_pair()
                  Flip the antenna pair in the interferometer. This inverts the
                  baseline vector and conjugates the visibility spectra
@@ -3362,12 +3366,30 @@ class Interferometer:
         ts2 = NP.asarray(self.A2.timestamps)
         common_ts = NP.intersect1d(ts1, ts2, assume_unique=True)
         ind1 = NP.in1d(ts1, common_ts, assume_unique=True)
-        ind2 = NP.in1d(ts2, common_ts, assume_unique=True)        
+        ind2 = NP.in1d(ts2, common_ts, assume_unique=True)
+
+        self.timestamps = common_ts.tolist()
 
         self.Vf_stack['P11'] = self.A1.Ef_stack['P1'][ind1,:] * self.A2.Ef_stack['P1'][ind2,:].conjugate()
         self.Vf_stack['P12'] = self.A1.Ef_stack['P1'][ind1,:] * self.A2.Ef_stack['P2'][ind2,:].conjugate()
         self.Vf_stack['P21'] = self.A1.Ef_stack['P2'][ind1,:] * self.A2.Ef_stack['P1'][ind2,:].conjugate()
         self.Vf_stack['P22'] = self.A1.Ef_stack['P2'][ind1,:] * self.A2.Ef_stack['P2'][ind2,:].conjugate()
+
+        self.f2t_on_stack()
+
+    ###########################################################################
+
+    def f2t_on_stack(self):
+
+        """
+        -----------------------------------------------------------------------
+        Computes the visibility time-series from the spectra for each cross-
+        polarization from time-stacked visibilities
+        -----------------------------------------------------------------------
+        """
+        for pol in ['P11', 'P12', 'P21', 'P22']:
+
+            self.Vt_stack[pol] = DSP.FT1D(NP.fft.fftshift(self.Vf_stack[pol]), axis=1, inverse=True, shift=True, verbose=False)
 
     ###########################################################################
 

@@ -1,3 +1,18 @@
+From 3055040:
+============
+
+In antenna_array.py,
+
+(*) Create member function f2t_on_stack() under class Interferometer
+to compute visibility lags from time-stacked visibility spectra.
+Update docstring of class Interferometer accordingly
+(*) Assign timestamps common to the two antennas to the attribute
+timestamps of class Interferometer inside FX_on_stack() member
+function of the same class
+(*) Use f2t_on_stack() member function of class Interferometer created
+above inside FX_on_stack() member function of the same class to
+compute visibility lags from a time-stacked visibility spectra
+
 From f4c4ce3:
 ============
 
