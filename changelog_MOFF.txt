@@ -1,3 +1,13 @@
+From f4c4ce3:
+============
+
+In antenna_array.py,
+
+(*) Create member function FX_on_stack() for class Interferometer that
+can compute time-stacked FX visibility spectra from time-stacked
+electric field spectra in the individual antennas in the antenna pair.
+Update docstring of class Interferometer accordingly
+
 From 34873a2:
 ============
 

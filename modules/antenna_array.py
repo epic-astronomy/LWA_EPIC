@@ -3096,6 +3096,12 @@ class Interferometer:
     t2f()        Computes the visibility spectra from the time-series for each 
                  cross-polarization
 
+    FX_on_stack()
+                 Computes the visibility spectrum using an FX operation on the 
+                 time-stacked electric fields in the individual antennas in the 
+                 pair, i.e., Fourier transform (F) followed by multiplication 
+                 (X). All four cross-polarizations are computed.
+
     flip_antenna_pair()
                  Flip the antenna pair in the interferometer. This inverts the
                  baseline vector and conjugates the visibility spectra
@@ -3335,6 +3341,33 @@ class Interferometer:
         for pol in ['P11', 'P12', 'P21', 'P22']:
 
             self.crosspol.Vf[pol] = DSP.FT1D(NP.fft.ifftshift(self.crosspol.Vt[pol]), shift=True, verbose=False)
+
+    ###########################################################################
+
+    def FX_on_stack(self):
+
+        """
+        -----------------------------------------------------------------------
+        Computes the visibility spectrum using an FX operation on the 
+        time-stacked electric fields in the individual antennas in the pair, 
+        i.e., Fourier transform (F) followed by multiplication (X). All four 
+        cross-polarizations are computed.
+        -----------------------------------------------------------------------
+        """
+
+        self.t = NP.hstack((self.A1.t.ravel(), self.A1.t.max()+self.A2.t.ravel()))
+        self.f = self.f0 + self.channels()
+
+        ts1 = NP.asarray(self.A1.timestamps)
+        ts2 = NP.asarray(self.A2.timestamps)
+        common_ts = NP.intersect1d(ts1, ts2, assume_unique=True)
+        ind1 = NP.in1d(ts1, common_ts, assume_unique=True)
+        ind2 = NP.in1d(ts2, common_ts, assume_unique=True)        
+
+        self.Vf_stack['P11'] = self.A1.Ef_stack['P1'][ind1,:] * self.A2.Ef_stack['P1'][ind2,:].conjugate()
+        self.Vf_stack['P12'] = self.A1.Ef_stack['P1'][ind1,:] * self.A2.Ef_stack['P2'][ind2,:].conjugate()
+        self.Vf_stack['P21'] = self.A1.Ef_stack['P2'][ind1,:] * self.A2.Ef_stack['P1'][ind2,:].conjugate()
+        self.Vf_stack['P22'] = self.A1.Ef_stack['P2'][ind1,:] * self.A2.Ef_stack['P2'][ind2,:].conjugate()
 
     ###########################################################################
 
