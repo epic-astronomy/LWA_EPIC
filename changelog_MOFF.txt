@@ -1,3 +1,106 @@
+From 34873a2:
+============
+
+In antenna_array.py,
+
+(*) Add member function refresh_antenna_pairs() to class
+Interferometer to refresh the individual antenna pairs with
+the antenna information provided. Modify docstring of class
+Interferometer accordingly
+(*) Add member function refresh_antenna_pairs() to class
+InterferometerArray to refresh the individual antenna pairs with
+the antenna information in the attribute antenna_array. This invokes
+the member function refresh_antenna_pairs() of individual
+interferometers created above. Modify docstring of class
+InterferometerArray accordingly
+(*) In class InterferometerArray, from member function update()
+call member function refresh_antenna_pairs() immediately after
+updating antenna level information
+(*) Comment out defunct classes PolInfo_old, Antenna_old, and
+AntennaaArray_old
+(*) Update outdated docstring of member function update() of class
+InterferometerArray to accurately reflect the inputs
+(*) Add key 'stack' under keys 'antennas' and 'interferometers' of
+input dictionaries antenna_level_updates and
+interferometer_level_updates in member function update() of class
+InterferometerArray. Change docstring accordingly
+(*) Modify update() member function of class InterferometerArray to 
+pass keyword stack while updating the individual interferometer
+attributes
+(*) Remove inappropriate stack actions from member function
+update_flags() of class CrossPolInfo
+(*) Add progressbar inside update() member function of class
+InterferometerArray
+(*) Fix bug in progressbar in member function make_grid_cube() of
+class AntennaArray when verbose keyword is not set
+(*) Comment out a line in update() member function of class
+InterferometerArray that used update_old() member function of class
+Interferometer
+(*) Add internal attribute __init_flags_on to class CrossPolInfo to
+keep track of first time the flags are really updated. Change
+docstring of member function __init__() of class CrossPolInfo
+accordingly
+(*) Add internal attribute __init_data_on to class CrossPolInfo to
+keep track of first time the data are really updated. Change
+docstring of member function __init__() of class CrossPolInfo
+accordingly
+(*) Modify updating the cross-polarization products inside member
+function update() of class Interferometer without an 'if' condition
+(*) Modify member functions update_flags() in classes CrossPolInfo
+and Interferometer now accounting for first time updates using the
+internal attribute _init_flags_on of class CrossPolInfo
+(*) Modify member functions update_flags() in classes Interferometer
+to loop through different polarizations using dictionary comprehension
+during flag initialization
+(*) Minor change to correct docstring of member function
+update_flags() of class CrossPolInfo
+(*) Modify verify actions inside member function update_flags() of
+class Interferometer
+(*) Modify inside member function update() of class
+InterferometerArray the call to update_flags() of the same class
+after updating at the antenna array level
+(*) Slight increase in verbosity of member function update() of
+class InterferometerArray
+(*) Make flag stacking not append the most recent flag to the end
+of the stack if the stack is empty and input keyword stack is set to
+False in update_flags() member function of class Interferometer
+(*) Make visibility stacking not append the most recent data to the
+end of the stack if stack is empty and input keyword stack is set to
+False in update() member function of class Interferometer
+(*) Make the call to update_flags() member function of class
+Interferometer from member function update() also of the same class
+to now appear conditionally only if do_correlate is set inside the
+update() member function
+(*) Verify flags in update_flags() member function of class
+CrossPolInfo only if internal attribute _init_data_on is set to False
+(*) Set internal attribute _init_data_on to False in member function
+update() of class CrossPolInfo when input Vf and/or Vt is provided
+(*) Set internal attribute _init_data_on to False in member functions
+FX() and FX_pp() of class Interferometer whenever FX is performed
+(*) Set internal attribute _init_data_on to False in member functions
+XF() of class Interferometer whenever XF is performed
+(*) Move call to update_flags() inside member functions FX(), FX_pp()
+and XF() of class Interferometer towards the end of the block and
+with explicit arguments flags=None, stack=False and verify=True
+(*) Comment out the separate call for FX() or XF() of class
+InterferometerArray based on the input flag do_correlate at the end
+of the block inside update() member function of class
+InterferometerArray. Instead use the do_correlate flag inside the
+individual interferometer update dictionary. This avoids many
+recursive calls and conflicts between flag stacking, flag verification
+and data stacking.
+(*) In member function update() of class Interferometer, if the
+dictionary key 'do_correlate' is set to 'FX' or 'XF', since the FX()
+or XF() both perform a flag verification after determining the
+visibilities, the call to update_flags() following the call to FX()
+or XF() is only used to stack flags and not for redundant verification
+(*) Update docstring of member function FX() of class
+InterferometerArray to include description on input keywords parallel
+nproc
+(*) Update docstring of member function update() of class
+InterferometerArray to include description on input keywords parallel
+nproc
+
 From 575447c:
 ============
 
