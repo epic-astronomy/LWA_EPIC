@@ -20,6 +20,9 @@ def unwrap_antenna_FT(arg, **kwarg):
 def unwrap_interferometer_FX(arg, **kwarg):
     return Interferometer.FX_pp(*arg, **kwarg)
 
+def unwrap_interferometer_stack(arg, **kwarg):
+    return Interferometer.stack_pp(*arg, **kwarg)
+
 def unwrap_antenna_update(arg, **kwarg):
     return Antenna.update_pp(*arg, **kwarg)
 
@@ -4368,6 +4371,31 @@ class Interferometer:
 
     ###########################################################################
 
+    def stack_pp(self, on_flags=True, on_data=True):
+
+        """
+        -----------------------------------------------------------------------
+        Stacks and computes visibilities and flags from the individual antennas 
+        in the pair. To be used internally as a wrapper for stack() in case of
+        parallel processing. Not to be used directly by the user.
+
+        Inputs:
+
+        on_flags  [boolean] if set to True (default), combines the time-stacked
+                  electric field flags from individual antennas from the 
+                  common timestamps into time-stacked visibility flags
+
+        on_data   [boolean] if set to True (default), combines the time-stacked
+                  electric fields from individual antennas from the common
+                  timestamps into time-stacked visibilities
+        -----------------------------------------------------------------------
+        """
+
+        self.stack(on_flags=on_flags, on_data=on_data)
+        return self
+
+    ###########################################################################
+
     def accumulate(self, tbinsize=None):
 
         """
@@ -4670,6 +4698,10 @@ class InterferometerArray:
     get_visibilities()
                     Routine to return the interferometer label and visibilities 
                     (sorted by interferometer label if specified)
+
+    stack()         Stacks and computes visibilities and flags for all the 
+                    interferometers in the interferometer array from the 
+                    individual antennas in the pair.
 
     grid()          Routine to produce a grid based on the interferometer array 
 
@@ -5356,6 +5388,60 @@ class InterferometerArray:
         outdict['visibilities'] = vis
 
         return outdict
+
+    ################################################################################# 
+
+    def stack(self, on_flags=True, on_data=True, parallel=False, nproc=None):
+
+        """
+        -----------------------------------------------------------------------
+        Stacks and computes visibilities and flags for all the interferometers 
+        in the interferometer array from the individual antennas in the pair.
+
+        Inputs:
+
+        on_flags  [boolean] if set to True (default), combines the time-stacked
+                  electric field flags from individual antennas from the 
+                  common timestamps into time-stacked visibility flags
+
+        on_data   [boolean] if set to True (default), combines the time-stacked
+                  electric fields from individual antennas from the common
+                  timestamps into time-stacked visibilities
+
+        parallel  [boolean] specifies if parallelization is to be invoked. 
+                  False (default) means only serial processing
+
+        nproc     [integer] specifies number of independent processes to spawn.
+                  Default = None, means automatically determines the number of 
+                  process cores in the system and use one less than that to 
+                  avoid locking the system for other processes. Applies only 
+                  if input parameter 'parallel' (see above) is set to True. 
+                  If nproc is set to a value more than the number of process
+                  cores in the system, it will be reset to number of process 
+                  cores in the system minus one to avoid locking the system out 
+                  for other processes
+        -----------------------------------------------------------------------
+        """
+
+        if parallel:
+            if nproc is None:
+                nproc = max(MP.cpu_count()-1, 1) 
+            else:
+                nproc = min(nproc, max(MP.cpu_count()-1, 1))
+
+            list_of_perform_flag_stack = [on_flags] * len(self.interferometers)
+            list_of_perform_data_stack = [on_data] * len(self.interferometers)
+
+            pool = MP.Pool(processes=nproc)
+            updated_interferometers = pool.map(unwrap_interferometer_stack, IT.izip(self.interferometers.values(), list_of_perform_flag_stack, list_of_perform_data_stack))
+            pool.close()
+            pool.join()
+            for interferometer in updated_interferometers: 
+                self.interferometers[interferometer.label] = interferometer
+            del updated_interferometers
+        else:
+            for label in self.interferometers:
+                self.interferometers[label].stack(on_flags=on_flags, on_data=on_data)
 
     ################################################################################# 
 

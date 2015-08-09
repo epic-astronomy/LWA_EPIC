@@ -1,5 +1,20 @@
+From a0a843f:
+============
+
+In antenna_array.py,
+
+(*) Create member function stack() under class InterferometerArray.
+Update docstring of class InterferometerArray accordingly
+(*) Create member function stack_pp() as a wrapper for member
+function stack() of class Interferometer in case of parallel
+processing
+(*) Create function unwrap_interferometer_stack() for parallel
+processing of interferometer data and flag stacking
+
 From b34eea3:
 ============
+
+In antenna_array.py,
 
 (*) Create member function stack() under class Interferometer. Update
 docstring of class Interferometer accordingly
@@ -9,6 +24,8 @@ FX_on_stack() and XF_on_stack() of class Interferometer
 From 81071a1:
 ============
 
+In antenna_array.py,
+
 (*) Create member function flags_on_stack() for class Interferometer
 to compute visibility flags from time-stacked electric fields from
 the common timestamps between the pair of antennas. Update docstring
@@ -16,6 +33,8 @@ of class Interferometer accordingly
 
 From 7e31571:
 ============
+
+In antenna_array.py,
 
 (*) Create member function XF_on_stack() for class Interferometer
 to convert time-stacked electric fields time series to visibility
