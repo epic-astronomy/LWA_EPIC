@@ -3144,6 +3144,9 @@ class Interferometer:
                  applies FX or XF operation. Used internally when parallel 
                  processing is used. Not to be used by the user directly.
 
+    stack()      Stacks and computes visibilities and flags from the individual 
+                 antennas in the pair.
+
     accumulate() Accumulate and average visibility spectra across timestamps 
                  under different polarizations depending on the time bin size 
                  for the corresponding polarization.
@@ -3384,8 +3387,6 @@ class Interferometer:
         ind1 = NP.in1d(ts1, common_ts, assume_unique=True)
         ind2 = NP.in1d(ts2, common_ts, assume_unique=True)
 
-        self.timestamps = common_ts.tolist()
-
         self.Vf_stack['P11'] = self.A1.Ef_stack['P1'][ind1,:] * self.A2.Ef_stack['P1'][ind2,:].conjugate()
         self.Vf_stack['P12'] = self.A1.Ef_stack['P1'][ind1,:] * self.A2.Ef_stack['P2'][ind2,:].conjugate()
         self.Vf_stack['P21'] = self.A1.Ef_stack['P2'][ind1,:] * self.A2.Ef_stack['P1'][ind2,:].conjugate()
@@ -3445,8 +3446,6 @@ class Interferometer:
         common_ts = NP.intersect1d(ts1, ts2, assume_unique=True)
         ind1 = NP.in1d(ts1, common_ts, assume_unique=True)
         ind2 = NP.in1d(ts2, common_ts, assume_unique=True)
-
-        self.timestamps = common_ts.tolist()
 
         self.Vt_stack['P11'] = DSP.XC(self.A1.Et_stack['P1'], self.A2.Et_stack['P1'], shift=False)
         self.Vt_stack['P12'] = DSP.XC(self.A1.Et_stack['P1'], self.A2.Et_stack['P2'], shift=False)
@@ -4331,6 +4330,41 @@ class Interferometer:
 
         self.update(update_dict=update_dict, verbose=verbose)
         return self
+
+    ###########################################################################
+
+    def stack(self, on_flags=True, on_data=True):
+
+        """
+        -----------------------------------------------------------------------
+        Stacks and computes visibilities and flags from the individual antennas 
+        in the pair.
+
+        Inputs:
+
+        on_flags  [boolean] if set to True (default), combines the time-stacked
+                  electric field flags from individual antennas from the 
+                  common timestamps into time-stacked visibility flags
+
+        on_data   [boolean] if set to True (default), combines the time-stacked
+                  electric fields from individual antennas from the common
+                  timestamps into time-stacked visibilities
+        -----------------------------------------------------------------------
+        """
+
+        ts1 = NP.asarray(self.A1.timestamps)
+        ts2 = NP.asarray(self.A2.timestamps)
+        common_ts = NP.intersect1d(ts1, ts2, assume_unique=True)
+        ind1 = NP.in1d(ts1, common_ts, assume_unique=True)
+        ind2 = NP.in1d(ts2, common_ts, assume_unique=True)
+
+        self.timestamps = common_ts.tolist()
+
+        if on_data:
+            self.FX_on_stack()
+
+        if on_flags:
+            self.flags_on_stack()
 
     ###########################################################################
 

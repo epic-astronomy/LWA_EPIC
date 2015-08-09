@@ -1,3 +1,11 @@
+From b34eea3:
+============
+
+(*) Create member function stack() under class Interferometer. Update
+docstring of class Interferometer accordingly
+(*) Remove assignment of attribute timestamps inside member functions
+FX_on_stack() and XF_on_stack() of class Interferometer
+
 From 81071a1:
 ============
 
