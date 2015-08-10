@@ -4429,7 +4429,7 @@ class Interferometer:
             for pol in ['P11', 'P12', 'P21', 'P22']:
                 unflagged_ind = NP.logical_not(self.flag_stack[pol])
                 Vf_acc[pol] = NP.nansum(self.Vf_stack[pol][unflagged_ind,:], axis=0, keepdims=True)
-                twts[pol] = NP.sum(unflagged_ind).reshape(-1,1)
+                twts[pol] = NP.sum(unflagged_ind).astype(NP.float).reshape(-1,1)
                 # twts[pol] = NP.asarray(len(self.timestamps) - NP.sum(self.flag_stack[pol])).reshape(-1,1)
             self.tbinsize = tbinsize
         elif isinstance(tbinsize, (int, float)): # Apply same time bin size to all polarizations 
@@ -4447,7 +4447,7 @@ class Interferometer:
                         Vf_acc[pol] = NP.nansum(self.Vf_stack[pol][ind[unflagged_ind],:], axis=0, keepdims=True)
                     else:
                         Vf_acc[pol] = NP.vstack((Vf_acc[pol], NP.nansum(self.Vf_stack[pol][ind[unflagged_ind],:], axis=0, keepdims=True)))
-                twts[pol] = NP.asarray(twts[pol]).reshape(-1,1)
+                twts[pol] = NP.asarray(twts[pol]).astype(NP.float).reshape(-1,1)
             self.tbinsize = tbinsize
         elif isinstance(tbinsize, dict): # Apply different time binsizes to corresponding polarizations
             tbsize = {}
@@ -4455,7 +4455,7 @@ class Interferometer:
                 if pol not in tbinsize:
                     unflagged_ind = NP.logical_not(self.flag_stack[pol])
                     Vf_acc[pol] = NP.nansum(self.Vf_stack[pol][unflagged_ind,:], axis=0, keepdims=True)
-                    twts[pol] = NP.sum(unflagged_ind).reshape(-1,1)
+                    twts[pol] = NP.sum(unflagged_ind).astype(NP.float).reshape(-1,1)
                     # twts[pol] = NP.asarray(len(self.timestamps) - NP.sum(self.flag_stack[pol])).reshape(-1,1)
                     tbsize[pol] = None
                 elif isinstance(tbinsize[pol], (int,float)):
@@ -4473,12 +4473,12 @@ class Interferometer:
                             Vf_acc[pol] = NP.nansum(self.Vf_stack[pol][ind[unflagged_ind],:], axis=0, keepdims=True)
                         else:
                             Vf_acc[pol] = NP.vstack((Vf_acc[pol], NP.nansum(self.Vf_stack[pol][ind[unflagged_ind],:], axis=0, keepdims=True)))
-                    twts[pol] = NP.asarray(twts[pol]).reshape(-1,1)
+                    twts[pol] = NP.asarray(twts[pol]).astype(NP.float).reshape(-1,1)
                     tbsize[pol] = tbinsize[pol]
                 else:
                     unflagged_ind = NP.logical_not(self.flag_stack[pol])
                     Vf_acc[pol] = NP.nansum(self.Vf_stack[pol][unflagged_ind,:], axis=0, keepdims=True)
-                    twts[pol] = NP.sum(unflagged_ind).reshape(-1,1)
+                    twts[pol] = NP.sum(unflagged_ind).astype(NP.float).reshape(-1,1)
                     # twts[pol] = NP.asarray(len(self.timestamps) - NP.sum(self.flag_stack[pol])).reshape(-1,1)
                     tbsize[pol] = None
             self.tbinsize = tbsize
@@ -4702,6 +4702,11 @@ class InterferometerArray:
     stack()         Stacks and computes visibilities and flags for all the 
                     interferometers in the interferometer array from the 
                     individual antennas in the pair.
+
+    accumulate()    Accumulate and average visibility spectra across timestamps 
+                    under different polarizations depending on the time bin 
+                    size for the corresponding polarization for all 
+                    interferometers in the interferometer array
 
     grid()          Routine to produce a grid based on the interferometer array 
 
@@ -5442,6 +5447,32 @@ class InterferometerArray:
         else:
             for label in self.interferometers:
                 self.interferometers[label].stack(on_flags=on_flags, on_data=on_data)
+
+    ################################################################################# 
+
+    def accumulate(self, tbinsize=None):
+
+        """
+        -----------------------------------------------------------------------
+        Accumulate and average visibility spectra across timestamps under 
+        different polarizations depending on the time bin size for the 
+        corresponding polarization for all interferometers in the 
+        interferometer array
+
+        Inputs:
+
+        tbinsize [scalar or dictionary] Contains bin size of timestamps while
+                 stacking. Default = None means all visibility spectra over all
+                 timestamps are averaged. If scalar, the same (positive) value 
+                 applies to all polarizations. If dictionary, timestamp bin size
+                 (positive) is provided under each key 'P11', 'P12', 'P21', 
+                 'P22'. If any of the keys is missing the visibilities for that 
+                 polarization are averaged over all timestamps.
+        -----------------------------------------------------------------------
+        """
+
+        for label in self.interferometers:
+            self.interferometers[label].accumulate(tbinsize=tbinsize)
 
     ################################################################################# 
 

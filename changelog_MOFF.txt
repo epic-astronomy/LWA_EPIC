@@ -1,3 +1,13 @@
+From 19ac0ad:
+============
+
+In antenna_array.py,
+
+(*) Add member function accumulate() under class InterferometerArray.
+Update docstring of class InterferometerArray accordingly
+(*) Inside member function accumulate() of class Interferometer,
+convert attribute twts to be floating point numbers from integers
+
 From 9ac36de:
 ============
 
