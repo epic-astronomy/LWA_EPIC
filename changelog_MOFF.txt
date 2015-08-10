@@ -1,3 +1,15 @@
+From 9ac36de:
+============
+
+In antenna_array.py,
+
+(*) In member functions f2t_on_stack() and t2f_on_stack() of class
+Interferometer, change input keyword variable from axis to ax in call
+to DSP.FT1D()
+(*) Add script LWA_FX_stack_data_analysis.py to git repository
+(*) Test stacking of interferometer array data works under both serial
+and parallel processing using the script LWA_FX_stack_data_analysis.py
+
 From a0a843f:
 ============
 

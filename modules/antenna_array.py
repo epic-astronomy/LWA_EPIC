@@ -3469,7 +3469,7 @@ class Interferometer:
         """
         for pol in ['P11', 'P12', 'P21', 'P22']:
             self.Vt_stack[pol] = DSP.FT1D(NP.fft.fftshift(self.Vf_stack[pol]),
-                                          axis=1, inverse=True, shift=True,
+                                          ax=1, inverse=True, shift=True,
                                           verbose=False)
 
     ###########################################################################
@@ -3485,7 +3485,7 @@ class Interferometer:
 
         for pol in ['P11', 'P12', 'P21', 'P22']:
             self.Vf_stack[pol] = DSP.FT1D(NP.fft.ifftshift(self.Vt_stack[pol]),
-                                          axis=1, shift=True, verbose=False)
+                                          ax=1, shift=True, verbose=False)
 
     ###########################################################################
 
