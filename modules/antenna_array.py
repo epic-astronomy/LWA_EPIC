@@ -3133,6 +3133,12 @@ class Interferometer:
                  Update the individual antenna instances of the antenna pair 
                  forming the interferometer with provided values
 
+    get_visibilities()
+                 Returns the visibilities based on selection criteria on 
+                 timestamp flags, timestamps and frequency channel indices 
+                 and the type of data (most recent, stack or averaged 
+                 visibilities)
+
     update_flags()
                  Updates flags for cross-polarizations from component antenna
                  polarization flags and also overrides with flags if provided 
@@ -3232,6 +3238,9 @@ class Interferometer:
             self.Vt_stack[pol] = None
             self.Vf_stack[pol] = None
             self.flag_stack[pol] = NP.asarray([])
+
+            self.Vf_avg[pol] = None
+            self.twts[pol] = None
 
             self.wtspos[pol] = []
             self.wts[pol] = []
@@ -3543,7 +3552,178 @@ class Interferometer:
             raise TypeError('Input A2 must be an instance of class Antenna')
 
     ############################################################################
-    
+
+    def get_visibilities(self, pol, flag=None, tselect=None, fselect=None,
+                         datapool=None):
+
+        """
+        -----------------------------------------------------------------------
+        Returns the visibilities based on selection criteria on timestamp 
+        flags, timestamps and frequency channel indices and the type of data
+        (most recent, stack or averaged visibilities)
+
+        Inputs:
+
+        pol      [string] select baselines of this polarization that are either 
+                 flagged or unflagged as specified by input parameter flag. 
+                 Allowed values are 'P11', 'P12', 'P21', and 'P22'. Only one of
+                 these values must be specified.
+
+        flag     [boolean] If False, return visibilities of unflagged baselines,
+                 otherwise return flagged ones. Default=None means all 
+                 visibilities independent of flagging are returned. This 
+                 flagging refers to that along the timestamp axis under each
+                 polarization
+ 
+        tselect  [scalar, list, numpy array] timestamp index for visibilities
+                 selection. For most recent visibility, it must be set to -1.
+                 For all other selections, indices in tselect must be in the 
+                 valid range of indices along time axis for stacked and 
+                 averaged visibilities. Default=None means most recent data is
+                 selected. 
+
+        fselect  [scalar, list, numpy array] frequency channel index for 
+                 visibilities selection. Indices must be in the valid range of
+                 indices along the frequency axis for visibilities. 
+                 Default=None selects all frequency channels
+
+        datapool [string] denotes the data pool from which visibilities are to
+                 be selected. Accepted values are 'current', 'stack', 'avg' and
+                 None (default, same as 'current'). If set to None or 
+                 'current', the value in tselect is ignored and only 
+                 visibilities of the most recent timestamp are selected. If set
+                 to None or 'current' the attribute Vf_stack is checked first 
+                 and if unavailable, attribute crosspol.Vf is used. For 'stack'
+                 and 'avg', attributes Vf_stack and Vf_avg are used 
+                 respectively
+
+        Output:
+
+        outdict  [dictionary] consists of visibilities information under the 
+                 following keys:
+
+                 'label'        [tuple] interferometer label as a tuple of 
+                                individual antenna labels
+                 'pol'          [string] polarization string, one of 'P11', 
+                                'P12', 'P21', or 'P22'
+                 'visibilities' [numpy array] selected visibilities spectra
+                                with dimensions n_ts x (n_bl=1) x nchan which
+                                are in time-baseline-frequency order. If no
+                                visibilities are found satisfying the selection 
+                                criteria, the value under this key is set to 
+                                None.
+                 'twts'         [numpy array] weights corresponding to the time
+                                axis in the selected visibilities. These 
+                                weights are determined by flagging of 
+                                timestamps. A zero weight indicates unflagged 
+                                visibilities were not found for that timestamp. 
+                                A non-zero weight indicates how many unflagged
+                                visibilities were found for that time bin (in
+                                case of averaged visibilities) or timestamp. 
+                                If no visibilities are found satisfying the 
+                                selection criteria, the value under this key 
+                                is set to None.
+        -----------------------------------------------------------------------
+        """
+
+        try: 
+            pol 
+        except NameError:
+            raise NameError('Input parameter pol must be specified.')
+
+        if not isinstance(pol, str):
+            raise TypeError('Input parameter must be a string')
+        
+        if not pol in ['P11', 'P12', 'P21', 'P22']:
+            raise ValueError('Invalid specification for input parameter pol')
+
+        if datapool is None:
+            n_timestamps = 1
+            datapool = 'current'
+        elif datapool == 'stack':
+            n_timestamps = len(self.timestamps)
+        elif datapool == 'avg':
+            n_timestamps = self.Vf_avg[pol].shape[0]
+        elif datapool == 'current':
+            n_timestamps = 1
+        else:
+            raise ValueError('Invalid datapool specified')
+
+        if tselect is None:
+            tsind = NP.asarray(-1).reshape(-1)  # Selects most recent data
+        elif isinstance(tselect, (int, float, list, NP.ndarray)):
+            tsind = NP.asarray(tselect).ravel()
+            tsind = tsind.astype(NP.int)
+            if tsind.size == 1:
+                if (tsind < -1) or (tsind >= n_timestamps):
+                    tsind = NP.asarray(-1).reshape(-1)
+            else:
+                if NP.any(tsind < 0) or NP.any(tsind >= n_timestamps):
+                    raise IndexError('Timestamp indices outside available range for the specified datapool')
+        else:
+            raise TypeError('tselect must be None, integer, float, list or numpy array for visibilities selection')
+
+        if fselect is None:
+            chans = NP.arange(self.f.size)  # Selects all channels
+        elif isinstance(fselect, (int, float, list, NP.ndarray)):
+            chans = NP.asarray(fselect).ravel()
+            chans = chans.astype(NP.int)
+            if NP.any(chans < 0) or NP.any(chans >= self.f.size):
+                raise IndexError('Channel indices outside available range')
+        else:
+            raise TypeError('fselect must be None, integer, float, list or numpy array for visibilities selection')
+
+        select_ind = NP.ix_(tsind, chans)
+
+        outdict = {}
+        outdict['pol'] = pol
+        outdict['twts'] = None
+        outdict['label'] = self.label
+        outdict['visibilities'] = None
+        
+        if datapool == 'current':
+            if self.Vf_stack[pol] is not None:
+                outdict['visibilities'] = self.Vf_stack[pol][-1,chans].reshape(1,1,chans.size)
+                outdict['twts'] = NP.logical_not(NP.asarray(self.flag_stack[pol][-1]).astype(NP.bool).reshape(-1)).astype(NP.float)
+            else:
+                outdict['visibilities'] = self.crosspol.Vf[pol][chans].reshape(1,1,chans.size)
+                outdict['twts'] = NP.logical_not(NP.asarray(self.crosspol.flag[pol]).astype(NP.bool).reshape(-1)).astype(NP.float)
+        elif datapool == 'stack':
+            if self.Vf_stack[pol] is not None:
+                outdict['visibilities'] = self.Vf_stack[pol][select_ind].reshape(tsind.size,1,chans.size)
+                outdict['twts'] = NP.logical_not(NP.asarray(self.flag_stack[pol][tsind]).astype(NP.bool).reshape(-1)).astype(NP.float)
+            else:
+                raise ValueError('Attribute Vf_stack has not been initialized to obtain visibilities from. Consider running method stack()')
+        else:
+            if self.Vf_avg[pol] is not None:
+                outdict['visibilities'] = self.Vf_avg[pol][select_ind].reshape(tsind.size,1,chans.size)
+                outdict['twts'] = NP.asarray(self.twts[pol][tsind]).reshape(-1)
+            else:
+                raise ValueError('Attribute Vf_avg has not been initialized to obtain visibilities from. Consider running methods stack() and accumulate()')
+
+        if flag is not None:
+            if not isinstance(flag, bool):
+                raise TypeError('flag keyword has to be a Boolean value.')
+
+            if flag:
+                if NP.sum(outdict['twts'] == 0) == 0:
+                    outdict['twts'] = None
+                    outdict['visibilities'] = None
+                else:
+                    outdict['visibilities'] = outdict['visibilities'][outdict['twts']==0,:,:].reshape(-1,1,chans.size)
+                    outdict['twts'] = outdict['twts'][outdict['twts']==0].reshape(-1)
+            else:
+                if NP.sum(outdict['twts'] > 0) == 0:
+                    outdict['twts'] = None
+                    outdict['visibilities'] = None
+                else:
+                    outdict['visibilities'] = outdict['visibilities'][outdict['twts']>0,:,:].reshape(-1,1,chans.size)
+                    outdict['twts'] = outdict['twts'][outdict['twts']>0].reshape(-1)
+
+        return outdict
+                
+    ############################################################################
+
     def update_flags(self, flags=None, stack=False, verify=True):
 
         """
@@ -5316,7 +5496,7 @@ class InterferometerArray:
         
     ############################################################################
 
-    def get_visibilities(self, pol, flag=False, sort=True):
+    def get_visibilities(self, pol, flag=None, sort=True):
 
         """
         ------------------------------------------------------------------------

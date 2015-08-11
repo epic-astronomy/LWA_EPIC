@@ -1,3 +1,16 @@
+From dd639f7:
+============
+
+In antenna_array.py,
+
+(*) Create member function get_visibilities() under class
+Interferometer. Update docstring of class Interferometer accordingly
+(*) Change default value of input keyword flag from False to None in
+member function get_visibilities() of class InterferometerArray
+(*) Initialize existing attributes Vf_avg and twts to None under each
+polarization key in __init__() member function of class
+InterferometerArray
+
 From 19ac0ad:
 ============
 
