@@ -1,3 +1,22 @@
+From cd80593:
+============
+
+In antenna_array.py,
+
+(*) Rename member function get_visibilities() of class Interferometer
+to get_visibilities_old() and replace occurrences throughout
+(*) Create a new generic member function get_visibilities() of class
+Interferometer that has generic selection criteria and has been
+tested. Update docstring of class InterferometerArray accordingly
+(*) Modify output dimensions of visibilities under key 'visibilities'
+in output dictionary in member function get_visibilities() of class
+Interferometer. Update docstring of member function
+get_visibilities() of class Interferometer accordingly
+(*) Modify invocation of get_visibilities() of class
+InterferometerArray from inside grid_convolve() of the same class to
+be compatible with the changes to get_visibilities() member function
+specified in this revision
+
 From dd639f7:
 ============
 
