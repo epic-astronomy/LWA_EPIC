@@ -10197,6 +10197,88 @@ class AntennaArray:
 
     timestamps  [list] list of all timestamps to be held in the stack 
 
+    grid_mapper [dictionary] antenna-to-grid mapping information for each of
+                four polarizations under keys 'P1' and 'P2'. Under each
+                polarization, it is a dictionary with values under the following 
+                keys:
+                'refind'    [list] each element in the list corresponds to a
+                            sequential frequency channel and is another list 
+                            with indices to the lookup locations that map to
+                            the grid locations (indices in 'gridind') for this 
+                            frequency channel. These indices index the array 
+                            in 'refwts'
+                'gridind'   [list] each element in the list corresponds to a
+                            sequential frequency channel and is another list 
+                            with indices to the grid locations that map to
+                            the lookup locations (indices in 'refind') for 
+                            this frequency channel.
+                'refwts'    [numpy array] antenna weights of size 
+                            n_ant x n_wts flattened to be a vector. Indices in
+                            'refind' index to this array. Currently only valid
+                            when lookup weights scale with frequency.
+                'labels'    [dictionary] contains mapping information from 
+                            antenna (specified by key which is the 
+                            antenna label). The value under each label 
+                            key is another dictionary with the following keys 
+                            and information:
+                            'flag'         [boolean] if True, this 
+                                           polarization for this antenna
+                                           will not be mapped to the grid
+                            'gridind'      [numpy vector] one-dimensional index 
+                                           into the three-dimensional grid 
+                                           locations where the antenna
+                                           contributes illumination and 
+                                           electric fields. The one-dimensional 
+                                           indices are obtained using numpy's
+                                           multi_ravel_index() using the grid 
+                                           shape, n_u x n_v x nchan
+                            'illumination' [numpy vector] complex grid 
+                                           illumination contributed by the 
+                                           antenna to different grid
+                                           locations in 'gridind'. It is 
+                                           mapped to the grid as specified by 
+                                           indices in key 'gridind'
+                            'Ef'           [numpy vector] complex grid 
+                                           electric fields contributed by the 
+                                           antenna. It is mapped to the
+                                           grid as specified by indices in 
+                                           key 'gridind'
+                'ant'       [dictionary] dictionary with information on 
+                            contribution of all antenna lookup weights. This
+                            contains another dictionary with the following 
+                            keys:
+                            'ind_freq'     [list] each element in the list is
+                                           for a frequency channel and 
+                                           consists of a numpy vector which 
+                                           consists of indices of the 
+                                           contributing antennas
+                            'ind_all'      [numpy vector] consists of numpy 
+                                           vector which consists of indices 
+                                           of the contributing antennas
+                                           for all frequencies appended 
+                                           together. Effectively, this is just
+                                           values in 'ind_freq' of all 
+                                           frequencies appended together.
+                            'uniq_ind_all' [numpy vector] consists of numpy
+                                           vector which consists of unique 
+                                           indices of contributing antennas
+                                           for all frequencies.
+                            'rev_ind_all'  [numpy vector] reverse indices of 
+                                           'ind_all' with reference to bins of
+                                           'uniq_ind_all'
+                            'illumination' [numpy vector] complex grid
+                                           illumination weights contributed by
+                                           each antenna (including associated
+                                           kernel weight locations) and has a
+                                           size equal to that in 'ind_all'
+                'grid'      [dictionary] contains information about populated
+                            portions of the grid. It consists of values in the
+                            following keys:
+                            'ind_all'      [numpy vector] indices of all grid
+                                           locations raveled to one dimension
+                                           from three dimensions of size 
+                                           n_u x n_v x nchan
+
     Member Functions:
 
     __init__()        Initializes an instance of class AntennaArray which manages

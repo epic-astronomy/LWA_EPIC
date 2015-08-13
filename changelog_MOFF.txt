@@ -1,3 +1,11 @@
+From 0c5fe73:
+============
+
+In antenna_array.py,
+
+(*) Update docstring of class AntennaArray with information on
+attribute grid_mapper
+
 From 1d9ccd2:
 ============
 
