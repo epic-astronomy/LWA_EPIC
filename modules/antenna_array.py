@@ -3569,9 +3569,9 @@ class Interferometer:
                  Allowed values are 'P11', 'P12', 'P21', and 'P22'. Only one of
                  these values must be specified.
 
-        flag     [boolean] If False, return visibilities of unflagged baselines,
-                 otherwise return flagged ones. Default=None means all 
-                 visibilities independent of flagging are returned. This 
+        flag     [boolean] If False, return visibilities of unflagged 
+                 timestamps, otherwise return flagged ones. Default=None means 
+                 all visibilities independent of flagging are returned. This 
                  flagging refers to that along the timestamp axis under each
                  polarization
  
@@ -6032,7 +6032,7 @@ class InterferometerArray:
                     # Vf_dict = self.get_visibilities_old(cpol, flag=None, sort=True)
                     # Vf = Vf_dict['visibilities'].astype(NP.complex64)  # n_bl x nchan
 
-                    Vf_dict = self.get_visibilities(cpol, flag=None, tselect=-1, fselect=None, bselect=None, datapool='current', sort=True)
+                    Vf_dict = self.get_visibilities(cpol, flag=None, tselect=-1, fselect=None, bselect=None, datapool='avg', sort=True)
                     Vf = Vf_dict['visibilities'].astype(NP.complex64)  #  (n_ts=1) x n_bl x nchan
                     Vf = NP.squeeze(Vf)  # n_bl x nchan
                     if Vf.shape[0] != n_bl:
@@ -9510,6 +9510,11 @@ class Antenna:
                  parallel processing is applicable and not to be used directly.
                  Use update() instead when updates are to be applied directly.
 
+    get_E_fields() 
+                 Returns the electric fields based on selection criteria on 
+                 timestamp flags, timestamps and frequency channel indices and 
+                 the type of data (most recent or stacked electric fields)
+
     save():      Saves the antenna information to disk. Needs serious 
                  development. 
 
@@ -9963,6 +9968,146 @@ class Antenna:
         self.update(update_dict=update_dict, verbose=verbose)
         return self
 
+    ############################################################################
+
+    def get_E_fields(self, pol, flag=None, tselect=None, fselect=None,
+                     datapool=None):
+
+        """
+        ------------------------------------------------------------------------
+        Returns the electric fields based on selection criteria on timestamp 
+        flags, timestamps and frequency channel indices and the type of data
+        (most recent or stacked electric fields)
+
+        Inputs:
+
+        pol      [string] select baselines of this polarization that are either 
+                 flagged or unflagged as specified by input parameter flag. 
+                 Allowed values are 'P1' and 'P2'. Only one of these values 
+                 must be specified.
+
+        flag     [boolean] If False, return electric fields of unflagged 
+                 timestamps, or if True return flagged ones. Default=None means 
+                 all electric fields independent of flagging are returned. This 
+                 flagging refers to that along the timestamp axis under each
+                 polarization
+ 
+        tselect  [scalar, list, numpy array] timestamp index for electric 
+                 fields selection. For most recent electric fields, it must be 
+                 set to -1. For all other selections, indices in tselect must 
+                 be in the valid range of indices along time axis for stacked 
+                 electric fields. Default=None means most recent data is 
+                 selected. 
+
+        fselect  [scalar, list, numpy array] frequency channel index for 
+                 electric field spectrum selection. Indices must be in the 
+                 valid range of indices along the frequency axis for 
+                 electric fields. Default=None selects all frequency channels
+
+        datapool [string] denotes the data pool from which electric fields are 
+                 to be selected. Accepted values are 'current', 'stack', and
+                 None (default, same as 'current'). If set to None or 
+                 'current', the value in tselect is ignored and only 
+                 electric fields of the most recent timestamp are selected. If 
+                 set to None or 'current' the attribute Ef_stack is checked 
+                 first and if unavailable, attribute antpol.Ef is used. For 
+                 'stack', attribute Ef_stack respectively
+
+        Output:
+
+        outdict  [dictionary] consists of electric fields information under the 
+                 following keys:
+
+                 'label'        [string] antenna label 
+                 'pol'          [string] polarization string, one of 'P1' or 
+                                'P22'
+                 'E-fields'     [numpy array] selected electric fields spectra
+                                with dimensions n_ts x nchan which
+                                are in time-frequency order. If no electric 
+                                fields are found satisfying the selection 
+                                criteria, the value under this key is set to 
+                                None.
+                 'tflags'       [numpy array of boolean] flags corresponding to 
+                                the time axis in the selected electric fields. 
+                                A True flag weight indicates unflagged electric 
+                                fields were not found for that timestamp. 
+                                A False flag indicates unflagged electric fields 
+                                were found for that timestamp. If no electric 
+                                fields are found satisfying the selection 
+                                criteria, the value under this key is set to 
+                                None.
+        ------------------------------------------------------------------------
+        """
+
+        try: 
+            pol 
+        except NameError:
+            raise NameError('Input parameter pol must be specified.')
+
+        if not isinstance(pol, str):
+            raise TypeError('Input parameter must be a string')
+        
+        if not pol in ['P1', 'P2']:
+            raise ValueError('Invalid specification for input parameter pol')
+
+        if datapool is None:
+            n_timestamps = 1
+            datapool = 'current'
+        elif datapool == 'stack':
+            n_timestamps = len(self.timestamps)
+        elif datapool == 'current':
+            n_timestamps = 1
+        else:
+            raise ValueError('Invalid datapool specified')
+
+        if tselect is None:
+            tsind = NP.asarray(-1).reshape(-1)  # Selects most recent data
+        elif isinstance(tselect, (int, float, list, NP.ndarray)):
+            tsind = NP.asarray(tselect).ravel()
+            tsind = tsind.astype(NP.int)
+            if tsind.size == 1:
+                if (tsind < -1) or (tsind >= n_timestamps):
+                    tsind = NP.asarray(-1).reshape(-1)
+            else:
+                if NP.any(tsind < 0) or NP.any(tsind >= n_timestamps):
+                    raise IndexError('Timestamp indices outside available range for the specified datapool')
+        else:
+            raise TypeError('tselect must be None, integer, float, list or numpy array for visibilities selection')
+
+        if fselect is None:
+            chans = NP.arange(self.f.size)  # Selects all channels
+        elif isinstance(fselect, (int, float, list, NP.ndarray)):
+            chans = NP.asarray(fselect).ravel()
+            chans = chans.astype(NP.int)
+            if NP.any(chans < 0) or NP.any(chans >= self.f.size):
+                raise IndexError('Channel indices outside available range')
+        else:
+            raise TypeError('fselect must be None, integer, float, list or numpy array for visibilities selection')
+
+        select_ind = NP.ix_(tsind, chans)
+
+        outdict = {}
+        outdict['pol'] = pol
+        outdict['tflags'] = None
+        outdict['label'] = self.label
+        outdict['E-fields'] = None
+        
+        if datapool == 'current':
+            if self.Ef_stack[pol] is not None:
+                outdict['E-fields'] = self.Ef_stack[pol][-1,chans].reshape(1,chans.size)
+                outdict['tflags'] = NP.asarray(self.flag_stack[pol][-1]).astype(NP.bool).reshape(-1)
+            else:
+                outdict['E-fields'] = self.antpol.Ef[pol][chans].reshape(1,chans.size)
+                outdict['tflags'] = NP.asarray(self.antpol.flag[pol]).astype(NP.bool).reshape(-1)
+        else:
+            if self.Ef_stack[pol] is not None:
+                outdict['E-fields'] = self.Ef_stack[pol][select_ind].reshape(tsind.size,chans.size)
+                outdict['tflags'] = NP.asarray(self.flag_stack[pol][tsind]).astype(NP.bool).reshape(-1)
+            else:
+                raise ValueError('Attribute Ef_stack has not been initialized to obtain electric fields from. Consider running method stack()')
+
+        return outdict
+
 #################################################################################
 
 class AntennaArray:
@@ -10084,6 +10229,17 @@ class AntennaArray:
                       on the entire antenna array or incrementally de-project the 
                       electric fields and illumination patterns from specific 
                       antennas from an already existing grid.
+
+    get_E_fields()    Routine to return the antenna labels, time-based weight 
+                      flags and electric fields (sorted by antenna label if 
+                      specified) based on selection criteria specified by flags, 
+                      timestamps, frequency channels, labels and data pool (most 
+                      recent or stack)
+
+    make_grid_cube()  Constructs the grid of complex field illumination and 
+                      electric fields using the gridding information determined 
+                      for every antenna. Flags are taken into account while 
+                      constructing this grid.
 
     update():         Updates the antenna array instance with newer attribute
                       values
@@ -10452,12 +10608,12 @@ class AntennaArray:
 
         return outdict
 
-    ################################################################################# 
+    ############################################################################
 
-    def get_E_fields(self, pol, flag=False, sort=True):
+    def get_E_fields_old(self, pol, flag=False, sort=True):
 
         """
-        ----------------------------------------------------------------------------
+        ------------------------------------------------------------------------
         Routine to return the antenna label and Electric fields (sorted by
         antenna label if specified)
 
@@ -10482,7 +10638,7 @@ class AntennaArray:
                  'labels':    Contains a numpy array of strings of antenna 
                               labels
                  'E-fields':    measured electric fields (n_ant x nchan array)
-        ----------------------------------------------------------------------------
+        ------------------------------------------------------------------------
         """
 
         try: 
@@ -10532,15 +10688,115 @@ class AntennaArray:
 
         return outdict
 
-    ################################################################################# 
+    ############################################################################
+
+    def get_E_fields(self, pol, flag=None, tselect=None, fselect=None,
+                     aselect=None, datapool=None, sort=True):
+
+        """
+        ------------------------------------------------------------------------
+        Routine to return the antenna labels, time-based weight flags and 
+        electric fields (sorted by antenna label if specified) based on 
+        selection criteria specified by flags, timestamps, frequency channels,
+        labels and data pool (most recent or stack)
+
+        Keyword Inputs:
+
+        pol      [string] select baselines of this polarization that are either 
+                 flagged or unflagged as specified by input parameter flag. 
+                 Allowed values are 'P1' and 'P2'. Only one of these values 
+                 must be specified.
+
+        flag     [boolean] If False, return electric fields of unflagged 
+                 antennas, otherwise return flagged ones. Default=None means 
+                 all electric fields independent of flagging are returned.
+
+        tselect  [scalar, list, numpy array] timestamp index for electric 
+                 fields selection. For most recent electric fields, it must 
+                 be set to -1. For all other selections, indices in tselect 
+                 must be in the valid range of indices along time axis for 
+                 stacked electric fields. Default=None means most recent data 
+                 is selected. 
+
+        fselect  [scalar, list, numpy array] frequency channel index for 
+                 electric fields selection. Indices must be in the valid range 
+                 of indices along the frequency axis for electric fields. 
+                 Default=None selects all frequency channels
+
+        aselect  [list of strings] labels of antennas to select. If set 
+                 to None (default) all antennas are selected. 
+
+        datapool [string] denotes the data pool from which electric fields are 
+                 to be selected. Accepted values are 'current', 'stack' and
+                 None (default, same as 'current'). If set to None or 
+                 'current', the value in tselect is ignored and only 
+                 electric fields of the most recent timestamp are selected. If 
+                 set to None or 'current' the attribute Ef_stack is checked 
+                 first and if unavailable, attribute antpol.Ef is used. For 
+                 'stack' attribute Ef_stack is used 
+
+        sort     [boolean] If True, returned antenna information is sorted 
+                 by antenna label. Default = True.
+
+        Output:
+
+        outdict  [dictionary] Output consists of a dictionary with the following 
+                 keys and information:
+                 'labels'        [list of strings] Contains a list of antenna 
+                                 labels
+                 'E-fields'      [list or numpy array] antenna electric fields 
+                                 under the specified polarization. In general, 
+                                 it is a list of numpy arrays where each 
+                                 array in the list corresponds to        
+                                 an individual antenna and the size of
+                                 each numpy array is n_ts x nchan. If input 
+                                 keyword flag is set to None, the electric 
+                                 fields are rearranged into a numpy array of 
+                                 size n_ts x n_ant x nchan. 
+                 'tflags'        [list or numpy array] flags along time axis 
+                                 under the specified polarization. In general
+                                 it is a list of numpy arrays where each array 
+                                 in the list corresponds to an individual 
+                                 antenna and the size of each array is n_ts x 1. 
+                                 If input keyword flag is set to None, the 
+                                 time weights are rearranged into a numpy array 
+                                 of size n_ts x n_ant x 1
+        ------------------------------------------------------------------------
+        """
+
+        if not isinstance(sort, bool):
+            raise TypeError('sort keyword has to be a Boolean value.')
+
+        if aselect is None:
+            labels = self.antennas.keys()
+        elif isinstance(aselect, list):
+            labels = [label for label in aselect if label in self.antennas]
+            
+        if sort:
+            labels = sorted(labels)
+
+        efinfo = [self.antennas[label].get_E_fields(pol, flag=flag, tselect=tselect, fselect=fselect, datapool=datapool) for label in labels]
+      
+        outdict = {}
+        outdict['labels'] = labels
+        outdict['tflags'] = [einfo['tflags'] for einfo in efinfo]
+        outdict['E-fields'] = [einfo['E-fields'] for einfo in efinfo]
+        if flag is None:
+            outdict['E-fields'] = NP.swapaxes(NP.asarray(outdict['E-fields']), 0, 1)
+            outdict['tflags'] = NP.swapaxes(NP.asarray(outdict['tflags']), 0, 1)
+            outdict['tflags'] = outdict['tflags'][:,:,NP.newaxis]
+
+        return outdict
+
+    ############################################################################
 
     def FT(self, pol=None, parallel=False, nproc=None):
 
         """
-        ----------------------------------------------------------------------------
+        ------------------------------------------------------------------------
         Computes the Fourier transform of the time series of the antennas in the 
         antenna array to compute the visibility spectra
-        ----------------------------------------------------------------------------
+        ------------------------------------------------------------------------
         """
         
         if not parallel:
@@ -10560,7 +10816,7 @@ class AntennaArray:
                 self.antennas[antenna.label] = antenna
             del updated_antennas
         
-    ################################################################################# 
+    ############################################################################
 
     def grid(self, uvspacing=0.5, uvpad=None, pow2=True, pol=None):
         
@@ -10798,7 +11054,7 @@ class AntennaArray:
                         self.ordered_labels = ant_dict['labels']
                         n_ant = ant_xy.shape[0]
 
-                        Ef_dict = self.get_E_fields(apol, flag=False, sort=True)
+                        Ef_dict = self.get_E_fields_old(apol, flag=False, sort=True)
                         Ef = Ef_dict['E-fields'].astype(NP.complex64)
 
                         # Since antennas are identical, read from first antenna, since wtspos are scaled with frequency, read from first frequency channel
@@ -10827,8 +11083,13 @@ class AntennaArray:
                     ant_xy = ant_dict['positions'][:,:2] # n_ant x 2
                     n_ant = ant_xy.shape[0]
 
-                    Ef_dict = self.get_E_fields(apol, flag=None, sort=True)
-                    Ef = Ef_dict['E-fields'].astype(NP.complex64)  # n_ant x nchan
+                    # Ef_dict = self.get_E_fields(apol, flag=None, sort=True)
+                    # Ef = Ef_dict['E-fields'].astype(NP.complex64)  # n_ant x nchan
+
+                    Ef_dict = self.get_E_fields(apol, flag=None, tselect=-1, fselect=None, aselect=None, datapool='current', sort=True)
+                    Ef = Ef_dict['E-fields'].astype(NP.complex64)  #  (n_ts=1) x n_ant x nchan
+                    Ef = NP.squeeze(Ef)  # n_ant x nchan
+
                     if Ef.shape[0] != n_ant:
                         raise ValueError('Encountered unexpected behavior. Need to debug.')
                     if verbose:

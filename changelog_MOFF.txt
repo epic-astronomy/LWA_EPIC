@@ -1,3 +1,23 @@
+From 1d9ccd2:
+============
+
+In antenna_array.py,
+
+(*) Add member function get_E_fields() to class Antenna. Update
+docstring of class Antenna accordingly
+(*) Rename member function get_E_fields() of class AntennaArray to
+get_E_fields_old() and replace occurrences throughout
+(*) Create a new generic member function get_E_fields() of class
+AntennaArra that has generic selection criteria. Test for accurate
+functionality. Update docstring of class AntennaArray accordingly
+(*) Make minor change to docstring of class get_visibilities() of
+class Interferometer
+(*) Use input keyword datapool='avg' in call to member function
+get_visibilities() of class InterferometerArray from inside member
+function grid_convolve() of class InterferometerArray
+(*) Add a description of member function make_grid_cube() to the
+docstring of its parent class AntennaArray
+
 From cd80593:
 ============
 
