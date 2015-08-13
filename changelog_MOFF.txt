@@ -1,3 +1,12 @@
+From 02a8d60:
+============
+
+In antenna_array.py,
+
+(*) Replace occurrences of tflags in member functions get_E_fields()
+in classes Antenna and AntennaArray with twts and change the 
+respective docstrings accordingly
+
 From 0c5fe73:
 ============
 

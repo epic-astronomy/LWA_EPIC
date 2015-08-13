@@ -10027,15 +10027,15 @@ class Antenna:
                                 fields are found satisfying the selection 
                                 criteria, the value under this key is set to 
                                 None.
-                 'tflags'       [numpy array of boolean] flags corresponding to 
-                                the time axis in the selected electric fields. 
-                                A True flag weight indicates unflagged electric 
-                                fields were not found for that timestamp. 
-                                A False flag indicates unflagged electric fields 
-                                were found for that timestamp. If no electric 
-                                fields are found satisfying the selection 
-                                criteria, the value under this key is set to 
-                                None.
+                 'twts'         [numpy array of boolean] weights corresponding 
+                                to the time axis in the selected electric 
+                                fields. A zero weight indicates unflagged 
+                                electric fields were not found for that 
+                                timestamp. A non-zero weight indicates how 
+                                many unflagged electric fields were found for 
+                                that timestamp. If no electric fields are found
+                                satisfying the selection criteria, the value 
+                                under this key is set to None.
         ------------------------------------------------------------------------
         """
 
@@ -10088,21 +10088,21 @@ class Antenna:
 
         outdict = {}
         outdict['pol'] = pol
-        outdict['tflags'] = None
+        outdict['twts'] = None
         outdict['label'] = self.label
         outdict['E-fields'] = None
         
         if datapool == 'current':
             if self.Ef_stack[pol] is not None:
                 outdict['E-fields'] = self.Ef_stack[pol][-1,chans].reshape(1,chans.size)
-                outdict['tflags'] = NP.asarray(self.flag_stack[pol][-1]).astype(NP.bool).reshape(-1)
+                outdict['twts'] = NP.logical_not(NP.asarray(self.flag_stack[pol][-1]).astype(NP.bool).reshape(-1)).astype(NP.float)
             else:
                 outdict['E-fields'] = self.antpol.Ef[pol][chans].reshape(1,chans.size)
-                outdict['tflags'] = NP.asarray(self.antpol.flag[pol]).astype(NP.bool).reshape(-1)
+                outdict['twts'] = NP.logical_not(NP.asarray(self.antpol.flag[pol]).astype(NP.bool).reshape(-1)).astype(NP.float)
         else:
             if self.Ef_stack[pol] is not None:
                 outdict['E-fields'] = self.Ef_stack[pol][select_ind].reshape(tsind.size,chans.size)
-                outdict['tflags'] = NP.asarray(self.flag_stack[pol][tsind]).astype(NP.bool).reshape(-1)
+                outdict['twts'] = NP.logical_not(NP.asarray(self.flag_stack[pol][tsind]).astype(NP.bool).reshape(-1)).astype(NP.float)
             else:
                 raise ValueError('Attribute Ef_stack has not been initialized to obtain electric fields from. Consider running method stack()')
 
@@ -10835,7 +10835,7 @@ class AntennaArray:
                                  keyword flag is set to None, the electric 
                                  fields are rearranged into a numpy array of 
                                  size n_ts x n_ant x nchan. 
-                 'tflags'        [list or numpy array] flags along time axis 
+                 'twts'          [list or numpy array] weights along time axis 
                                  under the specified polarization. In general
                                  it is a list of numpy arrays where each array 
                                  in the list corresponds to an individual 
@@ -10861,12 +10861,12 @@ class AntennaArray:
       
         outdict = {}
         outdict['labels'] = labels
-        outdict['tflags'] = [einfo['tflags'] for einfo in efinfo]
+        outdict['twts'] = [einfo['twts'] for einfo in efinfo]
         outdict['E-fields'] = [einfo['E-fields'] for einfo in efinfo]
         if flag is None:
             outdict['E-fields'] = NP.swapaxes(NP.asarray(outdict['E-fields']), 0, 1)
-            outdict['tflags'] = NP.swapaxes(NP.asarray(outdict['tflags']), 0, 1)
-            outdict['tflags'] = outdict['tflags'][:,:,NP.newaxis]
+            outdict['twts'] = NP.swapaxes(NP.asarray(outdict['twts']), 0, 1)
+            outdict['twts'] = outdict['twts'][:,:,NP.newaxis]
 
         return outdict
 
