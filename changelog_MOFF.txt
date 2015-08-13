@@ -1,3 +1,27 @@
+From 456c73a:
+============
+
+In antenna_array.py,
+
+(*) Modify member function grid_convolve() of class
+InterferometerArray to account for weights from time-based flags 
+('twts') to be applied in make_grid_cube() member function of the
+same class
+(*) Modify member function make_grid_cube() of class
+InterferometerArray to account for weights from time-based flags 
+('twts') to be applied while estimating grid visibilities.
+(*) Modify member function grid_convolve() of class
+AntennaArray to account for weights from time-based flags 
+('twts') to be applied later
+(*) Bug fix in member function antenna_positions() of class
+AntennaArray to return the labels and positions in the same order as
+that returned by member function get_E_fields() of the same class.
+Earlier antenna_positions() returned labels sorted by "first antenna
+label" when one only one antenna label existed in each label and was
+copied from a similar member function from class InterferometerArray
+without appropriate corrections. Now tested to work fine using the
+script LWA_MOFF_data_analysis.py
+
 From 02a8d60:
 ============
 

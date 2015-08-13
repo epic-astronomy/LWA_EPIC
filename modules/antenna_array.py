@@ -4776,6 +4776,11 @@ class InterferometerArray:
                               'flag'         [boolean] if True, this cross-
                                              polarization for this interferometer
                                              will not be mapped to the grid
+                              'twts'         [scalar] denotes the number of 
+                                             timestamps for which the 
+                                             interferometer data was not flagged
+                                             which were used in stacking and 
+                                             averaging
                               'gridind'      [numpy vector] one-dimensional index 
                                              into the three-dimensional grid 
                                              locations where the interferometer
@@ -6037,6 +6042,9 @@ class InterferometerArray:
                     Vf = NP.squeeze(Vf)  # n_bl x nchan
                     if Vf.shape[0] != n_bl:
                         raise ValueError('Encountered unexpected behavior. Need to debug.')
+                    bl_labels = Vf_dict['labels']
+                    twts = Vf_dict['twts']  # (n_ts=1) x n_bl x (nchan=1)
+                    twts = NP.squeeze(twts)
 
                     if verbose:
                         print 'Gathered baseline data for gridding convolution for timestamp {0}'.format(self.timestamp)
@@ -6248,6 +6256,7 @@ class InterferometerArray:
                                         if self.grid_mapper[cpol]['bl']['rev_ind_all'][job_ind] < self.grid_mapper[cpol]['bl']['rev_ind_all'][job_ind+1]:
         
                                             self.grid_mapper[cpol]['labels'][label] = {}
+                                            self.grid_mapper[cpol]['labels'][label]['twts'] = twts[bl_labels.index(label)]
                                             # self.grid_mapper[cpol]['labels'][label]['flag'] = self.interferometers[label].crosspol.flag[cpol]
         
                                             select_bl_ind = self.grid_mapper[cpol]['bl']['rev_ind_all'][self.grid_mapper[cpol]['bl']['rev_ind_all'][job_ind]:self.grid_mapper[cpol]['bl']['rev_ind_all'][job_ind+1]]
@@ -6296,6 +6305,7 @@ class InterferometerArray:
                                     if self.grid_mapper[cpol]['bl']['rev_ind_all'][j] < self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]:
     
                                         self.grid_mapper[cpol]['labels'][label] = {}
+                                        self.grid_mapper[cpol]['labels'][label]['twts'] = twts[bl_labels.index(label)]
                                         # self.grid_mapper[cpol]['labels'][label]['flag'] = self.interferometers[label].crosspol.flag[cpol]
     
                                         select_bl_ind = self.grid_mapper[cpol]['bl']['rev_ind_all'][self.grid_mapper[cpol]['bl']['rev_ind_all'][j]:self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]]
@@ -6343,6 +6353,7 @@ class InterferometerArray:
                                 if self.grid_mapper[cpol]['bl']['rev_ind_all'][j] < self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]:
                                     select_bl_ind = self.grid_mapper[cpol]['bl']['rev_ind_all'][self.grid_mapper[cpol]['bl']['rev_ind_all'][j]:self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]]
                                     self.grid_mapper[cpol]['labels'][label] = {}
+                                    self.grid_mapper[cpol]['labels'][label]['twts'] = twts[bl_labels.index(label)]
                                     # self.grid_mapper[cpol]['labels'][label]['flag'] = self.interferometers[label].crosspol.flag[cpol]
                                     if mapping == 'weighted':
                                         gridind_raveled_around_bl = self.grid_mapper[cpol]['grid']['ind_all'][select_bl_ind]
@@ -6405,7 +6416,7 @@ class InterferometerArray:
     
                                     for job_ind in xrange(job_start, min(job_start+nproc, num_bl)):    # Start the parallel processes and store the outputs in a queue
                                         label = self.ordered_labels[self.grid_mapper[cpol]['bl']['uniq_ind_all'][job_ind]]
-    
+                                        self.grid_mapper[cpol]['labels'][label]['twts'] = twts[bl_labels.index(label)]    
                                         if self.grid_mapper[cpol]['bl']['rev_ind_all'][job_ind] < self.grid_mapper[cpol]['bl']['rev_ind_all'][job_ind+1]:
         
                                             select_bl_ind = self.grid_mapper[cpol]['bl']['rev_ind_all'][self.grid_mapper[cpol]['bl']['rev_ind_all'][job_ind]:self.grid_mapper[cpol]['bl']['rev_ind_all'][job_ind+1]]
@@ -6441,6 +6452,7 @@ class InterferometerArray:
                                     if self.grid_mapper[cpol]['bl']['rev_ind_all'][j] < self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]:
                                         select_bl_ind = self.grid_mapper[cpol]['bl']['rev_ind_all'][self.grid_mapper[cpol]['bl']['rev_ind_all'][j]:self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]]
                                         label = self.ordered_labels[self.grid_mapper[cpol]['bl']['uniq_ind_all'][j]]
+                                        self.grid_mapper[cpol]['labels'][label]['twts'] = twts[bl_labels.index(label)]    
                                         gridind_raveled_around_bl = self.grid_mapper[cpol]['grid']['ind_all'][select_bl_ind]
                                         uniq_gridind_raveled_around_bl = NP.unique(gridind_raveled_around_bl)
                                         list_of_bl_labels += [label]
@@ -6469,6 +6481,7 @@ class InterferometerArray:
                                 if self.grid_mapper[cpol]['bl']['rev_ind_all'][j] < self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]:
                                     select_bl_ind = self.grid_mapper[cpol]['bl']['rev_ind_all'][self.grid_mapper[cpol]['bl']['rev_ind_all'][j]:self.grid_mapper[cpol]['bl']['rev_ind_all'][j+1]]
                                     label = self.ordered_labels[self.grid_mapper[cpol]['bl']['uniq_ind_all'][j]]
+                                    self.grid_mapper[cpol]['labels'][label]['twts'] = twts[bl_labels.index(label)]                                        
                                     self.grid_mapper[cpol]['labels'][label]['Vf'] = {}
                                     if mapping == 'weighted':
                                         gridind_raveled_around_bl = self.grid_mapper[cpol]['grid']['ind_all'][select_bl_ind]
@@ -6530,16 +6543,23 @@ class InterferometerArray:
 
             loopcount = 0
             num_unflagged = 0
+            sum_twts = 0.0
             for bllabel, blinfo in self.grid_mapper[cpol]['labels'].iteritems():
-                if not self.interferometers[bllabel].crosspol.flag[cpol]:
+                # if not self.interferometers[bllabel].crosspol.flag[cpol]:
+                if blinfo['twts'] > 0.0:
                     num_unflagged += 1
+                    sum_twts += blinfo['twts']
                     gridind_unraveled = NP.unravel_index(blinfo['gridind'], self.gridu.shape+(self.f.size,))
-                    self.grid_illumination[cpol][gridind_unraveled] += blinfo['illumination']
-                    self.grid_Vf[cpol][gridind_unraveled] += blinfo['Vf']
+                    # self.grid_illumination[cpol][gridind_unraveled] += blinfo['illumination'] * blinfo['twts']
+                    self.grid_illumination[cpol][gridind_unraveled] += blinfo['illumination']                    
+                    self.grid_Vf[cpol][gridind_unraveled] += blinfo['Vf'] * blinfo['twts']
 
                 progress.update(loopcount+1)
                 loopcount += 1
             progress.finish()
+
+            # self.grid_illumination[cpol] *= num_flagged/sum_wts
+            self.grid_Vf[cpol] *= num_flagged/sum_wts
                 
             if verbose:
                 print 'Gridded aperture illumination and visibilities for polarization {0} from {1:0d} unflagged contributing baselines'.format(cpol, num_unflagged)
@@ -10584,21 +10604,22 @@ class AntennaArray:
     def remove_antennas(self, A=None):
 
         """
-        ----------------------------------------------------------------------------
-        Routine to remove antenna(s) from the antenna array instance. A wrapper for
-        operator overloading __sub__()
+        ------------------------------------------------------------------------
+        Routine to remove antenna(s) from the antenna array instance. A wrapper 
+        for operator overloading __sub__()
     
         Inputs:
     
-        A          [Instance of class AntennaArray, dictionary holding instance(s)
-                   of class Antenna, list of instances of class Antenna, or a single
-                   instance of class Antenna] If a dictionary is provided, the keys
-                   should be the antenna labels and the values should be instances 
-                   of class Antenna. If a list is provided, it should be a list of 
+        A          [Instance of class AntennaArray, dictionary holding 
+                   instance(s) of class Antenna, list of instances of class 
+                   Antenna, or a single instance of class Antenna] If a 
+                   dictionary is provided, the keys should be the antenna 
+                   labels and the values should be instances of class Antenna. 
+                   If a list is provided, it should be a list of 
                    valid instances of class Antenna. These instance(s) of class
-                   Antenna will be removed from the existing instance of AntennaArray
-                   class.
-        ----------------------------------------------------------------------------
+                   Antenna will be removed from the existing instance of 
+                   AntennaArray class.
+        ------------------------------------------------------------------------
         """
 
         if A is None:
@@ -10606,12 +10627,12 @@ class AntennaArray:
         else:
             self = self.__sub__(A)
 
-    ################################################################################# 
+    ############################################################################
 
     def antenna_positions(self, pol=None, flag=False, sort=True):
         
         """
-        ----------------------------------------------------------------------------
+        ------------------------------------------------------------------------
         Routine to return the antenna label and position vectors (sorted by
         antenna label if specified)
 
@@ -10637,7 +10658,7 @@ class AntennaArray:
                               labels
                  'positions': position vectors of antennas (3-column 
                               array)
-        ----------------------------------------------------------------------------
+        ------------------------------------------------------------------------
         """
 
         if not isinstance(sort, bool):
@@ -10648,9 +10669,9 @@ class AntennaArray:
                 raise TypeError('flag keyword has to be a Boolean value.')
 
         if pol is None:
-            if sort: # sort by first antenna label
-                xyz = NP.asarray([[self.antennas[label].location.x, self.antennas[label].location.y, self.antennas[label].location.z] for label in sorted(self.antennas.keys(), key=lambda tup: tup[0])])
-                labels = sorted(self.antennas.keys(), key=lambda tup: tup[0])
+            if sort: # sort by antenna label
+                xyz = NP.asarray([[self.antennas[label].location.x, self.antennas[label].location.y, self.antennas[label].location.z] for label in sorted(self.antennas.keys())])
+                labels = sorted(self.antennas.keys())
             else:
                 xyz = NP.asarray([[self.antennas[label].location.x, self.antennas[label].location.y, self.antennas[label].location.z] for label in self.antennas.keys()])
                 labels = self.antennas.keys()
@@ -10661,17 +10682,18 @@ class AntennaArray:
             if pol not in ['P1', 'P2']:
                 raise ValueError('Invalid specification for input parameter pol')
 
-            if sort:                   # sort by first antenna label
+            if sort:                   # sort by antenna label
                 if flag is None:       # get all positions
-                    xyz = NP.asarray([[self.antennas[label].location.x, self.antennas[label].location.y, self.antennas[label].location.z] for label in sorted(self.antennas.keys(), key=lambda tup: tup[0])])
-                    labels = [label for label in sorted(self.antennas.keys(), key=lambda tup: tup[0])]
+                    xyz = NP.asarray([[self.antennas[label].location.x, self.antennas[label].location.y, self.antennas[label].location.z] for label in sorted(self.antennas.keys())])
+                    labels = sorted(self.antennas.keys())
                 else:
                     if flag:           # get flagged positions
-                        xyz = NP.asarray([[self.antennas[label].location.x, self.antennas[label].location.y, self.antennas[label].location.z] for label in sorted(self.antennas.keys(), key=lambda tup: tup[0]) if self.antennas[label].antpol.flag[pol]])
-                        labels = [label for label in sorted(self.antennas.keys(), key=lambda tup: tup[0]) if self.antennas[label].antpol.flag[pol]]                    
+                        xyz = NP.asarray([[self.antennas[label].location.x, self.antennas[label].location.y, self.antennas[label].location.z] for label in sorted(self.antennas.keys()) if self.antennas[label].antpol.flag[pol]])
+                        labels = [label for label in sorted(self.antennas.keys()) if self.antennas[label].antpol.flag[pol]]
                     else:              # get unflagged positions
-                        xyz = NP.asarray([[self.antennas[label].location.x, self.antennas[label].location.y, self.antennas[label].location.z] for label in sorted(self.antennas.keys(), key=lambda tup: tup[0]) if not self.antennas[label].antpol.flag[pol]])
-                        labels = [label for label in sorted(self.antennas.keys(), key=lambda tup: tup[0]) if not self.antennas[label].antpol.flag[pol]]
+                        xyz = NP.asarray([[self.antennas[label].location.x, self.antennas[label].location.y, self.antennas[label].location.z] for label in sorted(self.antennas.keys()) if not self.antennas[label].antpol.flag[pol]])
+                        labels = [label for label in sorted(self.antennas.keys()) if not self.antennas[label].antpol.flag[pol]]
+
             else:                      # no sorting
                 if flag is None:       # get all positions
                     xyz = NP.asarray([[self.antennas[label].location.x, self.antennas[label].location.y, self.antennas[label].location.z] for label in self.antennas.keys()])
@@ -11171,9 +11193,12 @@ class AntennaArray:
                     Ef_dict = self.get_E_fields(apol, flag=None, tselect=-1, fselect=None, aselect=None, datapool='current', sort=True)
                     Ef = Ef_dict['E-fields'].astype(NP.complex64)  #  (n_ts=1) x n_ant x nchan
                     Ef = NP.squeeze(Ef)  # n_ant x nchan
-
                     if Ef.shape[0] != n_ant:
                         raise ValueError('Encountered unexpected behavior. Need to debug.')
+                    ant_labels = Ef_dict['labels']
+                    twts = Ef_dict['twts']  # (n_ts=1) x n_ant x (nchan=1)
+                    twts = NP.squeeze(twts)
+
                     if verbose:
                         print 'Gathered antenna data for gridding convolution for timestamp {0}'.format(self.timestamp)
 
@@ -11384,6 +11409,7 @@ class AntennaArray:
                                         if self.grid_mapper[apol]['ant']['rev_ind_all'][job_ind] < self.grid_mapper[apol]['ant']['rev_ind_all'][job_ind+1]:
         
                                             self.grid_mapper[apol]['labels'][label] = {}
+                                            self.grid_mapper[apol]['labels'][label]['twts'] = twts[ant_labels.index(label)]                                        
                                             # self.grid_mapper[apol]['labels'][label]['flag'] = self.antennas[label].antpol.flag[apol]
         
                                             select_ant_ind = self.grid_mapper[apol]['ant']['rev_ind_all'][self.grid_mapper[apol]['ant']['rev_ind_all'][job_ind]:self.grid_mapper[apol]['ant']['rev_ind_all'][job_ind+1]]
@@ -11432,6 +11458,7 @@ class AntennaArray:
                                     if self.grid_mapper[apol]['ant']['rev_ind_all'][j] < self.grid_mapper[apol]['ant']['rev_ind_all'][j+1]:
     
                                         self.grid_mapper[apol]['labels'][label] = {}
+                                        self.grid_mapper[apol]['labels'][label]['twts'] = twts[ant_labels.index(label)] 
                                         # self.grid_mapper[apol]['labels'][label]['flag'] = self.antennas[label].antpol.flag[apol]
     
                                         select_ant_ind = self.grid_mapper[apol]['ant']['rev_ind_all'][self.grid_mapper[apol]['ant']['rev_ind_all'][j]:self.grid_mapper[apol]['ant']['rev_ind_all'][j+1]]
@@ -11479,6 +11506,7 @@ class AntennaArray:
                                 if self.grid_mapper[apol]['ant']['rev_ind_all'][j] < self.grid_mapper[apol]['ant']['rev_ind_all'][j+1]:
                                     select_ant_ind = self.grid_mapper[apol]['ant']['rev_ind_all'][self.grid_mapper[apol]['ant']['rev_ind_all'][j]:self.grid_mapper[apol]['ant']['rev_ind_all'][j+1]]
                                     self.grid_mapper[apol]['labels'][label] = {}
+                                    self.grid_mapper[apol]['labels'][label]['twts'] = twts[ant_labels.index(label)] 
                                     # self.grid_mapper[apol]['labels'][label]['flag'] = self.antennas[label].antpol.flag[apol]
                                     if mapping == 'weighted':
                                         gridind_raveled_around_ant = self.grid_mapper[apol]['grid']['ind_all'][select_ant_ind]
@@ -11541,7 +11569,7 @@ class AntennaArray:
     
                                     for job_ind in xrange(job_start, min(job_start+nproc, num_ant)):    # Start the parallel processes and store the outputs in a queue
                                         label = self.ordered_labels[self.grid_mapper[apol]['ant']['uniq_ind_all'][job_ind]]
-    
+                                        self.grid_mapper[apol]['labels'][label]['twts'] = twts[ant_labels.index(label)]    
                                         if self.grid_mapper[apol]['ant']['rev_ind_all'][job_ind] < self.grid_mapper[apol]['ant']['rev_ind_all'][job_ind+1]:
         
                                             select_ant_ind = self.grid_mapper[apol]['ant']['rev_ind_all'][self.grid_mapper[apol]['ant']['rev_ind_all'][job_ind]:self.grid_mapper[apol]['ant']['rev_ind_all'][job_ind+1]]
@@ -11577,6 +11605,7 @@ class AntennaArray:
                                     if self.grid_mapper[apol]['ant']['rev_ind_all'][j] < self.grid_mapper[apol]['ant']['rev_ind_all'][j+1]:
                                         select_ant_ind = self.grid_mapper[apol]['ant']['rev_ind_all'][self.grid_mapper[apol]['ant']['rev_ind_all'][j]:self.grid_mapper[apol]['ant']['rev_ind_all'][j+1]]
                                         label = self.ordered_labels[self.grid_mapper[apol]['ant']['uniq_ind_all'][j]]
+                                        self.grid_mapper[apol]['labels'][label]['twts'] = twts[ant_labels.index(label)]    
                                         gridind_raveled_around_ant = self.grid_mapper[apol]['grid']['ind_all'][select_ant_ind]
                                         uniq_gridind_raveled_around_ant = NP.unique(gridind_raveled_around_ant)
                                         list_of_ant_labels += [label]
@@ -11605,6 +11634,7 @@ class AntennaArray:
                                 if self.grid_mapper[apol]['ant']['rev_ind_all'][j] < self.grid_mapper[apol]['ant']['rev_ind_all'][j+1]:
                                     select_ant_ind = self.grid_mapper[apol]['ant']['rev_ind_all'][self.grid_mapper[apol]['ant']['rev_ind_all'][j]:self.grid_mapper[apol]['ant']['rev_ind_all'][j+1]]
                                     label = self.ordered_labels[self.grid_mapper[apol]['ant']['uniq_ind_all'][j]]
+                                    self.grid_mapper[apol]['labels'][label]['twts'] = twts[ant_labels.index(label)]                                        
                                     self.grid_mapper[apol]['labels'][label]['Ef'] = {}
                                     if mapping == 'weighted':
                                         gridind_raveled_around_ant = self.grid_mapper[apol]['grid']['ind_all'][select_ant_ind]
