@@ -10400,6 +10400,7 @@ class AntennaArray:
         self.grid_ready = False
         self.grid_illumination = {}
         self.grid_Ef = {}
+        self.caldata = {}
         self.f = None
         self.f0 = None
         self.t = None
@@ -10430,6 +10431,7 @@ class AntennaArray:
             self.grid_illumination[pol] = None
             self.grid_Ef[pol] = None
             self._ant_contribution[pol] = {}
+            self.caldata[pol] = None
 
         if antenna_array is not None:
             self += antenna_array
@@ -10995,7 +10997,7 @@ class AntennaArray:
     # @profile
     def grid_convolve(self, pol=None, ants=None, unconvolve_existing=False,
                       normalize=False, method='NN', distNN=NP.inf, tol=None,
-                      maxmatch=None, identical_antennas=True,
+                      maxmatch=None, identical_antennas=True, cal_loop=False,
                       gridfunc_freq=None, mapping='weighted', wts_change=False,
                       parallel=False, nproc=None, pp_method='pool', verbose=True): 
 
@@ -11077,6 +11079,13 @@ class AntennaArray:
                    treated as identical. If True (default), they are identical
                    and their gridding kernels are identical. If False, they are
                    not identical and each one has its own gridding kernel.
+
+        cal_loop   [boolean] If True, the calibration loop is assumed to be ON 
+                   and hence the calibrated electric fields are set in the 
+                   calibration loop. If False (default), the calibration loop is
+                   assumed to be OFF and the current electric fields are assumed 
+                   to be the calibrated data to be mapped to the grid 
+                   via gridding convolution.
 
         gridfunc_freq
                    [String scalar] If set to None (not provided) or to 'scale'
@@ -11203,13 +11212,18 @@ class AntennaArray:
                     # Ef_dict = self.get_E_fields(apol, flag=None, sort=True)
                     # Ef = Ef_dict['E-fields'].astype(NP.complex64)  # n_ant x nchan
 
-                    Ef_dict = self.get_E_fields(apol, flag=None, tselect=-1, fselect=None, aselect=None, datapool='current', sort=True)
-                    Ef = Ef_dict['E-fields'].astype(NP.complex64)  #  (n_ts=1) x n_ant x nchan
+                    if not cal_loop:
+                        self.caldata[apol] = self.get_E_fields(apol, flag=None, tselect=-1, fselect=None, aselect=None, datapool='current', sort=True)
+                    else:
+                        if self.caldata[apol] is None:
+                            self.caldata[apol] = self.get_E_fields(apol, flag=None, tselect=-1, fselect=None, aselect=None, datapool='current', sort=True)
+
+                    Ef = self.caldata[apol]['E-fields'].astype(NP.complex64)  #  (n_ts=1) x n_ant x nchan
                     Ef = NP.squeeze(Ef)  # n_ant x nchan
                     if Ef.shape[0] != n_ant:
                         raise ValueError('Encountered unexpected behavior. Need to debug.')
-                    ant_labels = Ef_dict['labels']
-                    twts = Ef_dict['twts']  # (n_ts=1) x n_ant x (nchan=1)
+                    ant_labels = self.caldata[apol]['labels']
+                    twts = self.caldata[apol]['twts']  # (n_ts=1) x n_ant x (nchan=1)
                     twts = NP.squeeze(twts)
 
                     if verbose:
@@ -12049,7 +12063,7 @@ class AntennaArray:
                                 list_of_antennas += [self.antennas[dictitem['label']]]
                                 list_of_antenna_updates += [dictitem]
 
-                            if 'gric_action' in dictitem:
+                            if 'grid_action' in dictitem:
                                 self.grid_convolve(pol=dictitem['gridpol'], ants=dictitem['antenna'], unconvolve_existing=True, normalize=dictitem['norm_wts'], method=dictitem['gridmethod'], distNN=dictitem['distNN'], tol=dictitem['tol'], maxmatch=dictitem['maxmatch'])
                     else:
                         raise ValueError('Update action should be set to "add", "remove" or "modify".')

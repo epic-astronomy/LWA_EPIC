@@ -1,3 +1,19 @@
+From 6d5890b:
+============
+
+In antenna_array.py,
+
+(*) Add new attribute caldata to class AntennaArray to carry
+information about calibrated antenna data and initialize in
+__init__() member function. Update docstring accordingly
+(*) Add input keyword cal_loop in the arguments list of member
+function grid_convolve() of class InterferometerArray to indicate
+if the calibration loop is ON or OFF. Update docstring of this
+member function accordingly
+(*) Update/refresh attribute caldata inside member function
+grid_convolve() of class AntennaArray depending on whether the
+calibration loop is ON/OFF as indicated by input keyword cal_loop 
+
 From bb2686e:
 ============
 
