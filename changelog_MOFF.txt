@@ -1,3 +1,15 @@
+From bb2686e:
+============
+
+In antenna_array.py,
+
+(*) Correct variables num_flagged and sum_wts to num_unflagged and
+sum_twts respectively in member function make_grid_cube() in class
+InterferometerArray
+(*) Update docstring for change one of the keys under attribute 
+grid_mapper of classes AntennaArray and InterferometerArray from
+'flag' to 'twts'
+
 From 456c73a:
 ============
 

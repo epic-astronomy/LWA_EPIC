@@ -4773,9 +4773,16 @@ class InterferometerArray:
                               interferometer label). The value under each label 
                               key is another dictionary with the following keys 
                               and information:
-                              'flag'         [boolean] if True, this cross-
-                                             polarization for this interferometer
-                                             will not be mapped to the grid
+                              'twts'         [scalar] if positive, indicates
+                                             the number of timestamps that 
+                                             have gone into the measurement of  
+                                             complex Vf made by the 
+                                             interferometer under the 
+                                             specific polarization. If zero, it
+                                             indicates no unflagged timestamp data
+                                             was found for the interferometer and 
+                                             willnot contribute to the complex 
+                                             grid illumination and visibilities
                               'twts'         [scalar] denotes the number of 
                                              timestamps for which the 
                                              interferometer data was not flagged
@@ -6497,12 +6504,12 @@ class InterferometerArray:
                             if verbose:
                                 progress.finish()
 
-    ################################################################################# 
+    ############################################################################
 
     def make_grid_cube(self, pol=None, verbose=True):
 
         """
-        ----------------------------------------------------------------------------
+        ------------------------------------------------------------------------
         Constructs the grid of complex power illumination and visibilities using 
         the gridding information determined for every baseline. Flags are taken
         into account while constructing this grid.
@@ -6515,7 +6522,7 @@ class InterferometerArray:
         
         verbose [boolean] If True, prints diagnostic and progress messages. 
                 If False (default), suppress printing such messages.
-        ----------------------------------------------------------------------------
+        ------------------------------------------------------------------------
         """
 
         if pol is None:
@@ -6559,7 +6566,7 @@ class InterferometerArray:
             progress.finish()
 
             # self.grid_illumination[cpol] *= num_flagged/sum_wts
-            self.grid_Vf[cpol] *= num_flagged/sum_wts
+            self.grid_Vf[cpol] *= num_unflagged/sum_twts
                 
             if verbose:
                 print 'Gridded aperture illumination and visibilities for polarization {0} from {1:0d} unflagged contributing baselines'.format(cpol, num_unflagged)
@@ -10241,9 +10248,15 @@ class AntennaArray:
                             antenna label). The value under each label 
                             key is another dictionary with the following keys 
                             and information:
-                            'flag'         [boolean] if True, this 
-                                           polarization for this antenna
-                                           will not be mapped to the grid
+                            'twts'         [scalar] if positive, indicates
+                                           the number of timestamps that 
+                                           have gone into the measurement of Ef 
+                                           made by the antenna under the 
+                                           specific polarization. If zero, it
+                                           indicates no unflagged timestamp data
+                                           was found for the antenna and will
+                                           not contribute to the complex grid 
+                                           illumination and electric fields
                             'gridind'      [numpy vector] one-dimensional index 
                                            into the three-dimensional grid 
                                            locations where the antenna
@@ -10987,12 +11000,12 @@ class AntennaArray:
                       parallel=False, nproc=None, pp_method='pool', verbose=True): 
 
         """
-        ----------------------------------------------------------------------------
-        Routine to project the complex illumination field pattern and the electric
-        fields on the grid. It can operate on the entire antenna array 
-        or incrementally project the electric fields and complex illumination field 
-        patterns from specific antennas on to an already existing grid. (The
-        latter is not implemented yet)
+        ------------------------------------------------------------------------
+        Routine to project the complex illumination field pattern and the 
+        electric fields on the grid. It can operate on the entire antenna array 
+        or incrementally project the electric fields and complex illumination 
+        field patterns from specific antennas on to an already existing grid. 
+        (The latter is not implemented yet)
 
         Inputs:
 
