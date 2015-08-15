@@ -1,3 +1,15 @@
+From 9528c79:
+============
+
+In antenna_array.py,
+
+(*) Compute gridded illumination and visibilities ignoring twts in
+member function make_grid_cube() of class InterferometerArray
+(*) Minor changes to widths of bounding lines and docstrings to be
+less than 80-characters wide
+(*) Remove commented and deprecated classes PolInfo_old, Antenna_old
+and AntennaArray_old
+
 From 6d5890b:
 ============
 
