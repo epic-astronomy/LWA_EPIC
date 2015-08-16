@@ -8295,7 +8295,7 @@ class AntennaArray:
         
     ############################################################################
 
-    def grid(self, uvspacing=0.5, uvpad=None, pow2=True, pol=None):
+    def grid(self, uvspacing=0.5, xypad=None, pow2=True, pol=None):
         
         """
         ------------------------------------------------------------------------
@@ -8308,11 +8308,11 @@ class AntennaArray:
                     Default = 0.5
 
         xypad       [List] Padding to be applied around the antenna locations 
-                    before forming a grid. List elements should be positive. If 
-                    it is a one-element list, the element is applicable to both 
-                    x and y axes. If list contains three or more elements, only 
-                    the first two elements are considered one for each axis. 
-                    Default = None.
+                    before forming a grid. Units in meters. List elements should 
+                    be positive. If it is a one-element list, the element is 
+                    applicable to both x and y axes. If list contains three or 
+                    more elements, only the first two elements are considered 
+                    one for each axis. Default = None.
 
         pow2        [Boolean] If set to True, the grid is forced to have a size 
                     a next power of 2 relative to the actual sie required. If 
@@ -8337,13 +8337,20 @@ class AntennaArray:
         # Change itervalues() to values() when porting to Python 3.x
         # May have to change *blc and *trc with zip(*blc) and zip(*trc) when using Python 3.x
 
-        blc = [[self.antennas[label].blc[0,0], self.antennas[label].blc[0,1]] for label in self.antennas]
-        trc = [[self.antennas[label].trc[0,0], self.antennas[label].trc[0,1]] for label in self.antennas]
+        blc = NP.asarray([[self.antennas[label].blc[0,0], self.antennas[label].blc[0,1]] for label in self.antennas]).reshape(-1,2)
+        trc = NP.asarray([[self.antennas[label].trc[0,0], self.antennas[label].trc[0,1]] for label in self.antennas]).reshape(-1,2)
 
-        self.trc = NP.amax(NP.abs(NP.vstack((NP.asarray(blc), NP.asarray(trc)))), axis=0).ravel() / min_lambda
+        xycenter = 0.5 * (NP.amin(blc, axis=0, keepdims=True) + NP.amax(trc, axis=0, keepdims=True))
+        blc = blc - xycenter
+        trc = trc - xycenter
+
+        self.trc = NP.amax(NP.abs(NP.vstack((blc, trc))), axis=0).ravel() / min_lambda
         self.blc = -1 * self.trc
 
-        self.gridu, self.gridv = GRD.grid_2d([(self.blc[0], self.trc[0]), (self.blc[1], self.trc[1])], pad=uvpad, spacing=uvspacing, pow2=True)
+        if xypad is None:
+            xypad = 0.0
+
+        self.gridu, self.gridv = GRD.grid_2d([(self.blc[0], self.trc[0]), (self.blc[1], self.trc[1])], pad=xypad/min_lambda, spacing=uvspacing, pow2=True)
 
         self.grid_blc = NP.asarray([self.gridu.min(), self.gridv.min()])
         self.grid_trc = NP.asarray([self.gridu.max(), self.gridv.max()])

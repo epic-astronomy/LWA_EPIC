@@ -1,3 +1,14 @@
+From 1889952:
+============
+
+In antenna_array.py,
+
+(*) Subtract the geometric center of the antenna array locations from
+BLC and TRC computation inside member function grid() of class
+AntennaArray
+(*) Change input keyword uvpad to xypad in member function grid() of
+class AntennaArray. Change docstring accordingly
+
 From d694652:
 ============
 
