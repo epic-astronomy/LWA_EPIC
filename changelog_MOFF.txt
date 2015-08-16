@@ -1,3 +1,14 @@
+From d694652:
+============
+
+In antenna_array.py,
+
+(*) Modify docstring of member function antenna_positions() of class
+AntennaArray to indicate the labels returned are in a list of strings
+(*) Modify docstring of member function baseline_vectors() of class
+InterferometerArray to indicate the labels returned are in a list of
+tuples of antenna labels
+
 From 9528c79:
 ============
 

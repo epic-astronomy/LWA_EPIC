@@ -2662,8 +2662,7 @@ class InterferometerArray:
 
         outdict  [dictionary] Output consists of a dictionary with the following 
                  keys and information:
-                 'labels':    Contains a numpy array of strings of 
-                              interferometer labels
+                 'labels':    list of tuples of strings of interferometer labels
                  'baselines': baseline vectors of interferometers (3-column 
                               array)
         ------------------------------------------------------------------------
@@ -8029,8 +8028,7 @@ class AntennaArray:
 
         outdict  [dictionary] Output consists of a dictionary with the following 
                  keys and information:
-                 'labels':    Contains a numpy array of strings of antenna 
-                              labels
+                 'labels':    list of strings of antenna labels
                  'positions': position vectors of antennas (3-column 
                               array)
         ------------------------------------------------------------------------
