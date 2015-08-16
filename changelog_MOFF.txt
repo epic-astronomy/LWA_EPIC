@@ -1,3 +1,16 @@
+From 25c3db0:
+============
+
+In antenna_array.py,
+
+(*) Add attribute antenna_center to class AntennaArray. Initialize it
+in __init__() member function and assign it in member funciton grid().
+Update docstring accordingly
+(*) Remove unused attributes gridx and gridy of class AntennaArray
+from __init__() member function. Update docstring accordingly
+(*) Update docstring of class AntennaArray and its __init__() member
+function to accurately reflect current attributes
+
 From 1889952:
 ============
 

@@ -7504,71 +7504,53 @@ class AntennaArray:
                  of class Antenna. The keys themselves are identical to the
                  label attributes of the antenna instances they hold.
 
-    ants_blc_P1  [2-element Numpy array] The coordinates of the bottom left 
-                 corner of the array of antennas for polarization P1.
+    blc          [2-element Numpy array] The coordinates of the bottom left 
+                 corner of the array of antennas
 
-    ants_trc_P1  [2-element Numpy array] The coordinates of the top right 
-                 corner of the array of antennas for polarization P1.
+    trc          [2-element Numpy array] The coordinates of the top right 
+                 corner of the array of antennas
 
-    ants_blc_P2  [2-element Numpy array] The coordinates of the bottom left 
-                 corner of the array of antennas for polarization P2.
+    grid_blc     [2-element Numpy array] The coordinates of the bottom left 
+                 corner of the grid constructed for the array of antennas.
+                 This may differ from blc due to any extra padding during the 
+                 gridding process.
 
-    ants_trc_P2  [2-element Numpy array] The coordinates of the top right 
-                 corner of the array of antennas for polarization P2.
-
-    grid_blc_P1  [2-element Numpy array] The coordinates of the bottom left 
+    grid_trc     [2-element Numpy array] The coordinates of the top right 
                  corner of the grid constructed for the array of antennas
-                 for polarization P1. This may differ from ants_blc_P1 due to
-                 any extra padding during the gridding process.
+                 This may differ from trc due to any extra padding during the 
+                 gridding process.
 
-    grid_trc_P1  [2-element Numpy array] The coordinates of the top right 
-                 corner of the grid constructed for the array of antennas
-                 for polarization P1. This may differ from ants_trc_P1 due to
-                 any extra padding during the gridding process.
+    grid_ready   [boolean] True if the grid has been created, False otherwise
 
-    grid_blc_P2  [2-element Numpy array] The coordinates of the bottom left 
-                 corner of the grid constructed for the array of antennas
-                 for polarization P2. This may differ from ants_blc_P2 due to
-                 any extra padding during the gridding process.
+    gridu        [Numpy array] u-locations of the grid lattice stored as 2D 
+                 array. It is the same for all frequencies and hence no third 
+                 dimension for the spectral axis.
 
-    grid_trc_P2  [2-element Numpy array] The coordinates of the top right 
-                 corner of the grid constructed for the array of antennas
-                 for polarization P2. This may differ from ants_trc_P2 due to
-                 any extra padding during the gridding process.
+    gridv        [Numpy array] v-locations of the grid lattice stored as 2D 
+                 array. It is the same for all frequencies and hence no third 
+                 dimension for the spectral axis.
 
-    grid_ready_P1 
-                 [boolean] True if the grid has been created for P1 
-                 polarization, False otherwise
+    antennas_center
+                 [Numpy array] geometrical center of the antenna array locations
+                 as a 2-element array of x- and y-values of the center. This is
+                 not the center of mass of the antenna locations but simply the 
+                 mid-point between the extreme x- and y- coordinates of the 
+                 antennas
 
-    grid_ready_P2
-                 [boolean] True if the grid has been created for P2 
-                 polarization, False otherwise
+    grid_illuminaton
+                 [dictionary] Electric field illumination of antenna aperture
+                 for each polarization held under keys 'P1' and 'P2'. Could be 
+                 complex. Stored as numpy arrays in the form of cubes with 
+                 same dimensions as gridu or gridv in the transverse (first two
+                 dimensions) and the depth along the third dimension (spectral 
+                 axis) is equal to number of frequency channels
 
-    gridx_P1     [Numpy array] x-locations of the grid lattice for P1
-                 polarization
-
-    gridy_P1     [Numpy array] y-locations of the grid lattice for P1
-                 polarization
-
-    gridx_P2     [Numpy array] x-locations of the grid lattice for P2
-                 polarization
-
-    gridy_P2     [Numpy array] y-locations of the grid lattice for P2
-                 polarization
-
-    grid_illuminaton_P1
-                 [Numpy array] Electric field illumination for P1 polarization 
-                 on the grid. Could be complex. Same size as the grid
-
-    grid_illuminaton_P2
-                 [Numpy array] Electric field illumination for P2 polarization 
-                 on the grid. Could be complex. Same size as the grid
-
-    grid_Ef_P1   [Numpy array] Complex Electric field of polarization P1 
-                 projected on the grid. 
-
-    grid_Ef_P2   [Numpy array] Complex Electric field of polarization P2 
-                 projected on the grid. 
+    grid_Ef      [dictionary] Complex Electric field projected on the grid
+                 for each polarization under the keys 'P1' and P2'. Stored as
+                 numpy arrays in the form of cubes with same dimensions as gridu 
+                 or gridv in the transverse (first two dimensions) and the depth 
+                 along the third dimension (spectral axis) is equal to number of 
+                 frequency channels. 
 
     f            [Numpy array] Frequency channels (in Hz)
 
@@ -7729,8 +7711,9 @@ class AntennaArray:
         array of antennas.
 
         Class attributes initialized are:
-        antennas, blc, trc, gridx, gridy, gridu, gridv, grid_ready, timestamp, 
-        grid_illumination, grid_Ef, f, f0, t, ordered_labels, grid_mapper
+        antennas, blc, trc, gridu, gridv, grid_ready, timestamp, 
+        grid_illumination, grid_Ef, f, f0, t, ordered_labels, grid_mapper, 
+        antennas_center
      
         Read docstring of class AntennaArray for details on these attributes.
 
@@ -7751,8 +7734,8 @@ class AntennaArray:
         self.trc = NP.zeros(2)
         self.grid_blc = NP.zeros(2)
         self.grid_trc = NP.zeros(2)
-        self.gridx, self.gridy = None, None
         self.gridu, self.gridv = None, None
+        self.antennas_center = NP.zeros(2, dtype=NP.float).reshape(1,-1)
         self.grid_ready = False
         self.grid_illumination = {}
         self.grid_Ef = {}
@@ -8346,6 +8329,7 @@ class AntennaArray:
 
         self.trc = NP.amax(NP.abs(NP.vstack((blc, trc))), axis=0).ravel() / min_lambda
         self.blc = -1 * self.trc
+        self.antennas_center = xycenter
 
         if xypad is None:
             xypad = 0.0
