@@ -1,4 +1,14 @@
-From 2580912:
+From bf1af33:
+============
+
+In changelog_MOFF.txt,
+
+(*) Update hashtags after rebasing Adam's commit #e97804b in the 
+remote repository to branch FX-accumulate. The rebasing changed the 
+hashtags of some previous commits. The old hashtags are now mentioned 
+in parenthesis below.
+
+From e7a5b26 (2580912):
 ============
 
 In antenna_array.py,
@@ -14,7 +24,7 @@ centering set to True
 (*) Remove input keyword pol in member functions grid() of classes
 AntennaArray and InterferometerArray
 
-From 25c3db0:
+From b9305d8 (25c3db0):
 ============
 
 In antenna_array.py,
@@ -27,7 +37,7 @@ from __init__() member function. Update docstring accordingly
 (*) Update docstring of class AntennaArray and its __init__() member
 function to accurately reflect current attributes
 
-From 1889952:
+From 252e69e (1889952):
 ============
 
 In antenna_array.py,
