@@ -1,3 +1,19 @@
+From 2580912:
+============
+
+In antenna_array.py,
+
+(*) Add member functions quick_beam_synthesis() to classes 
+AntennaArray and InterferometerArray. Tested successfully. Update
+docstring of classes with descriptions of this member function
+(*) Add input keyword centering to member function antenna_positions()
+of class AntennaArray. Update docstring accordingly
+(*) In member function grid_convolve() of class AntennaArray, modify
+call to member function antenna_positions() using the input keyword
+centering set to True
+(*) Remove input keyword pol in member functions grid() of classes
+AntennaArray and InterferometerArray
+
 From 25c3db0:
 ============
 

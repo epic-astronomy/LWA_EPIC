@@ -2271,6 +2271,12 @@ class InterferometerArray:
                     patterns of specific antenna pairs from an already existing 
                     grid.
 
+    quick_beam_synthesis()
+                    A quick generator of synthesized beam using interferometer 
+                    array grid illumination pattern using the center frequency. 
+                    Not intended to be used rigorously but rather for comparison 
+                    purposes and making quick plots
+
     update_flags()  Updates all flags in the interferometer array followed by 
                     any flags that need overriding through inputs of specific 
                     flag information
@@ -3114,7 +3120,7 @@ class InterferometerArray:
 
     ############################################################################
 
-    def grid(self, uvspacing=0.5, uvpad=None, pow2=True, pol=None):
+    def grid(self, uvspacing=0.5, uvpad=None, pow2=True):
         
         """
         ------------------------------------------------------------------------
@@ -3137,10 +3143,6 @@ class InterferometerArray:
                     a next power of 2 relative to the actual sie required. If 
                     False, gridding is done with the appropriate size as 
                     determined by uvspacing. Default = True.
-
-        pol         [String] The polarization to be gridded. Can be set to 
-                    'P11', 'P12', 'P21', or 'P22'. If set to None, gridding for 
-                    all the polarizations is performed. 
         ------------------------------------------------------------------------
         """
 
@@ -3914,6 +3916,112 @@ class InterferometerArray:
                 print 'Gridded aperture illumination and visibilities for polarization {0} from {1:0d} unflagged contributing baselines'.format(cpol, num_unflagged)
 
     ############################################################################
+
+    def quick_beam_synthesis(self, pol=None):
+        
+        """
+        ------------------------------------------------------------------------
+        A quick generator of synthesized beam using interferometer array grid 
+        illumination pattern using the center frequency. Not intended to be used
+        rigorously but rather for comparison purposes and making quick plots
+
+        Inputs:
+
+        pol     [String] The polarization of the synthesized beam. Can be set 
+                to 'P11', 'P12', 'P21' or 'P2'. If set to None, synthesized beam 
+                for all the polarizations are generated. Default=None
+
+        Outputs:
+
+        Dictionary with the following keys and information:
+
+        'syn_beam'  [numpy array] synthesized beam of same size as that of the 
+                    interferometer array grid. It is FFT-shifted to place the 
+                    origin at the center of the array. The peak value of the 
+                    synthesized beam is fixed at unity
+
+        'grid_power_illumination'
+                    [numpy array] complex grid illumination obtained from 
+                    inverse fourier transform of the synthesized beam in 
+                    'syn_beam' and has size same as that of the interferometer 
+                    array grid. It is FFT-shifted to have the origin at the 
+                    center. The sum of this array is set to unity to match the 
+                    peak of the synthesized beam
+
+        'l'         [numpy vector] x-values of the direction cosine grid 
+                    corresponding to x-axis (axis=1) of the synthesized beam
+
+        'm'         [numpy vector] y-values of the direction cosine grid 
+                    corresponding to y-axis (axis=0) of the synthesized beam
+        ------------------------------------------------------------------------
+        """
+
+        if not self.grid_ready:
+            raise ValueError('Need to perform gridding of the antenna array before an equivalent UV grid can be simulated')
+
+        if pol is None:
+            pol = ['P11', 'P12', 'P21', 'P22']
+        elif isinstance(pol, str):
+            if pol in ['P11', 'P12', 'P21', 'P22']:
+                pol = [pol]
+            else:
+                raise ValueError('Invalid polarization specified')
+        elif isinstance(pol, list):
+            p = [cpol for cpol in pol if cpol in ['P11', 'P12', 'P21', 'P22']]
+            if len(p) == 0:
+                raise ValueError('Invalid polarization specified')
+            pol = p
+        else:
+            raise TypeError('Input keyword pol must be string, list or set to None')
+
+        pol = sorted(pol)
+
+        for cpol in pol:
+            if self.grid_illumination[cpol] is None:
+                raise ValueError('Grid illumination for the specified polarization is not determined yet. Must use make_grid_cube()')
+
+        chan = NP.argmin(NP.abs(self.f - self.f0))
+        orig_syn_beam_in_uv = NP.empty(self.gridu.shape+(len(pol),), dtype=NP.complex)
+        for pind, cpol in enumerate(pol):
+            orig_syn_beam_in_uv[:,:,pind] = self.grid_illumination[cpol][:,:,chan]
+
+        # # Pad it with zeros to be twice the size
+        # padded_syn_beam_in_uv = NP.pad(orig_syn_beam_in_uv, ((0,orig_syn_beam_in_uv.shape[0]),(0,orig_syn_beam_in_uv.shape[1]),(0,0)), mode='constant', constant_values=0)
+        # # The NP.roll statements emulate a fftshift but by 1/4 of the size of the padded array
+        # padded_syn_beam_in_uv = NP.roll(padded_syn_beam_in_uv, -orig_syn_beam_in_uv.shape[0]/2, axis=0)
+        # padded_syn_beam_in_uv = NP.roll(padded_syn_beam_in_uv, -orig_syn_beam_in_uv.shape[1]/2, axis=1)
+
+        # Pad it with zeros on either side to be twice the size
+        padded_syn_beam_in_uv = NP.pad(orig_syn_beam_in_uv, ((orig_syn_beam_in_uv.shape[0]/2,orig_syn_beam_in_uv.shape[0]/2),(orig_syn_beam_in_uv.shape[1]/2,orig_syn_beam_in_uv.shape[1]/2),(0,0)), mode='constant', constant_values=0)
+
+        # Shift to be centered
+        padded_syn_beam_in_uv = NP.fft.ifftshift(padded_syn_beam_in_uv)
+
+        # Compute the synthesized beam. It is at a finer resolution due to padding
+        syn_beam = NP.fft.fft2(padded_syn_beam_in_uv, axes=(0,1))
+
+        # Select only the real part, equivalent to adding conjugate baselines
+        syn_beam = 2 * syn_beam.real
+        syn_beam /= syn_beam.max()
+
+        # Inverse Fourier Transform to obtain real and symmetric uv-grid illumination
+        syn_beam_in_uv = NP.fft.ifft2(syn_beam, axes=(0,1))
+
+        # shift the array to be centered
+        syn_beam_in_uv = NP.fft.ifftshift(syn_beam_in_uv)
+
+        # Discard pads at either end and select only the central values of original size
+        syn_beam_in_uv = syn_beam_in_uv[orig_syn_beam_in_uv.shape[0]/2:orig_syn_beam_in_uv.shape[0]/2+orig_syn_beam_in_uv.shape[0],orig_syn_beam_in_uv.shape[1]/2:orig_syn_beam_in_uv.shape[1]/2+orig_syn_beam_in_uv.shape[1],:]
+        syn_beam = NP.fft.fftshift(syn_beam[::2,::2,:])  # Downsample by factor 2 to get native resolution and shift to be centered
+        
+        du = self.gridu[0,1] - self.gridu[0,0]
+        dv = self.gridv[1,0] - self.gridv[0,0]
+        l = DSP.spectax(self.gridu.shape[1], resolution=du, shift=True)
+        m = DSP.spectax(self.gridv.shape[0], resolution=dv, shift=True)        
+
+        return {'syn_beam': syn_beam, 'grid_power_illumination': syn_beam_in_uv, 'l': l, 'm': m}
+
+    ############################################################################ 
 
     def grid_convolve_old(self, pol=None, antpairs=None, unconvolve_existing=False,
                           normalize=False, method='NN', distNN=NP.inf, tol=None,
@@ -7694,6 +7802,12 @@ class AntennaArray:
                       for every antenna. Flags are taken into account while 
                       constructing this grid.
 
+    quick_beam_synthesis()  
+                      A quick generator of synthesized beam using antenna array 
+                      field illumination pattern using the center frequency. Not 
+                      intended to be used rigorously but rather for comparison 
+                      purposes and making quick plots
+
     update():         Updates the antenna array instance with newer attribute
                       values
                       
@@ -7986,7 +8100,8 @@ class AntennaArray:
 
     ############################################################################
 
-    def antenna_positions(self, pol=None, flag=False, sort=True):
+    def antenna_positions(self, pol=None, flag=False, sort=True,
+                          centering=False):
         
         """
         ------------------------------------------------------------------------
@@ -8006,6 +8121,11 @@ class AntennaArray:
 
         sort     [boolean] If True, returned antenna information is sorted 
                  by antenna label. Default = True.
+
+        centering 
+                 [boolean] If False (default), does not subtract the mid-point
+                 between the bottom left corner and the top right corner. If
+                 True, subtracts the mid-point and makes it the origin
 
         Output:
 
@@ -8061,6 +8181,11 @@ class AntennaArray:
                     else:              # get unflagged positions
                         xyz = NP.asarray([[self.antennas[label].location.x, self.antennas[label].location.y, self.antennas[label].location.z] for label in self.antennas.keys() if not self.antennas[label].antpol.flag[pol]])
                         labels = [label for label in self.antennas.keys() if not self.antennas[label].antpol.flag[pol]]
+
+        if centering:
+            xyzcenter = 0.5 * (NP.amin(xyz, axis=0, keepdims=True) + NP.amax(xyz, axis=0, keepdims=True))
+            xyz = xyz - xyzcenter
+            self.antennas_center = xyzcenter[0,:2].reshape(1,-1)
 
         outdict = {}
         outdict['labels'] = labels
@@ -8278,7 +8403,7 @@ class AntennaArray:
         
     ############################################################################
 
-    def grid(self, uvspacing=0.5, xypad=None, pow2=True, pol=None):
+    def grid(self, uvspacing=0.5, xypad=None, pow2=True):
         
         """
         ------------------------------------------------------------------------
@@ -8301,10 +8426,6 @@ class AntennaArray:
                     a next power of 2 relative to the actual sie required. If 
                     False, gridding is done with the appropriate size as 
                     determined by uvspacing. Default = True.
-
-        pol         [String] The polarization to be gridded. Can be set to 
-                    'P11', 'P12', 'P21', or 'P22'. If set to None, gridding for 
-                    all the polarizations is performed. 
         ------------------------------------------------------------------------
         """
 
@@ -8341,7 +8462,7 @@ class AntennaArray:
 
         self.grid_ready = True
 
-    ############################################################################ 
+    ############################################################################
 
     # @profile
     def grid_convolve(self, pol=None, ants=None, unconvolve_existing=False,
@@ -8526,7 +8647,7 @@ class AntennaArray:
                                 del ants[key] # remove the dictionary element since it is not an Antenna instance
                 
                     if identical_antennas and (gridfunc_freq == 'scale'):
-                        ant_dict = self.antenna_positions(pol=apol, flag=False, sort=True)
+                        ant_dict = self.antenna_positions(pol=apol, flag=False, sort=True, centering=True)
                         ant_xy = ant_dict['positions'][:,:2]
                         self.ordered_labels = ant_dict['labels']
                         n_ant = ant_xy.shape[0]
@@ -8555,7 +8676,7 @@ class AntennaArray:
                                                       remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
                         
                 else:  
-                    ant_dict = self.antenna_positions(pol=apol, flag=None, sort=True)
+                    ant_dict = self.antenna_positions(pol=apol, flag=None, sort=True, centering=True)
                     self.ordered_labels = ant_dict['labels']
                     ant_xy = ant_dict['positions'][:,:2] # n_ant x 2
                     n_ant = ant_xy.shape[0]
@@ -9090,6 +9211,107 @@ class AntennaArray:
                 
             if verbose:
                 print 'Gridded aperture illumination and electric fields for polarization {0} from {1:0d} unflagged contributing antennas'.format(apol, num_unflagged)
+
+    ############################################################################ 
+
+    def quick_beam_synthesis(self, pol=None, keep_zero_spacing=True):
+        
+        """
+        ------------------------------------------------------------------------
+        A quick generator of synthesized beam using antenna array field 
+        illumination pattern using the center frequency. Not intended to be used
+        rigorously but rather for comparison purposes and making quick plots
+
+        Inputs:
+
+        pol     [String] The polarization of the synthesized beam. Can be set 
+                to 'P1' or 'P2'. If set to None, synthesized beam for all the 
+                polarizations are generated. Default=None
+
+        keep_zero_spacing
+                [boolean] If set to True (default), keep the zero spacing in
+                uv-plane grid illumination and as a result the average value
+                of the synthesized beam could be non-zero. If False, the zero
+                spacing is forced to zero by removing the average value fo the
+                synthesized beam
+
+        Outputs:
+
+        Dictionary with the following keys and information:
+
+        'syn_beam'  [numpy array] synthesized beam of size twice as that of the 
+                    antenna array grid. It is FFT-shifted to place the 
+                    origin at the center of the array. The peak value of the 
+                    synthesized beam is fixed at unity
+
+        'grid_power_illumination'
+                    [numpy array] complex grid illumination obtained from 
+                    inverse fourier transform of the synthesized beam in 
+                    'syn_beam' and has size twice as that of the antenna 
+                    array grid. It is FFT-shifted to have the origin at the 
+                    center. The sum of this array is set to unity to match the 
+                    peak of the synthesized beam
+
+        'l'         [numpy vector] x-values of the direction cosine grid 
+                    corresponding to x-axis (axis=1) of the synthesized beam
+
+        'm'         [numpy vector] y-values of the direction cosine grid 
+                    corresponding to y-axis (axis=0) of the synthesized beam
+        ------------------------------------------------------------------------
+        """
+
+        if not self.grid_ready:
+            raise ValueError('Need to perform gridding of the antenna array before an equivalent UV grid can be simulated')
+
+        if pol is None:
+            pol = ['P1', 'P2']
+        elif isinstance(pol, str):
+            if pol in ['P1', 'P2']:
+                pol = [pol]
+            else:
+                raise ValueError('Invalid polarization specified')
+        elif isinstance(pol, list):
+            p = [apol for apol in pol if apol in ['P1', 'P2']]
+            if len(p) == 0:
+                raise ValueError('Invalid polarization specified')
+            pol = p
+        else:
+            raise TypeError('Input keyword pol must be string, list or set to None')
+
+        pol = sorted(pol)
+
+        for apol in pol:
+            if self.grid_illumination[apol] is None:
+                raise ValueError('Grid illumination for the specified polarization is not determined yet. Must use make_grid_cube()')
+
+        chan = NP.argmin(NP.abs(self.f - self.f0))
+        grid_field_illumination = NP.empty(self.gridu.shape+(len(pol),), dtype=NP.complex)
+        for pind, apol in enumerate(pol):
+            grid_field_illumination[:,:,pind] = self.grid_illumination[apol][:,:,chan]
+
+        syn_beam = NP.fft.fft2(grid_field_illumination, s=[4*self.gridu.shape[0], 4*self.gridv.shape[1]], axes=(0,1))
+        syn_beam = NP.abs(syn_beam)**2
+
+        if not keep_zero_spacing:
+            dclevel = NP.sum(syn_beam, axis=(0,1), keepdims=True) / (1.0*syn_beam.size/len(pol))
+            syn_beam = syn_beam - dclevel
+
+        syn_beam /= syn_beam.max()  # Normalize to get unit peak for PSF
+        syn_beam_in_uv = NP.fft.ifft2(syn_beam, axes=(0,1)) # Inverse FT
+
+        # shift the array to be centered
+        syn_beam_in_uv = NP.fft.ifftshift(syn_beam_in_uv) # Shift array to be centered
+
+        # Discard pads at either end and select only the central values of twice the original size
+        syn_beam_in_uv = syn_beam_in_uv[grid_field_illumination.shape[0]:3*grid_field_illumination.shape[0],grid_field_illumination.shape[1]:3*grid_field_illumination.shape[1],:]
+        syn_beam = NP.fft.fftshift(syn_beam[::2,::2,:])  # Downsample by factor 2 to get native resolution and shift to be centered
+        
+        du = self.gridu[0,1] - self.gridu[0,0]
+        dv = self.gridv[1,0] - self.gridv[0,0]
+        l = DSP.spectax(2*self.gridu.shape[1], resolution=du, shift=True)
+        m = DSP.spectax(2*self.gridv.shape[0], resolution=dv, shift=True)        
+
+        return {'syn_beam': syn_beam, 'grid_power_illumination': syn_beam_in_uv, 'l': l, 'm': m}
 
     ############################################################################ 
 
