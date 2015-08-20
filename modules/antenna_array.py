@@ -6418,12 +6418,12 @@ class NewImage:
                     self.holbeam[apol] = NP.fft.fftshift(syn_beam, axes=(0,1)) / sum_wts
                     self.holimg[apol] = NP.fft.fftshift(dirty_image, axes=(0,1)) / sum_wts
                     syn_beam = NP.abs(syn_beam) ** 2
-                    meanval = NP.sum(syn_beam, axis=(0,1), keepdims=True) / syn_beam.size
+                    meanval = NP.sum(syn_beam, axis=(0,1), keepdims=True) / (syn_beam.shape[0]*syn_beam.shape[1])
                     # meanval = NP.nanmean(syn_beam.reshape(-1,dirty_image.shape[2]), axis=0).reshape(1,1,-1)
                     sum_wts2 = sum_wts**2 - meanval
                     syn_beam -= meanval
                     dirty_image = NP.abs(dirty_image) ** 2
-                    meanval = NP.sum(dirty_image, axis=(0,1), keepdims=True) / dirty_image.size
+                    meanval = NP.sum(dirty_image, axis=(0,1), keepdims=True) / (dirty_image.shape[0]*dirty_image.shape[1])
                     # meanval = NP.nanmean(dirty_image.reshape(-1,syn_beam.shape[2]), axis=0).reshape(1,1,-1)
                     dirty_image -= meanval
                     self.beam[apol] = NP.fft.fftshift(syn_beam, axes=(0,1)) / sum_wts2
