@@ -4008,11 +4008,11 @@ class InterferometerArray:
         syn_beam_in_uv = NP.fft.ifft2(syn_beam, axes=(0,1))
 
         # shift the array to be centered
-        syn_beam_in_uv = NP.fft.ifftshift(syn_beam_in_uv)
+        syn_beam_in_uv = NP.fft.ifftshift(syn_beam_in_uv, axes=(0,1))
 
         # Discard pads at either end and select only the central values of original size
         syn_beam_in_uv = syn_beam_in_uv[orig_syn_beam_in_uv.shape[0]/2:orig_syn_beam_in_uv.shape[0]/2+orig_syn_beam_in_uv.shape[0],orig_syn_beam_in_uv.shape[1]/2:orig_syn_beam_in_uv.shape[1]/2+orig_syn_beam_in_uv.shape[1],:]
-        syn_beam = NP.fft.fftshift(syn_beam[::2,::2,:])  # Downsample by factor 2 to get native resolution and shift to be centered
+        syn_beam = NP.fft.fftshift(syn_beam[::2,::2,:], axes=(0,1))  # Downsample by factor 2 to get native resolution and shift to be centered
         
         du = self.gridu[0,1] - self.gridu[0,0]
         dv = self.gridv[1,0] - self.gridv[0,0]
@@ -6262,6 +6262,8 @@ class NewImage:
             
                 self.grid_illumination = {}
                 self.grid_Ef = {}
+                self.holimg = {}
+                self.holbeam = {}
                 self.img = {}
                 self.beam = {}
                 self.gridl = {}
@@ -6280,6 +6282,8 @@ class NewImage:
                         if verbose:
                             print '\n\t\tWorking on polarization {0}'.format(apol)
                                 
+                        self.holimg[apol] = None
+                        self.holbeam[apol] = None
                         self.img[apol] = None
                         self.beam[apol] = None
                         self.grid_wts[apol] = NP.zeros(self.gridu.shape+(self.f.size,))
@@ -6317,6 +6321,8 @@ class NewImage:
             
                 self.grid_illumination = {}
                 self.grid_Vf = {}
+                self.holimg = {}
+                self.holbeam = {}
                 self.img = {}
                 self.beam = {}
                 self.gridl = {}
@@ -6335,6 +6341,8 @@ class NewImage:
                         if verbose:
                             print '\n\t\tWorking on polarization {0}'.format(cpol)
                                 
+                        self.holimg[cpol] = None
+                        self.holbeam[cpol] = None
                         self.img[cpol] = None
                         self.beam[cpol] = None
                         self.grid_wts[cpol] = NP.zeros(self.gridu.shape+(self.f.size,))
@@ -6404,8 +6412,25 @@ class NewImage:
 
                     sum_wts = NP.sum(NP.abs(self.grid_wts[apol] * self.grid_illumination[apol]), axis=(0,1), keepdims=True)
 
-                    self.beam[apol] = NP.fft.fftshift(NP.fft.fft2(self.grid_wts[apol]*self.grid_illumination[apol],axes=(0,1)).real, axes=(0,1)) / sum_wts
-                    self.img[apol] = NP.fft.fftshift(NP.fft.fft2(self.grid_wts[apol]*self.grid_Ef[apol],axes=(0,1)).real, axes=(0,1)) / sum_wts
+                    syn_beam = NP.fft.fft2(self.grid_wts[apol]*self.grid_illumination[apol], s=[4*self.gridu.shape[0], 4*self.gridv.shape[1]], axes=(0,1))
+                    dirty_image = NP.fft.fft2(self.grid_wts[apol]*self.grid_Ef[apol], s=[4*self.gridu.shape[0], 4*self.gridv.shape[1]], axes=(0,1))
+                    # syn_beam /= NP.abs(syn_beam).max()  # Normalize to get unit peak for PSF
+                    self.holbeam[apol] = NP.fft.fftshift(syn_beam, axes=(0,1)) / sum_wts
+                    self.holimg[apol] = NP.fft.fftshift(dirty_image, axes=(0,1)) / sum_wts
+                    syn_beam = NP.abs(syn_beam) ** 2
+                    meanval = NP.sum(syn_beam, axis=(0,1), keepdims=True) / syn_beam.size
+                    # meanval = NP.nanmean(syn_beam.reshape(-1,dirty_image.shape[2]), axis=0).reshape(1,1,-1)
+                    sum_wts2 = sum_wts**2 - meanval
+                    syn_beam -= meanval
+                    dirty_image = NP.abs(dirty_image) ** 2
+                    meanval = NP.sum(dirty_image, axis=(0,1), keepdims=True) / dirty_image.size
+                    # meanval = NP.nanmean(dirty_image.reshape(-1,syn_beam.shape[2]), axis=0).reshape(1,1,-1)
+                    dirty_image -= meanval
+                    self.beam[apol] = NP.fft.fftshift(syn_beam, axes=(0,1)) / sum_wts2
+                    self.img[apol] = NP.fft.fftshift(dirty_image, axes=(0,1)) / sum_wts2
+                       
+                    # self.beam[apol] = NP.fft.fftshift(NP.fft.fft2(self.grid_wts[apol]*self.grid_illumination[apol],axes=(0,1)).real, axes=(0,1)) / sum_wts
+                    # self.img[apol] = NP.fft.fftshift(NP.fft.fft2(self.grid_wts[apol]*self.grid_Ef[apol],axes=(0,1)).real, axes=(0,1)) / sum_wts
 
         if self.measured_type == 'visibility':
             if pol is None: pol = ['P11', 'P12', 'P21', 'P22']
@@ -6421,9 +6446,28 @@ class NewImage:
 
                     sum_wts = NP.sum(NP.abs(self.grid_wts[cpol] * self.grid_illumination[cpol]), axis=(0,1), keepdims=True)
 
-                    self.beam[cpol] = NP.fft.fftshift(NP.fft.fft2(self.grid_wts[cpol]*self.grid_illumination[cpol],axes=(0,1)).real, axes=(0,1)) / sum_wts
-                    self.img[cpol] = NP.fft.fftshift(NP.fft.fft2(self.grid_wts[cpol]*self.grid_Vf[cpol],axes=(0,1)).real, axes=(0,1)) / sum_wts
-                    
+                    # Pad it with zeros on either side to be twice the size
+                    padded_syn_beam_in_uv = NP.pad(self.grid_wts[cpol]*self.grid_illumination[cpol], ((self.gridu.shape[0]/2,self.gridu.shape[0]/2),(self.gridv.shape[1]/2,self.gridv.shape[1]/2),(0,0)), mode='constant', constant_values=0)
+                    padded_grid_Vf = NP.pad(self.grid_wts[cpol]*self.grid_Vf[cpol], ((self.gridu.shape[0]/2,self.gridu.shape[0]/2),(self.gridv.shape[1]/2,self.gridv.shape[1]/2),(0,0)), mode='constant', constant_values=0)
+
+                    # Shift to be centered
+                    padded_syn_beam_in_uv = NP.fft.ifftshift(padded_syn_beam_in_uv, axes=(0,1))
+                    padded_grid_Vf = NP.fft.ifftshift(padded_grid_Vf, axes=(0,1))
+
+                    # Compute the synthesized beam. It is at a finer resolution due to padding
+                    syn_beam = NP.fft.fft2(padded_syn_beam_in_uv, axes=(0,1))
+                    dirty_image = NP.fft.fft2(padded_grid_Vf, axes=(0,1))
+        
+                    # Select only the real part, equivalent to adding conjugate baselines
+                    dirty_image = dirty_image.real
+                    syn_beam = syn_beam.real
+
+                    self.beam[cpol] = NP.fft.fftshift(syn_beam, axes=(0,1)) / sum_wts
+                    self.img[cpol] = NP.fft.fftshift(dirty_image, axes=(0,1)) / sum_wts
+
+                    # self.beam[cpol] = NP.fft.fftshift(NP.fft.fft2(self.grid_wts[cpol]*self.grid_illumination[cpol],axes=(0,1)).real, axes=(0,1)) / sum_wts
+                    # self.img[cpol] = NP.fft.fftshift(NP.fft.fft2(self.grid_wts[cpol]*self.grid_Vf[cpol],axes=(0,1)).real, axes=(0,1)) / sum_wts
+
         du = self.gridu[0,1] - self.gridu[0,0]
         dv = self.gridv[1,0] - self.gridv[0,0]
         self.gridl, self.gridm = NP.meshgrid(NP.fft.fftshift(NP.fft.fftfreq(grid_shape[1], du)), NP.fft.fftshift(NP.fft.fftfreq(grid_shape[0], dv)))
@@ -9300,11 +9344,11 @@ class AntennaArray:
         syn_beam_in_uv = NP.fft.ifft2(syn_beam, axes=(0,1)) # Inverse FT
 
         # shift the array to be centered
-        syn_beam_in_uv = NP.fft.ifftshift(syn_beam_in_uv) # Shift array to be centered
+        syn_beam_in_uv = NP.fft.ifftshift(syn_beam_in_uv, axes=(0,1)) # Shift array to be centered
 
         # Discard pads at either end and select only the central values of twice the original size
         syn_beam_in_uv = syn_beam_in_uv[grid_field_illumination.shape[0]:3*grid_field_illumination.shape[0],grid_field_illumination.shape[1]:3*grid_field_illumination.shape[1],:]
-        syn_beam = NP.fft.fftshift(syn_beam[::2,::2,:])  # Downsample by factor 2 to get native resolution and shift to be centered
+        syn_beam = NP.fft.fftshift(syn_beam[::2,::2,:], axes=(0,1))  # Downsample by factor 2 to get native resolution and shift to be centered
         
         du = self.gridu[0,1] - self.gridu[0,0]
         dv = self.gridv[1,0] - self.gridv[0,0]

@@ -1,3 +1,19 @@
+From 6df795f:
+============
+
+In antenna_array.py,
+
+(*) Add attributes holimg and holbeam to class NewImage and
+initialize them in __init__() member function. The real assignment
+occurs in member function imagr()
+(*) Produce images in imagr() after padding the uv-grid by factors
+4 and 2 respectively for electric field and visibility data
+(*) Fix bug in imagr() while using electric fields where only the
+real part was getting selected in the holographic image and beam
+(*) In member functions quick_beam_synthesis() of classes
+AntennaArray and InterferometerArray ensure the fftshift and
+ifftshift applies only to axes 0 and 1
+
 From bf1af33:
 ============
 
