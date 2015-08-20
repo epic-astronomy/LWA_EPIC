@@ -96,22 +96,20 @@ class cal:
 
   ##########
 
-  def update_cal(self,Edata,imgdata):
+  def update_cal(self,Edata):
     # For now, assume data should be n_ant x n_chan
     if Edata.shape != (self.n_ant, self.n_chan):
       raise ValueError('Data is the wrong size!')
 
-    # just a placeholder for now
-    #self.temp_gains += NP.ones(self.temp_gains.shape, dtype=NP.complex64)
-    self.temp_gains += simple_cal(Edata,imgdata,self.sky_model,self.curr_gains)
+    # just a one option for now
+    self.temp_gains += simple_cal(Edata,self.sky_model,self.curr_gains)
     self.count += 1
     
     if self.count == self.n_iter:
       # reached integration level, update the estimated gains
-      #self.temp_gains[self.ref_ant,:] = self.curr_gains[self.ref_ant,:]*self.n_iter
       self.curr_gains = self.curr_gains*(1-self.gain_factor) + self.gain_factor*self.temp_gains/self.n_iter
       self.count = 0
-      self.temp_gains = NP.zeros(self.temp_gains.shape, dtype=NP.complex64)
+      self.temp_gains[:] = 0.0
 
   ###########
 
@@ -140,7 +138,7 @@ Calibration method functions
 ------------
 """
 
-def simple_cal(Edata,imgdata,model,curr_gains):
+def simple_cal(Edata,model,curr_gains):
   if Edata.shape != curr_gains.shape:
     raise ValueError('Data does not match calibration gain size')
 
@@ -150,13 +148,6 @@ def simple_cal(Edata,imgdata,model,curr_gains):
   #TODO: get this in appropriately
   Ae = 1.0 # effective area
 
-  if imgdata.shape[0] != n_chan:
-    if imgdata.shape[0] == 1:
-      # given single image pixel, copy for channels
-      imgdata=NP.repeat(imgdata,n_chan)
-    else:
-      raise ValueError('Image data does not match number of channels')
-
   if model.shape[0] != n_chan:
     if model.shape[0] == 1:
       # just given single model, copy for channels
@@ -164,8 +155,6 @@ def simple_cal(Edata,imgdata,model,curr_gains):
     else:
       raise ValueError('Calibration model does not match number of channels')
 
-  # override the imgdata and Edata
-  Edata = Edata*curr_gains # To return it to the 'uncalibrated' signal
   imgdata = NP.sum(Edata*NP.conj(curr_gains),axis=0)
 
   new_gains = NP.zeros(curr_gains.shape,dtype=NP.complex64)
