@@ -1,7 +1,19 @@
+From 631e2ca:
+============
+
+In antenna_array.py,
+
+(*) Add input keyword pad in member function imagr() of class
+NewImage that gives the option to turn on/off the padding of
+antenna/interferometer array grid before imaging. Update docstring
+accordingly
+(*) remove few commented statements in member function imagr() of
+class NewImage
+
 From 4b52f31:
 ============
 
-In antenna-array.py,
+In antenna_array.py,
 
 (*) Fix bug in computation of mean of MOFF beam and image in imagr()
 member function of class NewImage. Earlier the mean was estimated
