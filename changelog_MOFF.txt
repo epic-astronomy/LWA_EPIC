@@ -1,3 +1,12 @@
+From 4b52f31:
+============
+
+In antenna-array.py,
+
+(*) Fix bug in computation of mean of MOFF beam and image in imagr()
+member function of class NewImage. Earlier the mean was estimated
+from the entire band instead of being done on a per-channel basis.
+
 From 6df795f:
 ============
 
