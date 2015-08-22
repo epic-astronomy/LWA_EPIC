@@ -1,4 +1,5 @@
 import numpy as NP
+import ipdb as PDB
 
 
 class cal:
@@ -74,6 +75,8 @@ class cal:
       sky_model = NP.repeat(sky_model,n_chan)
     self.sky_model=sky_model
 
+    if cal_method == 'default':
+      cal_method = self.default_cal
     self.cal_method = cal_method
     if sim_mode:
       self.sim_mode = True
@@ -96,13 +99,13 @@ class cal:
 
   ##########
 
-  def update_cal(self,Edata):
+  def update_cal(self,*args):
     # For now, assume data should be n_ant x n_chan
-    if Edata.shape != (self.n_ant, self.n_chan):
-      raise ValueError('Data is the wrong size!')
-
+    #if Edata.shape != (self.n_ant, self.n_chan):
+    #  raise ValueError('Data is the wrong size!')
     # just a one option for now
-    self.temp_gains += simple_cal(Edata,self.sky_model,self.curr_gains)
+    self.temp_gains += self.cal_method(*args)
+    #self.temp_gains += simple_cal(Edata,self.sky_model,self.curr_gains)
     self.count += 1
     
     if self.count == self.n_iter:
@@ -113,16 +116,22 @@ class cal:
 
   ###########
 
-  def apply_cal(self,data,meas=False):
+  def apply_cal(self,data,meas=False,inv=False):
     if self.curr_gains.size != data.size:
       raise ValueError('Data does not match calibration gain size')
 
     if meas:
       # in measurement mode, apply sim_gains
-      return data*self.sim_gains
+      data = data * self.sim_gains
     else:
-      # in calibration mode, divide by estimated gains
-      return data/self.curr_gains
+      # in calibration mode
+      if inv:
+        # apply inverse gains - i.e. multiply by gain to calibrate
+        data = data * NP.conj(self.curr_gains)
+      else:
+        data = data / self.curr_gains
+
+    return data
 
   ######
   def scramble_gains(self,amp):
@@ -131,37 +140,50 @@ class cal:
     
     return
 
-#######
-"""
-------------
-Calibration method functions
-------------
-"""
+  #######
+  """
+  ------------
+  Calibration method functions
+  ------------
+  """
 
-def simple_cal(Edata,model,curr_gains):
-  if Edata.shape != curr_gains.shape:
-    raise ValueError('Data does not match calibration gain size')
+  def default_cal(self,*args):
+    # point to whatever routine is currently the default
+    out = self.simple_cal(args)
+    return out
+  
+  ######
 
-  n_ant = Edata.shape[0]
-  n_chan = Edata.shape[1]
+  def simple_cal(self,*args):
+    ### Simple Calibration
+    # Assumes a single point source on the center pixel.
+    # Flux of source should be given in self.sky_model
+    # Needs the _uncalibrated_ E-field data from the antennas, and the instantaneous center pixel from the holographic image.
+    # Currently it is set up for a calibration where data is multiplied by conj(gains), but this may change in future iterations.
+    
+    while isinstance(args[0],tuple):
+      # we can get here by passing args several times, need to unpack
+      args=args[0]
+    Edata=args[0]
+    imgdata=args[1]*self.n_ant
+    if Edata.shape != self.curr_gains.shape:
+      raise ValueError('Data does not match calibration gain size')
 
-  #TODO: get this in appropriately
-  Ae = 1.0 # effective area
+    #TODO: get this in appropriately
+    Ae = 1.0 # effective area
 
-  if model.shape[0] != n_chan:
-    if model.shape[0] == 1:
-      # just given single model, copy for channels
-      model=NP.repeat(model,n_chan)
-    else:
-      raise ValueError('Calibration model does not match number of channels')
+    if self.sky_model.shape[0] != self.n_chan:
+      if self.sky_model.shape[0] == 1:
+        # just given single model, copy for channels
+        model=NP.repeat(self.sky_model,self.n_chan)
+      else:
+        raise ValueError('Calibration model does not match number of channels')
 
-  imgdata = NP.sum(Edata*NP.conj(curr_gains),axis=0)
+    new_gains = NP.zeros(self.curr_gains.shape,dtype=NP.complex64)
+    for ant in xrange(self.n_ant):
+      new_gains[ant,:] = (Edata[ant,:] * NP.conj(imgdata) - self.curr_gains[ant,:]*NP.abs(Edata[ant,:])**2)/(self.sky_model * ( NP.sum(NP.abs(self.curr_gains)**2,axis=0)-NP.abs(self.curr_gains[ant,:])**2))
 
-  new_gains = NP.zeros(curr_gains.shape,dtype=NP.complex64)
-  for ant in xrange(n_ant):
-    new_gains[ant,:] = (Edata[ant,:] * NP.conj(imgdata) - curr_gains[ant,:]*NP.abs(Edata[ant,:])**2)/(NP.abs(model)**2 * ( NP.sum(NP.abs(curr_gains)**2,axis=0)-NP.abs(curr_gains[ant,:])**2))
-
-  return new_gains
+    return new_gains
 
 
 
