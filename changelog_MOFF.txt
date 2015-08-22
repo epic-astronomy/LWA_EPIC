@@ -1,3 +1,14 @@
+From 6e802d8:
+============
+
+In antenna_array.py,
+
+(*) Fix bug while assigning attributes gridl and gridm based on
+padding in member function imagr() of class NewImage
+(*) Comment out printing of process name in parallel processing
+in functions antenna_grid_mapping(), antenna_grid_mapper(),
+baseline_grid_mapping() and baseline_grid_mapper()
+
 From 631e2ca:
 ============
 

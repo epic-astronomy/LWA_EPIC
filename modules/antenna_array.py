@@ -40,7 +40,7 @@ def antenna_grid_mapping(gridind_raveled, values, bins=None):
     else:
         retval = OPS.binned_statistic(gridind_raveled, values, statistic='sum', bins=bins)[0]
 
-    print MP.current_process().name
+    # print MP.current_process().name
     return retval
 
 def antenna_grid_mapping_arg_splitter(args, **kwargs):
@@ -55,7 +55,7 @@ def antenna_grid_mapper(gridind_raveled, values, bins, label, outq):
         retval = OPS.binned_statistic(gridind_raveled, values, statistic='sum', bins=bins)[0]
     outdict = {}
     outdict[label] = retval
-    print MP.current_process().name
+    # print MP.current_process().name
     outq.put(outdict)
 
 def baseline_grid_mapping(gridind_raveled, values, bins=None):
@@ -69,7 +69,7 @@ def baseline_grid_mapping(gridind_raveled, values, bins=None):
     else:
         retval = OPS.binned_statistic(gridind_raveled, values, statistic='sum', bins=bins)[0]
 
-    print MP.current_process().name
+    # print MP.current_process().name
     return retval
 
 def baseline_grid_mapping_arg_splitter(args, **kwargs):
@@ -84,7 +84,7 @@ def baseline_grid_mapper(gridind_raveled, values, bins, label, outq):
         retval = OPS.binned_statistic(gridind_raveled, values, statistic='sum', bins=bins)[0]
     outdict = {}
     outdict[label] = retval
-    print MP.current_process().name
+    # print MP.current_process().name
     outq.put(outdict)
 
 def find_1NN_arg_splitter(args, **kwargs):
@@ -6413,10 +6413,13 @@ class NewImage:
             if pad not in ['on', 'off']:
                 raise ValueError('Invalid value specified for pad')
 
+        du = self.gridu[0,1] - self.gridu[0,0]
+        dv = self.gridv[1,0] - self.gridv[0,0]
+        grid_shape = self.gridu.shape
+
         if self.measured_type == 'E-field':
             if pol is None: pol = ['P1', 'P2']
             pol = NP.unique(NP.asarray(pol))
-            grid_shape = self.gridu.shape
             for apol in pol:
                 if apol in ['P1', 'P2']:
                     if verbose: print 'Preparing to Inverse Fourier Transform...'
@@ -6430,9 +6433,11 @@ class NewImage:
                     if pad == 'on':
                         syn_beam = NP.fft.fft2(self.grid_wts[apol]*self.grid_illumination[apol], s=[4*self.gridu.shape[0], 4*self.gridv.shape[1]], axes=(0,1))
                         dirty_image = NP.fft.fft2(self.grid_wts[apol]*self.grid_Ef[apol], s=[4*self.gridu.shape[0], 4*self.gridv.shape[1]], axes=(0,1))
+                        self.gridl, self.gridm = NP.meshgrid(NP.fft.fftshift(NP.fft.fftfreq(4*grid_shape[1], du)), NP.fft.fftshift(NP.fft.fftfreq(4*grid_shape[0], dv)))
                     else:
                         syn_beam = NP.fft.fft2(self.grid_wts[apol]*self.grid_illumination[apol], axes=(0,1))
                         dirty_image = NP.fft.fft2(self.grid_wts[apol]*self.grid_Ef[apol], axes=(0,1))
+                        self.gridl, self.gridm = NP.meshgrid(NP.fft.fftshift(NP.fft.fftfreq(grid_shape[1], du)), NP.fft.fftshift(NP.fft.fftfreq(grid_shape[0], dv)))
 
                     self.holbeam[apol] = NP.fft.fftshift(syn_beam, axes=(0,1)) / sum_wts
                     self.holimg[apol] = NP.fft.fftshift(dirty_image, axes=(0,1)) / sum_wts
@@ -6451,7 +6456,6 @@ class NewImage:
         if self.measured_type == 'visibility':
             if pol is None: pol = ['P11', 'P12', 'P21', 'P22']
             pol = NP.unique(NP.asarray(pol))
-            grid_shape = self.gridu.shape
             for cpol in pol:
                 if cpol in ['P11', 'P12', 'P21', 'P22']:
                     if verbose: print 'Preparing to Inverse Fourier Transform...'
@@ -6465,9 +6469,11 @@ class NewImage:
                     if pad == 'on': # Pad it with zeros on either side to be twice the size
                         padded_syn_beam_in_uv = NP.pad(self.grid_wts[cpol]*self.grid_illumination[cpol], ((self.gridu.shape[0]/2,self.gridu.shape[0]/2),(self.gridv.shape[1]/2,self.gridv.shape[1]/2),(0,0)), mode='constant', constant_values=0)
                         padded_grid_Vf = NP.pad(self.grid_wts[cpol]*self.grid_Vf[cpol], ((self.gridu.shape[0]/2,self.gridu.shape[0]/2),(self.gridv.shape[1]/2,self.gridv.shape[1]/2),(0,0)), mode='constant', constant_values=0)
+                        self.gridl, self.gridm = NP.meshgrid(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[1], du)), NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[0], dv)))
                     else:  # No padding
                         padded_syn_beam_in_uv = self.grid_wts[cpol]*self.grid_illumination[cpol]
                         padded_grid_Vf = self.grid_wts[cpol]*self.grid_Vf[cpol]
+                        self.gridl, self.gridm = NP.meshgrid(NP.fft.fftshift(NP.fft.fftfreq(grid_shape[1], du)), NP.fft.fftshift(NP.fft.fftfreq(grid_shape[0], dv)))
 
                     # Shift to be centered
                     padded_syn_beam_in_uv = NP.fft.ifftshift(padded_syn_beam_in_uv, axes=(0,1))
@@ -6484,9 +6490,6 @@ class NewImage:
                     self.beam[cpol] = NP.fft.fftshift(syn_beam, axes=(0,1)) / sum_wts
                     self.img[cpol] = NP.fft.fftshift(dirty_image, axes=(0,1)) / sum_wts
 
-        du = self.gridu[0,1] - self.gridu[0,0]
-        dv = self.gridv[1,0] - self.gridv[0,0]
-        self.gridl, self.gridm = NP.meshgrid(NP.fft.fftshift(NP.fft.fftfreq(grid_shape[1], du)), NP.fft.fftshift(NP.fft.fftfreq(grid_shape[0], dv)))
         nan_ind = NP.where(self.gridl**2 + self.gridm**2 > 1.0)
         # nan_ind_unraveled = NP.unravel_index(nan_ind, self.gridl.shape)
         # self.beam[cpol][nan_ind_unraveled,:] = NP.nan
