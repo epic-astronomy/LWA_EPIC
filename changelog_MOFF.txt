@@ -1,3 +1,16 @@
+From 88f97d5:
+============
+
+In changelog_MOFF.txt,
+
+(*) Update with missed logs during the pull request merge,
+specifically following f9a1d9f and 88f97d5
+
+From f9a1d9f:
+============
+
+Merge Adam's pull request into FX-accumulate branch
+
 From 6e802d8:
 ============
 
