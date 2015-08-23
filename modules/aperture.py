@@ -285,7 +285,7 @@ def rect(locs, wavelength=1.0, xmin=-1.0, xmax=1.0, ymin=-1.0, ymax=1.0,
     locs = NP.dot(locs, rotmat.T)
 
     ind = NP.logical_and((locs[:,0] >= xmin) & (locs[:,0] <= xmax), (locs[:,1] >= ymin) & (locs[:,1] <= ymax))
-    kern[ind] = NP.exp(-1j * 2*NP.pi/wavelength * NP.dot(locs, pointing_center.T))
+    kern[ind] = NP.exp(-1j * 2*NP.pi/wavelength * NP.dot(locs[ind,:], pointing_center.T))
     
     eps = 1e-10
     if NP.all(NP.abs(kern.imag) < eps):
@@ -333,6 +333,10 @@ def square(locs, wavelength=1.0, xmin=-1.0, xmax=1.0, rotangle=0.0,
             Must be a 2-element array denoting the x- and y-direction cosines
             that obeys rules of direction cosines. Default=None (zenith)
 
+    Outputs:
+
+    kern    [numpy array] complex aperture kernel with a value for each 
+            location in the input. 
     ----------------------------------------------------------------------------
     """
 
@@ -341,5 +345,68 @@ def square(locs, wavelength=1.0, xmin=-1.0, xmax=1.0, rotangle=0.0,
 
     return kern
 
-################################################################################    
+################################################################################
 
+def circular(locs, wavelength=1.0, rmin=0.0, rmax=1.0, pointing_center=None):
+
+    """
+    ----------------------------------------------------------------------------
+    Uniform circular aperture kernel estimation
+
+    Inputs:
+
+    locs    [numpy array] locations at which aperture kernel is to be estimated. 
+            Must be a Mx2 numpy array where M is the number of locations, x- and 
+            y-locations are stored in the first and second columns respectively.
+            The units can be arbitrary but preferably that of distance. Must be
+            specified, no defaults.
+
+    wavelength
+            [scalar or numpy array] Wavelength of the radiation. If it is a 
+            scalar or numpy array of size 1, it is assumed to be identical for 
+            all locations. If an array is provided, it must be of same size as
+            the number of locations at which the aperture kernel is to be 
+            estimated. Same units as locs. Default=1.0
+
+    rmin    [scalar] Lower limit along the radial direction for the aperture 
+            kernel footprint. Applicable in case of circular apertures. Same 
+            units as locs. Default=0.0
+
+    rmax    [scalar] Upper limit along the radial direction for the aperture 
+            kernel footprint. Applicable in case of circular apertures. Same 
+            units as locs. Default=1.0
+
+    pointing_center
+            [numpy array] Pointing center to phase the aperture illumination 
+            to. Must be a 2-element array denoting the x- and y-direction 
+            cosines that obeys rules of direction cosines. Default=None 
+            (zenith)
+
+    Outputs:
+
+    kern    [numpy array] complex aperture kernel with a value for each 
+            location in the input. 
+    ----------------------------------------------------------------------------
+    """
+    
+    inpdict = inputcheck(locs, wavelength=wavelength, rmin=rmin, rmax=rmax,
+                         pointing_center=pointing_center)
+    locs = inpdict['locs']
+    wavelength = inpdict['wavelength']
+    rmin = inpdict['rmin']
+    rmax = inpdict['rmax']
+    pointing_center = inpdict['pointing_center']
+
+    kern = NP.zeros(locs.shape[0], dtype=NP.complex64)
+
+    radii = NP.sqrt(NP.sum(locs**2, axis=1))
+    ind = (radii >= rmin) & (radii <= rmax) 
+    kern[ind] = NP.exp(-1j * 2*NP.pi/wavelength * NP.dot(locs[ind,:], pointing_center.T))
+    
+    eps = 1e-10
+    if NP.all(NP.abs(kern.imag) < eps):
+        kern = kern.real
+
+    return kern
+    
+################################################################################

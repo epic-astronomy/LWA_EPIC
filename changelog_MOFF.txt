@@ -1,3 +1,13 @@
+From 8dc6512:
+============
+
+In aperture.py,
+
+(*) Add function circular() (with docstring) to create a uniform 
+circular aperture illumination
+(*) Fix bug in estimating kernel at valid indices in rect()
+(*) Add description of output to docstring of function square()
+
 From 4957346:
 ============
 
