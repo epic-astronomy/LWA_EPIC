@@ -1,3 +1,14 @@
+From ef4576a:
+============
+
+Add new module aperture.py to repository
+
+In aperture.py,
+
+(*) Add function inputcheck() (with docstring) to check inputs
+(*) Add function rect() (with docstring) to create a uniform
+rectangular aperture illumination
+
 From 88f97d5:
 ============
 
