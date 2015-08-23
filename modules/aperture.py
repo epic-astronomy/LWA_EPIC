@@ -233,20 +233,16 @@ def rect(locs, wavelength=1.0, xmin=-1.0, xmax=1.0, ymin=-1.0, ymax=1.0,
             estimated. Same units as locs. Default=1.0
 
     xmin    [scalar] Lower limit along the x-axis for the aperture kernel 
-            footprint. Applicable in case of rectangular or square apertures. 
-            Same units as locs. Default=-1.0
+            footprint. Same units as locs. Default=-1.0
 
     xmax    [scalar] Upper limit along the x-axis for the aperture kernel 
-            footprint. Applicable in case of rectangular or square apertures. 
-            Same units as locs. Default=1.0
+            footprint. Same units as locs. Default=1.0
 
     ymin    [scalar] Lower limit along the y-axis for the aperture kernel 
-            footprint. Applicable in case of rectangular or square apertures. 
-            Same units as locs. Default=-1.0
+            footprint. Same units as locs. Default=-1.0
 
     ymax    [scalar] Upper limit along the y-axis for the aperture kernel 
-            footprint. Applicable in case of rectangular or square apertures. 
-            Same units as locs. Default=1.0
+            footprint. Same units as locs. Default=1.0
     
     rotangle
             [scalar] Angle (in radians) by which the principal axis of the 
@@ -258,6 +254,10 @@ def rect(locs, wavelength=1.0, xmin=-1.0, xmax=1.0, ymin=-1.0, ymax=1.0,
             Must be a 2-element array denoting the x- and y-direction cosines
             that obeys rules of direction cosines. Default=None (zenith)
 
+    Outputs:
+
+    kern    [numpy array] complex aperture kernel with a value for each 
+            location in the input. 
     ----------------------------------------------------------------------------
     """
 
@@ -294,3 +294,52 @@ def rect(locs, wavelength=1.0, xmin=-1.0, xmax=1.0, ymin=-1.0, ymax=1.0,
     return kern
 
 ################################################################################    
+
+def square(locs, wavelength=1.0, xmin=-1.0, xmax=1.0, rotangle=0.0,
+           pointing_center=None):
+
+    """
+    ----------------------------------------------------------------------------
+    Square aperture kernel estimation
+
+    Inputs:
+
+    locs    [numpy array] locations at which aperture kernel is to be estimated. 
+            Must be a Mx2 numpy array where M is the number of locations, x- and 
+            y-locations are stored in the first and second columns respectively.
+            The units can be arbitrary but preferably that of distance. Must be 
+            specified, no defaults
+
+    wavelength
+            [scalar or numpy array] Wavelength of the radiation. If it is a 
+            scalar or numpy array of size 1, it is assumed to be identical for 
+            all locations. If an array is provided, it must be of same size as
+            the number of locations at which the aperture kernel is to be 
+            estimated. Same units as locs. Default=1.0
+
+    xmin    [scalar] Lower limit for the aperture kernel footprint. Same 
+            units as locs. Default=-1.0
+
+    xmax    [scalar] Upper limit for the aperture kernel footprint. Same 
+            units as locs. Default=1.0
+
+    rotangle
+            [scalar] Angle (in radians) by which the principal axis of the 
+            aperture is rotated counterclockwise east of sky frame. 
+            Default=0.0
+
+    pointing_center
+            [numpy array] Pointing center to phase the aperture illumination to.
+            Must be a 2-element array denoting the x- and y-direction cosines
+            that obeys rules of direction cosines. Default=None (zenith)
+
+    ----------------------------------------------------------------------------
+    """
+
+    kern = rect(locs, wavelength=wavelength, xmin=xmin, xmax=xmax, ymin=xmin,
+                ymax=xmax, rotangle=rotangle, pointing_center=pointing_center)
+
+    return kern
+
+################################################################################    
+

@@ -1,3 +1,13 @@
+From 4957346:
+============
+
+In aperture.py,
+
+(*) Add function square() (with docstring) to create a uniform square
+aperture illumination
+(*) Tidy up and update missing information in docstring of function
+rect()
+
 From ef4576a:
 ============
 
