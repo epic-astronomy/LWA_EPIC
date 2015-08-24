@@ -1,3 +1,13 @@
+From ef4576a:
+============
+
+(*) Created new cal_devel branch for development of calibration capabilities
+(*) Changed cal script to actually mix up the data with "unknown" gains
+(*) Added option to calibrate by either dividing by gains, or by multiplying
+by conjugate of gains.
+(*) Moved file beardsley.py -> simple_cal_script.py
+
+
 From 88f97d5:
 ============
 

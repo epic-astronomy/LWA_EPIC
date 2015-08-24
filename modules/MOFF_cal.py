@@ -31,6 +31,9 @@ class cal:
 
   cal_method:     String indicating which calibration method/algorithm to use.
 
+  inv_gains:      [Boolean] If False (default), calibrate by dividing by gains. If True,
+                  calibrate by multiplying by conjugate of gains.
+
   sky_model:      Numpy array representing the sky model to be used for calibration.
 
   Functions:
@@ -47,7 +50,7 @@ class cal:
   ----------------------------------------------------------------------------------
   """
 
-  def __init__(self, n_ant, n_chan, n_iter=10, cal_method='default', sim_mode=False, sky_model=NP.ones(1,dtype=NP.complex64), ref_ant=0, gain_factor=1.0):
+  def __init__(self, n_ant, n_chan, n_iter=10, cal_method='default', sim_mode=False, sky_model=NP.ones(1,dtype=NP.complex64), ref_ant=0, gain_factor=1.0, inv_gains=False):
 
     if not isinstance(n_ant,int):
       raise TypeError('n_ant must be an integer')
@@ -74,6 +77,7 @@ class cal:
     if sky_model.shape[0] == 1:
       sky_model = NP.repeat(sky_model,n_chan)
     self.sky_model=sky_model
+    self.inv_gains = inv_gains
 
     if cal_method == 'default':
       cal_method = self.default_cal
@@ -88,12 +92,12 @@ class cal:
 
   ####################################
 
-  def simulate_gains(self):
+  def simulate_gains(self,scale=0.25):
 
     # For now simple random numbers.
     
     ang=2*NP.pi*NP.random.uniform(low=0.0,high=1,size=[self.n_ant,self.n_chan])
-    amp=NP.abs(NP.random.normal(loc=1,scale=0.25,size=[self.n_ant,self.n_chan]))
+    amp=NP.abs(NP.random.normal(loc=1,scale=scale,size=[self.n_ant,self.n_chan]))
     
     return amp*NP.exp(1j*ang)
 
@@ -110,13 +114,16 @@ class cal:
     
     if self.count == self.n_iter:
       # reached integration level, update the estimated gains
+      if not self.inv_gains:
+        # Note that temp gains are actually 1/gains in this mode
+        self.temp_gains = 1/self.temp_gains
       self.curr_gains = self.curr_gains*(1-self.gain_factor) + self.gain_factor*self.temp_gains/self.n_iter
       self.count = 0
       self.temp_gains[:] = 0.0
 
   ###########
 
-  def apply_cal(self,data,meas=False,inv=False):
+  def apply_cal(self,data,meas=False):
     if self.curr_gains.size != data.size:
       raise ValueError('Data does not match calibration gain size')
 
@@ -125,7 +132,7 @@ class cal:
       data = data * self.sim_gains
     else:
       # in calibration mode
-      if inv:
+      if self.inv_gains:
         # apply inverse gains - i.e. multiply by gain to calibrate
         data = data * NP.conj(self.curr_gains)
       else:
@@ -181,8 +188,15 @@ class cal:
 
     new_gains = NP.zeros(self.curr_gains.shape,dtype=NP.complex64)
     for ant in xrange(self.n_ant):
-      new_gains[ant,:] = (Edata[ant,:] * NP.conj(imgdata) - self.curr_gains[ant,:]*NP.abs(Edata[ant,:])**2)/(self.sky_model * ( NP.sum(NP.abs(self.curr_gains)**2,axis=0)-NP.abs(self.curr_gains[ant,:])**2))
-
+      if self.inv_gains:
+        new_gains[ant,:] = (Edata[ant,:] * NP.conj(imgdata) - self.curr_gains[ant,:]*NP.abs(Edata[ant,:])**2)/(self.sky_model * ( NP.sum(NP.abs(self.curr_gains)**2,axis=0)-NP.abs(self.curr_gains[ant,:])**2))
+      else:
+        new_gains[ant,:] = self.sky_model * (imgdata - Edata[ant,:]/self.curr_gains[ant,:]) / (Edata[ant,:] * (NP.sum(NP.abs(Edata/self.curr_gains)**2,axis=0) - NP.abs(Edata[ant,:]/self.curr_gains[ant,:])**2))
+        # The version below is incorrect.
+        # But it gets pretty darn close, without any model of the sky.
+        # So I'm going to leave it for now to study later.
+        #new_gains[ant,:] = (imgdata - Edata[ant,:]/self.curr_gains[ant,:]) / (Edata[ant,:] * (NP.sum(NP.abs(1/self.curr_gains)**2,axis=0) - NP.abs(1/self.curr_gains[ant,:])**2))
+        
     return new_gains
 
 
