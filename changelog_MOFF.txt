@@ -1,3 +1,13 @@
+From a0c1b87:
+============
+
+(*) Added functionality for off-center calibrator.
+	Required a lot of format changes, so simple_cal_script needs updating.
+(*) Added script off_center_cal.py.
+(*) Still have bugs that need to be worked out. Specifically, there seems to
+be a systematic bias in my off-center calibration solutions.
+(*) More cleaning of code.	
+
 From ef4576a:
 ============
 
