@@ -7325,8 +7325,12 @@ class Antenna:
                        which are stored under keys 'P1' and 'P22'. Default=None 
                        implies no updates for Et.
     
+            aperture   [instance of class APR.AntennaAperture] aperture 
+                       information for the antenna. Read docstring of class 
+                       AntennaAperture for details
+
             wtsinfo    [dictionary] consists of weights information for each of 
-                       the two polarizations under keys 'P1' and 'P22'. Each of 
+                       the two polarizations under keys 'P1' and 'P2'. Each of 
                        the values under the keys is a list of dictionaries. 
                        Length of list is equal to the number of frequency 
                        channels or one (equivalent to setting wtspos_scale to 
@@ -7404,6 +7408,7 @@ class Antenna:
         gridfunc_freq = None
         ref_freq = None
         delaydict = None
+        aperture = None
             
         if update_dict is not None:
             if not isinstance(update_dict, dict):
@@ -7421,6 +7426,7 @@ class Antenna:
             if 'gridfunc_freq' in update_dict: gridfunc_freq = update_dict['gridfunc_freq']
             if 'ref_freq' in update_dict: ref_freq = update_dict['ref_freq']
             if 'delaydict' in update_dict: delaydict = update_dict['delaydict']
+            if 'aperture' in update_dict: aperture = update_dict['aperture']
 
         if label is not None: self.label = label
         if location is not None: self.location = location
@@ -7453,6 +7459,12 @@ class Antenna:
         blc_orig = NP.copy(self.blc)
         trc_orig = NP.copy(self.trc)
         eps = 1e-6
+
+        if aperture is not None:
+            if isinstance(aperture, APR.AntennaAperture):
+                self.aperture = copy.deepcopy(aperture)
+            else:
+                raise TypeError('Update for antenna must be an instance of class AntennaAperture.')
 
         if wtsinfo is not None:
             if not isinstance(wtsinfo, dict):
@@ -9529,6 +9541,11 @@ class AntennaArray:
                                               coordinate system. Used only if 
                                               set and if 'action' key value is 
                                               set to 'modify'. Default = None.
+                                'aperture'    [instance of class 
+                                              APR.AntennaAperture] aperture 
+                                              information for the antenna. Read 
+                                              docstring of class 
+                                              AntennaAperture for details
                                 'wtsinfo'     [Optional. Dictionary] 
                                               See description in Antenna class 
                                               member function update(). Is used 
@@ -9709,6 +9726,7 @@ class AntennaArray:
                             if 'maxmatch' not in dictitem: dictitem['maxmatch']=None
                             if 'tol' not in dictitem: dictitem['tol']=None
                             if 'delaydict' not in dictitem: dictitem['delaydict']=None
+                            if 'aperture' not in dictitem: dictitem['aperture']=None
                             
                             if not parallel:
                                 self.antennas[dictitem['label']].update(dictitem, verbose)

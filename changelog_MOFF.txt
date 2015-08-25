@@ -1,8 +1,23 @@
+From 5bb23ec:
+============
+
+In antenna_array.py,
+
+(*) Update attribute aperture in member function update() of class
+Antenna by including it as one of the values passed through
+the input dictionary update_dict. Update docstring accordingly
+(*) Pass aperture update through one of the dictionary keys under
+the key 'antennas' in the updates dictionary input of member function
+update() of class AntennaArray which inside the member function is
+passed to update() member function of class Antenna. Update docstring
+accordingly
+
 From 2c41e0a:
 ============
 
 In aperture.py,
 
+(*) Import lookup_operations module
 (*) Add attributes wtsxy, wtsposxy to class AntennaAperture. 
 (*) Initialize new attributes wtsxy and wtsposxy in __init__()
 member function of class AntennaAperture by adding input keyword
