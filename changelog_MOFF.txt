@@ -1,3 +1,15 @@
+From a8fa375:
+============
+
+In aperture.py,
+
+(*) Add class AntennaAperture with member functions __init__() and
+compute() with corresponding docstrings
+(*) Add function parmscheck() to check aperture shape parameters
+like xmin, xmax, ymin, ymax, rmin, rmax, rotangle and phase_center.
+Remove checking of these parameters from inputcheck() and instead
+invoke parmscheck() to verify these parameters
+
 From 8dc6512:
 ============
 

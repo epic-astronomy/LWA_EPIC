@@ -9213,7 +9213,7 @@ class AntennaArray:
                                 progress.finish()
 
     ############################################################################
-
+    
     def make_grid_cube(self, pol=None, verbose=True):
 
         """
