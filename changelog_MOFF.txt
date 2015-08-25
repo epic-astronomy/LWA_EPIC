@@ -1,3 +1,19 @@
+From 2c41e0a:
+============
+
+In aperture.py,
+
+(*) Add attributes wtsxy, wtsposxy to class AntennaAperture. 
+(*) Initialize new attributes wtsxy and wtsposxy in __init__()
+member function of class AntennaAperture by adding input keyword
+lkpinfo
+(*) Modify docstrings accordingly
+
+In antenna_array.py,
+
+(*) Minor change to docstring of member function update() of class
+Antenna
+
 From fb53e3a:
 ============
 

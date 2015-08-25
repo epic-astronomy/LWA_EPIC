@@ -1,5 +1,6 @@
 import numpy as NP
 import scipy.constants as FCNST
+import lookup_operations as LKP
 
 ################################################################################    
 
@@ -567,6 +568,18 @@ class AntennaAperture(object):
                 apertures. It has two keys 'P1' and 'P2' - one for each 
                 polarization. The value (default=0.0) held by each key is a 
                 scalar
+
+    wtsposxy    [dictionary] two-dimensional locations of the gridding weights 
+                in wts for each polarization under keys 'P1' and 'P2'. The 
+                locations are in ENU coordinate system as a list of 2-column 
+                numpy arrays in units of distance. 
+
+    wtsxy       [dictionary] The gridding weights for antenna. Different 
+                polarizations 'P1' and 'P2' form the keys of this dictionary. 
+                These values are in general complex. Under each key, the values 
+                are maintained as a numpy array of complex antenna weights 
+                corresponding to positions in the lookup table. It should be of 
+                same size as the number of rows in wtsposxy
     
     Member functions:
 
@@ -580,7 +593,7 @@ class AntennaAperture(object):
     ----------------------------------------------------------------------------
     """
 
-    def __init__(self, kernel_type=None, shape=None, parms=None):
+    def __init__(self, kernel_type=None, shape=None, parms=None, lkpinfo=None):
 
         """
         ------------------------------------------------------------------------
@@ -588,7 +601,8 @@ class AntennaAperture(object):
         information about an antenna aperture
 
         Class attributes initialized are:
-        kernel_type, shape, xmin, xmax, ymin, ymax, rmin, emax, rotangle
+        kernel_type, shape, xmin, xmax, ymin, ymax, rmin, emax, rotangle, 
+        wtsposxy, wtsxy
 
         Read docstring of class AntennaAperture for details on these 
         attributes.
@@ -638,6 +652,14 @@ class AntennaAperture(object):
                             has two keys 'P1' and 'P2' - one for each 
                             polarization. The value (default=0.0) held by each 
                             key is a scalar
+
+        lookup      [dicitonary] consists of weights information for each of 
+                    the two polarizations under keys 'P1' and 'P2'. Each of 
+                    the values under the keys is a string containing the full
+                    path to a filename that contains the positions and 
+                    weights for the antenna field illumination in the form of 
+                    a lookup table as columns (x-loc [float], y-loc 
+                    [float], wts[real], wts[imag if any]). 
         ------------------------------------------------------------------------
         """
 
@@ -732,6 +754,19 @@ class AntennaAperture(object):
             self.ymax[pol] = parmsdict['ymax']
             self.rmax[pol] = parmsdict['rmax']
             self.rotangle[pol] = parmsdict['rotangle']
+
+        self.wtsposxy = {}
+        self.wtsxy = {}
+        for pol in ['P1', 'P2']:
+            self.wtsposxy[pol] = None
+            self.wtsxy[pol] = None                
+            if lkpinfo is not None:
+                if pol in lkpinfo:
+                    lkpdata = LKP.read_lookup(lkpinfo[pol]['file'])
+                    self.wtsposxy[pol] = NP.hstack((lkpdata[0].reshape(-1,1),lkpdata[1].reshape(-1,1)))
+                    self.wtsxy[pol] = lkpdata[2]
+                    if lkpdata.shape[1] == 4:  # Read in the imaginary part
+                        self.wtsxy[pol] += 1j * lkpdata[3]
 
     ############################################################################
 
