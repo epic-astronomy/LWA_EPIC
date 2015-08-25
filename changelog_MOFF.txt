@@ -1,3 +1,15 @@
+From fb53e3a:
+============
+
+In antenna_array.py,
+
+(*) Import module aperture
+(*) Add input keyword aperture in __init__() member function of
+class Antenna. This keyword will provide the initialization with
+an instance of class AntennaAperture into an attribute named
+aperture
+(*) Change docstring accordingly
+
 From a8fa375:
 ============
 

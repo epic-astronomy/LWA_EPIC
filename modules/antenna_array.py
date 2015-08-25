@@ -11,6 +11,7 @@ import geometry as GEOM
 import my_gridding_modules as GRD
 import my_operations as OPS
 import lookup_operations as LKP
+import aperture as APR
 
 ################### Routines essential for parallel processing ################
 
@@ -6981,6 +6982,10 @@ class Antenna:
     antpol:     [Instance of class PolInfo] polarization information for the 
                 antenna. Read docstring of class PolInfo for details
 
+    aperture    [Instance of class APR.AntennaAperture] aperture information
+                for the antenna. Read docstring of class AntennaAperture for
+                details
+
     Et_stack    [dictionary] holds a stack of complex electric field time series 
                 measured at various time stamps under 2 polarizations which are 
                 stored under keys 'P1' and 'P2'
@@ -7075,7 +7080,8 @@ class Antenna:
     ----------------------------------------------------------------------------
     """
 
-    def __init__(self, label, latitude, location, center_freq, nsamples=1):
+    def __init__(self, label, latitude, location, center_freq, nsamples=1,
+                 aperture=None):
 
         """
         ------------------------------------------------------------------------
@@ -7083,8 +7089,8 @@ class Antenna:
 
         Class attributes initialized are:
         label, latitude, location, pol, t, timestamp, f0, f, wts, wtspos, 
-        wtspos_scale, blc, trc, timestamps, antpol, Et_stack, Ef_stack, and
-        flag_stack
+        wtspos_scale, blc, trc, timestamps, antpol, Et_stack, Ef_stack, 
+        flag_stack, aperture
      
         Read docstring of class Antenna for details on these attributes.
         ------------------------------------------------------------------------
@@ -7119,6 +7125,14 @@ class Antenna:
             self.location = GEOM.Point(location)
         else:
             raise TypeError('Antenna position must be a 3-element tuple or an instance of GEOM.Point')
+
+        if aperture is not None:
+            if isinstance(aperture, APR.AntennaAperture):
+                self.aperture = aperture
+            else:
+                raise TypeError('aperture must be an instance of class AntennaAperture found in module {0}'.format(APR.__name__))
+        else:
+            self.aperture = APR.AntennaAperture()
 
         self.antpol = PolInfo(nsamples=nsamples)
         self.t = 0.0
