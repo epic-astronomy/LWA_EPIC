@@ -322,9 +322,8 @@ def rect(locs, wavelength=1.0, xmin=-1.0, xmax=1.0, ymin=-1.0, ymax=1.0,
     wavelength
             [scalar or numpy array] Wavelength of the radiation. If it is a 
             scalar or numpy array of size 1, it is assumed to be identical for 
-            all locations. If an array is provided, it must be of same size as
-            the number of locations at which the aperture kernel is to be 
-            estimated. Same units as locs. Default=1.0
+            all locations. If an array is provided, number of wavelengths must 
+            equal number of locations. Same units as locs. Default=1.0
 
     xmin    [scalar] Lower limit along the x-axis for the aperture kernel 
             footprint. Same units as locs. Default=-1.0
@@ -379,7 +378,7 @@ def rect(locs, wavelength=1.0, xmin=-1.0, xmax=1.0, ymin=-1.0, ymax=1.0,
     locs = NP.dot(locs, rotmat.T)
 
     ind = NP.logical_and((locs[:,0] >= xmin) & (locs[:,0] <= xmax), (locs[:,1] >= ymin) & (locs[:,1] <= ymax))
-    kern[ind] = NP.exp(-1j * 2*NP.pi/wavelength * NP.dot(locs[ind,:], pointing_center.T))
+    kern[ind] = NP.exp(-1j * 2*NP.pi/wavelength[ind] * NP.dot(locs[ind,:], pointing_center.T).ravel())
     
     eps = 1e-10
     if NP.all(NP.abs(kern.imag) < eps):
@@ -407,9 +406,8 @@ def square(locs, wavelength=1.0, xmin=-1.0, xmax=1.0, rotangle=0.0,
     wavelength
             [scalar or numpy array] Wavelength of the radiation. If it is a 
             scalar or numpy array of size 1, it is assumed to be identical for 
-            all locations. If an array is provided, it must be of same size as
-            the number of locations at which the aperture kernel is to be 
-            estimated. Same units as locs. Default=1.0
+            all locations. If an array is provided, number of wavelengths must 
+            equal number of locations. Same units as locs. Default=1.0
 
     xmin    [scalar] Lower limit for the aperture kernel footprint. Same 
             units as locs. Default=-1.0
@@ -458,9 +456,8 @@ def circular(locs, wavelength=1.0, rmin=0.0, rmax=1.0, pointing_center=None):
     wavelength
             [scalar or numpy array] Wavelength of the radiation. If it is a 
             scalar or numpy array of size 1, it is assumed to be identical for 
-            all locations. If an array is provided, it must be of same size as
-            the number of locations at which the aperture kernel is to be 
-            estimated. Same units as locs. Default=1.0
+            all locations. If an array is provided, number of wavelengths must 
+            equal number of locations. Same units as locs. Default=1.0
 
     rmin    [scalar] Lower limit along the radial direction for the aperture 
             kernel footprint. Applicable in case of circular apertures. Same 
@@ -495,7 +492,7 @@ def circular(locs, wavelength=1.0, rmin=0.0, rmax=1.0, pointing_center=None):
 
     radii = NP.sqrt(NP.sum(locs**2, axis=1))
     ind = (radii >= rmin) & (radii <= rmax) 
-    kern[ind] = NP.exp(-1j * 2*NP.pi/wavelength * NP.dot(locs[ind,:], pointing_center.T))
+    kern[ind] = NP.exp(-1j * 2*NP.pi/wavelength[ind] * NP.dot(locs[ind,:], pointing_center.T).ravel())
     
     eps = 1e-10
     if NP.all(NP.abs(kern.imag) < eps):

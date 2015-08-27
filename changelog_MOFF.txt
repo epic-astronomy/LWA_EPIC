@@ -1,3 +1,28 @@
+From 4279b67:
+============
+
+In antenna_array.py,
+
+(*) Add keys 'per_ant2grid' and 'all_ant2grid' to attribute
+grid_mapper of class AntennaArray. The value under key 'all_ant2grid'
+is a dictionary consisting of keys 'antind', 'u_gridind', 'v_gridind',
+'f_gridind', 'Ef', 'illumination', 'per_ant_per_freq_norm_wts'. The
+value under ley 'per_ant2grid' is a list of dictionaries where each
+dictionary consists of the following keys - 'label', 'f_gridind',
+'u_gridind', 'v_gridind', 'per_ant_per_freq_norm_wts', 'illumination',
+'Ef'. The top level keys are initialized in __init__() member function
+of class AntennaArray
+(*) Create member function grid_convolve_new() for class
+AntennaArray for handling analytic kernel estimation making use of
+the aforementioned new attributes
+(*) Create member function make_grid_cube_new() for class
+AntennaArray for making a grid cube using analytic kernel estimate
+
+In aperture.py,
+
+(*) Fix indexing issues while calculating kernel in circular() and
+rect() 
+
 From 5bb23ec:
 ============
 
@@ -11,6 +36,11 @@ the key 'antennas' in the updates dictionary input of member function
 update() of class AntennaArray which inside the member function is
 passed to update() member function of class Antenna. Update docstring
 accordingly
+
+In changelog_MOFF.txt,
+
+(*) Insert a log on the previous commit which was missed earlier
+related to import of lookup_operations module
 
 From 2c41e0a:
 ============
