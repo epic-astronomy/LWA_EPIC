@@ -2,31 +2,25 @@ import numpy as NP
 import scipy.constants as FCNST
 import lookup_operations as LKP
 
-################################################################################    
+################################################################################
 
-def parmscheck(xmin=-1.0, xmax=1.0, ymin=-1.0, ymax=1.0,rmin=0.0, rmax=1.0,
-               rotangle=0.0, pointing_center=None):
+def parmscheck(xmax=1.0, ymax=1.0,rmin=0.0, rmax=1.0, rotangle=0.0,
+               pointing_center=None):
 
     """
     ----------------------------------------------------------------------------
     Checks aperture parameters for compatibility for analytic aperture kernel 
     estimation
 
-    xmin    [scalar] Lower limit along the x-axis for the aperture kernel 
-            footprint. Applicable in case of rectangular or square apertures. 
-            Default=-1.0
-
     xmax    [scalar] Upper limit along the x-axis for the aperture kernel 
             footprint. Applicable in case of rectangular or square apertures. 
-            Default=1.0
-
-    ymin    [scalar] Lower limit along the y-axis for the aperture kernel 
-            footprint. Applicable in case of rectangular apertures. 
-            Default=-1.0
+            Default=1.0. Lower limit along the x-axis is set to -xmax. Length 
+            of the rectangular footprint is 2*xmax
 
     ymax    [scalar] Upper limit along the y-axis for the aperture kernel 
             footprint. Applicable in case of rectangular apertures. 
-            Default=1.0
+            Default=1.0. Lower limit along the y-axis is set to -ymax. Breadth 
+            of the rectangular footprint is 2*ymax
 
     rmin    [scalar] Lower limit along the radial direction for the aperture 
             kernel footprint. Applicable in case of circular apertures.  
@@ -52,14 +46,8 @@ def parmscheck(xmin=-1.0, xmax=1.0, ymin=-1.0, ymax=1.0,rmin=0.0, rmax=1.0,
 
     Dictionary consisting of corrected values of input under the following 
     keys:
-    'xmin'  [scalar] Corrected lower limit along the x-axis for the aperture 
-            kernel footprint. Applicable in case of rectangular or square 
-            apertures. 
     'xmax'  [scalar] Corrected upper limit along the x-axis for the aperture 
             kernel footprint. Applicable in case of rectangular or square 
-            apertures. 
-    'ymin'  [scalar] Corrected lower limit along the y-axis for the aperture 
-            kernel footprint. Applicable in case of rectangular
             apertures. 
     'ymax'  [scalar] Corrected upper limit along the y-axis for the aperture 
             kernel footprint. Applicable in case of rectangular
@@ -80,31 +68,20 @@ def parmscheck(xmin=-1.0, xmax=1.0, ymin=-1.0, ymax=1.0,rmin=0.0, rmax=1.0,
     ----------------------------------------------------------------------------
     """
 
-    if not isinstance(xmin, (int,float)):
-        raise TypeError('xmin must be a scalar')
-    else:
-        xmin = float(xmin)
-
     if not isinstance(xmax, (int,float)):
         raise TypeError('xmax must be a scalar')
     else:
         xmax = float(xmax)
-
-    if xmin >= xmax:
-        raise ValueError('xmin must be less than xmax')
-
-    if not isinstance(ymin, (int,float)):
-        raise TypeError('ymin must be a scalar')
-    else:
-        ymin = float(ymin)
 
     if not isinstance(ymax, (int,float)):
         raise TypeError('ymax must be a scalar')
     else:
         ymax = float(ymax)
 
-    if ymin >= ymax:
-        raise ValueError('ymin must be less than ymax')
+    if xmax <= 0.0:
+        raise ValueError('xmax must be positive')
+    if ymax <= 0.0:
+        raise ValueError('ymax must be positive')
 
     if not isinstance(rmin, (int,float)):
         raise TypeError('rmin must be a scalar')
@@ -122,9 +99,7 @@ def parmscheck(xmin=-1.0, xmax=1.0, ymin=-1.0, ymax=1.0,rmin=0.0, rmax=1.0,
         raise ValueError('rmin must be less than rmax')
     
     outdict = {}
-    outdict['xmin'] = xmin
     outdict['xmax'] = xmax
-    outdict['ymin'] = ymin
     outdict['ymax'] = ymax
     outdict['rmin'] = rmin
     outdict['rmax'] = rmax
@@ -153,8 +128,8 @@ def parmscheck(xmin=-1.0, xmax=1.0, ymin=-1.0, ymax=1.0,rmin=0.0, rmax=1.0,
 
 ################################################################################
 
-def inputcheck(locs, wavelength=1.0, xmin=-1.0, xmax=1.0, ymin=-1.0, ymax=1.0,
-               rmin=0.0, rmax=1.0, rotangle=0.0, pointing_center=None):
+def inputcheck(locs, wavelength=1.0, xmax=1.0, ymax=1.0, rmin=0.0, rmax=1.0,
+               rotangle=0.0, pointing_center=None):
 
     """
     ----------------------------------------------------------------------------
@@ -175,21 +150,15 @@ def inputcheck(locs, wavelength=1.0, xmin=-1.0, xmax=1.0, ymin=-1.0, ymax=1.0,
             the number of locations at which the aperture kernel is to be 
             estimated. Same units as locs. Default=1.0
 
-    xmin    [scalar] Lower limit along the x-axis for the aperture kernel 
-            footprint. Applicable in case of rectangular or square apertures. 
-            Same units as locs. Default=-1.0
-
     xmax    [scalar] Upper limit along the x-axis for the aperture kernel 
             footprint. Applicable in case of rectangular or square apertures. 
-            Same units as locs. Default=1.0
-
-    ymin    [scalar] Lower limit along the y-axis for the aperture kernel 
-            footprint. Applicable in case of rectangular apertures. 
-            Same units as locs. Default=-1.0
+            Same units as locs. Default=1.0. Lower limit along the x-axis is 
+            set to -xmax. Length of the rectangular footprint is 2*xmax
 
     ymax    [scalar] Upper limit along the y-axis for the aperture kernel 
             footprint. Applicable in case of rectangular apertures. 
-            Same units as locs. Default=1.0
+            Same units as locs. Default=1.0. Lower limit along the y-axis is 
+            set to -ymax. Breadth of the rectangular footprint is 2*ymax
 
     rmin    [scalar] Lower limit along the radial direction for the aperture 
             kernel footprint. Applicable in case of circular apertures. Same 
@@ -221,14 +190,8 @@ def inputcheck(locs, wavelength=1.0, xmin=-1.0, xmax=1.0, ymin=-1.0, ymax=1.0,
     'wavelength'
             [numpy array] Corrected wavelengths. 1x1 or Mx1 array. Same units
             as locs
-    'xmin'  [scalar] Corrected lower limit along the x-axis for the aperture 
-            kernel footprint. Applicable in case of rectangular or square 
-            apertures. Same units as locs
     'xmax'  [scalar] Corrected upper limit along the x-axis for the aperture 
             kernel footprint. Applicable in case of rectangular or square 
-            apertures. Same units as locs
-    'ymin'  [scalar] Corrected lower limit along the y-axis for the aperture 
-            kernel footprint. Applicable in case of rectangular
             apertures. Same units as locs
     'ymax'  [scalar] Corrected upper limit along the y-axis for the aperture 
             kernel footprint. Applicable in case of rectangular
@@ -288,14 +251,11 @@ def inputcheck(locs, wavelength=1.0, xmin=-1.0, xmax=1.0, ymin=-1.0, ymax=1.0,
 
     outdict['wavelength'] = wavelength
     
-    parmsdict = parmscheck(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax,
-                           rotangle=rotangle, pointing_center=pointing_center)
+    parmsdict = parmscheck(xmax=xmax, ymax=ymax, rotangle=rotangle,
+                           pointing_center=pointing_center)
     
-    outdict['xmin'] = parmsdict['xmin']
     outdict['xmax'] = parmsdict['xmax']
-    outdict['ymin'] = parmsdict['ymin']
     outdict['ymax'] = parmsdict['ymax']
-    outdict['rmin'] = parmsdict['rmin']
     outdict['rmax'] = parmsdict['rmax']
     outdict['rotangle'] = parmsdict['rotangle']
     outdict['pointing_center'] = parmsdict['pointing_center']
@@ -304,8 +264,8 @@ def inputcheck(locs, wavelength=1.0, xmin=-1.0, xmax=1.0, ymin=-1.0, ymax=1.0,
         
 ################################################################################
 
-def rect(locs, wavelength=1.0, xmin=-1.0, xmax=1.0, ymin=-1.0, ymax=1.0,
-         rotangle=0.0, pointing_center=None):
+def rect(locs, wavelength=1.0, xmax=1.0, ymax=1.0, rotangle=0.0,
+         pointing_center=None):
 
     """
     ----------------------------------------------------------------------------
@@ -325,17 +285,15 @@ def rect(locs, wavelength=1.0, xmin=-1.0, xmax=1.0, ymin=-1.0, ymax=1.0,
             all locations. If an array is provided, number of wavelengths must 
             equal number of locations. Same units as locs. Default=1.0
 
-    xmin    [scalar] Lower limit along the x-axis for the aperture kernel 
-            footprint. Same units as locs. Default=-1.0
-
     xmax    [scalar] Upper limit along the x-axis for the aperture kernel 
-            footprint. Same units as locs. Default=1.0
-
-    ymin    [scalar] Lower limit along the y-axis for the aperture kernel 
-            footprint. Same units as locs. Default=-1.0
+            footprint. Same units as locs. Default=1.0. Lower limit along the 
+            x-axis is set to -xmax. Length of the rectangular footprint is 
+            2*xmax
 
     ymax    [scalar] Upper limit along the y-axis for the aperture kernel 
-            footprint. Same units as locs. Default=1.0
+            footprint. Same units as locs. Default=1.0. Lower limit along the 
+            y-axis is set to -ymax. Length of the rectangular footprint is 
+            2*ymax
     
     rotangle
             [scalar] Angle (in radians) by which the principal axis of the 
@@ -354,20 +312,19 @@ def rect(locs, wavelength=1.0, xmin=-1.0, xmax=1.0, ymin=-1.0, ymax=1.0,
     ----------------------------------------------------------------------------
     """
 
-    inpdict = inputcheck(locs, wavelength=wavelength, xmin=xmin, xmax=xmax,
-                         ymin=ymin, ymax=ymax, rotangle=rotangle,
-                         pointing_center=pointing_center)
+    inpdict = inputcheck(locs, wavelength=wavelength, xmax=xmax, ymax=ymax,
+                         rotangle=rotangle, pointing_center=pointing_center)
     locs = inpdict['locs']
     wavelength = inpdict['wavelength']
-    xmin = inpdict['xmin']
     xmax = inpdict['xmax']    
-    ymin = inpdict['ymin']
     ymax = inpdict['ymax']
+    xmin = -xmax
+    ymin = -ymax
     rotangle = inpdict['rotangle']
     pointing_center = inpdict['pointing_center']
 
     kern = NP.zeros(locs.shape[0], dtype=NP.complex64)
-    if ymax-ymin > xmax-xmin:
+    if ymax > xmax:
         rotangle = rotangle + NP.pi/2
 
     # Rotate all locations by -rotangle to get x- and y-values relative to
@@ -388,7 +345,7 @@ def rect(locs, wavelength=1.0, xmin=-1.0, xmax=1.0, ymin=-1.0, ymax=1.0,
 
 ################################################################################
 
-def square(locs, wavelength=1.0, xmin=-1.0, xmax=1.0, rotangle=0.0,
+def square(locs, wavelength=1.0, xmax=1.0, rotangle=0.0,
            pointing_center=None):
 
     """
@@ -409,11 +366,9 @@ def square(locs, wavelength=1.0, xmin=-1.0, xmax=1.0, rotangle=0.0,
             all locations. If an array is provided, number of wavelengths must 
             equal number of locations. Same units as locs. Default=1.0
 
-    xmin    [scalar] Lower limit for the aperture kernel footprint. Same 
-            units as locs. Default=-1.0
-
     xmax    [scalar] Upper limit for the aperture kernel footprint. Same 
-            units as locs. Default=1.0
+            units as locs. Default=1.0. Lower limit along the x-axis is set to 
+            -xmax. Length of the square footprint is 2*xmax
 
     rotangle
             [scalar] Angle (in radians) by which the principal axis of the 
@@ -432,8 +387,8 @@ def square(locs, wavelength=1.0, xmin=-1.0, xmax=1.0, rotangle=0.0,
     ----------------------------------------------------------------------------
     """
 
-    kern = rect(locs, wavelength=wavelength, xmin=xmin, xmax=xmax, ymin=xmin,
-                ymax=xmax, rotangle=rotangle, pointing_center=pointing_center)
+    kern = rect(locs, wavelength=wavelength, xmax=xmax, ymax=xmax,
+                rotangle=rotangle, pointing_center=pointing_center)
 
     return kern
 
@@ -523,29 +478,19 @@ class AntennaAperture(object):
                 kernel_type for the polarization is set to 'func' else the 
                 shape will be set to None.
 
-    xmin        [dictionary] Lower limit along the x-axis for the aperture 
-                kernel footprint. Applicable in case of rectangular or square 
-                apertures. It has two keys 'P1' and 'P2' - one for each 
-                polarization. The value (default=-1.0) held by each key is a 
-                scalar
-
     xmax        [dictionary] Upper limit along the x-axis for the aperture 
                 kernel footprint. Applicable in case of rectangular or square 
                 apertures. It has two keys 'P1' and 'P2' - one for each 
                 polarization. The value (default=1.0) held by each key is a 
-                scalar
-
-    ymin        [dictionary] Lower limit along the y-axis for the aperture 
-                kernel footprint. Applicable in case of rectangular 
-                apertures. It has two keys 'P1' and 'P2' - one for each 
-                polarization. The value (default=-1.0) held by each key is a 
-                scalar
+                scalar. Lower limit along the x-axis is set to -xmax. Length 
+                of the rectangular/square footprint is 2*xmax
 
     ymax        [dictionary] Upper limit along the y-axis for the aperture 
                 kernel footprint. Applicable in case of rectangular 
                 apertures. It has two keys 'P1' and 'P2' - one for each 
                 polarization. The value (default=1.0) held by each key is a 
-                scalar
+                scalar. Lower limit along the y-axis is set to -ymax. Breadth 
+                of the rectangular footprint is 2*ymax
 
     rmin        [dictionary] Lower limit along the radial axis for the aperture 
                 kernel footprint. Applicable in case of circular 
@@ -602,7 +547,7 @@ class AntennaAperture(object):
         information about an antenna aperture
 
         Class attributes initialized are:
-        kernel_type, shape, xmin, xmax, ymin, ymax, rmin, emax, rotangle, 
+        kernel_type, shape, xmax, ymax, rmin, emax, rotangle, 
         wtsposxy, wtsxy, lkpinfo
 
         Read docstring of class AntennaAperture for details on these 
@@ -627,18 +572,17 @@ class AntennaAperture(object):
                     has two keys 'P1' and 'P2' - one for each polarization. 
                     Under each of these keys is another dictionary with the 
                     following keys and information:
-                    'xmin'  [scalar] Lower limit along the x-axis for the 
-                            aperture kernel footprint. Applicable in case of 
-                            rectangular or square apertures. Default=-1.0
                     'xmax'  [scalar] Upper limit along the x-axis for the 
                             aperture kernel footprint. Applicable in case of 
-                            rectangular or square apertures. Default=1.0
-                    'ymin'  [scalar] Lower limit along the y-axis for the 
-                            aperture kernel footprint. Applicable in case of 
-                            rectangular apertures. Default=-1.0
+                            rectangular or square apertures. Default=1.0.
+                            Lower limit along the x-axis is set to -xmax. 
+                            Length of the rectangular/square footprint is 
+                            2*xmax
                     'ymax'  [scalar] Upper limit along the y-axis for the 
                             aperture kernel footprint. Applicable in case of 
-                            rectangular apertures. Default=1.0
+                            rectangular apertures. Default=1.0. Lower limit 
+                            along the y-axis is set to -ymax. Breadth of the 
+                            rectangular footprint is 2*ymax
                     'rmin'  [scalar] Lower limit along radial axis for the 
                             aperture kernel footprint. Applicable in case of 
                             circualr apertures. Default=0.0
@@ -707,8 +651,6 @@ class AntennaAperture(object):
             parms = {}
             for pol in ['P1','P2']:
                 parms[pol] = {}
-                parms[pol]['xmin'] = -1.0
-                parms[pol]['ymin'] = -1.0
                 parms[pol]['rmin'] = 0.0
                 parms[pol]['xmax'] = 1.0
                 parms[pol]['ymax'] = 1.0
@@ -718,16 +660,12 @@ class AntennaAperture(object):
             for pol in ['P1','P2']:
                 if pol not in parms:
                     parms[pol] = {}
-                    parms[pol]['xmin'] = -1.0
-                    parms[pol]['ymin'] = -1.0
                     parms[pol]['rmin'] = 0.0
                     parms[pol]['xmax'] = 1.0
                     parms[pol]['ymax'] = 1.0
                     parms[pol]['rmax'] = 1.0
                     parms[pol]['rotangle'] = 0.0
                 elif isinstance(parms[pol], dict):
-                    if 'xmin' not in parms[pol]: parms[pol]['xmin'] = -1.0
-                    if 'ymin' not in parms[pol]: parms[pol]['ymin'] = -1.0
                     if 'rmin' not in parms[pol]: parms[pol]['rmin'] = 0.0
                     if 'xmax' not in parms[pol]: parms[pol]['xmax'] = 1.0
                     if 'ymax' not in parms[pol]: parms[pol]['ymax'] = 1.0
@@ -740,8 +678,6 @@ class AntennaAperture(object):
 
         self.kernel_type = {}
         self.shape = {}
-        self.xmin = {}
-        self.ymin = {}
         self.rmin = {}
         self.xmax = {}
         self.ymax = {}
@@ -751,9 +687,7 @@ class AntennaAperture(object):
         for pol in ['P1', 'P2']:
             self.kernel_type[pol] = kernel_type[pol]
             self.shape[pol] = shape[pol]
-            parmsdict = parmscheck(xmin=parms[pol]['xmin'], xmax=parms[pol]['xmax'], ymin=parms[pol]['ymin'], ymax=parms[pol]['ymax'], rmin=parms[pol]['rmin'], rmax=parms[pol]['rmax'], rotangle=parms[pol]['rotangle'])
-            self.xmin[pol] = parmsdict['xmin']
-            self.ymin[pol] = parmsdict['ymin']
+            parmsdict = parmscheck(xmax=parms[pol]['xmax'], ymax=parms[pol]['ymax'], rmin=parms[pol]['rmin'], rmax=parms[pol]['rmax'], rotangle=parms[pol]['rotangle'])
             self.rmin[pol] = parmsdict['rmin']
             self.xmax[pol] = parmsdict['xmax']
             self.ymax[pol] = parmsdict['ymax']
@@ -848,9 +782,9 @@ class AntennaAperture(object):
             if self.kernel_type[p] == 'func':
                 if self.shape[p] is not None:
                     if self.shape[p] == 'rect':
-                        outdict[p] = rect(locs, wavelength=wavelength, xmin=self.xmin[p], xmax=self.xmax[p], ymin=self.ymin[p], ymax=self.ymax[p], rotangle=self.rotangle[p], pointing_center=pointing_center)
+                        outdict[p] = rect(locs, wavelength=wavelength, xmax=self.xmax[p], ymax=self.ymax[p], rotangle=self.rotangle[p], pointing_center=pointing_center)
                     elif self.shape[p] == 'square':
-                        outdict[p] = square(locs, wavelength=wavelength, xmin=self.xmin[p], xmax=self.xmax[p], rotangle=self.rotangle[p], pointing_center=pointing_center)
+                        outdict[p] = square(locs, wavelength=wavelength, xmax=self.xmax[p], rotangle=self.rotangle[p], pointing_center=pointing_center)
                     elif self.shape[p] == 'circular':
                         outdict[p] = circular(locs, wavelength=wavelength, rmin=self.rmin[p], rmax=self.rmax[p], pointing_center=pointing_center)
                     else:

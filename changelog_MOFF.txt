@@ -1,3 +1,14 @@
+From ff893b8:
+============
+
+In aperture.py,
+
+(*) Remove the use of xmin and ymin throughout the module. Instead
+assume throughout that xmin=-xmax, ymin=-ymax. This includes functions
+rect(), parmscheck(), inputcheck(), square() and class AntennaAperture
+(*) Add more checking of xmax and ymax in functions parmscheck()
+(*) Modify all docstrings in aperture module accordingly
+
 From 25d7cac:
 ============
 
