@@ -566,6 +566,9 @@ class AntennaAperture(object):
                 polarization. The value (default=0.0) held by each key is a 
                 scalar
 
+    lkpinfo     [dictionary] lookup table file location, one for each 
+                polarization under the standard keys denoting polarization
+
     wtsposxy    [dictionary] two-dimensional locations of the gridding weights 
                 in wts for each polarization under keys 'P1' and 'P2'. The 
                 locations are in ENU coordinate system as a list of 2-column 
@@ -590,7 +593,8 @@ class AntennaAperture(object):
     ----------------------------------------------------------------------------
     """
 
-    def __init__(self, kernel_type=None, shape=None, parms=None, lkpinfo=None):
+    def __init__(self, kernel_type=None, shape=None, parms=None, lkpinfo=None,
+                 load_lookup=True):
 
         """
         ------------------------------------------------------------------------
@@ -599,7 +603,7 @@ class AntennaAperture(object):
 
         Class attributes initialized are:
         kernel_type, shape, xmin, xmax, ymin, ymax, rmin, emax, rotangle, 
-        wtsposxy, wtsxy
+        wtsposxy, wtsxy, lkpinfo
 
         Read docstring of class AntennaAperture for details on these 
         attributes.
@@ -650,13 +654,17 @@ class AntennaAperture(object):
                             polarization. The value (default=0.0) held by each 
                             key is a scalar
 
-        lookup      [dicitonary] consists of weights information for each of 
+        lkpinfo     [dicitonary] consists of weights information for each of 
                     the two polarizations under keys 'P1' and 'P2'. Each of 
                     the values under the keys is a string containing the full
                     path to a filename that contains the positions and 
                     weights for the antenna field illumination in the form of 
                     a lookup table as columns (x-loc [float], y-loc 
                     [float], wts[real], wts[imag if any]). 
+
+        load_lookup [boolean] If set to True (default), loads from the lookup 
+                    table. If set to False, the values may be loaded later 
+                    using member function compute()
         ------------------------------------------------------------------------
         """
 
@@ -754,25 +762,31 @@ class AntennaAperture(object):
 
         self.wtsposxy = {}
         self.wtsxy = {}
-        for pol in ['P1', 'P2']:
-            self.wtsposxy[pol] = None
-            self.wtsxy[pol] = None                
-            if lkpinfo is not None:
+        self.lkpinfo = {}
+        if lkpinfo is not None:
+            if not isinstance(lkpinfo, dict):
+                raise TypeError('Input parameter lkpinfo must be a dictionary')
+            for pol in ['P1', 'P2']:
+                self.wtsposxy[pol] = None
+                self.wtsxy[pol] = None
                 if pol in lkpinfo:
-                    lkpdata = LKP.read_lookup(lkpinfo[pol]['file'])
-                    self.wtsposxy[pol] = NP.hstack((lkpdata[0].reshape(-1,1),lkpdata[1].reshape(-1,1)))
-                    self.wtsxy[pol] = lkpdata[2]
-                    if lkpdata.shape[1] == 4:  # Read in the imaginary part
-                        self.wtsxy[pol] += 1j * lkpdata[3]
+                    self.lkpinfo[pol] = lkpinfo[pol]
+                    if load_lookup:
+                        lkpdata = LKP.read_lookup(self.lkpinfo[pol])
+                        self.wtsposxy[pol] = NP.hstack((lkpdata[0].reshape(-1,1),lkpdata[1].reshape(-1,1)))
+                        self.wtsxy[pol] = lkpdata[2]
+                        if len(lkpdata) == 4:  # Read in the imaginary part
+                            self.wtsxy[pol] += 1j * lkpdata[3]
 
     ############################################################################
 
-    def compute(self, locs, wavelength=1.0, pointing_center=None, pol=None):
+    def compute(self, locs, wavelength=1.0, pointing_center=None, pol=None,
+                rmaxNN=None, load_lookup=False):
 
         """
         ------------------------------------------------------------------------
         Estimates the kernel for given locations based on the aperture 
-        attributes
+        attributes for an analytic or lookup-based estimation
 
         Inputs:
 
@@ -800,11 +814,20 @@ class AntennaAperture(object):
                 If set to None, kernel is estimated for all the polarizations. 
                 Default=None
 
+        rmaxNN  [scalar] Search distance upper limit in case of kernel 
+                estimation from a lookup table. Default=None means value in 
+                attribute rmax is used.
+
+        load_lookup
+                [boolean] If set to True, loads from the lookup table. If set
+                to False (default), uses the already loaded values during 
+                initialization
+
         Outputs:
 
         Dictionary containing two keys 'P1' and 'P2' - one for each 
-        polarization. Under each of these keys, the kernel is returned as a 
-        numpy array of possibly complex values for the specified locations
+        polarization. Under each of these keys, the kernel information is 
+        returned as a (complex) numpy array
         ------------------------------------------------------------------------
         """
 
@@ -819,28 +842,42 @@ class AntennaAperture(object):
             p = [item for item in pol if item in ['P1', 'P2']]
             pol = p
 
-        kern = {}
+        outdict = {}
         for p in pol:
-            kern[p] = None
-            if self.shape[p] is not None:
-                if self.shape[p] == 'rect':
-                    kern[p] = rect(locs, wavelength=wavelength, xmin=self.xmin[p],
-                                   xmax=self.xmax[p], ymin=self.ymin[p],
-                                   ymax=self.ymax[p], rotangle=self.rotangle[p],
-                                   pointing_center=pointing_center)
-                elif self.shape[p] == 'square':
-                    kern[p] = square(locs, wavelength=wavelength,
-                                     xmin=self.xmin[p], xmax=self.xmax[p],
-                                     rotangle=self.rotangle[p],
-                                     pointing_center=pointing_center)
-                elif self.shape[p] == 'circular':
-                    kern[p] = circular(locs, wavelength=wavelength,
-                                       rmin=self.rmin[p], rmax=self.rmax[p],
-                                       pointing_center=pointing_center)
+            outdict[p] = None
+            if self.kernel_type[p] == 'func':
+                if self.shape[p] is not None:
+                    if self.shape[p] == 'rect':
+                        outdict[p] = rect(locs, wavelength=wavelength, xmin=self.xmin[p], xmax=self.xmax[p], ymin=self.ymin[p], ymax=self.ymax[p], rotangle=self.rotangle[p], pointing_center=pointing_center)
+                    elif self.shape[p] == 'square':
+                        outdict[p] = square(locs, wavelength=wavelength, xmin=self.xmin[p], xmax=self.xmax[p], rotangle=self.rotangle[p], pointing_center=pointing_center)
+                    elif self.shape[p] == 'circular':
+                        outdict[p] = circular(locs, wavelength=wavelength, rmin=self.rmin[p], rmax=self.rmax[p], pointing_center=pointing_center)
+                    else:
+                        raise ValueError('The analytic kernel shape specified in the shape attribute is not currently supported')
+            else:
+                if rmaxNN is None:
+                    rmaxNN = self.rmax
+                if not isinstance(rmaxNN, (int,float)):
+                    raise TypeError('Input rmaxNN must be a scalar')
                 else:
-                    raise ValueError('The analytic kernel shape specified in the shape attribute is not currently supported')
+                    rmaxNN = float(rmaxNN)
+                    if rmaxNN <= 0.0:
+                        raise ValueError('Search radius upper limit must be positive')
 
-        return kern
+                if p in self.lkpinfo:
+                    if load_lookup:
+                        lkpdata = LKP.read_lookup(self.lkpinfo[p])
+                        self.wtsposxy[p] = NP.hstack((lkpdata[0].reshape(-1,1),lkpdata[1].reshape(-1,1)))
+                        self.wtsxy[p] = lkpdata[2]
+                        if len(lkpdata) == 4:  # Read in the imaginary part
+                            self.wtsxy[p] += 1j * lkpdata[3]
+
+                    # inpind, refind, distNN = LKP.find_1NN(self.wtsposxy[p], locs, distance_ULIM=rmaxNN, remove_oob=True)
+                    inpind, nnval, distNN = LKP.lookup_1NN_new(self.wtsposxy[p], self.wtsxy[p], locs, distance_ULIM=rmaxNN, remove_oob=False)
+                    outdict[p] = nnval
+
+        return outdict
             
     ############################################################################
 

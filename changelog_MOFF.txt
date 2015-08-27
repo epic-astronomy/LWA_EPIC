@@ -1,3 +1,36 @@
+From 25d7cac:
+============
+
+In aperture.py,
+
+(*) Add lookup-based kernel estimation in member function compute()
+of class AntennaAperture. Rename the returned value kern to outdict
+and change the data structure of outdict. Update docstring accodingly
+(*) Add input keyword load_lookup() to member functions __init__() and
+compute() of class AntennaAperture. Update docstrings accordingly
+(*) Add input rmaxNN to member function compute() of class
+AntennaAperture as part of lookup funcitonality. Update docstring
+accordingly
+(*) Move reading of information in the lookup file to member function
+compute() in class AntennaAperture
+(*) In __init__() member function of class AntennaAperture, store
+only lookup information filename instead of reading in the lookup
+data.
+(*) Correct docstring of member function __init__() of class
+AntennaAperture with correct name of input parameter lkpinfo
+which was earlier incorrectly named as lookup
+(*) Update docstring of class AntennaAperture to accurately reflect
+its attributes and member functions
+
+In antenna_array.py,
+
+(*) Pass rmaxNN in call to compute() member function of class
+AntennaAperture from inside member function grid_convolve_new() of
+class AntennaArray
+(*) Pass load_lookup in call to compute() member function of class
+AntennaAperture from inside member function grid_convolve_new() of
+class AntennaArray
+
 From 4279b67:
 ============
 

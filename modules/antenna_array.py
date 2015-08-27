@@ -9413,9 +9413,12 @@ class AntennaArray:
         if not self.grid_ready:
             self.grid()
 
+        du = self.gridu[0,1] - self.gridu[0,0]
+        dv = self.gridv[1,0] - self.gridv[0,0]
         wavelength = FCNST.c / self.f
         min_lambda = NP.abs(wavelength).min()
-
+        rmaxNN = 0.5 * NP.sqrt(du**2 + dv**2) * min_lambda
+ 
         krn = {}
         antpol = ['P1', 'P2']
         for apol in antpol:
@@ -9514,31 +9517,31 @@ class AntennaArray:
 
                             if identical_antennas:
                                 arbitrary_antenna_aperture = self.antennas.itervalues().next().aperture
-                                krn = arbitrary_antenna_aperture.compute(dxy, wavelength=wl[fvu_gridind])
+                                krn = arbitrary_antenna_aperture.compute(dxy, wavelength=wl[fvu_gridind], pol=apol, rmaxNN=rmaxNN, load_lookup=False)
                             else:
-                                # This block #1 is one way
+                                # This block #1 is one way to go about per antenna
                                 for ai,gi in enumerate(indNN_list):
                                     if len(gi) > 0:
                                         label = self.ordered_labels[ai]
                                         ind = NP.asarray(gi)
                                         diffxy = grid_xy[ind,:].reshape(-1,2) - ant_xy[ai,:].reshape(-1,2)
-                                        krnpol = self.antennas[label].aperture.compute(diffxy, wavelength=wl[ind], pol=apol)
+                                        krndict = self.antennas[label].aperture.compute(diffxy, wavelength=wl[ind], pol=apol, rmaxNN=rmaxNN, load_lookup=False)
                                         if krn[apol] is None:
-                                            krn[apol] = NP.copy(krnpol[apol])
+                                            krn[apol] = NP.copy(krndict[apol])
                                         else:
-                                            krn[apol] = NP.append(krn[apol], krnpol[apol])
+                                            krn[apol] = NP.append(krn[apol], krndict[apol])
                                         
-                                # # This block #2 is another way equivalent to block #1
+                                # # This block #2 is another way equivalent to above block #1
                                 # uniq_antind = NP.unique(antind)
                                 # anthist, antbe, antbn, antri = OPS.binned_statistic(antind, statistic='count', bins=NP.append(uniq_antind, uniq_antind.max()+1))
                                 # for i,uantind in enumerate(uniq_antind):
                                 #     label = self.ordered_labels[uantind]
                                 #     ind = antri[antri[i]:antri[i+1]]
-                                #     krnpol = self.antennas[label].aperture.compute(dxy[ind,:], wavelength=wl[ind], pol=apol)
+                                #     krndict = self.antennas[label].aperture.compute(dxy[ind,:], wavelength=wl[ind], pol=apol, rmaxNN=rmaxNN, load_lookup=False)
                                 #     if krn[apol] is None:
-                                #         krn[apol] = NP.copy(krnpol[apol])
+                                #         krn[apol] = NP.copy(krndict[apol])
                                 #     else:
-                                #         krn[apol] = NP.append(krn[apol], krnpol[apol])
+                                #         krn[apol] = NP.append(krn[apol], krndict[apol])
 
                             self.grid_mapper[apol]['all_ant2grid']['illumination'] = NP.copy(krn[apol])
                         else: # Weights do not scale with frequency (needs serious development)
