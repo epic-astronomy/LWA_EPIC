@@ -759,7 +759,7 @@ class Aperture(object):
     ----------------------------------------------------------------------------
     """
 
-    def __init__(self, pol_type='single', kernel_type=None, shape=None,
+    def __init__(self, pol_type='dual', kernel_type=None, shape=None,
                  parms=None, lkpinfo=None, load_lookup=True):
 
         """
@@ -777,9 +777,9 @@ class Aperture(object):
         Inputs:
 
         pol_type    [string] Specifies type of polarizations to be set. 
-                    Currently accepted values are 'single' (default) and 
-                    'cross'. If set to single, the attribute pol is set to
-                    single antenna polarizations ['P1', 'P2']. If set to 'cross'
+                    Currently accepted values are 'dual' (default) and 
+                    'cross'. If set to 'dual', the attribute pol is set to
+                    dual antenna polarizations ['P1', 'P2']. If set to 'cross'
                     attribute pol is set to cross-polarizations from antennas
                     ['P11', 'P12', 'P21', 'P22']
 
@@ -844,9 +844,9 @@ class Aperture(object):
         ------------------------------------------------------------------------
         """
 
-        if pol_type not in ['single', 'cross']:
-            raise ValueError('Polarization type must be "single" or "cross"')
-        elif pol_type == 'single':
+        if pol_type not in ['dual', 'cross']:
+            raise ValueError('Polarization type must be "dual" or "cross"')
+        elif pol_type == 'dual':
             self.pol = ['P1', 'P2']
         else:
             self.pol = ['P11', 'P12', 'P21', 'P22']

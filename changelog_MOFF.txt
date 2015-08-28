@@ -1,3 +1,23 @@
+From 70d1ce3:
+============
+
+In aperture.py,
+
+(*) Change one of the accepted values of input parameter pol_type in 
+member function __init__() of class Aperture from 'single' to 'dual'
+
+In antenna_array.py,
+
+(*) Update attribute aperture in update() member function of class
+Interferometer. Update docstring accordingly
+(*) Update interferometer and antenna attributes aperture through
+update() member function of class InterferometerArray. Update
+docstring accordingly
+(*) Minor change in TypeError message in update() member function of
+class Antenna
+(*) Initialize attribute aperture in __init__() member function of
+class Antenna by explicitly passing the input pol_type='dual'
+
 From 4aee864:
 ============
 

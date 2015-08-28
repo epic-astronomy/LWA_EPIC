@@ -1390,6 +1390,10 @@ class Interferometer:
                        'P12', 'P21', and 'P22'. Default=None implies no updates 
                        for Vt.
     
+            aperture   [instance of class APR.Aperture] aperture information for 
+                       the interferometer. Read docstring of class Aperture for 
+                       details
+
             wtsinfo    [dictionary] consists of weights information for each of 
                        the four cross-polarizations under keys 'P11', 'P12', 
                        'P21', and 'P22'. Each of the values under the keys is a 
@@ -1473,6 +1477,7 @@ class Interferometer:
         wtsinfo = None
         gridfunc_freq = None
         ref_freq = None
+        aperture = None
 
         if update_dict is not None:
             if not isinstance(update_dict, dict):
@@ -1490,6 +1495,7 @@ class Interferometer:
             if 'wtsinfo' in update_dict: wtsinfo = update_dict['wtsinfo']
             if 'gridfunc_freq' in update_dict: gridfunc_freq = update_dict['gridfunc_freq']
             if 'ref_freq' in update_dict: ref_freq = update_dict['ref_freq']
+            if 'aperture' in update_dict: aperture = update_dict['aperture']
 
         if label is not None: self.label = label
         if location is not None: self.location = location
@@ -1535,6 +1541,12 @@ class Interferometer:
             trc_orig = NP.copy(self.trc)
             eps = 1e-6
     
+            if aperture is not None:
+                if isinstance(aperture, APR.Aperture):
+                    self.aperture = copy.deepcopy(aperture)
+                else:
+                    raise TypeError('Update for aperture must be an instance of class Aperture.')
+
             if wtsinfo is not None:
                 if not isinstance(wtsinfo, dict):
                     raise TypeError('Input parameter wtsinfo must be a dictionary.')
@@ -5044,6 +5056,11 @@ class InterferometerArray:
                                               coordinate system. Used only if 
                                               set and if 'action' key value is 
                                               set to 'modify'. Default = None.
+                                'aperture'    [instance of class 
+                                              APR.Aperture] aperture 
+                                              information for the antenna. Read 
+                                              docstring of class 
+                                              Aperture for details
                                 'wtsinfo'     [Optional. Dictionary] 
                                               See description in Antenna class 
                                               member function update(). Is used 
@@ -5224,6 +5241,11 @@ class InterferometerArray:
                                               Used only if set and if 'action' 
                                               key value is set to 'modify'.
                                               Default=None.
+                                'aperture'    [instance of class 
+                                              APR.Aperture] aperture 
+                                              information for the 
+                                              interferometer. Read docstring of 
+                                              class Aperture for details
                                 'wtsinfo'     [Optional. Dictionary] See 
                                               description in Interferometer 
                                               class member function update(). 
@@ -5421,6 +5443,7 @@ class InterferometerArray:
                             if 'maxmatch' not in dictitem: dictitem['maxmatch']=None
                             if 'tol' not in dictitem: dictitem['tol']=None
                             if 'do_correlate' not in dictitem: dictitem['do_correlate']=None
+                            if 'aperture' not in dictitem: dictitem['aperture']=None
 
                             if not parallel:
                                 # self.interferometers[dictitem['label']].update_old(dictitem['label'], dictitem['Vt'], dictitem['t'], dictitem['timestamp'], dictitem['location'], dictitem['wtsinfo'], dictitem['flags'], dictitem['gridfunc_freq'], dictitem['ref_freq'], dictitem['do_correlate'], verbose)
@@ -7148,7 +7171,7 @@ class Antenna:
             else:
                 raise TypeError('aperture must be an instance of class Aperture found in module {0}'.format(APR.__name__))
         else:
-            self.aperture = APR.Aperture()
+            self.aperture = APR.Aperture(pol_type='dual')
 
         self.antpol = PolInfo(nsamples=nsamples)
         self.t = 0.0
@@ -7480,7 +7503,7 @@ class Antenna:
             if isinstance(aperture, APR.Aperture):
                 self.aperture = copy.deepcopy(aperture)
             else:
-                raise TypeError('Update for antenna must be an instance of class Aperture.')
+                raise TypeError('Update for aperture must be an instance of class Aperture.')
 
         if wtsinfo is not None:
             if not isinstance(wtsinfo, dict):
