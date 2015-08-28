@@ -1,3 +1,16 @@
+From 23d5910:
+============
+
+In antenna_array.py,
+
+(*) Remove input keywords ants, mapping, tol, maxmatch from member 
+function grid_convolve_new() of class AntennaArray and docstrings. 
+Also remove code block concerning externally supplied ants and 
+instead only work with antenna instances that are part of the antenna 
+array instance
+(*) Remove commented lines in member function make_grid_cube_new() of
+class AntennaArray
+
 From 1c1263f:
 ============
 

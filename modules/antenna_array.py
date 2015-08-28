@@ -9257,51 +9257,22 @@ class AntennaArray:
     ############################################################################
     
     # @profile
-    def grid_convolve_new(self, pol=None, ants=None, unconvolve_existing=False,
-                      normalize=False, method='NN', distNN=NP.inf, tol=None,
-                      maxmatch=None, identical_antennas=True, cal_loop=False,
-                      gridfunc_freq=None, mapping='weighted', wts_change=False,
-                      parallel=False, nproc=None, pp_method='pool',
-                      verbose=True): 
+    def grid_convolve_new(self, pol=None, normalize=False, method='NN',
+                          distNN=NP.inf, identical_antennas=True,
+                          cal_loop=False, gridfunc_freq=None, wts_change=False,
+                          parallel=False, nproc=None, pp_method='pool',
+                          verbose=True): 
 
         """
         ------------------------------------------------------------------------
         Routine to project the complex illumination field pattern and the 
-        electric fields on the grid. It can operate on the entire antenna array 
-        or incrementally project the electric fields and complex illumination 
-        field patterns from specific antennas on to an already existing grid. 
-        (The latter is not implemented yet)
+        electric fields on the grid from the antenna array
 
         Inputs:
 
         pol        [String] The polarization to be gridded. Can be set to 'P1' 
                    or 'P2'. If set to None, gridding for all the polarizations 
                    is performed. Default = None
-
-        ants       [instance of class AntennaArray, single instance or list 
-                   of instances of class Antenna, or a dictionary holding 
-                   instances of class Antenna] If a dictionary is provided, 
-                   the keys should be the antenna labels and the values 
-                   should be instances of class Antenna. If a list is 
-                   provided, it should be a list of valid instances of class 
-                   Antenna. These instance(s) of class Antenna will 
-                   be merged to the existing grid contained in the instance of 
-                   AntennaArray class. If ants is not provided (set to 
-                   None), the gridding operations will be performed on the 
-                   set of antennas contained in the instance of class 
-                   entire AntennaArray. Default = None.
-
-        unconvolve_existing
-                   [Boolean] Default = False. If set to True, the effects of
-                   gridding convolution contributed by the antenna(s) 
-                   specified will be undone before updating the antenna 
-                   measurements on the grid, if the antenna(s) is/are 
-                   already found to in the set of antennas held by the 
-                   instance of AntennaArray. If False and if one or more 
-                   antenna instances specified are already found to be held 
-                   in the instance of class AntennaArray, the code will stop
-                   raising an error indicating the gridding oepration cannot
-                   proceed. 
 
         normalize  [Boolean] Default = False. If set to True, the gridded 
                    weights are divided by the sum of weights so that the gridded 
@@ -9324,19 +9295,6 @@ class AntennaArray:
                    internally converted to have same units as antenna 
                    attributes wtspos (units in number of wavelengths)
 
-        maxmatch   [scalar] A positive value indicating maximum number of input 
-                   locations in the antenna grid to be assigned. Default = None. 
-                   If set to None, all the antenna array grid elements specified 
-                   are assigned values for each antenna. For instance, to have 
-                   only one antenna array grid element to be populated per 
-                   antenna, use maxmatch=1. 
-
-        tol        [scalar] If set, only lookup data with abs(val) > tol will be 
-                   considered for nearest neighbour lookup. Default=None implies 
-                   all lookup values will be considered for nearest neighbour 
-                   determination. tol is to be interpreted as a minimum value 
-                   considered as significant in the lookup table. 
-
         identical_antennas
                    [boolean] indicates if all antenna elements are to be
                    treated as identical. If True (default), they are identical
@@ -9357,16 +9315,6 @@ class AntennaArray:
                    channels. Will be ignored if the number of elements of list 
                    in this attribute under the specific polarization are the 
                    same as the number of frequency channels.
-
-        mapping    [string] indicates the type of mapping between antenna 
-                   locations and the grid locations. Allowed values are 
-                   'sampled' and 'weighted' (default). 'sampled' means only the 
-                   antenna measurement closest ot a grid location contributes to 
-                   that grid location, whereas, 'weighted' means that all the 
-                   antennas contribute in a weighted fashion to their nearest 
-                   grid location. The former is faster but possibly discards 
-                   antenna data whereas the latter is slower but includes all 
-                   data along with their weights.
 
         wts_change [boolean] indicates if weights and/or their lcoations have 
                    changed from the previous intergration or snapshot. 
@@ -9425,166 +9373,116 @@ class AntennaArray:
             krn[apol] = None
             if apol in pol:
 
-                if ants is not None:
-    
-                    if isinstance(ants, Antenna):
-                        ants = [ants]
-    
-                    if isinstance(ants, (dict, AntennaArray)):
-                        # Check if these antennas are new or old and compatible
-                        for key in ants: 
-                            if isinstance(ants[key], Antenna): # required if ants is a dictionary and not instance of AntennaArray
-                                if key in self.antennas:
-                                    if unconvolve_existing: # Effects on the grid of antennas already existing must be removed 
-                                        if self.antennas[key]._gridinfo[apol]: # if gridding info is not empty
-                                            for i in range(len(self.f)):
-                                                self.grid_unconvolve(ants[key].label)
-                                    else:
-                                        raise KeyError('Antenna {0} already found to exist in the dictionary of antennas but cannot proceed grid_convolve() without unconvolving first.'.format(ants[key].label)) 
-                                
-                            else:
-                                del ants[key] # remove the dictionary element since it is not an Antenna instance
-                
-                    if identical_antennas and (gridfunc_freq == 'scale'):
-                        ant_dict = self.antenna_positions(pol=apol, flag=False, sort=True, centering=True)
-                        ant_xy = ant_dict['positions'][:,:2]
-                        self.ordered_labels = ant_dict['labels']
-                        n_ant = ant_xy.shape[0]
+                ant_dict = self.antenna_positions(pol=apol, flag=None, sort=True, centering=True)
+                self.ordered_labels = ant_dict['labels']
+                ant_xy = ant_dict['positions'][:,:2] # n_ant x 2
+                n_ant = ant_xy.shape[0]
 
-                        Ef_dict = self.get_E_fields_old(apol, flag=False, sort=True)
-                        Ef = Ef_dict['E-fields'].astype(NP.complex64)
-
-                        # Since antennas are identical, read from first antenna, since wtspos are scaled with frequency, read from first frequency channel
-                        wtspos_xy = ants[0].wtspos[apol][0] * FCNST.c/self.f[0] 
-                        wts = ants[0].wts[apol][0]
-                        n_wts = wts.size
-
-                        reflocs_xy = ant_xy[:,NP.newaxis,:] + wtspos_xy[NP.newaxis,:,:]
-                        refwts_xy = wts.reshape(1,-1) * NP.ones((n_ant,1))
-
-                        reflocs_xy = reflocs_xy.reshape(-1,ant_xy.shape[1])
-                        refwts_xy = refwts_xy.reshape(-1,1).astype(NP.complex64)
-                        reflocs_uv = reflocs_xy[:,NP.newaxis,:] * self.f.reshape(1,-1,1) / FCNST.c
-                        refwts_uv = refwts_xy * NP.ones((1,self.f.size))
-                        reflocs_uv = reflocs_uv.reshape(-1,ant_xy.shape[1])
-                        refwts_uv = refwts_uv.reshape(-1,1).ravel()
-
-                        inplocs = NP.hstack((self.gridu.reshape(-1,1), self.gridv.reshape(-1,1)))
-                        ibind, nnval = LKP.lookup_1NN(reflocs_uv, refwts_uv, inplocs,
-                                                      distance_ULIM=distNN*self.f.max()/FCNST.c,
-                                                      remove_oob=True, tol=tol, maxmatch=maxmatch)[:2]
-                        
-                else:  
-                    ant_dict = self.antenna_positions(pol=apol, flag=None, sort=True, centering=True)
-                    self.ordered_labels = ant_dict['labels']
-                    ant_xy = ant_dict['positions'][:,:2] # n_ant x 2
-                    n_ant = ant_xy.shape[0]
-
-                    if not cal_loop:
+                if not cal_loop:
+                    self.caldata[apol] = self.get_E_fields(apol, flag=None, tselect=-1, fselect=None, aselect=None, datapool='current', sort=True)
+                else:
+                    if self.caldata[apol] is None:
                         self.caldata[apol] = self.get_E_fields(apol, flag=None, tselect=-1, fselect=None, aselect=None, datapool='current', sort=True)
-                    else:
-                        if self.caldata[apol] is None:
-                            self.caldata[apol] = self.get_E_fields(apol, flag=None, tselect=-1, fselect=None, aselect=None, datapool='current', sort=True)
 
-                    Ef = self.caldata[apol]['E-fields'].astype(NP.complex64)  #  (n_ts=1) x n_ant x nchan
-                    Ef = NP.squeeze(Ef)  # n_ant x nchan
-                    if Ef.shape[0] != n_ant:
-                        raise ValueError('Encountered unexpected behavior. Need to debug.')
-                    ant_labels = self.caldata[apol]['labels']
-                    twts = self.caldata[apol]['twts']  # (n_ts=1) x n_ant x (nchan=1)
-                    twts = NP.squeeze(twts)
+                Ef = self.caldata[apol]['E-fields'].astype(NP.complex64)  #  (n_ts=1) x n_ant x nchan
+                Ef = NP.squeeze(Ef)  # n_ant x nchan
+                if Ef.shape[0] != n_ant:
+                    raise ValueError('Encountered unexpected behavior. Need to debug.')
+                ant_labels = self.caldata[apol]['labels']
+                twts = self.caldata[apol]['twts']  # (n_ts=1) x n_ant x (nchan=1)
+                twts = NP.squeeze(twts)
 
-                    if verbose:
-                        print 'Gathered antenna data for gridding convolution for timestamp {0}'.format(self.timestamp)
+                if verbose:
+                    print 'Gathered antenna data for gridding convolution for timestamp {0}'.format(self.timestamp)
 
-                    if wts_change or (not self.grid_mapper[apol]['all_ant2grid']):
-                        self.grid_mapper[apol]['per_ant2grid'] = []
-                        self.grid_mapper[apol]['all_ant2grid'] = {}
-                        gridlocs = NP.hstack((self.gridu.reshape(-1,1), self.gridv.reshape(-1,1)))
-                        if gridfunc_freq == 'scale':
-                            grid_xy = gridlocs[NP.newaxis,:,:] * wavelength.reshape(-1,1,1)   # nchan x nv x nu
-                            wl = NP.ones(gridlocs.shape[0])[NP.newaxis,:] * wavelength.reshape(-1,1)
-                            grid_xy = grid_xy.reshape(-1,2)
-                            wl = wl.reshape(-1)
-                            indNN_list, antind, fvu_gridind = LKP.find_NN(ant_xy, grid_xy, distance_ULIM=distNN, flatten=True, parallel=False)
-                            dxy = grid_xy[fvu_gridind,:] - ant_xy[antind,:]
-                            fvu_gridind_unraveled = NP.unravel_index(fvu_gridind, (self.f.size,)+self.gridu.shape)   # f-v-u order since temporary grid was created as nchan x nv x nu
-                            self.grid_mapper[apol]['all_ant2grid']['antind'] = NP.copy(antind)
-                            self.grid_mapper[apol]['all_ant2grid']['u_gridind'] = NP.copy(fvu_gridind_unraveled[2])
-                            self.grid_mapper[apol]['all_ant2grid']['v_gridind'] = NP.copy(fvu_gridind_unraveled[1])                            
-                            self.grid_mapper[apol]['all_ant2grid']['f_gridind'] = NP.copy(fvu_gridind_unraveled[0])
-                            self.grid_mapper[apol]['all_ant2grid']['indNN_list'] = copy.deepcopy(indNN_list)
+                if wts_change or (not self.grid_mapper[apol]['all_ant2grid']):
+                    self.grid_mapper[apol]['per_ant2grid'] = []
+                    self.grid_mapper[apol]['all_ant2grid'] = {}
+                    gridlocs = NP.hstack((self.gridu.reshape(-1,1), self.gridv.reshape(-1,1)))
+                    if gridfunc_freq == 'scale':
+                        grid_xy = gridlocs[NP.newaxis,:,:] * wavelength.reshape(-1,1,1)   # nchan x nv x nu
+                        wl = NP.ones(gridlocs.shape[0])[NP.newaxis,:] * wavelength.reshape(-1,1)
+                        grid_xy = grid_xy.reshape(-1,2)
+                        wl = wl.reshape(-1)
+                        indNN_list, antind, fvu_gridind = LKP.find_NN(ant_xy, grid_xy, distance_ULIM=distNN, flatten=True, parallel=False)
+                        dxy = grid_xy[fvu_gridind,:] - ant_xy[antind,:]
+                        fvu_gridind_unraveled = NP.unravel_index(fvu_gridind, (self.f.size,)+self.gridu.shape)   # f-v-u order since temporary grid was created as nchan x nv x nu
+                        self.grid_mapper[apol]['all_ant2grid']['antind'] = NP.copy(antind)
+                        self.grid_mapper[apol]['all_ant2grid']['u_gridind'] = NP.copy(fvu_gridind_unraveled[2])
+                        self.grid_mapper[apol]['all_ant2grid']['v_gridind'] = NP.copy(fvu_gridind_unraveled[1])                            
+                        self.grid_mapper[apol]['all_ant2grid']['f_gridind'] = NP.copy(fvu_gridind_unraveled[0])
+                        self.grid_mapper[apol]['all_ant2grid']['indNN_list'] = copy.deepcopy(indNN_list)
 
-                            if identical_antennas:
-                                arbitrary_antenna_aperture = self.antennas.itervalues().next().aperture
-                                krn = arbitrary_antenna_aperture.compute(dxy, wavelength=wl[fvu_gridind], pol=apol, rmaxNN=rmaxNN, load_lookup=False)
-                            else:
-                                # This block #1 is one way to go about per antenna
-                                for ai,gi in enumerate(indNN_list):
-                                    if len(gi) > 0:
-                                        label = self.ordered_labels[ai]
-                                        ind = NP.asarray(gi)
-                                        diffxy = grid_xy[ind,:].reshape(-1,2) - ant_xy[ai,:].reshape(-1,2)
-                                        krndict = self.antennas[label].aperture.compute(diffxy, wavelength=wl[ind], pol=apol, rmaxNN=rmaxNN, load_lookup=False)
-                                        if krn[apol] is None:
-                                            krn[apol] = NP.copy(krndict[apol])
-                                        else:
-                                            krn[apol] = NP.append(krn[apol], krndict[apol])
-                                        
-                                # # This block #2 is another way equivalent to above block #1
-                                # uniq_antind = NP.unique(antind)
-                                # anthist, antbe, antbn, antri = OPS.binned_statistic(antind, statistic='count', bins=NP.append(uniq_antind, uniq_antind.max()+1))
-                                # for i,uantind in enumerate(uniq_antind):
-                                #     label = self.ordered_labels[uantind]
-                                #     ind = antri[antri[i]:antri[i+1]]
-                                #     krndict = self.antennas[label].aperture.compute(dxy[ind,:], wavelength=wl[ind], pol=apol, rmaxNN=rmaxNN, load_lookup=False)
-                                #     if krn[apol] is None:
-                                #         krn[apol] = NP.copy(krndict[apol])
-                                #     else:
-                                #         krn[apol] = NP.append(krn[apol], krndict[apol])
+                        if identical_antennas:
+                            arbitrary_antenna_aperture = self.antennas.itervalues().next().aperture
+                            krn = arbitrary_antenna_aperture.compute(dxy, wavelength=wl[fvu_gridind], pol=apol, rmaxNN=rmaxNN, load_lookup=False)
+                        else:
+                            # This block #1 is one way to go about per antenna
+                            for ai,gi in enumerate(indNN_list):
+                                if len(gi) > 0:
+                                    label = self.ordered_labels[ai]
+                                    ind = NP.asarray(gi)
+                                    diffxy = grid_xy[ind,:].reshape(-1,2) - ant_xy[ai,:].reshape(-1,2)
+                                    krndict = self.antennas[label].aperture.compute(diffxy, wavelength=wl[ind], pol=apol, rmaxNN=rmaxNN, load_lookup=False)
+                                    if krn[apol] is None:
+                                        krn[apol] = NP.copy(krndict[apol])
+                                    else:
+                                        krn[apol] = NP.append(krn[apol], krndict[apol])
+                                    
+                            # # This block #2 is another way equivalent to above block #1
+                            # uniq_antind = NP.unique(antind)
+                            # anthist, antbe, antbn, antri = OPS.binned_statistic(antind, statistic='count', bins=NP.append(uniq_antind, uniq_antind.max()+1))
+                            # for i,uantind in enumerate(uniq_antind):
+                            #     label = self.ordered_labels[uantind]
+                            #     ind = antri[antri[i]:antri[i+1]]
+                            #     krndict = self.antennas[label].aperture.compute(dxy[ind,:], wavelength=wl[ind], pol=apol, rmaxNN=rmaxNN, load_lookup=False)
+                            #     if krn[apol] is None:
+                            #         krn[apol] = NP.copy(krndict[apol])
+                            #     else:
+                            #         krn[apol] = NP.append(krn[apol], krndict[apol])
 
-                            self.grid_mapper[apol]['all_ant2grid']['illumination'] = NP.copy(krn[apol])
-                        else: # Weights do not scale with frequency (needs serious development)
-                            pass
-                            
-                        # Determine weights that can normalize sum of kernel per antenna per frequency to unity
-                        per_ant_per_freq_norm_wts = NP.zeros(antind.size, dtype=NP.complex64)
-                        runsum = 0
-                        for ai,gi in enumerate(indNN_list):
-                            if len(gi) > 0:
-                                fvu_ind = NP.asarray(gi)
-                                unraveled_fvu_ind = NP.unravel_index(fvu_ind, (self.f.size,)+self.gridu.shape)
-                                f_ind = unraveled_fvu_ind[0]
-                                v_ind = unraveled_fvu_ind[1]
-                                u_ind = unraveled_fvu_ind[2]
-                                chanhist, chanbe, chanbn, chanri = OPS.binned_statistic(f_ind, statistic='count', bins=NP.arange(self.f.size+1))
-                                for ci in xrange(self.f.size):
-                                    if chanhist[ci] > 0.0:
-                                        select_chan_ind = chanri[chanri[ci]:chanri[ci+1]]
-                                        per_ant_per_freq_kernel_sum = NP.sum(krn[apol][runsum:runsum+len(gi)][select_chan_ind])
-                                        per_ant_per_freq_norm_wts[runsum:runsum+len(gi)][select_chan_ind] = 1.0 / per_ant_per_freq_kernel_sum
-
-                            per_ant2grid_info = {}
-                            per_ant2grid_info['label'] = self.ordered_labels[ai]
-                            per_ant2grid_info['f_gridind'] = NP.copy(f_ind)
-                            per_ant2grid_info['u_gridind'] = NP.copy(u_ind)
-                            per_ant2grid_info['v_gridind'] = NP.copy(v_ind)
-                            # per_ant2grid_info['fvu_gridind'] = NP.copy(gi)
-                            per_ant2grid_info['per_ant_per_freq_norm_wts'] = per_ant_per_freq_norm_wts[runsum:runsum+len(gi)]
-                            per_ant2grid_info['illumination'] = krn[apol][runsum:runsum+len(gi)]
-                            self.grid_mapper[apol]['per_ant2grid'] += [copy.deepcopy(per_ant2grid_info)]
-                            runsum += len(gi)
-
-                        self.grid_mapper[apol]['all_ant2grid']['per_ant_per_freq_norm_wts'] = NP.copy(per_ant_per_freq_norm_wts)
-
-                    # Determine the gridded electric fields
-                    Ef_on_grid = Ef[(self.grid_mapper[apol]['all_ant2grid']['antind'], self.grid_mapper[apol]['all_ant2grid']['f_gridind'])]
-                    self.grid_mapper[apol]['all_ant2grid']['Ef'] = copy.deepcopy(Ef_on_grid)
+                        self.grid_mapper[apol]['all_ant2grid']['illumination'] = NP.copy(krn[apol])
+                    else: # Weights do not scale with frequency (needs serious development)
+                        pass
+                        
+                    # Determine weights that can normalize sum of kernel per antenna per frequency to unity
+                    per_ant_per_freq_norm_wts = NP.zeros(antind.size, dtype=NP.complex64)
                     runsum = 0
-                    for ai,gi in enumerate(self.grid_mapper[apol]['all_ant2grid']['indNN_list']):
+                    for ai,gi in enumerate(indNN_list):
                         if len(gi) > 0:
-                            self.grid_mapper[apol]['per_ant2grid'][ai]['Ef'] = Ef_on_grid[runsum:runsum+len(gi)]
-                            runsum += len(gi)
+                            fvu_ind = NP.asarray(gi)
+                            unraveled_fvu_ind = NP.unravel_index(fvu_ind, (self.f.size,)+self.gridu.shape)
+                            f_ind = unraveled_fvu_ind[0]
+                            v_ind = unraveled_fvu_ind[1]
+                            u_ind = unraveled_fvu_ind[2]
+                            chanhist, chanbe, chanbn, chanri = OPS.binned_statistic(f_ind, statistic='count', bins=NP.arange(self.f.size+1))
+                            for ci in xrange(self.f.size):
+                                if chanhist[ci] > 0.0:
+                                    select_chan_ind = chanri[chanri[ci]:chanri[ci+1]]
+                                    per_ant_per_freq_kernel_sum = NP.sum(krn[apol][runsum:runsum+len(gi)][select_chan_ind])
+                                    per_ant_per_freq_norm_wts[runsum:runsum+len(gi)][select_chan_ind] = 1.0 / per_ant_per_freq_kernel_sum
+
+                        per_ant2grid_info = {}
+                        per_ant2grid_info['label'] = self.ordered_labels[ai]
+                        per_ant2grid_info['f_gridind'] = NP.copy(f_ind)
+                        per_ant2grid_info['u_gridind'] = NP.copy(u_ind)
+                        per_ant2grid_info['v_gridind'] = NP.copy(v_ind)
+                        # per_ant2grid_info['fvu_gridind'] = NP.copy(gi)
+                        per_ant2grid_info['per_ant_per_freq_norm_wts'] = per_ant_per_freq_norm_wts[runsum:runsum+len(gi)]
+                        per_ant2grid_info['illumination'] = krn[apol][runsum:runsum+len(gi)]
+                        self.grid_mapper[apol]['per_ant2grid'] += [copy.deepcopy(per_ant2grid_info)]
+                        runsum += len(gi)
+
+                    self.grid_mapper[apol]['all_ant2grid']['per_ant_per_freq_norm_wts'] = NP.copy(per_ant_per_freq_norm_wts)
+
+                # Determine the gridded electric fields
+                Ef_on_grid = Ef[(self.grid_mapper[apol]['all_ant2grid']['antind'], self.grid_mapper[apol]['all_ant2grid']['f_gridind'])]
+                self.grid_mapper[apol]['all_ant2grid']['Ef'] = copy.deepcopy(Ef_on_grid)
+                runsum = 0
+                for ai,gi in enumerate(self.grid_mapper[apol]['all_ant2grid']['indNN_list']):
+                    if len(gi) > 0:
+                        self.grid_mapper[apol]['per_ant2grid'][ai]['Ef'] = Ef_on_grid[runsum:runsum+len(gi)]
+                        runsum += len(gi)
 
     ############################################################################
 
@@ -9707,24 +9605,6 @@ class AntennaArray:
                     loopcount += 1
             if verbose:
                 progress.finish()
-                
-            # labels = self.grid_mapper[apol]['labels'].keys()
-            # loopcount = 0
-            # num_unflagged = 0
-            # if verbose:
-            #     progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} Antennas '.format(len(labels)), PGB.ETA()], maxval=len(labels)).start()
-            # for antlabel, antinfo in self.grid_mapper[apol]['labels'].iteritems():
-            #     if not self.antennas[antlabel].antpol.flag[apol]:
-            #         num_unflagged += 1
-            #         gridind_unraveled = NP.unravel_index(antinfo['gridind'], self.gridu.shape+(self.f.size,))
-            #         self.grid_illumination[apol][gridind_unraveled] += antinfo['illumination']
-            #         self.grid_Ef[apol][gridind_unraveled] += antinfo['Ef']
-
-            #     if verbose:
-            #         progress.update(loopcount+1)
-            #         loopcount += 1
-            # if verbose:
-            #     progress.finish()
                 
             if verbose:
                 print 'Gridded aperture illumination and electric fields for polarization {0} from {1:0d} unflagged contributing antennas'.format(apol, num_unflagged)
