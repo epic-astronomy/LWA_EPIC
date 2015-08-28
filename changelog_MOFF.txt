@@ -1,3 +1,20 @@
+From d6b3cbc:
+============
+
+In aperture.py,
+
+(*) Add function auto_convolved_rect() for analytic estimation of a
+rectangular kernel convolved with itself
+(*) Add function auto_convolved_square() for analytic estimation of a
+square kernel convolved with itself
+(*) Add function auto_convolved_circular() for analytic estimation of a
+circular kernel convolved with itself
+(*) Remove import of scipy.constants for the aperture module
+(*) In function inputcheck(), return wavelength as an array with size
+equal to the number of locations
+(*) In function inputcheck(), pass rmin and rmax in call to function
+parmscheck()
+
 From ff893b8:
 ============
 

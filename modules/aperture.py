@@ -1,10 +1,9 @@
 import numpy as NP
-import scipy.constants as FCNST
 import lookup_operations as LKP
 
 ################################################################################
 
-def parmscheck(xmax=1.0, ymax=1.0,rmin=0.0, rmax=1.0, rotangle=0.0,
+def parmscheck(xmax=1.0, ymax=1.0, rmin=0.0, rmax=1.0, rotangle=0.0,
                pointing_center=None):
 
     """
@@ -248,14 +247,17 @@ def inputcheck(locs, wavelength=1.0, xmax=1.0, ymax=1.0, rmin=0.0, rmax=1.0,
             raise ValueError('Dimensions of wavelength are incompatible with those of locs')
         if NP.any(wavelength <= 0.0):
             raise ValueError('wavelength(s) must be positive')
+        if wavelength.size == 1:
+            wavelength = wavelength + NP.zeros(locs.shape[0])
 
     outdict['wavelength'] = wavelength
     
-    parmsdict = parmscheck(xmax=xmax, ymax=ymax, rotangle=rotangle,
-                           pointing_center=pointing_center)
+    parmsdict = parmscheck(xmax=xmax, ymax=ymax, rmin=rmin, rmax=rmax,
+                           rotangle=rotangle, pointing_center=pointing_center)
     
     outdict['xmax'] = parmsdict['xmax']
     outdict['ymax'] = parmsdict['ymax']
+    outdict['rmin'] = parmsdict['rmin']    
     outdict['rmax'] = parmsdict['rmax']
     outdict['rotangle'] = parmsdict['rotangle']
     outdict['pointing_center'] = parmsdict['pointing_center']
@@ -448,6 +450,210 @@ def circular(locs, wavelength=1.0, rmin=0.0, rmax=1.0, pointing_center=None):
     radii = NP.sqrt(NP.sum(locs**2, axis=1))
     ind = (radii >= rmin) & (radii <= rmax) 
     kern[ind] = NP.exp(-1j * 2*NP.pi/wavelength[ind] * NP.dot(locs[ind,:], pointing_center.T).ravel())
+    
+    eps = 1e-10
+    if NP.all(NP.abs(kern.imag) < eps):
+        kern = kern.real
+
+    return kern
+    
+################################################################################
+
+def auto_convolved_rect(locs, wavelength=1.0, xmax=1.0, ymax=1.0, rotangle=0.0,
+                        pointing_center=None):
+
+    """
+    ----------------------------------------------------------------------------
+    Aperture kernel estimation from rectangular auto-convolution 
+
+    Inputs:
+
+    locs    [numpy array] locations at which aperture kernel is to be estimated. 
+            Must be a Mx2 numpy array where M is the number of locations, x- and 
+            y-locations are stored in the first and second columns respectively.
+            The units can be arbitrary but preferably that of distance. Must be 
+            specified, no defaults
+
+    wavelength
+            [scalar or numpy array] Wavelength of the radiation. If it is a 
+            scalar or numpy array of size 1, it is assumed to be identical for 
+            all locations. If an array is provided, number of wavelengths must 
+            equal number of locations. Same units as locs. Default=1.0
+
+    xmax    [scalar] Upper limit along the x-axis for the aperture kernel 
+            footprint for the original rectangle. Same units as locs. 
+            Default=1.0. Lower limit along the x-axis for the original 
+            rectangle is set to -xmax. Length of the original rectangular 
+            footprint is 2*xmax while that of the auto-convolved function is
+            4*xmax
+
+    ymax    [scalar] Upper limit along the y-axis for the aperture kernel 
+            footprint for the original rectangle. Same units as locs. 
+            Default=1.0. Lower limit along the y-axis of the original 
+            rectangle is set to -ymax. Length of the original rectangular 
+            footprint is 2*ymax while that of the auto-convolved function is
+            4*ymax
+    
+    rotangle
+            [scalar] Angle (in radians) by which the principal axis of the 
+            aperture is rotated counterclockwise east of sky frame. 
+            Default=0.0
+
+    pointing_center
+            [numpy array] Pointing center to phase the aperture illumination to.
+            Must be a 2-element array denoting the x- and y-direction cosines
+            that obeys rules of direction cosines. Default=None (zenith)
+
+    Outputs:
+
+    kern    [numpy array] complex aperture kernel with a value for each 
+            location in the input. 
+    ----------------------------------------------------------------------------
+    """
+
+    inpdict = inputcheck(locs, wavelength=wavelength, xmax=xmax, ymax=ymax,
+                         rotangle=rotangle, pointing_center=pointing_center)
+    locs = inpdict['locs']
+    wavelength = inpdict['wavelength']
+    xmax = inpdict['xmax']    
+    ymax = inpdict['ymax']
+    xmin = -xmax
+    ymin = -ymax
+    rotangle = inpdict['rotangle']
+    pointing_center = inpdict['pointing_center']
+
+    kern = NP.zeros(locs.shape[0], dtype=NP.complex64)
+    if ymax > xmax:
+        rotangle = rotangle + NP.pi/2
+
+    # Rotate all locations by -rotangle to get x- and y-values relative to
+    # aperture frame
+
+    rotmat = NP.asarray([[NP.cos(-rotangle), -NP.sin(-rotangle)],
+                         [NP.sin(-rotangle),  NP.cos(-rotangle)]])
+    locs = NP.dot(locs, rotmat.T)
+
+    ind = NP.logical_and((locs[:,0] >= 2*xmin) & (locs[:,0] <= 2*xmax), (locs[:,1] >= 2*ymin) & (locs[:,1] <= 2*ymax))
+    amp_rect = 1.0
+    overlap = (2*xmax - NP.abs(locs[ind,0])) * (2*ymax - NP.abs(locs[ind,1]))
+    kern[ind] = amp_rect**2 * overlap * NP.exp(-1j * 2*NP.pi/wavelength[ind] * NP.dot(locs[ind,:], pointing_center.T).ravel())
+    
+    eps = 1e-10
+    if NP.all(NP.abs(kern.imag) < eps):
+        kern = kern.real
+
+    return kern
+
+################################################################################
+
+def auto_convolved_square(locs, wavelength=1.0, xmax=1.0, ymax=1.0,
+                          rotangle=0.0, pointing_center=None):
+
+    """
+    ----------------------------------------------------------------------------
+    Aperture kernel estimation from square auto-convolution 
+
+    Inputs:
+
+    locs    [numpy array] locations at which aperture kernel is to be estimated. 
+            Must be a Mx2 numpy array where M is the number of locations, x- and 
+            y-locations are stored in the first and second columns respectively.
+            The units can be arbitrary but preferably that of distance. Must be 
+            specified, no defaults
+
+    wavelength
+            [scalar or numpy array] Wavelength of the radiation. If it is a 
+            scalar or numpy array of size 1, it is assumed to be identical for 
+            all locations. If an array is provided, number of wavelengths must 
+            equal number of locations. Same units as locs. Default=1.0
+
+    xmax    [scalar] Upper limit along the x-axis for the aperture kernel 
+            footprint for the original square. Same units as locs. 
+            Default=1.0. Lower limit along the x-axis for the original 
+            square is set to -xmax. Length of the original square 
+            footprint is 2*xmax while that of the auto-convolved function is
+            4*xmax
+
+    rotangle
+            [scalar] Angle (in radians) by which the principal axis of the 
+            aperture is rotated counterclockwise east of sky frame. 
+            Default=0.0
+
+    pointing_center
+            [numpy array] Pointing center to phase the aperture illumination to.
+            Must be a 2-element array denoting the x- and y-direction cosines
+            that obeys rules of direction cosines. Default=None (zenith)
+
+    Outputs:
+
+    kern    [numpy array] complex aperture kernel with a value for each 
+            location in the input. 
+    ----------------------------------------------------------------------------
+    """
+
+    kern = auto_convolved_rect(locs, wavelength=wavelength, xmax=xmax,
+                               ymax=xmax, rotangle=rotangle,
+                               pointing_center=pointing_center)
+
+    return kern
+
+################################################################################
+
+def auto_convolved_circular(locs, wavelength=1.0, rmax=1.0,
+                            pointing_center=None):
+
+    """
+    ----------------------------------------------------------------------------
+    Uniform circular aperture kernel estimation
+
+    Inputs:
+
+    locs    [numpy array] locations at which aperture kernel is to be estimated. 
+            Must be a Mx2 numpy array where M is the number of locations, x- and 
+            y-locations are stored in the first and second columns respectively.
+            The units can be arbitrary but preferably that of distance. Must be
+            specified, no defaults.
+
+    wavelength
+            [scalar or numpy array] Wavelength of the radiation. If it is a 
+            scalar or numpy array of size 1, it is assumed to be identical for 
+            all locations. If an array is provided, number of wavelengths must 
+            equal number of locations. Same units as locs. Default=1.0
+
+    rmax    [scalar] Upper limit along the radial direction for the aperture 
+            kernel of the original circular footprint. Same units as locs. 
+            Default=1.0
+
+    pointing_center
+            [numpy array] Pointing center to phase the aperture illumination 
+            to. Must be a 2-element array denoting the x- and y-direction 
+            cosines that obeys rules of direction cosines. Default=None 
+            (zenith)
+
+    Outputs:
+
+    kern    [numpy array] complex aperture kernel with a value for each 
+            location in the input. 
+    ----------------------------------------------------------------------------
+    """
+    
+    inpdict = inputcheck(locs, wavelength=wavelength, rmin=0.0, rmax=rmax,
+                         pointing_center=pointing_center)
+    locs = inpdict['locs']
+    wavelength = inpdict['wavelength']
+    rmin = inpdict['rmin']
+    rmax = inpdict['rmax']
+    pointing_center = inpdict['pointing_center']
+
+    kern = NP.zeros(locs.shape[0], dtype=NP.complex64)
+
+    radii = NP.sqrt(NP.sum(locs**2, axis=1))
+    cos_halftheta = 0.5 * radii / rmax
+    theta = 2 * NP.arccos(cos_halftheta)
+    ind = radii <= 2*rmax
+    amp_circ = 1.0
+    overlap = rmax**2 * (theta[ind] - NP.sin(theta[ind]))
+    kern[ind] = amp_circ**2 * overlap * NP.exp(-1j * 2*NP.pi/wavelength[ind] * NP.dot(locs[ind,:], pointing_center.T).ravel())
     
     eps = 1e-10
     if NP.all(NP.abs(kern.imag) < eps):
