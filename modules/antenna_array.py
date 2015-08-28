@@ -6276,7 +6276,7 @@ class NewImage:
                 pol = NP.unique(NP.asarray(pol))
 
                 self.gridu, self.gridv = antenna_array.gridu, antenna_array.gridv
-                antenna_array.make_grid_cube(verbose=verbose, pol=pol)
+                antenna_array.make_grid_cube_new(verbose=verbose, pol=pol)
 
                 for apol in pol:
                     if apol in ['P1', 'P2']:
@@ -6982,8 +6982,8 @@ class Antenna:
     antpol:     [Instance of class PolInfo] polarization information for the 
                 antenna. Read docstring of class PolInfo for details
 
-    aperture    [Instance of class APR.AntennaAperture] aperture information
-                for the antenna. Read docstring of class AntennaAperture for
+    aperture    [Instance of class APR.Aperture] aperture information
+                for the antenna. Read docstring of class Aperture for
                 details
 
     Et_stack    [dictionary] holds a stack of complex electric field time series 
@@ -7127,12 +7127,12 @@ class Antenna:
             raise TypeError('Antenna position must be a 3-element tuple or an instance of GEOM.Point')
 
         if aperture is not None:
-            if isinstance(aperture, APR.AntennaAperture):
+            if isinstance(aperture, APR.Aperture):
                 self.aperture = aperture
             else:
-                raise TypeError('aperture must be an instance of class AntennaAperture found in module {0}'.format(APR.__name__))
+                raise TypeError('aperture must be an instance of class Aperture found in module {0}'.format(APR.__name__))
         else:
-            self.aperture = APR.AntennaAperture()
+            self.aperture = APR.Aperture()
 
         self.antpol = PolInfo(nsamples=nsamples)
         self.t = 0.0
@@ -7325,9 +7325,9 @@ class Antenna:
                        which are stored under keys 'P1' and 'P22'. Default=None 
                        implies no updates for Et.
     
-            aperture   [instance of class APR.AntennaAperture] aperture 
+            aperture   [instance of class APR.Aperture] aperture 
                        information for the antenna. Read docstring of class 
-                       AntennaAperture for details
+                       Aperture for details
 
             wtsinfo    [dictionary] consists of weights information for each of 
                        the two polarizations under keys 'P1' and 'P2'. Each of 
@@ -7461,10 +7461,10 @@ class Antenna:
         eps = 1e-6
 
         if aperture is not None:
-            if isinstance(aperture, APR.AntennaAperture):
+            if isinstance(aperture, APR.Aperture):
                 self.aperture = copy.deepcopy(aperture)
             else:
-                raise TypeError('Update for antenna must be an instance of class AntennaAperture.')
+                raise TypeError('Update for antenna must be an instance of class Aperture.')
 
         if wtsinfo is not None:
             if not isinstance(wtsinfo, dict):
@@ -9970,10 +9970,10 @@ class AntennaArray:
                                               set and if 'action' key value is 
                                               set to 'modify'. Default = None.
                                 'aperture'    [instance of class 
-                                              APR.AntennaAperture] aperture 
+                                              APR.Aperture] aperture 
                                               information for the antenna. Read 
                                               docstring of class 
-                                              AntennaAperture for details
+                                              Aperture for details
                                 'wtsinfo'     [Optional. Dictionary] 
                                               See description in Antenna class 
                                               member function update(). Is used 

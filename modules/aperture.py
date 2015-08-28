@@ -667,11 +667,12 @@ def auto_convolved_circular(locs, wavelength=1.0, rmax=1.0,
     
 ################################################################################
 
-class AntennaAperture(object):
+class Aperture(object):
 
     """
     ----------------------------------------------------------------------------
-    Class to manage collective information on a group of antennas.
+    Class to manage collective information on aperture of an antenna or an
+    interferometer
 
     Attributes:
 
@@ -739,17 +740,17 @@ class AntennaAperture(object):
                 coordinate system as a list of 2-column numpy arrays in units 
                 of distance. 
 
-    wtsxy       [dictionary] The gridding weights for antenna. Different 
+    wtsxy       [dictionary] The gridding weights for the aperture. Different 
                 polarizations form the keys of this dictionary. 
                 These values are in general complex. Under each key, the values 
-                are maintained as a numpy array of complex antenna weights 
+                are maintained as a numpy array of complex aperture weights 
                 corresponding to positions in the lookup table. It should be of 
                 same size as the number of rows in wtsposxy
     
     Member functions:
 
-    __init__()  Initializes an instance of class AntennaAperture which manages
-                information about an antenna aperture
+    __init__()  Initializes an instance of class Aperture which manages
+                information about an antenna or interferometer aperture
 
     compute()   Estimates the kernel for given locations based on the aperture 
                 attributes
@@ -763,14 +764,14 @@ class AntennaAperture(object):
 
         """
         ------------------------------------------------------------------------
-        Initializes an instance of class AntennaAperture which manages
-        information about an antenna aperture
+        Initializes an instance of class Aperture which manages
+        information about an antenna or interferometer aperture
 
         Class attributes initialized are:
         pol, kernel_type, shape, xmax, ymax, rmin, emax, rotangle, 
         wtsposxy, wtsxy, lkpinfo
 
-        Read docstring of class AntennaAperture for details on these 
+        Read docstring of class Aperture for details on these 
         attributes.
 
         Inputs:
@@ -833,7 +834,7 @@ class AntennaAperture(object):
                     the polarizations under polarization keys. Each of 
                     the values under the keys is a string containing the full
                     path to a filename that contains the positions and 
-                    weights for the antenna field illumination in the form of 
+                    weights for the aperture illumination in the form of 
                     a lookup table as columns (x-loc [float], y-loc 
                     [float], wts[real], wts[imag if any]). 
 

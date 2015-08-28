@@ -1,3 +1,19 @@
+From 1c1263f:
+============
+
+In aperture.py,
+
+(*) Rename class AntennaAperture to simply Aperture and modify its
+occurrences throughout the module. Update docstrings accordingly
+
+In antenna_array.py,
+
+(*) Rename occurrences of class AntennaAperture to simply Aperture.
+Update docstrings accordingly
+(*) In __init__() member function of class NewImage, replace call
+to member function make_grid_cube() of class AntennaArray with
+call to make_grid_cube_new()
+
 From 090ab29:
 ============
 
