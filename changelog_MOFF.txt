@@ -1,3 +1,10 @@
+From 47b54557:
+=============
+
+(*) Fixed bug in the way gains were averaged over time for the non-inverted
+gains case.
+
+
 From e533f496:
 =============
 

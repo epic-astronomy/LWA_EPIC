@@ -166,11 +166,7 @@ class cal:
         
         if self.count == self.n_iter:
             # reached integration level, update the estimated gains
-            if not self.inv_gains:
-                # Note that temp gains are actually 1/gains in this mode
-                self.temp_gains = self.n_iter/self.temp_gains
-            else:
-                self.temp_gains /= self.n_iter
+            self.temp_gains /= self.n_iter
             self.curr_gains = self.curr_gains*(1-self.gain_factor) + self.gain_factor*self.temp_gains
             self.count = 0
             self.temp_gains[:] = 0.0
@@ -247,13 +243,12 @@ class cal:
             if self.inv_gains:
                 new_gains[ant,:] = (Edata[ant,:] * NP.conj(imgdata) - self.curr_gains[ant,:]*NP.abs(Edata[ant,:])**2)/(model * ( NP.sum(NP.abs(self.curr_gains)**2,axis=0)-NP.abs(self.curr_gains[ant,:])**2))
             else:
-                new_gains[ant,:] = model * (imgdata - Edata[ant,:]/self.curr_gains[ant,:]) / (Edata[ant,:] * (NP.sum(NP.abs(Edata/self.curr_gains)**2,axis=0) - NP.abs(Edata[ant,:]/self.curr_gains[ant,:])**2))
+                new_gains[ant,:] = 1/(model * (imgdata - Edata[ant,:]/self.curr_gains[ant,:]) / (Edata[ant,:] * (NP.sum(NP.abs(Edata/self.curr_gains)**2,axis=0) - NP.abs(Edata[ant,:]/self.curr_gains[ant,:])**2)))
                 # The version below is incorrect.
                 # But it gets pretty darn close, without any model of the sky.
                 # So I'm going to leave it for now to study later.
                 #new_gains[ant,:] = (imgdata - Edata[ant,:]/self.curr_gains[ant,:]) / (Edata[ant,:] * (NP.sum(NP.abs(1/self.curr_gains)**2,axis=0) - NP.abs(1/self.curr_gains[ant,:])**2))
                 
-        # TODO: rephase so angle(ref_ant)=0
         phasor=new_gains[self.ref_ant,:]/NP.abs(new_gains[self.ref_ant,:])
         new_gains *= NP.conj(phasor).reshape(1,self.n_chan)
         return new_gains
