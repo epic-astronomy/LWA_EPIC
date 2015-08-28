@@ -1,3 +1,19 @@
+From 200765b:
+============
+
+In aperture.py,
+
+(*) Change docstrings throughout to also include newly added analytic
+kernel functions auto_convolved_rect(), auto_convolved_square() and
+auto_convolved_circular()
+(*) In type checking for shape input in member function __init__() of
+class AntennaAperture, include the aforementioned newly added analytic
+kernel functions
+(*) Modify docstrings throughout to indicate that the shape parameters
+for the aforementioned newly added analytic kernels still describe the
+original rectangle, square and circular apertures from which the
+auto-convolutions are derived from
+
 From d6b3cbc:
 ============
 

@@ -11,23 +11,23 @@ def parmscheck(xmax=1.0, ymax=1.0, rmin=0.0, rmax=1.0, rotangle=0.0,
     Checks aperture parameters for compatibility for analytic aperture kernel 
     estimation
 
-    xmax    [scalar] Upper limit along the x-axis for the aperture kernel 
-            footprint. Applicable in case of rectangular or square apertures. 
-            Default=1.0. Lower limit along the x-axis is set to -xmax. Length 
-            of the rectangular footprint is 2*xmax
+    xmax    [scalar] Upper limit along the x-axis for the original aperture 
+            kernel footprint. Applicable in case of original rectangular or 
+            square apertures. Default=1.0. Lower limit along the x-axis is set 
+            to -xmax. Length of the original rectangular footprint is 2*xmax
 
-    ymax    [scalar] Upper limit along the y-axis for the aperture kernel 
-            footprint. Applicable in case of rectangular apertures. 
-            Default=1.0. Lower limit along the y-axis is set to -ymax. Breadth 
-            of the rectangular footprint is 2*ymax
+    ymax    [scalar] Upper limit along the y-axis for the original aperture 
+            kernel footprint. Applicable in case of original rectangular 
+            apertures. Default=1.0. Lower limit along the y-axis is set to 
+            -ymax. Breadth of the original rectangular footprint is 2*ymax
 
-    rmin    [scalar] Lower limit along the radial direction for the aperture 
-            kernel footprint. Applicable in case of circular apertures.  
-            Default=0.0
+    rmin    [scalar] Lower limit along the radial direction for the original 
+            aperture kernel footprint. Applicable in case of original circular 
+            apertures. Default=0.0
 
-    rmax    [scalar] Upper limit along the radial direction for the aperture 
-            kernel footprint. Applicable in case of circular apertures.  
-            Default=1.0
+    rmax    [scalar] Upper limit along the radial direction for the original 
+            aperture kernel footprint. Applicable in case of original circular 
+            apertures. Default=1.0
 
     rotangle
             [scalar] Angle (in radians) by which the principal axis of the 
@@ -45,17 +45,19 @@ def parmscheck(xmax=1.0, ymax=1.0, rmin=0.0, rmax=1.0, rotangle=0.0,
 
     Dictionary consisting of corrected values of input under the following 
     keys:
-    'xmax'  [scalar] Corrected upper limit along the x-axis for the aperture 
-            kernel footprint. Applicable in case of rectangular or square 
-            apertures. 
-    'ymax'  [scalar] Corrected upper limit along the y-axis for the aperture 
-            kernel footprint. Applicable in case of rectangular
-            apertures. 
+    'xmax'  [scalar] Corrected upper limit along the x-axis for the original 
+            aperture kernel footprint. Applicable in case of original 
+            rectangular or square apertures. 
+    'ymax'  [scalar] Corrected upper limit along the y-axis for the original 
+            aperture kernel footprint. Applicable in case of original 
+            rectangular apertures. 
     'rmin'  [scalar] Corrected lower limit along the radial direction for the 
-            aperture kernel footprint. Applicable in case of circular apertures. 
+            original aperture kernel footprint. Applicable in case of original 
+            circular apertures. 
             
     'rmax'  [scalar] Corrected upper limit along the radial direction for the 
-            aperture kernel footprint. Applicable in case of circular apertures. 
+            original aperture kernel footprint. Applicable in case of original 
+            circular apertures. 
             
     'rotangle'
             [scalar] Angle (in radians) by which the principal axis of the 
@@ -149,23 +151,25 @@ def inputcheck(locs, wavelength=1.0, xmax=1.0, ymax=1.0, rmin=0.0, rmax=1.0,
             the number of locations at which the aperture kernel is to be 
             estimated. Same units as locs. Default=1.0
 
-    xmax    [scalar] Upper limit along the x-axis for the aperture kernel 
-            footprint. Applicable in case of rectangular or square apertures. 
-            Same units as locs. Default=1.0. Lower limit along the x-axis is 
-            set to -xmax. Length of the rectangular footprint is 2*xmax
+    xmax    [scalar] Upper limit along the x-axis for the original aperture 
+            kernel footprint. Applicable in case of original rectangular or 
+            square apertures. Same units as locs. Default=1.0. Lower limit along 
+            the x-axis is set to -xmax. Length of the original rectangular 
+            footprint is 2*xmax
 
-    ymax    [scalar] Upper limit along the y-axis for the aperture kernel 
-            footprint. Applicable in case of rectangular apertures. 
-            Same units as locs. Default=1.0. Lower limit along the y-axis is 
-            set to -ymax. Breadth of the rectangular footprint is 2*ymax
+    ymax    [scalar] Upper limit along the y-axis for the original aperture 
+            kernel footprint. Applicable in case of original rectangular 
+            apertures. Same units as locs. Default=1.0. Lower limit along the 
+            y-axis is set to -ymax. Breadth of the original rectangular 
+            footprint is 2*ymax
 
-    rmin    [scalar] Lower limit along the radial direction for the aperture 
-            kernel footprint. Applicable in case of circular apertures. Same 
-            units as locs. Default=0.0
+    rmin    [scalar] Lower limit along the radial direction for the original 
+            aperture kernel footprint. Applicable in case of original circular 
+            apertures. Same units as locs. Default=0.0
 
-    rmax    [scalar] Upper limit along the radial direction for the aperture 
-            kernel footprint. Applicable in case of circular apertures. Same 
-            units as locs. Default=1.0
+    rmax    [scalar] Upper limit along the radial direction for the original 
+            aperture kernel footprint. Applicable in case of original circular 
+            apertures. Same units as locs. Default=1.0
 
     rotangle
             [scalar] Angle (in radians) by which the principal axis of the 
@@ -189,18 +193,18 @@ def inputcheck(locs, wavelength=1.0, xmax=1.0, ymax=1.0, rmin=0.0, rmax=1.0,
     'wavelength'
             [numpy array] Corrected wavelengths. 1x1 or Mx1 array. Same units
             as locs
-    'xmax'  [scalar] Corrected upper limit along the x-axis for the aperture 
-            kernel footprint. Applicable in case of rectangular or square 
-            apertures. Same units as locs
-    'ymax'  [scalar] Corrected upper limit along the y-axis for the aperture 
-            kernel footprint. Applicable in case of rectangular
-            apertures. Same units as locs
+    'xmax'  [scalar] Corrected upper limit along the x-axis for the original 
+            aperture kernel footprint. Applicable in case of original 
+            rectangular or square apertures. Same units as locs
+    'ymax'  [scalar] Corrected upper limit along the y-axis for the original 
+            aperture kernel footprint. Applicable in case of original 
+            rectangular apertures. Same units as locs
     'rmin'  [scalar] Corrected lower limit along the radial direction for the 
-            aperture kernel footprint. Applicable in case of circular apertures. 
-            Same units as locs
+            original aperture kernel footprint. Applicable in case of original 
+            circular apertures. Same units as locs
     'rmax'  [scalar] Corrected upper limit along the radial direction for the 
-            aperture kernel footprint. Applicable in case of circular apertures. 
-            Same units as locs
+            original aperture kernel footprint. Applicable in case of original 
+            circular apertures. Same units as locs
     'rotangle'
             [scalar] Angle (in radians) by which the principal axis of the 
             aperture is rotated counterclockwise east of sky frame. 
@@ -680,33 +684,34 @@ class AntennaAperture(object):
     shape       [dictionary] denotes the shape of the aperture. It has two keys 
                 'P1' and 'P2' - one for each polarization. Under each key the 
                 allowed values are under each polarization are 'rect', 'square',
-                'circular' or None. These apply only if the corresponding 
-                kernel_type for the polarization is set to 'func' else the 
-                shape will be set to None.
+                'circular', 'auto_convolved_rect', 'auto_convolved_square', 
+                'auto_convolved_circular' or None. These apply only if the 
+                corresponding kernel_type for the polarization is set to 'func' 
+                else the shape will be set to None.
 
     xmax        [dictionary] Upper limit along the x-axis for the aperture 
-                kernel footprint. Applicable in case of rectangular or square 
-                apertures. It has two keys 'P1' and 'P2' - one for each 
-                polarization. The value (default=1.0) held by each key is a 
+                kernel footprint. Applicable in case of original rectangular 
+                or square apertures. It has two keys 'P1' and 'P2' - one for 
+                each polarization. The value (default=1.0) held by each key is a 
                 scalar. Lower limit along the x-axis is set to -xmax. Length 
-                of the rectangular/square footprint is 2*xmax
+                of the original rectangular/square footprint is 2*xmax
 
     ymax        [dictionary] Upper limit along the y-axis for the aperture 
-                kernel footprint. Applicable in case of rectangular 
+                kernel footprint. Applicable in case of original rectangular 
                 apertures. It has two keys 'P1' and 'P2' - one for each 
                 polarization. The value (default=1.0) held by each key is a 
                 scalar. Lower limit along the y-axis is set to -ymax. Breadth 
-                of the rectangular footprint is 2*ymax
+                of the original rectangular footprint is 2*ymax
 
-    rmin        [dictionary] Lower limit along the radial axis for the aperture 
-                kernel footprint. Applicable in case of circular 
-                apertures. It has two keys 'P1' and 'P2' - one for each 
+    rmin        [dictionary] Lower limit along the radial axis for the original 
+                aperture kernel footprint. Applicable in case of original 
+                circular apertures. It has two keys 'P1' and 'P2' - one for each 
                 polarization. The value (default=0.0) held by each key is a 
                 scalar
 
-    rmax        [dictionary] Upper limit along the radial axis for the aperture 
-                kernel footprint. Applicable in case of circular
-                apertures. It has two keys 'P1' and 'P2' - one for each 
+    rmax        [dictionary] Upper limit along the radial axis for the original 
+                aperture kernel footprint. Applicable in case of original 
+                circular apertures. It has two keys 'P1' and 'P2' - one for each 
                 polarization. The value (default=1.0) held by each key is a 
                 scalar
 
@@ -770,31 +775,34 @@ class AntennaAperture(object):
         shape       [dictionary] denotes the shape of the aperture. It has two 
                     keys 'P1' and 'P2' - one for each polarization. Under each 
                     key the allowed values are under each polarization are 
-                    'rect', 'square', 'circular' or None. These apply only if 
-                    the corresponding kernel_type for the polarization is set 
-                    to 'func' else the shape will be set to None.
+                    'rect', 'square', 'circular', 'auto_convolved_rect', 
+                    'auto_convolved_square', 'auto_convolved_circular'  or None. 
+                    These apply only if the corresponding kernel_type for the 
+                    polarization is set to 'func' else the shape will be set to 
+                    None.
 
-        parms       [dictionary] denotes parameters of the aperture shape. It 
-                    has two keys 'P1' and 'P2' - one for each polarization. 
-                    Under each of these keys is another dictionary with the 
-                    following keys and information:
+        parms       [dictionary] denotes parameters of the original aperture 
+                    shape. It has two keys 'P1' and 'P2' - one for each 
+                    polarization. Under each of these keys is another dictionary 
+                    with the following keys and information:
                     'xmax'  [scalar] Upper limit along the x-axis for the 
-                            aperture kernel footprint. Applicable in case of 
-                            rectangular or square apertures. Default=1.0.
+                            original aperture kernel footprint. Applicable in 
+                            case of original rectangular or square apertures. 
                             Lower limit along the x-axis is set to -xmax. 
-                            Length of the rectangular/square footprint is 
-                            2*xmax
+                            Length of the original rectangular/square footprint 
+                            is 2*xmax
                     'ymax'  [scalar] Upper limit along the y-axis for the 
-                            aperture kernel footprint. Applicable in case of 
-                            rectangular apertures. Default=1.0. Lower limit 
-                            along the y-axis is set to -ymax. Breadth of the 
-                            rectangular footprint is 2*ymax
+                            original aperture kernel footprint. Applicable in 
+                            case of original rectangular apertures. Default=1.0. 
+                            Lower limit along the y-axis is set to -ymax. 
+                            Breadth of the original rectangular footprint is 
+                            2*ymax
                     'rmin'  [scalar] Lower limit along radial axis for the 
-                            aperture kernel footprint. Applicable in case of 
-                            circualr apertures. Default=0.0
+                            original aperture kernel footprint. Applicable in 
+                            case of original circular apertures. Default=0.0
                     'rmax'  [scalar] Upper limit along radial axis for the 
-                            aperture kernel footprint. Applicable in case of 
-                            circular apertures. Default=1.0
+                            original aperture kernel footprint. Applicable in 
+                            case of original circular apertures. Default=1.0
                     'rotangle'
                             [scalar] Angle (in radians) by which the principal 
                             axis of the aperture is rotated counterclockwise 
@@ -848,7 +856,7 @@ class AntennaAperture(object):
                 else:
                     if kernel_type[pol] != 'func':
                         raise ValueError('Values specified in kernel_type and shape are incompatible')
-                    elif shape[pol] not in ['rect', 'square', 'circular']:
+                    elif shape[pol] not in ['rect', 'square', 'circular', 'auto_convolved_rect', 'auto_convolved_square', 'auto_convolved_circular']:
                         raise ValueError('Invalid value specified for shape under polarization {0}'.format(pol))
         else:
             raise TypeError('Aperture kernel shape must be a dictionary')
