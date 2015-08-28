@@ -1,5 +1,6 @@
 import numpy as NP
 import ipdb as PDB
+import scipy.constants as FCNST
 
 
 class cal:
@@ -32,7 +33,18 @@ class cal:
     
     inv_gains:      [Boolean] If False (default), calibrate by dividing by gains. If True, calibrate by multiplying by conjugate of gains.
     
-    sky_model:      Numpy array containing l,m,flux for sources in sky model for each channel. Dimensions should be 3 x n_source x n_chan.
+    sky_model:      Numpy array containing l,m,n,flux for sources in sky model for each channel. Dimensions should be n_source x n_chan x 4.
+
+    ant_pos:        Numpy array with antenna locations in wavelengths for each frequency. Dimesions should be n_ant x n_chan x 3. If n_ant x 3, assumed to be in meters and rebroadcasted in init.
+
+    ref_ant:        Antenna index to fix phase.
+
+    ref_point:      Numpy array of reference sky point for phasing of antennas. 
+                    Default is (l,m,n) = (0,0,1)
+
+    freqs:          Numpy array with frequencies in Hz.
+
+    pol:            Polarization key (to reference image object)
     
     Functions:
     
@@ -47,15 +59,23 @@ class cal:
     ----------------------------------------------------------------------------------
     """
 
-    def __init__(self, n_ant, n_chan, n_iter=10, cal_method='default', sim_mode=False, sky_model=NP.ones(1,dtype=NP.complex64), ref_ant=0, gain_factor=1.0, inv_gains=False):
-    
-        if not isinstance(n_ant,int):
-            raise TypeError('n_ant must be an integer')
-        if not isinstance(n_chan,int):
-            raise TypeError('n_chan must be an integer')
-        elif n_chan <= 0:
-            n_chan=1
-            
+    def __init__(self, ant_pos, freqs, n_iter=10, cal_method='default', sim_mode=False, sky_model=NP.ones(1,dtype=NP.complex64), ref_ant=0, gain_factor=1.0, inv_gains=False, pol='P1',ref_point=NP.array([0,0,1])):
+
+        # Get derived values and check types, etc.
+        n_chan=freqs.shape[0]
+        n_ant=ant_pos.shape[0]
+        if not ant_pos.shape[-1] == 3:
+            raise ValueError('Antenna positions much be three dimensional!')
+        if len(ant_pos.shape) != 3:
+            if len(ant_pos.shape) == 2:
+                print 'Antennas positions assumed to be in meters. Reformatting to wavelengths'
+                ant_pos = ant_pos.reshape(n_ant,1,3)
+                ant_pos = ant_pos * freqs.reshape(1,n_chan,1)/FCNST.c
+            else:
+                ValueError('Antenna positions in wrong format!')
+        elif ant_pos.shape[1] != n_chan:
+            ValueError('Antenna positions do not match frequencies!')
+        
         if not isinstance(n_iter,int):
             raise TypeError('n_iter must be an integer')
         elif n_iter <=0:
@@ -63,36 +83,67 @@ class cal:
         if not isinstance(cal_method,str):
             print 'cal_method must be a string. Using default'
             cal_method='default'
-    
-        self.n_ant = n_ant
-        self.n_chan = n_chan
-        self.curr_gains = NP.ones([n_ant,n_chan], dtype=NP.complex64)
-        self.n_iter = n_iter
-        self.count = 0
+
         if (gain_factor > 1.0) or (gain_factor < 0.0): gain_factor = 1.0
-        self.gain_factor = gain_factor
-        self.temp_gains = NP.zeros([n_ant,n_chan], dtype=NP.complex64)
-        if sky_model.shape[0] == 1:
-            # Build up the default sky model
-            temp_model = NP.zeros((3,1,self.n_chan))
-            temp_model[2,0,:] = sky_model
-            sky_model = temp_model
-        self.sky_model=sky_model
-        self.inv_gains = inv_gains
+        if len(ref_point.shape) == 2:
+            # Assume only (l,m) are given.
+            ref_point=NP.hstack((ref_point,NP.sqrt(1-NP.sum(ref_point**2))))
 
         switcher = {
             'default': self.default_cal,
             'simple': self.simple_cal,
             'off_center': self.off_center_cal,
         }
-        self.cal_method = switcher.get(cal_method,self.default_cal)
+
+        # Defaults for sky model:
+        #   If no spectral info given, assume constant
+        #   If no position given, assume on center
+        if len(sky_model.shape) == 1:
+            if sky_model.shape[0] == 1:
+                # Assume just given flux.
+                temp_model = NP.zeros((1,self.n_chan,4))
+                temp_model[0,:,3] = sky_model
+                temp_model[0,:,2] = 1
+                sky_model = temp_model
+            elif sky_model.shape[0] == 4:
+                # Assume given postion,flux correctly.
+                sky_model = NP.tile(sky_model,(1,n_chan,1))
+            elif sky_model.shape[0] == 3:
+                # Assume position,flux is given by (l,m,flux) (missing n)
+                temp_model = NP.zeros(4)
+                temp_model[0:2] = sky_model[0,:]
+                temp_model[2] = NP.sqrt(1-NP.sum(temp_model[0:2]**2))
+                temp_model[3] = sky_model[2]
+                sky_model = NP.tile(temp_model,(1,n_chan,1))
+            else:
+                ValueError('Unrecognized sky model format!')
+        elif len(sky_model.shape) != 3:
+            # TODO: more cases. But this should be ok for now
+            ValueError('Unrecognized sky model format!')
         
+                
+        # Assign to attributes    
+        self.n_ant = n_ant
+        self.n_chan = n_chan
+        self.curr_gains = NP.ones([n_ant,n_chan], dtype=NP.complex64)
+        self.n_iter = n_iter
+        self.inv_gains = inv_gains
+        self.gain_factor = gain_factor
+        self.ref_ant = ref_ant
+        self.ref_point = ref_point
+        self.pol = pol
+        
+        self.sky_model=sky_model
+        self.ant_pos=ant_pos
+        self.cal_method = switcher.get(cal_method,self.default_cal)
         if sim_mode:
             self.sim_mode = True
+            # initialize simulated gains
             self.sim_gains = self.simulate_gains()
         else: self.sim_mode = False
 
-        self.ref_ant = ref_ant
+        self.temp_gains = NP.zeros([n_ant,n_chan], dtype=NP.complex64)
+        self.count = 0
 
 
     ####################################
@@ -112,13 +163,15 @@ class cal:
         # just one option for now
         self.temp_gains += self.cal_method(*args)
         self.count += 1
-    
+        
         if self.count == self.n_iter:
             # reached integration level, update the estimated gains
             if not self.inv_gains:
                 # Note that temp gains are actually 1/gains in this mode
-                self.temp_gains = 1/self.temp_gains
-            self.curr_gains = self.curr_gains*(1-self.gain_factor) + self.gain_factor*self.temp_gains/self.n_iter
+                self.temp_gains = self.n_iter/self.temp_gains
+            else:
+                self.temp_gains /= self.n_iter
+            self.curr_gains = self.curr_gains*(1-self.gain_factor) + self.gain_factor*self.temp_gains
             self.count = 0
             self.temp_gains[:] = 0.0
 
@@ -164,17 +217,22 @@ class cal:
     ######
 
     def simple_cal(self,*args):
+        #
         ### Simple Calibration
         # Assumes a single point source on the center pixel.
-        # Flux of source should be given in self.sky_model
-        # Needs the _uncalibrated_ E-field data from the antennas, and the instantaneous center pixel from the holographic image.
         # Can be run when data is multiplied by conj gains, or when divided by gains.
+        #
+        # Inputs:
+        #   Edata:    _uncalibrated E-field data from antennas.
+        #   imgdata:  Instantaneous pixel (all channels) from holographic image.
+        #   model:    Model flux for source (all channels).
+        
         while isinstance(args[0],tuple):
             # we can get here by passing args several times, need to unpack
             args=args[0]
         Edata=args[0]
         imgdata=args[1]*self.n_ant
-        model=args[2] # Now passed in with single source
+        model=args[2]
         if Edata.shape != self.curr_gains.shape:
             raise ValueError('Data does not match calibration gain size')
 
@@ -194,33 +252,37 @@ class cal:
                 # But it gets pretty darn close, without any model of the sky.
                 # So I'm going to leave it for now to study later.
                 #new_gains[ant,:] = (imgdata - Edata[ant,:]/self.curr_gains[ant,:]) / (Edata[ant,:] * (NP.sum(NP.abs(1/self.curr_gains)**2,axis=0) - NP.abs(1/self.curr_gains[ant,:])**2))
-        
+                
+        # TODO: rephase so angle(ref_ant)=0
+        phasor=new_gains[self.ref_ant,:]/NP.abs(new_gains[self.ref_ant,:])
+        new_gains *= NP.conj(phasor).reshape(1,self.n_chan)
         return new_gains
 
     ######
 
     def off_center_cal(self,*args):
-        ### Another simple calibration, but for an off-center calibrator.
-        # args should be in the following format:
-        # Edata (uncalibrated E-field data), imgdata (pixel closest to calibrator),
-        #   model (position and flux for single source), ant_info (antenna
-        #   positions in wavelengths)
+        #
+        ### Calibrate on single source off-center.
+        # Inputs
+        #   Edata:    _uncalibrated E-field data from antennas.
+        #   imgobj:   Image object output from latest correlator image.
+        #   sourcei:  Source number to pull out of self.sky_model (zero indexed)
 
         while isinstance(args[0],tuple):
             args=args[0]
         Edata = args[0]
-        imgdata = args[1]
-        model = args[2] # expected to have dimensions 3 x 1 x n_chan
-        ant_info = args[3]
+        imgobj = args[1]
+        sourcei = args[2]
 
         # rephase the antenna data
-        model_pos = NP.squeeze(model[0:2,0,:])
-        model_pos = NP.tile(model_pos,[self.n_ant,1,1])
-        model_flux = model[2,0,:]
-        #TODO: Add frequency dependence!
-        ant_info = NP.swapaxes(NP.swapaxes(NP.tile(ant_info,[self.n_chan,1,1]),0,1),1,2)
-        Edata *= NP.exp(-1j * 2*NP.pi * (model_pos[:,0,:]*ant_info[:,0,:]+model_pos[:,1,:]*ant_info[:,1,:]))
-
+        model_pos = self.sky_model[sourcei,:,0:3]-self.ref_point.reshape((1,1,3))
+        model_pos = model_pos.reshape(1,self.n_chan,3) # 1 x n_chan x 3
+        model_flux = self.sky_model[sourcei,:,3].flatten()
+        Edata *= NP.exp(-1j * 2*NP.pi * NP.sum(model_pos*self.ant_pos,axis=2))
+        
+        # Now get the pixel of interest
+        xind,yind = NP.unravel_index(NP.argmin((imgobj.gridl-model_pos[0,0,0])**2 + (imgobj.gridm-model_pos[0,0,1])**2),imgobj.gridl.shape)
+        imgdata = imgobj.holimg[self.pol][xind,yind,:].flatten()
         new_gains = self.simple_cal(Edata,imgdata,model_flux)
 
         return new_gains

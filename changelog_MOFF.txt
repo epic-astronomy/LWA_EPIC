@@ -1,3 +1,13 @@
+From e533f496:
+=============
+
+(*) Major upgrade to cal algorithm to include proper frequency dependence.
+(*) Major restructuring of cal class to account for frequency and anticipate
+multi-source calibration.
+(*) Removing simple_cal_script as it is now obsolete.
+(*) Added reference point to cal class for phasing of antennas.
+(*) Fixed bug when averaging gains and gain_inv = False.
+
 From a0c1b87:
 ============
 
