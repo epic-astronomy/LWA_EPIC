@@ -1,3 +1,22 @@
+From 3f4a16b:
+============
+
+In antenna_array.py,
+
+(*) Add and initialize attributes on antenna-to-grid mapping under
+keys 'per_bl2grid' and 'all_bl2grid' as part of bigger attribute
+dictionary grid_mapper in class InterferometerArray. Update docstring
+of class InterferometerArray accordingly
+(*) Create member function grid_convolve_new() for class
+InterferometerArray and add a description in the class docstring
+(*) Update docstring of class AntennaArray with description on
+attribute grid_mapper with recently added keys 'per_ant2grid' and
+'all_ant2grid'
+(*) Update docstring of class AntennaArray describing member function
+grid_convolve_new()
+(*) These changes to classes Interferometer and InterferometerArray are
+untested
+
 From 70d1ce3:
 ============
 

@@ -2208,6 +2208,110 @@ class InterferometerArray:
                                              locations raveled to one dimension
                                              from three dimensions of size 
                                              n_u x n_v x nchan
+                  'per_bl2grid'
+                              [list] each element in the list is a dictionary
+                              corresponding to an interferometer with information 
+                              on its mapping and contribution to the grid. Each 
+                              dictionary has the following keys and values:
+                              'label'        [tuple of two strings] 
+                                             interferometer label
+                              'f_gridind'    [numpy array] mapping information 
+                                             with indices to the frequency axis
+                                             of the grid
+                              'u_gridind'    [numpy array] mapping information 
+                                             with indices to the u-axis
+                                             of the grid. Must be of same size 
+                                             as array under 'f_gridind'
+                              'v_gridind'    [numpy array] mapping information 
+                                             with indices to the v-axis
+                                             of the grid. Must be of same size 
+                                             as array under 'f_gridind'
+                              'per_bl_per_freq_norm_wts'
+                                             [numpy array] mapping information 
+                                             on the (complex) normalizing 
+                                             multiplicative factor required to 
+                                             make the sum of illumination/weights 
+                                             per interferometer per frequency on 
+                                             the grid equal to unity. Must be of 
+                                             same size as array under 'f_gridind'
+                              'illumination' [numpy array] Complex aperture 
+                                             illumination/weights contributed
+                                             by the interferometer onto the grid. 
+                                             The grid pixels to which it 
+                                             contributes is given by 'f_gridind', 
+                                             'u_gridind', 'v_gridind'. Must be of 
+                                             same size as array under 'f_gridind'
+                              'Vf'           [numpy array] Complex visibilities 
+                                             contributed by the 
+                                             interferometer onto the grid. The 
+                                             grid pixels to which it contributes 
+                                             is given by 'f_gridind', 
+                                             'u_gridind', 'v_gridind'. Must be of 
+                                             same size as array under 'f_gridind'
+                  'all_bl2grid'
+                              [dictionary] contains the combined information of
+                              mapping of all interferometers to the grid. It 
+                              consists of the following keys and values:
+                              'blind'        [numpy array] all interferometer 
+                                             indices (to attribute ordered 
+                                             labels) that map to the uvf-grid
+                              'u_gridind'    [numpy array] all indices to the 
+                                             u-axis of the uvf-grid mapped to by 
+                                             all interferometers whose indices 
+                                             are given in key 'blind'. Must be 
+                                             of same size as the array under key 
+                                             'blind'
+                              'v_gridind'    [numpy array] all indices to the 
+                                             v-axis of the uvf-grid mapped to by 
+                                             all interferometers whose indices 
+                                             are given in key 'blind'. Must be 
+                                             of same size as the array under key 
+                                             'blind'
+                              'f_gridind'    [numpy array] all indices to the 
+                                             f-axis of the uvf-grid mapped to by 
+                                             all interferometers whose indices 
+                                             are given in key 'blind'. Must be 
+                                             of same size as the array under key 
+                                             'blind'
+                              'indNN_list'   [list of lists] Each item in the 
+                                             top level list corresponds to an 
+                                             interferometer in the same order as 
+                                             in the attribute ordered_labels. 
+                                             Each of these items is another list 
+                                             consisting of the unraveled grid 
+                                             indices it contributes to. The 
+                                             unraveled indices are what are used 
+                                             to obtain the u-, v- and f-indices 
+                                             in the grid using a conversion 
+                                             assuming f is the first axis, v is 
+                                             the second and u is the third
+                              'illumination' [numpy array] complex values of 
+                                             aperture illumination contributed 
+                                             by all interferometers to the grid. 
+                                             The interferometer indices are in 
+                                             'blind' and the grid indices are 
+                                             in 'u_gridind', 'v_gridind' and 
+                                             'f_gridind'. Must be of same size as 
+                                             these indices
+                              'per_bl_per_freq_norm_wts'
+                                             [numpy array] mapping information 
+                                             on the (complex) normalizing 
+                                             multiplicative factor required to 
+                                             make the sum of illumination or 
+                                             weights per interferometer per 
+                                             frequency on the grid equal to 
+                                             unity. This is appended for all 
+                                             interferometers together. Must be of 
+                                             same size as array under 
+                                             'illumination'
+                              'Vf'           [numpy array] Complex visibilities 
+                                             contributed by all 
+                                             interferometers onto the grid. The 
+                                             grid pixels to which it contributes 
+                                             is given by 'f_gridind', 
+                                             'u_gridind', 'v_gridind'. Must be of 
+                                             same size as array under 'f_gridind' 
+                                             and 'illumination'
                                              
     Member Functions:
 
@@ -2284,6 +2388,11 @@ class InterferometerArray:
                     illumination patterns from specific antenna pairs on to an
                     already existing grid.
 
+    grid_convolve_new() 
+                    Routine to project the complex illumination power pattern 
+                    and the visibilities on the grid from the interferometer 
+                    array
+
     make_grid_cube()
                     Constructs the grid of complex power illumination and 
                     visibilities using the gridding information determined for 
@@ -2359,6 +2468,9 @@ class InterferometerArray:
             self.grid_mapper[pol]['bl']['illumination'] = None
             self.grid_mapper[pol]['grid'] = {}
             self.grid_mapper[pol]['grid']['ind_all'] = None
+
+            self.grid_mapper[pol]['per_bl2grid'] = []
+            self.grid_mapper[pol]['all_bl2grid'] = {}
 
             self.grid_illumination[pol] = None
             self.grid_Vf[pol] = None
@@ -3874,6 +3986,231 @@ class InterferometerArray:
                                     progress.update(j+1)
                             if verbose:
                                 progress.finish()
+
+    ############################################################################
+
+    # @profile
+    def grid_convolve_new(self, pol=None, normalize=False, method='NN',
+                          distNN=NP.inf, identical_interferometers=True,
+                          cal_loop=False, gridfunc_freq=None, wts_change=False,
+                          parallel=False, nproc=None, pp_method='pool',
+                          verbose=True): 
+
+        """
+        ------------------------------------------------------------------------
+        Routine to project the complex illumination power pattern and the 
+        visibilities on the grid from the interferometer array
+
+        Inputs:
+
+        pol        [String] The polarization to be gridded. Can be set to 'P1' 
+                   or 'P2'. If set to None, gridding for all the polarizations 
+                   is performed. Default = None
+
+        normalize  [Boolean] Default = False. If set to True, the gridded 
+                   weights are divided by the sum of weights so that the gridded 
+                   weights add up to unity. (Need to work on normaliation)
+
+        method     [string] The gridding method to be used in applying the 
+                   interferometer weights on to the interferometer array grid. 
+                   Accepted values are 'NN' (nearest neighbour - default), 'CS' 
+                   (cubic spline), or 'BL' (Bi-linear). In case of applying grid 
+                   weights by 'NN' method, an optional distance upper bound for 
+                   the nearest neighbour can be provided in the parameter distNN 
+                   to prune the search and make it efficient. Currently, only 
+                   the nearest neighbour method is operational.
+
+        distNN     [scalar] A positive value indicating the upper bound on 
+                   distance to the nearest neighbour in the gridding process. It 
+                   has units of distance, the same units as the interferometer 
+                   attribute location and interferometer array attribute gridx 
+                   and gridy. Default is NP.inf (infinite distance). It will be 
+                   internally converted to have same units as interferometer 
+                   attributes wtspos (units in number of wavelengths)
+
+        identical_interferometers
+                   [boolean] indicates if all interferometer elements are to be
+                   treated as identical. If True (default), they are identical
+                   and their gridding kernels are identical. If False, they are
+                   not identical and each one has its own gridding kernel.
+
+        cal_loop   [boolean] If True, the calibration loop is assumed to be ON 
+                   and hence the calibrated electric fields are set in the 
+                   calibration loop. If False (default), the calibration loop is
+                   assumed to be OFF and the current electric fields are assumed 
+                   to be the calibrated data to be mapped to the grid 
+                   via gridding convolution.
+
+        gridfunc_freq
+                   [String scalar] If set to None (not provided) or to 'scale'
+                   assumes that attribute wtspos is given for a
+                   reference frequency which need to be scaled for the frequency
+                   channels. Will be ignored if the number of elements of list 
+                   in this attribute under the specific polarization are the 
+                   same as the number of frequency channels.
+
+        wts_change [boolean] indicates if weights and/or their lcoations have 
+                   changed from the previous intergration or snapshot. 
+                   Default=False means they have not changed. In such a case the 
+                   interferometer-to-grid mapping and grid illumination pattern do not 
+                   have to be determined, and mapping and values from the 
+                   previous snapshot can be used. If True, a new mapping has to 
+                   be determined.
+
+        parallel   [boolean] specifies if parallelization is to be invoked. 
+                   False (default) means only serial processing
+
+        nproc      [integer] specifies number of independent processes to spawn.
+                   Default = None, means automatically determines the number of 
+                   process cores in the system and use one less than that to 
+                   avoid locking the system for other processes. Applies only 
+                   if input parameter 'parallel' (see above) is set to True. 
+                   If nproc is set to a value more than the number of process
+                   cores in the system, it will be reset to number of process 
+                   cores in the system minus one to avoid locking the system out 
+                   for other processes
+
+        pp_method  [string] specifies if the parallelization method is handled
+                   automatically using multirocessing pool or managed manually
+                   by individual processes and collecting results in a queue.
+                   The former is specified by 'pool' (default) and the latter
+                   by 'queue'. These are the two allowed values. The pool method 
+                   has easier bookkeeping and can be fast if the computations 
+                   not expected to be memory bound. The queue method is more
+                   suited for memory bound processes but can be slower or 
+                   inefficient in terms of CPU management.
+
+        verbose    [boolean] If True, prints diagnostic and progress messages. 
+                   If False (default), suppress printing such messages.
+        ------------------------------------------------------------------------
+        """
+
+        eps = 1.0e-10
+        if pol is None:
+            pol = ['P1', 'P2']
+        elif not isinstance(pol, list):
+            pol = [pol]
+
+        if not self.grid_ready:
+            self.grid()
+
+        du = self.gridu[0,1] - self.gridu[0,0]
+        dv = self.gridv[1,0] - self.gridv[0,0]
+        wavelength = FCNST.c / self.f
+        min_lambda = NP.abs(wavelength).min()
+        rmaxNN = 0.5 * NP.sqrt(du**2 + dv**2) * min_lambda
+ 
+        krn = {}
+        crosspol = ['P11', 'P12', 'P21', 'P22']
+        for cpol in crosspol:
+            krn[cpol] = None
+            if cpol in pol:
+
+                bl_dict = self.baseline_vectors(pol=cpol, flag=None, sort=True)
+                self.ordered_labels = bl_dict['labels']
+                bl_xy = bl_dict['positions'][:,:2] # n_bl x 2
+                n_bl = bl_xy.shape[0]
+
+                Vf_dict = self.get_visibilities(cpol, flag=None, tselect=-1, fselect=None, bselect=None, datapool='avg', sort=True)
+                Vf = Vf_dict['visibilities'].astype(NP.complex64)  #  (n_ts=1) x n_bl x nchan
+                Vf = NP.squeeze(Vf)  # n_bl x nchan
+                if Vf.shape[0] != n_bl:
+                    raise ValueError('Encountered unexpected behavior. Need to debug.')
+                bl_labels = Vf_dict['labels']
+                twts = Vf_dict['twts']  # (n_ts=1) x n_bl x (nchan=1)
+                twts = NP.squeeze(twts)
+
+                if verbose:
+                    print 'Gathered interferometer data for gridding convolution for timestamp {0}'.format(self.timestamp)
+
+                if wts_change or (not self.grid_mapper[cpol]['all_bl2grid']):
+                    self.grid_mapper[cpol]['per_bl2grid'] = []
+                    self.grid_mapper[cpol]['all_bl2grid'] = {}
+                    gridlocs = NP.hstack((self.gridu.reshape(-1,1), self.gridv.reshape(-1,1)))
+                    if gridfunc_freq == 'scale':
+                        grid_xy = gridlocs[NP.newaxis,:,:] * wavelength.reshape(-1,1,1)   # nchan x nv x nu
+                        wl = NP.ones(gridlocs.shape[0])[NP.newaxis,:] * wavelength.reshape(-1,1)
+                        grid_xy = grid_xy.reshape(-1,2)
+                        wl = wl.reshape(-1)
+                        indNN_list, blind, fvu_gridind = LKP.find_NN(bl_xy, grid_xy, distance_ULIM=distNN, flatten=True, parallel=False)
+                        dxy = grid_xy[fvu_gridind,:] - bl_xy[blind,:]
+                        fvu_gridind_unraveled = NP.unravel_index(fvu_gridind, (self.f.size,)+self.gridu.shape)   # f-v-u order since temporary grid was created as nchan x nv x nu
+                        self.grid_mapper[cpol]['all_bl2grid']['blind'] = NP.copy(blind)
+                        self.grid_mapper[cpol]['all_bl2grid']['u_gridind'] = NP.copy(fvu_gridind_unraveled[2])
+                        self.grid_mapper[cpol]['all_bl2grid']['v_gridind'] = NP.copy(fvu_gridind_unraveled[1])                            
+                        self.grid_mapper[cpol]['all_bl2grid']['f_gridind'] = NP.copy(fvu_gridind_unraveled[0])
+                        self.grid_mapper[cpol]['all_bl2grid']['indNN_list'] = copy.deepcopy(indNN_list)
+
+                        if identical_interferometers:
+                            arbitrary_interferometer_aperture = self.interferometers.itervalues().next().aperture
+                            krn = arbitrary_interferometer_aperture.compute(dxy, wavelength=wl[fvu_gridind], pol=cpol, rmaxNN=rmaxNN, load_lookup=False)
+                        else:
+                            # This block #1 is one way to go about per interferometer
+                            for bi,gi in enumerate(indNN_list):
+                                if len(gi) > 0:
+                                    label = self.ordered_labels[bi]
+                                    ind = NP.asarray(gi)
+                                    diffxy = grid_xy[ind,:].reshape(-1,2) - bl_xy[bi,:].reshape(-1,2)
+                                    krndict = self.interferometers[label].aperture.compute(diffxy, wavelength=wl[ind], pol=cpol, rmaxNN=rmaxNN, load_lookup=False)
+                                    if krn[cpol] is None:
+                                        krn[cpol] = NP.copy(krndict[cpol])
+                                    else:
+                                        krn[cpol] = NP.append(krn[cpol], krndict[cpol])
+                                    
+                            # # This block #2 is another way equivalent to above block #1
+                            # uniq_blind = NP.unique(blind)
+                            # blhist, blbe, blbn, blri = OPS.binned_statistic(blind, statistic='count', bins=NP.append(uniq_blind, uniq_blind.max()+1))
+                            # for i,ublind in enumerate(uniq_blind):
+                            #     label = self.ordered_labels[ublind]
+                            #     ind = blri[blri[i]:blri[i+1]]
+                            #     krndict = self.interferometers[label].aperture.compute(dxy[ind,:], wavelength=wl[ind], pol=cpol, rmaxNN=rmaxNN, load_lookup=False)
+                            #     if krn[cpol] is None:
+                            #         krn[cpol] = NP.copy(krndict[cpol])
+                            #     else:
+                            #         krn[cpol] = NP.append(krn[cpol], krndict[cpol])
+
+                        self.grid_mapper[cpol]['all_bl2grid']['illumination'] = NP.copy(krn[cpol])
+                    else: # Weights do not scale with frequency (needs serious development)
+                        pass
+                        
+                    # Determine weights that can normalize sum of kernel per interferometer per frequency to unity
+                    per_bl_per_freq_norm_wts = NP.zeros(blind.size, dtype=NP.complex64)
+                    runsum = 0
+                    for bi,gi in enumerate(indNN_list):
+                        if len(gi) > 0:
+                            fvu_ind = NP.asarray(gi)
+                            unraveled_fvu_ind = NP.unravel_index(fvu_ind, (self.f.size,)+self.gridu.shape)
+                            f_ind = unraveled_fvu_ind[0]
+                            v_ind = unraveled_fvu_ind[1]
+                            u_ind = unraveled_fvu_ind[2]
+                            chanhist, chanbe, chanbn, chanri = OPS.binned_statistic(f_ind, statistic='count', bins=NP.arange(self.f.size+1))
+                            for ci in xrange(self.f.size):
+                                if chanhist[ci] > 0.0:
+                                    select_chan_ind = chanri[chanri[ci]:chanri[ci+1]]
+                                    per_bl_per_freq_kernel_sum = NP.sum(krn[cpol][runsum:runsum+len(gi)][select_chan_ind])
+                                    per_bl_per_freq_norm_wts[runsum:runsum+len(gi)][select_chan_ind] = 1.0 / per_bl_per_freq_kernel_sum
+
+                        per_bl2grid_info = {}
+                        per_bl2grid_info['label'] = self.ordered_labels[bi]
+                        per_bl2grid_info['f_gridind'] = NP.copy(f_ind)
+                        per_bl2grid_info['u_gridind'] = NP.copy(u_ind)
+                        per_bl2grid_info['v_gridind'] = NP.copy(v_ind)
+                        # per_bl2grid_info['fvu_gridind'] = NP.copy(gi)
+                        per_bl2grid_info['per_bl_per_freq_norm_wts'] = per_bl_per_freq_norm_wts[runsum:runsum+len(gi)]
+                        per_bl2grid_info['illumination'] = krn[cpol][runsum:runsum+len(gi)]
+                        self.grid_mapper[cpol]['per_bl2grid'] += [copy.deepcopy(per_bl2grid_info)]
+                        runsum += len(gi)
+
+                    self.grid_mapper[cpol]['all_bl2grid']['per_bl_per_freq_norm_wts'] = NP.copy(per_bl_per_freq_norm_wts)
+
+                # Determine the gridded electric fields
+                Vf_on_grid = Vf[(self.grid_mapper[cpol]['all_bl2grid']['blind'], self.grid_mapper[cpol]['all_bl2grid']['f_gridind'])]
+                self.grid_mapper[cpol]['all_bl2grid']['Vf'] = copy.deepcopy(Vf_on_grid)
+                runsum = 0
+                for bi,gi in enumerate(self.grid_mapper[cpol]['all_bl2grid']['indNN_list']):
+                    if len(gi) > 0:
+                        self.grid_mapper[cpol]['per_bl2grid'][bi]['Vf'] = Vf_on_grid[runsum:runsum+len(gi)]
+                        runsum += len(gi)
 
     ############################################################################
 
@@ -7884,6 +8221,102 @@ class AntennaArray:
                                            locations raveled to one dimension
                                            from three dimensions of size 
                                            n_u x n_v x nchan
+                'per_ant2grid'
+                            [list] each element in the list is a dictionary
+                            corresponding to an antenna with information on
+                            its mapping and contribution to the grid. Each 
+                            dictionary has the following keys and values:
+                            'label'        [string] antenna label
+                            'f_gridind'    [numpy array] mapping information 
+                                           with indices to the frequency axis
+                                           of the grid
+                            'u_gridind'    [numpy array] mapping information 
+                                           with indices to the u-axis
+                                           of the grid. Must be of same size 
+                                           as array under 'f_gridind'
+                            'v_gridind'    [numpy array] mapping information 
+                                           with indices to the v-axis
+                                           of the grid. Must be of same size 
+                                           as array under 'f_gridind'
+                            'per_ant_per_freq_norm_wts'
+                                           [numpy array] mapping information 
+                                           on the (complex) normalizing 
+                                           multiplicative factor required to 
+                                           make the sum of illumination/weights 
+                                           per antenna per frequency on the 
+                                           grid equal to unity. Must be of same 
+                                           size as array under 'f_gridind'
+                            'illumination' [numpy array] Complex aperture 
+                                           illumination/weights contributed
+                                           by the antenna onto the grid. The 
+                                           grid pixels to which it contributes 
+                                           is given by 'f_gridind', 'u_gridind',
+                                           'v_gridind'. Must be of same size 
+                                           as array under 'f_gridind'
+                            'Ef'           [numpy array] Complex electric fields
+                                           contributed by the antenna onto the 
+                                           grid. The grid pixels to which it 
+                                           contributes is given by 'f_gridind', 
+                                           'u_gridind', 'v_gridind'. Must be of 
+                                           same size as array under 'f_gridind'
+                'all_ant2grid'
+                            [dictionary] contains the combined information of
+                            mapping of all antennas to the grid. It consists of
+                            the following keys and values:
+                            'antind'       [numpy array] all antenna indices (to
+                                           attribute ordered labels) that map to
+                                           the uvf-grid
+                            'u_gridind'    [numpy array] all indices to the 
+                                           u-axis of the uvf-grid mapped to by 
+                                           all antennas whose indices are given
+                                           in key 'antind'. Must be of same size
+                                           as the array under key 'antind'
+                            'v_gridind'    [numpy array] all indices to the 
+                                           v-axis of the uvf-grid mapped to by 
+                                           all antennas whose indices are given
+                                           in key 'antind'. Must be of same size
+                                           as the array under key 'antind'
+                            'f_gridind'    [numpy array] all indices to the 
+                                           f-axis of the uvf-grid mapped to by 
+                                           all antennas whose indices are given
+                                           in key 'antind'. Must be of same size
+                                           as the array under key 'antind'
+                            'indNN_list'   [list of lists] Each item in the top
+                                           level list corresponds to an antenna
+                                           in the same order as in the attribute
+                                           ordered_labels. Each of these items 
+                                           is another list consisting of the 
+                                           unraveled grid indices it contributes 
+                                           to. The unraveled indices are what 
+                                           are used to obtain the u-, v- and f-
+                                           indices in the grid using a 
+                                           conversion assuming f is the 
+                                           first axis, v is the second and u is 
+                                           the third
+                            'illumination' [numpy array] complex values of 
+                                           aperture illumination contributed by
+                                           all antennas to the grid. The antenna
+                                           indices are in 'antind' and the grid 
+                                           indices are in 'u_gridind', 
+                                           'v_gridind' and 'f_gridind'. Must be 
+                                           of same size as these indices
+                            'per_ant_per_freq_norm_wts'
+                                           [numpy array] mapping information 
+                                           on the (complex) normalizing 
+                                           multiplicative factor required to 
+                                           make the sum of illumination/weights 
+                                           per antenna per frequency on the 
+                                           grid equal to unity. This is appended 
+                                           for all antennas together. Must be of 
+                                           same size as array under 
+                                           'illumination'
+                            'Ef'           [numpy array] Complex electric fields
+                                           contributed by all antennas onto the 
+                                           grid. The grid pixels to which it 
+                                           contributes is given by 'f_gridind', 
+                                           'u_gridind', 'v_gridind'. Must be of 
+                                           same size as array under 'f_gridind'
+                                           and 'illumination'
 
     Member Functions:
 
@@ -7915,10 +8348,7 @@ class AntennaArray:
 
     grid_convolve_new()   
                       Routine to project the electric field illumination pattern
-                      and the electric fields on the grid. It can operate on the
-                      entire antenna array or incrementally project the electric
-                      fields and illumination patterns from specific antennas on
-                      to an already existing grid.
+                      and the electric fields on the grid. 
 
     grid_unconvolve() Routine to de-project the electric field illumination 
                       pattern and the electric fields on the grid. It can 
