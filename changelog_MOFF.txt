@@ -1,3 +1,16 @@
+From 090ab29:
+============
+
+In aperture.py,
+
+(*) Add attribute pol to class AntennaAperture and initialize in
+__init__() member function. Now the same class can work with single
+polarizations like 'P1' and 'P2' or cross-polarizations like 'P11',
+'P12', 'P21', and 'P22'
+(*) Throughout class AntennaAperture modify value checking against
+['P1', 'P2'] to that against attribute pol
+(*) Update docstrings accordingly
+
 From 200765b:
 ============
 

@@ -675,63 +675,72 @@ class AntennaAperture(object):
 
     Attributes:
 
-    kernel_type [dictionary] denotes whether the kernel is analytic or based on
-                a lookup table. It has two keys 'P1' and 'P2' - one for each 
-                polarization. Under each key the allowed values are 'func' and
-                'lookup' (default). If specified as None during initialization,
-                it is set to 'lookup' under both polarizations.
+    pol         [list] contains a list of polarizations. Two polarizations 
+                ['P1', 'P2'] if the instance corresponds to antenna aperture or
+                four cross-polarizations ['P11', 'P12', 'P21', 'P22'] if it 
+                corresponds to an interferometer aperture
 
-    shape       [dictionary] denotes the shape of the aperture. It has two keys 
-                'P1' and 'P2' - one for each polarization. Under each key the 
-                allowed values are under each polarization are 'rect', 'square',
-                'circular', 'auto_convolved_rect', 'auto_convolved_square', 
-                'auto_convolved_circular' or None. These apply only if the 
-                corresponding kernel_type for the polarization is set to 'func' 
-                else the shape will be set to None.
+    kernel_type [dictionary] denotes whether the kernel is analytic or based on
+                a lookup table. It has two or four keys (depending on attribute 
+                pol) - one for each polarization. Under each key the allowed 
+                values are 'func' and 'lookup' (default). If specified as None 
+                during initialization, it is set to 'lookup' under all
+                polarizations.
+
+    shape       [dictionary] denotes the shape of the aperture. It has two or 
+                four keys (depending on attribute pol) - one for each 
+                polarization. Under each polarization key the allowed values 
+                are 'rect', 'square', 'circular', 'auto_convolved_rect', 
+                'auto_convolved_square', 'auto_convolved_circular' or None. 
+                These apply only if the corresponding kernel_type for the 
+                polarization is set to 'func' else the shape will be set to 
+                None.
 
     xmax        [dictionary] Upper limit along the x-axis for the aperture 
                 kernel footprint. Applicable in case of original rectangular 
-                or square apertures. It has two keys 'P1' and 'P2' - one for 
-                each polarization. The value (default=1.0) held by each key is a 
-                scalar. Lower limit along the x-axis is set to -xmax. Length 
-                of the original rectangular/square footprint is 2*xmax
+                or square apertures. It has two or four keys (depending on 
+                attribute pol) - one for each polarization. The value 
+                (default=1.0) held by each key is a scalar. Lower limit along 
+                the x-axis is set to -xmax. Length of the original 
+                rectangular/square footprint is 2*xmax
 
     ymax        [dictionary] Upper limit along the y-axis for the aperture 
                 kernel footprint. Applicable in case of original rectangular 
-                apertures. It has two keys 'P1' and 'P2' - one for each 
-                polarization. The value (default=1.0) held by each key is a 
-                scalar. Lower limit along the y-axis is set to -ymax. Breadth 
-                of the original rectangular footprint is 2*ymax
+                apertures. It has two or four keys (depending on 
+                attribute pol) - one for each polarization. The value 
+                (default=1.0) held by each key is a scalar. Lower limit along 
+                the y-axis is set to -ymax. Breadth of the original rectangular 
+                footprint is 2*ymax
 
     rmin        [dictionary] Lower limit along the radial axis for the original 
                 aperture kernel footprint. Applicable in case of original 
-                circular apertures. It has two keys 'P1' and 'P2' - one for each 
-                polarization. The value (default=0.0) held by each key is a 
-                scalar
+                circular apertures. It has two or four keys (depending on 
+                attribute pol) - one for each polarization. The value 
+                (default=0.0) held by each key is a scalar
 
     rmax        [dictionary] Upper limit along the radial axis for the original 
                 aperture kernel footprint. Applicable in case of original 
-                circular apertures. It has two keys 'P1' and 'P2' - one for each 
-                polarization. The value (default=1.0) held by each key is a 
-                scalar
+                circular apertures. It has two or four keys (depending on 
+                attribute pol) - one for each polarization. The value 
+                (default=1.0) held by each key is a scalar
 
     rotangle    [dictionary] Angle (in radians) by which the principal axis of the 
                 aperture is rotated counterclockwise east of sky frame. 
                 Applicable in case of rectangular, square and elliptical 
-                apertures. It has two keys 'P1' and 'P2' - one for each 
-                polarization. The value (default=0.0) held by each key is a 
-                scalar
+                apertures. It has two or four keys (depending on 
+                attribute pol) - one for each polarization. The value 
+                (default=0.0) held by each key is a scalar
 
     lkpinfo     [dictionary] lookup table file location, one for each 
                 polarization under the standard keys denoting polarization
 
     wtsposxy    [dictionary] two-dimensional locations of the gridding weights 
-                in wts for each polarization under keys 'P1' and 'P2'. The 
-                locations are in ENU coordinate system as a list of 2-column 
-                numpy arrays in units of distance. 
+                in wts for each polarization key. The locations are in ENU 
+                coordinate system as a list of 2-column numpy arrays in units 
+                of distance. 
 
     wtsxy       [dictionary] The gridding weights for antenna. Different 
-                polarizations 'P1' and 'P2' form the keys of this dictionary. 
+                polarizations form the keys of this dictionary. 
                 These values are in general complex. Under each key, the values 
                 are maintained as a numpy array of complex antenna weights 
                 corresponding to positions in the lookup table. It should be of 
@@ -749,8 +758,8 @@ class AntennaAperture(object):
     ----------------------------------------------------------------------------
     """
 
-    def __init__(self, kernel_type=None, shape=None, parms=None, lkpinfo=None,
-                 load_lookup=True):
+    def __init__(self, pol_type='single', kernel_type=None, shape=None,
+                 parms=None, lkpinfo=None, load_lookup=True):
 
         """
         ------------------------------------------------------------------------
@@ -758,7 +767,7 @@ class AntennaAperture(object):
         information about an antenna aperture
 
         Class attributes initialized are:
-        kernel_type, shape, xmax, ymax, rmin, emax, rotangle, 
+        pol, kernel_type, shape, xmax, ymax, rmin, emax, rotangle, 
         wtsposxy, wtsxy, lkpinfo
 
         Read docstring of class AntennaAperture for details on these 
@@ -766,15 +775,23 @@ class AntennaAperture(object):
 
         Inputs:
 
+        pol_type    [string] Specifies type of polarizations to be set. 
+                    Currently accepted values are 'single' (default) and 
+                    'cross'. If set to single, the attribute pol is set to
+                    single antenna polarizations ['P1', 'P2']. If set to 'cross'
+                    attribute pol is set to cross-polarizations from antennas
+                    ['P11', 'P12', 'P21', 'P22']
+
         kernel_type [dictionary] denotes whether the kernel is analytic or based 
-                    on a lookup table. It has two keys 'P1' and 'P2' - one for 
-                    each polarization. Under each key the allowed values are 
-                    'func' and 'lookup' (default). If specified as None,
-                    it is set to 'lookup' under both polarizations.
+                    on a lookup table. It has two or four keys (depending on 
+                    attribute pol) - one for each polarization. Under each key 
+                    the allowed values are 'func' and 'lookup' (default). If 
+                    specified as None, it is set to 'lookup' under both 
+                    polarizations.
     
         shape       [dictionary] denotes the shape of the aperture. It has two 
-                    keys 'P1' and 'P2' - one for each polarization. Under each 
-                    key the allowed values are under each polarization are 
+                    or four keys (depending on attribute pol) - one for each 
+                    polarization. Under each key the allowed values are 
                     'rect', 'square', 'circular', 'auto_convolved_rect', 
                     'auto_convolved_square', 'auto_convolved_circular'  or None. 
                     These apply only if the corresponding kernel_type for the 
@@ -782,9 +799,9 @@ class AntennaAperture(object):
                     None.
 
         parms       [dictionary] denotes parameters of the original aperture 
-                    shape. It has two keys 'P1' and 'P2' - one for each 
-                    polarization. Under each of these keys is another dictionary 
-                    with the following keys and information:
+                    shape. It has two or four keys (depending on attribute pol),
+                    one for each polarization. Under each of these keys is 
+                    another dictionary with the following keys and information:
                     'xmax'  [scalar] Upper limit along the x-axis for the 
                             original aperture kernel footprint. Applicable in 
                             case of original rectangular or square apertures. 
@@ -813,7 +830,7 @@ class AntennaAperture(object):
                             key is a scalar
 
         lkpinfo     [dicitonary] consists of weights information for each of 
-                    the two polarizations under keys 'P1' and 'P2'. Each of 
+                    the polarizations under polarization keys. Each of 
                     the values under the keys is a string containing the full
                     path to a filename that contains the positions and 
                     weights for the antenna field illumination in the form of 
@@ -826,12 +843,19 @@ class AntennaAperture(object):
         ------------------------------------------------------------------------
         """
 
+        if pol_type not in ['single', 'cross']:
+            raise ValueError('Polarization type must be "single" or "cross"')
+        elif pol_type == 'single':
+            self.pol = ['P1', 'P2']
+        else:
+            self.pol = ['P11', 'P12', 'P21', 'P22']
+
         if kernel_type is None:
             kernel_type = {}
-            for pol in ['P1','P2']:
+            for pol in self.pol:
                 kernel_type[pol] = 'lookup'
         elif isinstance(kernel_type, dict):
-            for pol in ['P1','P2']:
+            for pol in self.pol:
                 if pol not in kernel_type:
                     kernel_type[pol] = 'lookup'
                 elif kernel_type[pol] not in ['lookup', 'func']:
@@ -841,13 +865,13 @@ class AntennaAperture(object):
 
         if shape is None:
             shape = {}
-            for pol in ['P1','P2']:
+            for pol in self.pol:
                 if kernel_type[pol] == 'lookup':
                     shape[pol] = None
                 else:
                     shape[pol] = 'circular'
         elif isinstance(shape, dict):
-             for pol in ['P1','P2']:
+             for pol in self.pol:
                 if pol not in shape:
                     if kernel_type[pol] == 'lookup':
                         shape[pol] = None
@@ -863,7 +887,7 @@ class AntennaAperture(object):
             
         if parms is None:
             parms = {}
-            for pol in ['P1','P2']:
+            for pol in self.pol:
                 parms[pol] = {}
                 parms[pol]['rmin'] = 0.0
                 parms[pol]['xmax'] = 1.0
@@ -871,7 +895,7 @@ class AntennaAperture(object):
                 parms[pol]['rmax'] = 1.0
                 parms[pol]['rotangle'] = 0.0
         elif isinstance(parms, dict):
-            for pol in ['P1','P2']:
+            for pol in self.pol:
                 if pol not in parms:
                     parms[pol] = {}
                     parms[pol]['rmin'] = 0.0
@@ -898,7 +922,7 @@ class AntennaAperture(object):
         self.rmax = {}
         self.rotangle = {}
             
-        for pol in ['P1', 'P2']:
+        for pol in self.pol:
             self.kernel_type[pol] = kernel_type[pol]
             self.shape[pol] = shape[pol]
             parmsdict = parmscheck(xmax=parms[pol]['xmax'], ymax=parms[pol]['ymax'], rmin=parms[pol]['rmin'], rmax=parms[pol]['rmax'], rotangle=parms[pol]['rotangle'])
@@ -914,7 +938,7 @@ class AntennaAperture(object):
         if lkpinfo is not None:
             if not isinstance(lkpinfo, dict):
                 raise TypeError('Input parameter lkpinfo must be a dictionary')
-            for pol in ['P1', 'P2']:
+            for pol in self.pol:
                 self.wtsposxy[pol] = None
                 self.wtsxy[pol] = None
                 if pol in lkpinfo:
@@ -958,9 +982,10 @@ class AntennaAperture(object):
                 (zenith)
 
         pol     [string or list] The polarization for which the kernel is to be 
-                estimated. Can be set to 'P1' or 'P2' or  list containing both. 
-                If set to None, kernel is estimated for all the polarizations. 
-                Default=None
+                estimated. Can be set to one or both of 'P1' and 'P2' for antenna 
+                apertures or one or more or all of 'P11', 'P12', 'P21', 'P22' for
+                interferometer apertures as a listk. If set to None, kernel is 
+                estimated for all the polarizations. Default=None
 
         rmaxNN  [scalar] Search distance upper limit in case of kernel 
                 estimation from a lookup table. Default=None means value in 
@@ -973,21 +998,21 @@ class AntennaAperture(object):
 
         Outputs:
 
-        Dictionary containing two keys 'P1' and 'P2' - one for each 
-        polarization. Under each of these keys, the kernel information is 
-        returned as a (complex) numpy array
+        Dictionary containing two or four keys (depending on attribute pol), 
+        one for each polarization. Under each of these keys, the kernel 
+        information is returned as a (complex) numpy array
         ------------------------------------------------------------------------
         """
 
         if pol is None:
-            pol = ['P1', 'P2']
+            pol = self.pol
         elif not isinstance(pol, list):
-            if pol not in ['P1', 'P2']:
+            if pol not in self.pol:
                 raise ValueError('Invalid value specified for pol')
             pol = [pol]
         else:
             pol = set(pol)
-            p = [item for item in pol if item in ['P1', 'P2']]
+            p = [item for item in pol if item in self.pol]
             pol = p
 
         outdict = {}
