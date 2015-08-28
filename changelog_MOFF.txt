@@ -1,3 +1,15 @@
+From 4aee864:
+============
+
+In antenna_array.py,
+
+(*) Add attribute aperture to class Interferometer
+(*) Add input keyword aperture in __init__() member function of class
+Interferometer to initialize attribute aperture
+(*) Update docstring accordingly
+(*) Add type checking while initializing attribute aperture in member
+function __init__() of class Antenna
+
 From 23d5910:
 ============
 

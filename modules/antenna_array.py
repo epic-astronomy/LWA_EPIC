@@ -326,6 +326,10 @@ class Interferometer:
                 the interferometer. Read docstring of class CrossPolInfo for 
                 details
 
+    aperture    [Instance of class APR.Aperture] aperture information
+                for the interferometer. Read docstring of class Aperture for
+                details
+
     Vt_stack    [dictionary] holds a stack of complex visibility time series 
                 measured at various time stamps under 4 polarizations which are 
                 stored under keys 'P11', 'P12', 'P21', and 'P22'. Each value 
@@ -500,7 +504,7 @@ class Interferometer:
     ----------------------------------------------------------------------------
     """
 
-    def __init__(self, antenna1, antenna2, corr_type=None):
+    def __init__(self, antenna1, antenna2, corr_type=None, aperture=None):
 
         """
         ------------------------------------------------------------------------
@@ -510,7 +514,7 @@ class Interferometer:
         Class attributes initialized are:
         label, latitude, location, pol, t, timestamp, f0, f, wts, wtspos, 
         wtspos_scale, gridinfo, blc, trc, timestamps, Vt_stack, Vf_stack, 
-        flag_stack, Vf_avg, twts, tbinsize
+        flag_stack, Vf_avg, twts, tbinsize, aperture
      
         Read docstring of class Antenna for details on these attributes.
         ------------------------------------------------------------------------
@@ -552,6 +556,16 @@ class Interferometer:
         self.timestamp = 0.0
         self.timestamps = []
         
+        if aperture is not None:
+            if isinstance(aperture, APR.Aperture):
+                if len(aperture.pol) != 4:
+                    raise ValueError('Interferometer aperture must contain four cross-polarization types')
+                self.aperture = aperture
+            else:
+                raise TypeError('aperture must be an instance of class Aperture found in module {0}'.format(APR.__name__))
+        else:
+            self.aperture = APR.Aperture(pol_type='cross')
+
         self.crosspol = CrossPolInfo(self.f.size)
 
         self.Vt_stack = {}
@@ -7128,6 +7142,8 @@ class Antenna:
 
         if aperture is not None:
             if isinstance(aperture, APR.Aperture):
+                if len(aperture.pol) != 2:
+                    raise ValueError('Antenna aperture must contain dual polarization types')
                 self.aperture = aperture
             else:
                 raise TypeError('aperture must be an instance of class Aperture found in module {0}'.format(APR.__name__))
