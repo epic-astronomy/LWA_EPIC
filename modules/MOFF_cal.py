@@ -93,6 +93,7 @@ class cal:
             'default': self.default_cal,
             'simple': self.simple_cal,
             'off_center': self.off_center_cal,
+            'multi_source': self.multi_source_cal,
         }
 
         # Defaults for sky model:
@@ -144,6 +145,7 @@ class cal:
 
         self.temp_gains = NP.zeros([n_ant,n_chan], dtype=NP.complex64)
         self.count = 0
+
 
 
     ####################################
@@ -247,7 +249,7 @@ class cal:
                 # The version below is incorrect.
                 # But it gets pretty darn close, without any model of the sky.
                 # So I'm going to leave it for now to study later.
-                #new_gains[ant,:] = (imgdata - Edata[ant,:]/self.curr_gains[ant,:]) / (Edata[ant,:] * (NP.sum(NP.abs(1/self.curr_gains)**2,axis=0) - NP.abs(1/self.curr_gains[ant,:])**2))
+                #new_gains[ant,:] = 1/((imgdata - Edata[ant,:]/self.curr_gains[ant,:]) / (Edata[ant,:] * (NP.sum(NP.abs(1/self.curr_gains)**2,axis=0) - NP.abs(1/self.curr_gains[ant,:])**2)))
                 
         phasor=new_gains[self.ref_ant,:]/NP.abs(new_gains[self.ref_ant,:])
         new_gains *= NP.conj(phasor).reshape(1,self.n_chan)
@@ -281,6 +283,33 @@ class cal:
         new_gains = self.simple_cal(Edata,imgdata,model_flux)
 
         return new_gains
+
+    def multi_source_cal(self,*args):
+        #
+        ### Calibrate on several sources simultaneously.
+        # Inputs
+        #   Edata:    _uncalibrated E-field data from antennas.
+        #   imgobj:   Image object output from latest correlator image.
+
+        while isinstance(args[0],tuple):
+            args=args[0]
+        Edata = args[0]
+        imgobj = args[1]
+
+        n_src = self.sky_model.shape[0]
+        new_gains = NP.zeros((self.n_ant,self.n_chan),dtype=NP.complex64)
+        
+        weights = NP.reshape(self.sky_model[:,:,3],(n_src,self.n_chan))
+        
+        for sourcei in xrange(n_src):
+            new_gains += self.off_center_cal(Edata,imgobj,sourcei)*NP.reshape(self.sky_model[sourcei,:,3],(1,self.n_chan))
+
+        
+        new_gains /= NP.reshape(NP.sum(weights,axis=0),(1,self.n_chan))
+
+        return new_gains
+            
+        
 
 
 

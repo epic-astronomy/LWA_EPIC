@@ -1,3 +1,9 @@
+From b55db4b:
+============
+
+(*) Adding structure for first-attempt multi-source calibration.
+	Note: NOT currently working, but conforms to single source just fine.
+
 From 47b54557:
 =============
 
