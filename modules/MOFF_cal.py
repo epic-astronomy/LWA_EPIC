@@ -45,6 +45,8 @@ class cal:
     freqs:          Numpy array with frequencies in Hz.
 
     pol:            Polarization key (to reference image object)
+
+    cal_ver:        Calibration version. To keep track of different cal loops.
     
     Functions:
     
@@ -59,7 +61,7 @@ class cal:
     ----------------------------------------------------------------------------------
     """
 
-    def __init__(self, ant_pos, freqs, n_iter=10, cal_method='default', sim_mode=False, sky_model=NP.ones(1,dtype=NP.complex64), ref_ant=0, gain_factor=1.0, inv_gains=False, pol='P1',ref_point=NP.array([0,0,1])):
+    def __init__(self, ant_pos, freqs, n_iter=10, cal_method='default', sim_mode=False, sky_model=NP.ones(1,dtype=NP.complex64), ref_ant=0, gain_factor=1.0, inv_gains=False, pol='P1',ref_point=NP.array([0,0,1]),cal_ver='new'):
 
         # Get derived values and check types, etc.
         n_chan=freqs.shape[0]
@@ -133,6 +135,7 @@ class cal:
         self.ref_ant = ref_ant
         self.ref_point = ref_point
         self.pol = pol
+        self.cal_ver = cal_ver
         
         self.sky_model=sky_model
         self.ant_pos=ant_pos
@@ -242,14 +245,20 @@ class cal:
 
         new_gains = NP.zeros(self.curr_gains.shape,dtype=NP.complex64)
         for ant in xrange(self.n_ant):
-            if self.inv_gains:
-                new_gains[ant,:] = (Edata[ant,:] * NP.conj(imgdata) - self.curr_gains[ant,:]*NP.abs(Edata[ant,:])**2)/(model * ( NP.sum(NP.abs(self.curr_gains)**2,axis=0)-NP.abs(self.curr_gains[ant,:])**2))
+            if self.cal_ver=='new':
+                if self.inv_gains:
+                    new_gains[ant,:] = Edata[ant,:]*NP.conj(imgdata) / (model * NP.sum(NP.abs(self.curr_gains)**2))
+                else:
+                    new_gains[ant,:] = Edata[ant,:]*NP.conj(imgdata) / (model * self.n_ant)
             else:
-                new_gains[ant,:] = 1/(model * (imgdata - Edata[ant,:]/self.curr_gains[ant,:]) / (Edata[ant,:] * (NP.sum(NP.abs(Edata/self.curr_gains)**2,axis=0) - NP.abs(Edata[ant,:]/self.curr_gains[ant,:])**2)))
-                # The version below is incorrect.
-                # But it gets pretty darn close, without any model of the sky.
-                # So I'm going to leave it for now to study later.
-                #new_gains[ant,:] = 1/((imgdata - Edata[ant,:]/self.curr_gains[ant,:]) / (Edata[ant,:] * (NP.sum(NP.abs(1/self.curr_gains)**2,axis=0) - NP.abs(1/self.curr_gains[ant,:])**2)))
+                if self.inv_gains:
+                    new_gains[ant,:] = (Edata[ant,:] * NP.conj(imgdata) - self.curr_gains[ant,:]*NP.abs(Edata[ant,:])**2)/(model * ( NP.sum(NP.abs(self.curr_gains)**2,axis=0)-NP.abs(self.curr_gains[ant,:])**2))
+                else:
+                    new_gains[ant,:] = 1/(model * (imgdata - Edata[ant,:]/self.curr_gains[ant,:]) / (Edata[ant,:] * (NP.sum(NP.abs(Edata/self.curr_gains)**2,axis=0) - NP.abs(Edata[ant,:]/self.curr_gains[ant,:])**2)))
+                    # The version below is incorrect.
+                    # But it gets pretty darn close, without any model of the sky.
+                    # So I'm going to leave it for now to study later.
+                    #new_gains[ant,:] = 1/((imgdata - Edata[ant,:]/self.curr_gains[ant,:]) / (Edata[ant,:] * (NP.sum(NP.abs(1/self.curr_gains)**2,axis=0) - NP.abs(1/self.curr_gains[ant,:])**2)))
                 
         phasor=new_gains[self.ref_ant,:]/NP.abs(new_gains[self.ref_ant,:])
         new_gains *= NP.conj(phasor).reshape(1,self.n_chan)

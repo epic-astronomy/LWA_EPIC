@@ -1,3 +1,11 @@
+From a6e8d49:
+============
+
+(*) Added a new expression for calibration updates.
+	It is a simpler expression and seems to give more sane solutions.
+(*) Keeping the old expression by setting the cal_ver='old' when initializing
+	cal object.
+
 From b55db4b:
 ============
 
