@@ -3529,12 +3529,12 @@ class InterferometerArray:
 
                     Vf_dict = self.get_visibilities(cpol, flag=None, tselect=-1, fselect=None, bselect=None, datapool='avg', sort=True)
                     Vf = Vf_dict['visibilities'].astype(NP.complex64)  #  (n_ts=1) x n_bl x nchan
-                    Vf = NP.squeeze(Vf)  # n_bl x nchan
+                    Vf = NP.squeeze(Vf, axis=0)  # n_bl x nchan
                     if Vf.shape[0] != n_bl:
                         raise ValueError('Encountered unexpected behavior. Need to debug.')
                     bl_labels = Vf_dict['labels']
                     twts = Vf_dict['twts']  # (n_ts=1) x n_bl x (nchan=1)
-                    twts = NP.squeeze(twts)
+                    twts = NP.squeeze(twts, axis=(0,2))  # n_bl
 
                     if verbose:
                         print 'Gathered baseline data for gridding convolution for timestamp {0}'.format(self.timestamp)
@@ -4108,17 +4108,17 @@ class InterferometerArray:
 
                 bl_dict = self.baseline_vectors(pol=cpol, flag=None, sort=True)
                 self.ordered_labels = bl_dict['labels']
-                bl_xy = bl_dict['positions'][:,:2] # n_bl x 2
+                bl_xy = bl_dict['baselines'][:,:2] # n_bl x 2
                 n_bl = bl_xy.shape[0]
 
                 Vf_dict = self.get_visibilities(cpol, flag=None, tselect=-1, fselect=None, bselect=None, datapool='avg', sort=True)
                 Vf = Vf_dict['visibilities'].astype(NP.complex64)  #  (n_ts=1) x n_bl x nchan
-                Vf = NP.squeeze(Vf)  # n_bl x nchan
+                Vf = NP.squeeze(Vf, axis=0)  # n_bl x nchan
                 if Vf.shape[0] != n_bl:
                     raise ValueError('Encountered unexpected behavior. Need to debug.')
                 bl_labels = Vf_dict['labels']
                 twts = Vf_dict['twts']  # (n_ts=1) x n_bl x (nchan=1)
-                twts = NP.squeeze(twts)
+                twts = NP.squeeze(twts, axis=(0,2))  # n_bl
 
                 if verbose:
                     print 'Gathered interferometer data for gridding convolution for timestamp {0}'.format(self.timestamp)
@@ -4140,6 +4140,7 @@ class InterferometerArray:
                         self.grid_mapper[cpol]['all_bl2grid']['v_gridind'] = NP.copy(fvu_gridind_unraveled[1])                            
                         self.grid_mapper[cpol]['all_bl2grid']['f_gridind'] = NP.copy(fvu_gridind_unraveled[0])
                         self.grid_mapper[cpol]['all_bl2grid']['indNN_list'] = copy.deepcopy(indNN_list)
+                        self.grid_mapper[cpol]['all_bl2grid']['twts'] = copy.deepcopy(twts)
 
                         if identical_interferometers:
                             arbitrary_interferometer_aperture = self.interferometers.itervalues().next().aperture
@@ -4174,7 +4175,9 @@ class InterferometerArray:
                         pass
                         
                     # Determine weights that can normalize sum of kernel per interferometer per frequency to unity
+                    # per_bl_per_freq_norm_wts = NP.ones(blind.size, dtype=NP.complex64)
                     per_bl_per_freq_norm_wts = NP.zeros(blind.size, dtype=NP.complex64)
+                    
                     runsum = 0
                     for bi,gi in enumerate(indNN_list):
                         if len(gi) > 0:
@@ -4192,6 +4195,7 @@ class InterferometerArray:
 
                         per_bl2grid_info = {}
                         per_bl2grid_info['label'] = self.ordered_labels[bi]
+                        per_bl2grid_info['twts'] = twts[bi]
                         per_bl2grid_info['f_gridind'] = NP.copy(f_ind)
                         per_bl2grid_info['u_gridind'] = NP.copy(u_ind)
                         per_bl2grid_info['v_gridind'] = NP.copy(v_ind)
@@ -4276,6 +4280,75 @@ class InterferometerArray:
 
             # self.grid_Vf[cpol] *= num_unflagged/sum_twts
                 
+            if verbose:
+                print 'Gridded aperture illumination and visibilities for polarization {0} from {1:0d} unflagged contributing baselines'.format(cpol, num_unflagged)
+
+    ############################################################################
+
+    def make_grid_cube_new(self, pol=None, verbose=True):
+
+        """
+        ------------------------------------------------------------------------
+        Constructs the grid of complex power illumination and visibilities using 
+        the gridding information determined for every baseline. Flags are taken
+        into account while constructing this grid.
+
+        Inputs:
+
+        pol     [String] The polarization to be gridded. Can be set to 'P11', 
+                'P12', 'P21' or 'P22'. If set to None, gridding for all the
+                polarizations is performed. Default = None
+        
+        verbose [boolean] If True, prints diagnostic and progress messages. 
+                If False (default), suppress printing such messages.
+        ------------------------------------------------------------------------
+        """
+
+        if pol is None:
+            pol = ['P11', 'P12', 'P21', 'P22']
+
+        pol = NP.unique(NP.asarray(pol))
+        
+        for cpol in pol:
+
+            if verbose:
+                print 'Gridding aperture illumination and visibilities for polarization {0} ...'.format(cpol)
+
+            if cpol not in ['P11', 'P12', 'P21', 'P22']:
+                raise ValueError('Invalid specification for input parameter pol')
+
+            if cpol not in self._bl_contribution:
+                raise KeyError('Key {0} not found in attribute _bl_contribution'.format(cpol))
+    
+            self.grid_illumination[cpol] = NP.zeros((self.gridu.shape + (self.f.size,)), dtype=NP.complex_)
+            self.grid_Vf[cpol] = NP.zeros((self.gridu.shape + (self.f.size,)), dtype=NP.complex_)
+    
+            nlabels = len(self.grid_mapper[cpol]['per_bl2grid'])
+            loopcount = 0
+            num_unflagged = 0
+            sum_twts = 0.0
+            if verbose:
+                progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} Antennas '.format(nlabels), PGB.ETA()], maxval=nlabels).start()
+
+            for bi, per_bl2grid_info in enumerate(self.grid_mapper[cpol]['per_bl2grid']):
+                bllabel = per_bl2grid_info['label']
+                if per_bl2grid_info['twts'] > 0.0:
+                    num_unflagged += 1
+                    sum_twts += per_bl2grid_info['twts']
+                    vuf_gridind_unraveled = (per_bl2grid_info['v_gridind'],per_bl2grid_info['u_gridind'],per_bl2grid_info['f_gridind'])
+                    self.grid_illumination[cpol][vuf_gridind_unraveled] += per_bl2grid_info['per_bl_per_freq_norm_wts'] * per_bl2grid_info['illumination']
+                    self.grid_Vf[cpol][vuf_gridind_unraveled] += per_bl2grid_info['per_bl_per_freq_norm_wts'] * per_bl2grid_info['Vf']
+                    # self.grid_illumination[cpol][vuf_gridind_unraveled] += per_bl2grid_info['per_bl_per_freq_norm_wts'] * per_bl2grid_info['illumination'] * per_bl2grid_info['twts']
+                    # self.grid_Vf[cpol][vuf_gridind_unraveled] += per_bl2grid_info['per_bl_per_freq_norm_wts'] * per_bl2grid_info['Vf'] * per_bl2grid_info['twts']
+
+                if verbose:
+                    progress.update(loopcount+1)
+                    loopcount += 1
+            if verbose:
+                progress.finish()
+            # self.grid_illumination[cpol] *= num_unflagged/sum_twts
+            # self.grid_Vf[cpol] *= num_unflagged/sum_twts
+
             if verbose:
                 print 'Gridded aperture illumination and visibilities for polarization {0} from {1:0d} unflagged contributing baselines'.format(cpol, num_unflagged)
 
@@ -6650,6 +6723,7 @@ class NewImage:
                 pol = NP.unique(NP.asarray(pol))
 
                 self.gridu, self.gridv = antenna_array.gridu, antenna_array.gridv
+                # antenna_array.make_grid_cube(verbose=verbose, pol=pol)
                 antenna_array.make_grid_cube_new(verbose=verbose, pol=pol)
 
                 for apol in pol:
@@ -6709,7 +6783,8 @@ class NewImage:
                 pol = NP.unique(NP.asarray(pol))
 
                 self.gridu, self.gridv = interferometer_array.gridu, interferometer_array.gridv
-                interferometer_array.make_grid_cube(verbose=verbose, pol=pol)
+                # interferometer_array.make_grid_cube(verbose=verbose, pol=pol)
+                interferometer_array.make_grid_cube_new(verbose=verbose, pol=pol)
 
                 for cpol in pol:
                     if cpol in ['P11', 'P12', 'P21', 'P22']:
@@ -9265,12 +9340,12 @@ class AntennaArray:
                             self.caldata[apol] = self.get_E_fields(apol, flag=None, tselect=-1, fselect=None, aselect=None, datapool='current', sort=True)
 
                     Ef = self.caldata[apol]['E-fields'].astype(NP.complex64)  #  (n_ts=1) x n_ant x nchan
-                    Ef = NP.squeeze(Ef)  # n_ant x nchan
+                    Ef = NP.squeeze(Ef, axis=0)  # n_ant x nchan
                     if Ef.shape[0] != n_ant:
                         raise ValueError('Encountered unexpected behavior. Need to debug.')
                     ant_labels = self.caldata[apol]['labels']
                     twts = self.caldata[apol]['twts']  # (n_ts=1) x n_ant x (nchan=1)
-                    twts = NP.squeeze(twts)
+                    twts = NP.squeeze(twts, axis=(0,2)) # n_ant
 
                     if verbose:
                         print 'Gathered antenna data for gridding convolution for timestamp {0}'.format(self.timestamp)
@@ -9854,12 +9929,12 @@ class AntennaArray:
                         self.caldata[apol] = self.get_E_fields(apol, flag=None, tselect=-1, fselect=None, aselect=None, datapool='current', sort=True)
 
                 Ef = self.caldata[apol]['E-fields'].astype(NP.complex64)  #  (n_ts=1) x n_ant x nchan
-                Ef = NP.squeeze(Ef)  # n_ant x nchan
+                Ef = NP.squeeze(Ef, axis=0)  # n_ant x nchan
                 if Ef.shape[0] != n_ant:
                     raise ValueError('Encountered unexpected behavior. Need to debug.')
                 ant_labels = self.caldata[apol]['labels']
                 twts = self.caldata[apol]['twts']  # (n_ts=1) x n_ant x (nchan=1)
-                twts = NP.squeeze(twts)
+                twts = NP.squeeze(twts, axis=(0,2)) # n_ant
 
                 if verbose:
                     print 'Gathered antenna data for gridding convolution for timestamp {0}'.format(self.timestamp)
@@ -9916,6 +9991,8 @@ class AntennaArray:
                         
                     # Determine weights that can normalize sum of kernel per antenna per frequency to unity
                     per_ant_per_freq_norm_wts = NP.zeros(antind.size, dtype=NP.complex64)
+                    # per_ant_per_freq_norm_wts = NP.ones(antind.size, dtype=NP.complex64)                    
+                    
                     runsum = 0
                     for ai,gi in enumerate(indNN_list):
                         if len(gi) > 0:
@@ -10164,7 +10241,52 @@ class AntennaArray:
 
         syn_beam /= syn_beam.max()  # Normalize to get unit peak for PSF
         syn_beam_in_uv = NP.fft.ifft2(syn_beam, axes=(0,1)) # Inverse FT
-
+        du = self.gridu[0,1] - self.gridu[0,0]
+        dv = self.gridv[1,0] - self.gridv[0,0]
+        # if not keep_zero_spacing:  # Filter out the interferometer aperture kernel footprint centered on zero
+        #     l4 = DSP.spectax(4*self.gridu.shape[1], resolution=du, shift=False)
+        #     m4 = DSP.spectax(4*self.gridv.shape[0], resolution=dv, shift=False)
+        #     u4 = DSP.spectax(l4.size, resolution=l4[1]-l4[0], shift=False)
+        #     v4 = DSP.spectax(m4.size, resolution=m4[1]-m4[0], shift=False)
+        #     gridu4, gridv4 = NP.meshgrid(u4,v4)
+        #     gridxy4 = NP.hstack((gridu4.reshape(-1,1), gridv4.reshape(-1,1))) * FCNST.c/self.f[chan]
+    
+        #     # assume identical antennas
+        #     aperture = self.antennas.itervalues().next().aperture
+        #     zero_vind = []
+        #     zero_uind = []
+        #     zero_pind = []
+        #     for pi,apol in enumerate(pol):
+        #         if aperture.kernel_type[apol] == 'func':
+        #             if aperture.shape[apol] == 'circular':
+        #                 z_ind = NP.where(NP.sqrt(NP.sum(gridxy4**2, axis=1)) <= 2*aperture.rmax[apol])[0]
+        #             else:
+        #                 rotang = aperture.rotangle[apol]
+        #                 rotmat = NP.asarray([[NP.cos(-rotang), -NP.sin(-rotang)],
+        #                                      [NP.sin(-rotang),  NP.cos(-rotang)]])
+        #                 gridxy4 = NP.dot(gridxy4, rotmat.T)
+        #                 if aperture.shape[apol] == 'square':
+        #                     z_ind = NP.where(NP.logical_and(NP.abs(gridxy4[:,0]) <= 2*aperture.xmax[apol], NP.abs(gridxy4[:,1]) <= 2*aperture.xmax[apol]))[0]
+        #                 else:
+        #                     z_ind = NP.where(NP.logical_and(NP.abs(gridxy4[:,0]) <= 2*aperture.xmax[apol], NP.abs(gridxy4[:,1]) <= 2*aperture.ymax[apol]))[0]
+                
+        #         z_vind, z_uind = NP.unravel_index(z_ind, gridu4.shape)
+        #         zero_vind += z_vind.tolist()
+        #         zero_uind += z_uind.tolist()
+        #         zero_pind += [pi]*z_vind.size
+        #     zero_vind = NP.asarray(zero_vind).ravel()
+        #     zero_uind = NP.asarray(zero_uind).ravel()
+        #     zero_pind = NP.asarray(zero_pind).ravel()            
+        #     syn_beam_in_uv[(zero_vind, zero_uind, zero_pind)] = 0.0
+        #     syn_beam = NP.fft.fft2(syn_beam_in_uv, axes=(0,1))  # FT
+        #     if NP.abs(syn_beam.imag).max() > 1e-10:
+        #         raise ValueError('Synthesized beam after zero spacing aperture removal has significant imaginary component')
+        #     else:
+        #         syn_beam = syn_beam.real
+        #         norm_factor = 1.0 / syn_beam.max()
+        #         syn_beam *= norm_factor  # Normalize to get unit peak for PSF
+        #         syn_beam_in_uv *= norm_factor  # Normalize to get unit peak for PSF
+        
         # shift the array to be centered
         syn_beam_in_uv = NP.fft.ifftshift(syn_beam_in_uv, axes=(0,1)) # Shift array to be centered
 
@@ -10172,10 +10294,154 @@ class AntennaArray:
         syn_beam_in_uv = syn_beam_in_uv[grid_field_illumination.shape[0]:3*grid_field_illumination.shape[0],grid_field_illumination.shape[1]:3*grid_field_illumination.shape[1],:]
         syn_beam = NP.fft.fftshift(syn_beam[::2,::2,:], axes=(0,1))  # Downsample by factor 2 to get native resolution and shift to be centered
         
+        l = DSP.spectax(2*self.gridu.shape[1], resolution=du, shift=True)
+        m = DSP.spectax(2*self.gridv.shape[0], resolution=dv, shift=True)
+
+        return {'syn_beam': syn_beam, 'grid_power_illumination': syn_beam_in_uv, 'l': l, 'm': m}
+
+    ############################################################################ 
+
+    def quick_beam_synthesis_new(self, pol=None, keep_zero_spacing=True):
+        
+        """
+        ------------------------------------------------------------------------
+        A quick generator of synthesized beam using antenna array field 
+        illumination pattern using the center frequency. Not intended to be used
+        rigorously but rather for comparison purposes and making quick plots
+
+        Inputs:
+
+        pol     [String] The polarization of the synthesized beam. Can be set 
+                to 'P1' or 'P2'. If set to None, synthesized beam for all the 
+                polarizations are generated. Default=None
+
+        keep_zero_spacing
+                [boolean] If set to True (default), keep the zero spacing in
+                uv-plane grid illumination and as a result the average value
+                of the synthesized beam could be non-zero. If False, the zero
+                spacing is forced to zero by removing the average value fo the
+                synthesized beam
+
+        Outputs:
+
+        Dictionary with the following keys and information:
+
+        'syn_beam'  [numpy array] synthesized beam of size twice as that of the 
+                    antenna array grid. It is FFT-shifted to place the 
+                    origin at the center of the array. The peak value of the 
+                    synthesized beam is fixed at unity
+
+        'grid_power_illumination'
+                    [numpy array] complex grid illumination obtained from 
+                    inverse fourier transform of the synthesized beam in 
+                    'syn_beam' and has size twice as that of the antenna 
+                    array grid. It is FFT-shifted to have the origin at the 
+                    center. The sum of this array is set to unity to match the 
+                    peak of the synthesized beam
+
+        'l'         [numpy vector] x-values of the direction cosine grid 
+                    corresponding to x-axis (axis=1) of the synthesized beam
+
+        'm'         [numpy vector] y-values of the direction cosine grid 
+                    corresponding to y-axis (axis=0) of the synthesized beam
+        ------------------------------------------------------------------------
+        """
+
+        if not self.grid_ready:
+            raise ValueError('Need to perform gridding of the antenna array before an equivalent UV grid can be simulated')
+
+        if pol is None:
+            pol = ['P1', 'P2']
+        elif isinstance(pol, str):
+            if pol in ['P1', 'P2']:
+                pol = [pol]
+            else:
+                raise ValueError('Invalid polarization specified')
+        elif isinstance(pol, list):
+            p = [apol for apol in pol if apol in ['P1', 'P2']]
+            if len(p) == 0:
+                raise ValueError('Invalid polarization specified')
+            pol = p
+        else:
+            raise TypeError('Input keyword pol must be string, list or set to None')
+
+        pol = sorted(pol)
+
+        for apol in pol:
+            if self.grid_illumination[apol] is None:
+                raise ValueError('Grid illumination for the specified polarization is not determined yet. Must use make_grid_cube()')
+
+        chan = NP.argmin(NP.abs(self.f - self.f0))
+        grid_field_illumination = NP.empty(self.gridu.shape+(len(pol),), dtype=NP.complex)
+        for pind, apol in enumerate(pol):
+            grid_field_illumination[:,:,pind] = self.grid_illumination[apol][:,:,chan]
+
+        syn_beam = NP.fft.fft2(grid_field_illumination, s=[4*self.gridu.shape[0], 4*self.gridv.shape[1]], axes=(0,1))
+        syn_beam = NP.abs(syn_beam)**2
+
+        # if not keep_zero_spacing:
+        #     dclevel = NP.sum(syn_beam, axis=(0,1), keepdims=True) / (1.0*syn_beam.size/len(pol))
+        #     syn_beam = syn_beam - dclevel
+
+        syn_beam /= syn_beam.max()  # Normalize to get unit peak for PSF
+        syn_beam_in_uv = NP.fft.ifft2(syn_beam, axes=(0,1)) # Inverse FT
+        norm_factor = 1.0
+
         du = self.gridu[0,1] - self.gridu[0,0]
         dv = self.gridv[1,0] - self.gridv[0,0]
+        if not keep_zero_spacing:  # Filter out the interferometer aperture kernel footprint centered on zero
+            l4 = DSP.spectax(4*self.gridu.shape[1], resolution=du, shift=False)
+            m4 = DSP.spectax(4*self.gridv.shape[0], resolution=dv, shift=False)
+            u4 = DSP.spectax(l4.size, resolution=l4[1]-l4[0], shift=False)
+            v4 = DSP.spectax(m4.size, resolution=m4[1]-m4[0], shift=False)
+            gridu4, gridv4 = NP.meshgrid(u4,v4)
+            gridxy4 = NP.hstack((gridu4.reshape(-1,1), gridv4.reshape(-1,1))) * FCNST.c/self.f[chan]
+    
+            # assume identical antennas
+            aperture = self.antennas.itervalues().next().aperture
+            zero_vind = []
+            zero_uind = []
+            zero_pind = []
+            for pi,apol in enumerate(pol):
+                if aperture.kernel_type[apol] == 'func':
+                    if aperture.shape[apol] == 'circular':
+                        z_ind = NP.where(NP.sqrt(NP.sum(gridxy4**2, axis=1)) <= 2*aperture.rmax[apol])[0]
+                    else:
+                        rotang = aperture.rotangle[apol]
+                        rotmat = NP.asarray([[NP.cos(-rotang), -NP.sin(-rotang)],
+                                             [NP.sin(-rotang),  NP.cos(-rotang)]])
+                        gridxy4 = NP.dot(gridxy4, rotmat.T)
+                        if aperture.shape[apol] == 'square':
+                            z_ind = NP.where(NP.logical_and(NP.abs(gridxy4[:,0]) <= 2*aperture.xmax[apol], NP.abs(gridxy4[:,1]) <= 2*aperture.xmax[apol]))[0]
+                        else:
+                            z_ind = NP.where(NP.logical_and(NP.abs(gridxy4[:,0]) <= 2*aperture.xmax[apol], NP.abs(gridxy4[:,1]) <= 2*aperture.ymax[apol]))[0]
+                
+                z_vind, z_uind = NP.unravel_index(z_ind, gridu4.shape)
+                zero_vind += z_vind.tolist()
+                zero_uind += z_uind.tolist()
+                zero_pind += [pi]*z_vind.size
+            zero_vind = NP.asarray(zero_vind).ravel()
+            zero_uind = NP.asarray(zero_uind).ravel()
+            zero_pind = NP.asarray(zero_pind).ravel()            
+            syn_beam_in_uv[(zero_vind, zero_uind, zero_pind)] = 0.0
+            syn_beam = NP.fft.fft2(syn_beam_in_uv, axes=(0,1))  # FT
+            if NP.abs(syn_beam.imag).max() > 1e-10:
+                raise ValueError('Synthesized beam after zero spacing aperture removal has significant imaginary component')
+            else:
+                syn_beam = syn_beam.real
+                norm_factor = 1.0 / syn_beam.max()
+                syn_beam *= norm_factor  # Normalize to get unit peak for PSF
+                syn_beam_in_uv *= norm_factor  # Normalize to get unit peak for PSF
+        
+        # shift the array to be centered
+        syn_beam_in_uv = NP.fft.ifftshift(syn_beam_in_uv, axes=(0,1)) # Shift array to be centered
+
+        # Discard pads at either end and select only the central values of twice the original size
+        syn_beam_in_uv = syn_beam_in_uv[grid_field_illumination.shape[0]:3*grid_field_illumination.shape[0],grid_field_illumination.shape[1]:3*grid_field_illumination.shape[1],:]
+        syn_beam = NP.fft.fftshift(syn_beam[::2,::2,:], axes=(0,1))  # Downsample by factor 2 to get native resolution and shift to be centered
+        
         l = DSP.spectax(2*self.gridu.shape[1], resolution=du, shift=True)
-        m = DSP.spectax(2*self.gridv.shape[0], resolution=dv, shift=True)        
+        m = DSP.spectax(2*self.gridv.shape[0], resolution=dv, shift=True)
 
         return {'syn_beam': syn_beam, 'grid_power_illumination': syn_beam_in_uv, 'l': l, 'm': m}
 

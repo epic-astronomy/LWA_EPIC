@@ -1,3 +1,32 @@
+From ac6f78d:
+============
+
+In antenna_array.py,
+
+(*) Create member function make_grid_cube_new() under class
+InterferometerArray. Update class docstring
+(*) In member function grid_convolve_new() of class
+InterferometerArray, keep track of twts
+(*) Fix bug in member function grid_convolve_new() of class
+InterferometerArray while assigning bl_xy to value under key
+'baselines' instead of the wrong key 'positions'
+(*) Make zero spacing aperture kernel removal in member function
+quick_beam_synthesis() of class AntennaArray remove the entire
+kernel footprint instead of just the single pixel of exactly zero
+spacing
+(*) In member functions grid_convolve_new() and grid_convolve() of
+classes AntennaArray and InterferometerArray use numpy squeeze() on
+Ef and Vf respectively only on axis=0 to remove the preceding but
+single length time dimension. This will now work even in case of a
+single antenna or interferometer. Use squeeze() on twts on axes 0
+and 2 to retain its antenna/baseline-axis
+
+In aperture.py,
+
+(*) In member function compute() of class Aperture, add support for
+analytic kernel estimation for auto-convolved rect, square and
+circular shapes
+
 From 3f4a16b:
 ============
 

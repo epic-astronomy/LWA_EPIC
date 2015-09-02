@@ -1027,6 +1027,12 @@ class Aperture(object):
                         outdict[p] = square(locs, wavelength=wavelength, xmax=self.xmax[p], rotangle=self.rotangle[p], pointing_center=pointing_center)
                     elif self.shape[p] == 'circular':
                         outdict[p] = circular(locs, wavelength=wavelength, rmin=self.rmin[p], rmax=self.rmax[p], pointing_center=pointing_center)
+                    elif self.shape[p] == 'auto_convolved_rect':
+                        outdict[p] = auto_convolved_rect(locs, wavelength=wavelength, xmax=self.xmax[p], ymax=self.ymax[p], rotangle=self.rotangle[p], pointing_center=pointing_center)
+                    elif self.shape[p] == 'auto_convolved_square':
+                        outdict[p] = auto_convolved_square(locs, wavelength=wavelength, xmax=self.xmax[p], rotangle=self.rotangle[p], pointing_center=pointing_center)
+                    elif self.shape[p] == 'auto_convolved_circular':
+                        outdict[p] = auto_convolved_circular(locs, wavelength=wavelength, rmin=self.rmin[p], rmax=self.rmax[p], pointing_center=pointing_center)
                     else:
                         raise ValueError('The analytic kernel shape specified in the shape attribute is not currently supported')
             else:
