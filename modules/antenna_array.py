@@ -6791,6 +6791,59 @@ class NewImage:
 
     ############################################################################
 
+    def reset(self, verbose=True):
+
+        """
+        ------------------------------------------------------------------------
+        Reset some grid level attributes of image object to init values
+
+        Inputs:
+
+        verbose   [boolean] If True (default), prints diagnostic and progress
+                  messages. If False, suppress printing such messages.
+        ------------------------------------------------------------------------
+        """
+        
+        if verbose:
+            print 'Resetting grid level attributes of image object...'
+
+        self.antenna_array = None
+        self.interferometer_array = None
+
+        self.grid_illumination = {}
+        self.grid_Vf = {}
+        self.holimg = {}
+        self.holbeam = {}
+        self.img = {}
+        self.beam = {}
+        self.gridl = {}
+        self.gridm = {}
+        self.grid_wts = {}
+        self.grid_Ef = {}
+        self.grid_Vf = {}
+
+        if self.measured_type == 'E-field':
+            for apol in ['P1', 'P2']:
+                self.holimg[apol] = None
+                self.holbeam[apol] = None
+                self.img[apol] = None
+                self.beam[apol] = None
+                self.grid_illumination[apol] = None
+                self.grid_Ef[apol] = None
+                self.grid_wts[apol] = None
+    
+        else:
+            for cpol in ['P11', 'P12', 'P21', 'P22']:
+                self.holimg[cpol] = None
+                self.holbeam[cpol] = None
+                self.img[cpol] = None
+                self.beam[cpol] = None
+                self.grid_illumination[cpol] = None
+                self.grid_Vf[cpol] = None
+                self.grid_wts[cpol] = None
+
+    ############################################################################
+
     def imagr(self, pol=None, weighting='natural', pad='on', verbose=True):
 
         """
