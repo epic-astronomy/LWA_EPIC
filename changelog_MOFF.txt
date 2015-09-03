@@ -1,3 +1,14 @@
+From d9b7910 (on branch imgstack):
+=================================
+
+In antenna_array.py,
+
+(*) In member function stack() of class NewImage, check if the current
+timestamp is included in the attribute timestamps and stack only if
+not included
+(*) In member function stack() of class NewImage, append current
+timestamp onto to attribute timestamps after stacking
+
 From ff40081 (on branch imgstack):
 =================================
 
