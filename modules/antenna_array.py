@@ -6556,6 +6556,8 @@ class NewImage:
             if verbose:
                 print '\t\tInitialized time stamp.'
 
+        self.timestamps = []
+
         if f0 is not None:
             self.f0 = f0
             if verbose:
@@ -6830,7 +6832,7 @@ class NewImage:
 
         self.antenna_array = None
         self.interferometer_array = None
-
+        self.timestamp = None
         self.grid_illumination = {}
         self.holimg = {}
         self.holbeam = {}
@@ -6905,6 +6907,7 @@ class NewImage:
                         self.antenna_array = antenna_array
                 else:
                     raise TypeError('Input antenna_array must be an instance of class AntennaArray')
+                self.timestamp = antenna_array.timestamp
                 if verbose:
                     print 'Updated antenna array attributes of the image instance'
         else:
@@ -6916,6 +6919,7 @@ class NewImage:
                         self.interferometer_array = interferometer_array
                 else:
                     raise TypeError('Input interferometer_array must be an instance of class InterferometerArray')
+                self.timestamp = interferometer_array.timestamp
                 if verbose:
                     print 'Updated interferometer array attributes of the image instance'
 

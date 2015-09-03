@@ -1,3 +1,15 @@
+From ff40081 (on branch imgstack):
+=================================
+
+In antenna_array.py,
+
+(*) Add and initialize attribute timestamps in __init__() member
+function of class NewImage
+(*) Reset attribute timestamp to None in reset() member function of
+class NewImage
+(*) Reassign attribute timestamp in update() member function of class
+NewImage
+
 From 0698f0b:
 ============
 
