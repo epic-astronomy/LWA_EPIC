@@ -1,3 +1,18 @@
+From 48dd92c:
+============
+
+In antenna_array.py,
+
+(*) Rearrange order of initialization of some attributes in member
+function __init__() of class NewImage
+(*) Initialize grid_illumination, grid_wts, grid_Ef, and grid_Vf
+attributes in __init__() member function of class NewImage to None
+and move their real assignment into member function imagr()
+(*) Move invocation of member functions make_grid_cube() and
+make_grid_cube_new() of classes AntennaArray and InterferometerArray
+from inside member function __init__() to member function imagr() of 
+class NewImage
+
 From a966b70:
 ============
 

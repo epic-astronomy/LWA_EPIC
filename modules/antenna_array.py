@@ -6693,6 +6693,18 @@ class NewImage:
             if verbose:
                 print '\t\tClosed input FITS file.'
 
+        self.grid_illumination = {}
+        self.grid_Vf = {}
+        self.holimg = {}
+        self.holbeam = {}
+        self.img = {}
+        self.beam = {}
+        self.gridl = {}
+        self.gridm = {}
+        self.grid_wts = {}
+        self.grid_Ef = {}
+        self.grid_Vf = {}
+
         if antenna_array is not None:
             if verbose:
                 print '\tInitializing from an instance of class AntennaArray...'
@@ -6710,40 +6722,19 @@ class NewImage:
                 if verbose:
                     print '\t\tInitialized time stamp to {0} from antenna array info.'.format(self.timestamp)
             
-                self.grid_illumination = {}
-                self.grid_Ef = {}
-                self.holimg = {}
-                self.holbeam = {}
-                self.img = {}
-                self.beam = {}
-                self.gridl = {}
-                self.gridm = {}
-                self.grid_wts = {}
-
                 if pol is None:
                     pol = ['P1', 'P2']
                 pol = NP.unique(NP.asarray(pol))
 
                 self.gridu, self.gridv = antenna_array.gridu, antenna_array.gridv
-                # antenna_array.make_grid_cube(verbose=verbose, pol=pol)
-                antenna_array.make_grid_cube_new(verbose=verbose, pol=pol)
-
-                for apol in pol:
-                    if apol in ['P1', 'P2']:
-                        if verbose:
-                            print '\n\t\tWorking on polarization {0}'.format(apol)
-                                
-                        self.holimg[apol] = None
-                        self.holbeam[apol] = None
-                        self.img[apol] = None
-                        self.beam[apol] = None
-                        self.grid_wts[apol] = NP.zeros(self.gridu.shape+(self.f.size,))
-                        if apol in antenna_array.grid_illumination:
-                            self.grid_illumination[apol] = antenna_array.grid_illumination[apol]
-                            self.grid_Ef[apol] = antenna_array.grid_Ef[apol]
-                        else:
-                            self.grid_illumination[apol] = None
-                            self.grid_Ef[apol] = None
+                for apol in ['P1', 'P2']:
+                    self.holimg[apol] = None
+                    self.holbeam[apol] = None
+                    self.img[apol] = None
+                    self.beam[apol] = None
+                    self.grid_illumination[apol] = None
+                    self.grid_Ef[apol] = None
+                    self.grid_wts[apol] = None
     
                 self.antenna_array = antenna_array
                 self.measured_type = 'E-field'
@@ -6771,40 +6762,19 @@ class NewImage:
                 if verbose:
                     print '\t\tInitialized time stamp to {0} from interferometer array info.'.format(self.timestamp)
             
-                self.grid_illumination = {}
-                self.grid_Vf = {}
-                self.holimg = {}
-                self.holbeam = {}
-                self.img = {}
-                self.beam = {}
-                self.gridl = {}
-                self.gridm = {}
-                self.grid_wts = {}
-
                 if pol is None:
                     pol = ['P11', 'P12', 'P21', 'P22']
                 pol = NP.unique(NP.asarray(pol))
 
                 self.gridu, self.gridv = interferometer_array.gridu, interferometer_array.gridv
-                # interferometer_array.make_grid_cube(verbose=verbose, pol=pol)
-                interferometer_array.make_grid_cube_new(verbose=verbose, pol=pol)
-
-                for cpol in pol:
-                    if cpol in ['P11', 'P12', 'P21', 'P22']:
-                        if verbose:
-                            print '\n\t\tWorking on polarization {0}'.format(cpol)
-                                
-                        self.holimg[cpol] = None
-                        self.holbeam[cpol] = None
-                        self.img[cpol] = None
-                        self.beam[cpol] = None
-                        self.grid_wts[cpol] = NP.zeros(self.gridu.shape+(self.f.size,))
-                        if cpol in interferometer_array.grid_illumination:
-                            self.grid_illumination[cpol] = interferometer_array.grid_illumination[cpol]
-                            self.grid_Vf[cpol] = interferometer_array.grid_Vf[cpol]
-                        else:
-                            self.grid_illumination[cpol] = None
-                            self.grid_Vf[cpol] = None
+                for cpol in ['P11', 'P12', 'P21', 'P22']:
+                    self.holimg[cpol] = None
+                    self.holbeam[cpol] = None
+                    self.img[cpol] = None
+                    self.beam[cpol] = None
+                    self.grid_illumination[cpol] = None
+                    self.grid_Vf[cpol] = None
+                    self.grid_wts[cpol] = None
     
                 self.interferometer_array = interferometer_array
                 self.measured_type = 'visibility'
@@ -6876,6 +6846,14 @@ class NewImage:
             pol = NP.unique(NP.asarray(pol))
             for apol in pol:
                 if apol in ['P1', 'P2']:
+                    # self.antenna_array.make_grid_cube(verbose=verbose, pol=apol)
+                    self.antenna_array.make_grid_cube_new(verbose=verbose, pol=apol)
+
+                    self.grid_wts[apol] = NP.zeros(self.gridu.shape+(self.f.size,))
+                    if apol in self.antenna_array.grid_illumination:
+                        self.grid_illumination[apol] = self.antenna_array.grid_illumination[apol]
+                        self.grid_Ef[apol] = self.antenna_array.grid_Ef[apol]
+                    
                     if verbose: print 'Preparing to Inverse Fourier Transform...'
                     if weighting == 'uniform':
                         self.grid_wts[apol][NP.abs(self.grid_illumination[apol]) > 0.0] = 1.0/NP.abs(self.grid_illumination[apol][NP.abs(self.grid_illumination[apol]) > 0.0])
@@ -6912,6 +6890,13 @@ class NewImage:
             pol = NP.unique(NP.asarray(pol))
             for cpol in pol:
                 if cpol in ['P11', 'P12', 'P21', 'P22']:
+                    # self.interferometer_array.make_grid_cube(verbose=verbose, pol=cpol)
+                    self.interferometer_array.make_grid_cube_new(verbose=verbose, pol=cpol)
+                    self.grid_wts[cpol] = NP.zeros(self.gridu.shape+(self.f.size,))
+                    if cpol in self.interferometer_array.grid_illumination:
+                        self.grid_illumination[cpol] = self.interferometer_array.grid_illumination[cpol]
+                        self.grid_Vf[cpol] = self.interferometer_array.grid_Vf[cpol]
+
                     if verbose: print 'Preparing to Inverse Fourier Transform...'
                     if weighting == 'uniform':
                         self.grid_wts[cpol][NP.abs(self.grid_illumination[cpol]) > 0.0] = 1.0/NP.abs(self.grid_illumination[cpol][NP.abs(self.grid_illumination[cpol]) > 0.0])
