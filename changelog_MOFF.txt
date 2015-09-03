@@ -1,3 +1,9 @@
+From a898c04 (branch analytic-kernel):
+=====================================
+
+Add main level script compare_simulations_MOFF_FX_test_aperture.py
+to git repository (that was forgotten to be done earlier)
+
 From ac6f78d:
 ============
 
