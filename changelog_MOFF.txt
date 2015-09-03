@@ -1,3 +1,10 @@
+From a898c04:
+============
+
+In antenna_array.py,
+
+(*) Comment out the defunct class Image
+
 From ac6f78d:
 ============
 
