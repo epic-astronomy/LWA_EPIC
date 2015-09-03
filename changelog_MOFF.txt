@@ -1,3 +1,8 @@
+From d49e4c4:
+============
+
+(*) Added LWA antenna positions for calibration script.
+
 From a6e8d49:
 ============
 
