@@ -1,3 +1,11 @@
+From 8c2f42c:
+============
+
+In antenna_array.py,
+
+(*) Add member function update() (with docstring) to class NewImage
+(*) Update docstring of member function reset() of class NewImage
+
 From d994199:
 ============
 

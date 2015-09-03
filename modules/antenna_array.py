@@ -6801,6 +6801,10 @@ class NewImage:
 
         verbose   [boolean] If True (default), prints diagnostic and progress
                   messages. If False, suppress printing such messages.
+
+        The attributes reset to init values are grid_illumination, holbeam, 
+        grid_Vf, grid_Ef, interferometer_array, antenna_array, holimg, gridl, 
+        gridm, img, beam, grid_wts
         ------------------------------------------------------------------------
         """
         
@@ -6811,7 +6815,6 @@ class NewImage:
         self.interferometer_array = None
 
         self.grid_illumination = {}
-        self.grid_Vf = {}
         self.holimg = {}
         self.holbeam = {}
         self.img = {}
@@ -6831,7 +6834,6 @@ class NewImage:
                 self.grid_illumination[apol] = None
                 self.grid_Ef[apol] = None
                 self.grid_wts[apol] = None
-    
         else:
             for cpol in ['P11', 'P12', 'P21', 'P22']:
                 self.holimg[cpol] = None
@@ -6841,6 +6843,64 @@ class NewImage:
                 self.grid_illumination[cpol] = None
                 self.grid_Vf[cpol] = None
                 self.grid_wts[cpol] = None
+
+    ############################################################################
+
+    def update(self, antenna_array=None, interferometer_array=None, reset=True, 
+               verbose=True):
+
+        """
+        ------------------------------------------------------------------------
+        Updates the image object with newer instance of class AntennaArray or
+        InterferometerArray
+
+        Inputs:
+
+        antenna_array [instance of class AntennaArray] Update the image object 
+                      with this new instance of class AntennaArray (if attribute
+                      measured_type is 'E-field')
+
+        interferometer_array 
+                      [instance of class InterferometerArray] Update the image 
+                      object with this new instance of class InterferometerArray 
+                      (if attribute measured_type is 'visibility')
+
+        reset         [boolean] if set to True (default), resets some of the
+                      image object attribtues by calling member function reset()
+
+        verbose       [boolean] If True (default), prints diagnostic and progress
+                      messages. If False, suppress printing such messages.    
+        ------------------------------------------------------------------------
+        """
+
+        if not isinstance(reset, bool):
+            raise TypeError('reset keyword must be of boolean type')
+
+        if not isinstance(verbose, bool):
+            raise TypeError('verbose keyword must be of boolean type')
+
+        if self.measured_type == 'E-field':
+            if antenna_array is not None:
+                if isinstance(antenna_array, AntennaArray):
+                    if reset:
+                        self.reset(verbose=verbose)
+                        self.gridu, self.gridv = antenna_array.gridu, antenna_array.gridv
+                        self.antenna_array = antenna_array
+                else:
+                    raise TypeError('Input antenna_array must be an instance of class AntennaArray')
+                if verbose:
+                    print 'Updated antenna array attributes of the image instance'
+        else:
+            if interferometer_array is not None:
+                if isinstance(interferometer_array, InterferometerArray):
+                    if reset:
+                        self.reset(verbose=verbose)
+                        self.gridu, self.gridv = interferometer_array.gridu, interferometer_array.gridv
+                        self.interferometer_array = interferometer_array
+                else:
+                    raise TypeError('Input interferometer_array must be an instance of class InterferometerArray')
+                if verbose:
+                    print 'Updated interferometer array attributes of the image instance'
 
     ############################################################################
 
