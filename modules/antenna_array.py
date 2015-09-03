@@ -7069,6 +7069,55 @@ class NewImage:
 
     ############################################################################
         
+    def stack(self, pol=None):
+
+        """
+        ------------------------------------------------------------------------
+        Stacks current images and UV-grid information onto a stack
+
+        Inputs:
+
+        pol     [string] indicates which polarization information to be saved. 
+                Allowed values are 'P1', 'P2' in case of MOFF or 'P11', 'P12', 
+                'P21', 'P22' in case of FX or None (default). If None, 
+                information on all polarizations appropriate for MOFF or FX 
+                are stacked
+        ------------------------------------------------------------------------
+        """
+
+        if pol is None:
+            if self.measured_type == 'E-field':
+                pol = ['P1', 'P2']
+            else:
+                pol = ['P11', 'P12', 'P21', 'P22']
+        elif isinstance(pol, str):
+            pol = [pol]
+        elif isinstance(pol, list):
+            p = [item for item in pol if item in ['P1', 'P2', 'P11', 'P12', 'P21', 'P22']]
+            pol = p
+        else:
+            raise TypeError('Input pol must be a string or list specifying polarization(s)')
+
+        for p in pol:
+            if self.img_stack[p] is None:
+                self.img_stack[p] = self.img[p][NP.newaxis,:,:,:]
+                self.beam_stack[p] = self.beam[p][NP.newaxis,:,:,:]
+                self.grid_illumination_stack[p] = self.grid_illumination[p][NP.newaxis,:,:,:]
+                self.grid_Vf_stack[p] = self.grid_Vf[p][NP.newaxis,:,:,:]
+            else:
+                self.img_stack[p] = NP.concatenate((self.img_stack[p], self.img[p][NP.newaxis,:,:,:]), axis=0)
+                self.beam_stack[p] = NP.concatenate((self.beam_stack[p], self.beam[p][NP.newaxis,:,:,:]), axis=0)
+                self.grid_illumination_stack[p] = NP.concatenate((self.grid_illumination_stack[p], self.grid_illumination[p][NP.newaxis,:,:,:]), axis=0)
+                self.grid_Vf_stack[p] = NP.concatenate((self.grid_Vf_stack[p], self.grid_Vf[p][NP.newaxis,:,:,:]), axis=0)
+
+            if self.measured_type == 'E-field':
+                if self.holimg_stack[p] is None:
+                    self.holimg_stack[p] = self.holimg[p][NP.newaxis,:,:,:]
+                    self.holbeam_stack[p] = self.holbeam[p][NP.newaxis,:,:,:]
+                else:
+                    self.holimg_stack[p] = NP.concatenate((self.holimg_stack[p], self.holimg[p][NP.newaxis,:,:,:]), axis=0)
+                    self.holbeam_stack[p] = NP.concatenate((self.holbeam_stack[p], self.holbeam[p][NP.newaxis,:,:,:]), axis=0)
+
     ############################################################################
 
     def save(self, imgfile, pol=None, overwrite=False, verbose=True):

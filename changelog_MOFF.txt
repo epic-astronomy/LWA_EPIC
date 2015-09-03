@@ -1,3 +1,10 @@
+From 0698f0b:
+============
+
+In antenna_array.py,
+
+(*) Add member function stack() (with docstring) to class NewImage
+
 From ade3b10:
 ============
 
