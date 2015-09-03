@@ -1,3 +1,12 @@
+From ade3b10:
+============
+
+In antenna_array.py,
+
+(*) Add and initialize new attributes holimg_stack, holbeam_stack,
+img_stack, beam_stack, grid_illumination_stack, grid_Vf_stack in
+__init__() member function of class NewImage
+
 From 8c2f42c:
 ============
 

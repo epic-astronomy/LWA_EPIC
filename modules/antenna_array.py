@@ -6694,7 +6694,6 @@ class NewImage:
                 print '\t\tClosed input FITS file.'
 
         self.grid_illumination = {}
-        self.grid_Vf = {}
         self.holimg = {}
         self.holbeam = {}
         self.img = {}
@@ -6704,6 +6703,12 @@ class NewImage:
         self.grid_wts = {}
         self.grid_Ef = {}
         self.grid_Vf = {}
+        self.holimg_stack = {}
+        self.holbeam_stack = {}
+        self.img_stack = {}
+        self.beam_stack = {}
+        self.grid_illumination_stack = {}
+        self.grid_Vf_stack = {}
 
         if antenna_array is not None:
             if verbose:
@@ -6735,6 +6740,12 @@ class NewImage:
                     self.grid_illumination[apol] = None
                     self.grid_Ef[apol] = None
                     self.grid_wts[apol] = None
+                    self.holimg_stack[apol] = None
+                    self.holbeam_stack[apol] = None
+                    self.img_stack[apol] = None
+                    self.beam_stack[apol] = None
+                    self.grid_illuminaton_stack[apol] = None
+                    self.grid_Vf_stack[apol] = None
     
                 self.antenna_array = antenna_array
                 self.measured_type = 'E-field'
@@ -6775,6 +6786,12 @@ class NewImage:
                     self.grid_illumination[cpol] = None
                     self.grid_Vf[cpol] = None
                     self.grid_wts[cpol] = None
+                    self.holimg_stack[cpol] = None
+                    self.holbeam_stack[cpol] = None
+                    self.img_stack[cpol] = None
+                    self.beam_stack[cpol] = None
+                    self.grid_illuminaton_stack[cpol] = None
+                    self.grid_Vf_stack[cpol] = None
     
                 self.interferometer_array = interferometer_array
                 self.measured_type = 'visibility'
@@ -7052,6 +7069,8 @@ class NewImage:
 
     ############################################################################
         
+    ############################################################################
+
     def save(self, imgfile, pol=None, overwrite=False, verbose=True):
 
         """
