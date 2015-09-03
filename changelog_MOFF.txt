@@ -1,3 +1,11 @@
+From a966b70:
+============
+
+In antenna_array.py,
+
+(*) Add attributes antenna_array and interferometer_array to class
+NewImage and initialize them in __init__() member function
+
 From a898c04:
 ============
 

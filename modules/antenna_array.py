@@ -6567,6 +6567,8 @@ class NewImage:
                 print '\t\tInitialized frequency channels.'
 
         self.measured_type = None
+        self.antenna_array = None
+        self.interferometer_array = None
 
         if (infile is None) and (antenna_array is None) and (interferometer_array is None):
             self.gridx_P1 = None
@@ -6743,6 +6745,7 @@ class NewImage:
                             self.grid_illumination[apol] = None
                             self.grid_Ef[apol] = None
     
+                self.antenna_array = antenna_array
                 self.measured_type = 'E-field'
 
                 if verbose:
@@ -6803,6 +6806,7 @@ class NewImage:
                             self.grid_illumination[cpol] = None
                             self.grid_Vf[cpol] = None
     
+                self.interferometer_array = interferometer_array
                 self.measured_type = 'visibility'
 
                 if verbose:
