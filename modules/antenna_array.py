@@ -6711,6 +6711,10 @@ class NewImage:
         self.beam_stack = {}
         self.grid_illumination_stack = {}
         self.grid_Vf_stack = {}
+        self.img_avg = {}
+        self.beam_avg = {}
+        self.grid_Vf_avg = {}
+        self.grid_illumination_avg = {}
 
         if antenna_array is not None:
             if verbose:
@@ -6748,13 +6752,16 @@ class NewImage:
                     self.beam_stack[apol] = None
                     self.grid_illuminaton_stack[apol] = None
                     self.grid_Vf_stack[apol] = None
+                    self.grid_Vf_avg[apol] = None
+                    self.grid_illumination_avg[apol] = None
+                    self.img_avg[apol] = None
+                    self.beam_avg[apol] = None
     
                 self.antenna_array = antenna_array
                 self.measured_type = 'E-field'
 
                 if verbose:
-                    print '\t\tInitialized gridx, gridy, grid_illumination, and grid_Ef.'
-                    print '\t\tInitialized gridl, gridm, and img'
+                    print '\t\tInitialized gridded attributes for image object'
             else:
                 raise TypeError('antenna_array is not an instance of class AntennaArray. Cannot initiate instance of class Image.')
 
@@ -6794,14 +6801,16 @@ class NewImage:
                     self.beam_stack[cpol] = None
                     self.grid_illuminaton_stack[cpol] = None
                     self.grid_Vf_stack[cpol] = None
+                    self.grid_Vf_avg[cpol] = None
+                    self.grid_illumination_avg[cpol] = None
+                    self.img_avg[cpol] = None
+                    self.beam_avg[cpol] = None
     
                 self.interferometer_array = interferometer_array
                 self.measured_type = 'visibility'
 
                 if verbose:
-                    print '\t\tInitialized gridx, gridy, grid_illumination, and grid_Vf.'
-                    print '\t\tInitialized gridl, gridm, and img'
-                        
+                    print '\t\tInitialized gridded attributes for image object'
             else:
                 raise TypeError('interferometer_array is not an instance of class InterferometerArray. Cannot initiate instance of class Image.')
 

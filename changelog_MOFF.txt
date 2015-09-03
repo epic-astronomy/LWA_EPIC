@@ -1,3 +1,11 @@
+From c63b1d0 (on branch imgstack):
+=================================
+
+In antenna_array.py,
+
+(*) Add and initialize attributes img_avg, beam_avg, grid_Vf_avg, and
+grid_illumination_avg in __init__() member function of class NewImage
+
 From d9b7910 (on branch imgstack):
 =================================
 
