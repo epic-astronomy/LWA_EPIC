@@ -6938,7 +6938,8 @@ class NewImage:
 
     ############################################################################
 
-    def imagr(self, pol=None, weighting='natural', pad='on', verbose=True):
+    def imagr(self, pol=None, weighting='natural', pad='on', stack=True,
+              verbose=True):
 
         """
         ------------------------------------------------------------------------
@@ -6963,6 +6964,9 @@ class NewImage:
                   extends on each side in each direction by 50%. Thus the size
                   of the padded grid is twice that of the interferometer array 
                   grid and would be the 4 times that of an antenna array grid.
+
+        stack     [boolean] If True (default), stacks the imaged and uv-gridded
+                  data to the stack for batch processing later
 
         verbose   [boolean] If True (default), prints diagnostic and progress
                   messages. If False, suppress printing such messages.
@@ -7083,6 +7087,10 @@ class NewImage:
 
         if verbose:
             print 'Successfully imaged.'
+
+        # Call stack() if required
+        if stack:
+            self.stack(pol=pol)
 
     ############################################################################
         

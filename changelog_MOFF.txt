@@ -1,3 +1,12 @@
+From 0a1cd79 (on branch imgstack):
+=================================
+
+In antenna_array.py,
+
+(*) Add input keyword stack to member function imagr() of class
+NewImage to invoke stack() to stack the image and UV quantities.
+Update docstring accordingly
+
 From 852370f (on branch imgstack):
 =================================
 
