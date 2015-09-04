@@ -5918,11 +5918,11 @@ class InterferometerArray:
 #     gridy_P2     [Numpy array] y-locations of the grid lattice for P2 
 #                  polarization
 
-#     grid_illuminaton_P1
+#     grid_illumination_P1
 #                  [Numpy array] Electric field illumination for P1 polarization 
 #                  on the grid. Could be complex. Same size as the grid
 
-#     grid_illuminaton_P2
+#     grid_illumination_P2
 #                  [Numpy array] Electric field illumination for P2 polarization 
 #                  on the grid. Could be complex. Same size as the grid
 
@@ -6444,11 +6444,11 @@ class NewImage:
     gridy_P2     [Numpy array] y-locations of the grid lattice for P2 
                  polarization
 
-    grid_illuminaton_P1
+    grid_illumination_P1
                  [Numpy array] Electric field illumination for P1 polarization 
                  on the grid. Could be complex. Same size as the grid
 
-    grid_illuminaton_P2
+    grid_illumination_P2
                  [Numpy array] Electric field illumination for P2 polarization 
                  on the grid. Could be complex. Same size as the grid
 
@@ -6557,6 +6557,7 @@ class NewImage:
                 print '\t\tInitialized time stamp.'
 
         self.timestamps = []
+        self.tbinsize = None
 
         if f0 is not None:
             self.f0 = f0
@@ -6715,6 +6716,7 @@ class NewImage:
         self.beam_avg = {}
         self.grid_Vf_avg = {}
         self.grid_illumination_avg = {}
+        self.twts = {}
 
         if antenna_array is not None:
             if verbose:
@@ -6750,12 +6752,13 @@ class NewImage:
                     self.holbeam_stack[apol] = None
                     self.img_stack[apol] = None
                     self.beam_stack[apol] = None
-                    self.grid_illuminaton_stack[apol] = None
+                    self.grid_illumination_stack[apol] = None
                     self.grid_Vf_stack[apol] = None
                     self.grid_Vf_avg[apol] = None
                     self.grid_illumination_avg[apol] = None
                     self.img_avg[apol] = None
                     self.beam_avg[apol] = None
+                    self.twts[apol] = None
     
                 self.antenna_array = antenna_array
                 self.measured_type = 'E-field'
@@ -6799,12 +6802,13 @@ class NewImage:
                     self.holbeam_stack[cpol] = None
                     self.img_stack[cpol] = None
                     self.beam_stack[cpol] = None
-                    self.grid_illuminaton_stack[cpol] = None
+                    self.grid_illumination_stack[cpol] = None
                     self.grid_Vf_stack[cpol] = None
                     self.grid_Vf_avg[cpol] = None
                     self.grid_illumination_avg[cpol] = None
                     self.img_avg[cpol] = None
                     self.beam_avg[cpol] = None
+                    self.twts[cpol] = None
     
                 self.interferometer_array = interferometer_array
                 self.measured_type = 'visibility'
@@ -7133,6 +7137,127 @@ class NewImage:
                         self.holbeam_stack[p] = NP.concatenate((self.holbeam_stack[p], self.holbeam[p][NP.newaxis,:,:,:]), axis=0)
 
             self.timestamps += [self.timestamp]
+
+    ############################################################################
+
+    def accumulate(self, tbinsize=None, verbose=True):
+
+        """
+        ------------------------------------------------------------------------
+        Accumulates and averages gridded quantities that are statistically
+        stationary such as images and visibilities
+
+        Input:
+
+        tbinsize [scalar or dictionary] Contains bin size of timestamps while
+                 averaging. Default = None means gridded quantities over all
+                 timestamps are averaged. If scalar, the same (positive) value 
+                 applies to all polarizations. If dictionary, timestamp bin size
+                 (positive) is provided under each key 'P11', 'P12', 'P21', 
+                 'P22'. If any of the keys is missing the gridded quantities 
+                 for that polarization are averaged over all timestamps.
+
+        verbose  [boolean] If True (default), prints diagnostic and progress
+                 messages. If False, suppress printing such messages.
+        ------------------------------------------------------------------------
+        """
+        
+        if self.measured_type == 'E-field':
+            pol = ['P1', 'P2']
+        else:
+            pol = ['P11', 'P12', 'P21', 'P22']
+
+        timestamps = NP.asarray(self.timestamps).astype(NP.float)
+        twts = {}
+        img_acc = {}
+        beam_acc = {}
+        grid_Vf_acc = {}
+        grid_illumination_acc = {}
+        for p in pol:
+            img_acc[p] = None
+            beam_acc[p] = None
+            grid_Vf_acc[p] = None
+            grid_illumination_acc[p] = None
+            twts[p] = []
+
+        if tbinsize is None:   # Average across all timestamps
+            for p in pol:
+                img_acc[p] = NP.nansum(self.img_stack[p], axis=0, keepdims=True)
+                beam_acc[p] = NP.nansum(self.beam_stack[p], axis=0, keepdims=True)
+                grid_Vf_acc[p] = NP.nansum(self.grid_Vf_stack[p], axis=0, keepdims=True)
+                grid_illumination_acc[p] = NP.nansum(self.grid_illumination_stack[p], axis=0, keepdims=True)
+                twts[p] = len(self.timestamps).reshape(-1,1,1,1)
+            self.tbinsize = tbinsize
+        elif isinstance(tbinsize, (int, float)): # Apply same time bin size to all polarizations 
+            eps = 1e-10
+            tbins = NP.arange(timestamps.min(), timestamps.max(), tbinsize)
+            tbins = NP.append(tbins, timestamps.max()+eps)
+            for p in pol:
+                counts, tbin_edges, tbinnum, ri = OPS.binned_statistic(timestamps, statistic='count', bins=tbins)
+                for binnum in range(counts.size):
+                    ind = ri[ri[binnum]:ri[binnum+1]]
+                    twts[p] += [counts]
+                    if img_acc[p] is None:
+                        img_acc[p] = NP.nansum(self.img_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                        beam_acc[p] = NP.nansum(self.beam_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                        grid_Vf_acc[p] = NP.nansum(self.grid_Vf_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                        grid_illumination_acc[p] = NP.nansum(self.grid_illumination_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                    else:
+                        img_acc[p] = NP.vstack((img_acc[p], NP.nansum(self.img_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                        beam_acc[p] = NP.vstack((beam_acc[p], NP.nansum(self.beam_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                        grid_Vf_acc[p] = NP.vstack((grid_Vf_acc[p], NP.nansum(self.grid_Vf_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                        grid_illumination_acc[p] = NP.vstack((grid_illumination_acc[p], NP.nansum(self.grid_illumination_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                twts[p] = NP.asarray(twts[p]).astype(NP.float).reshape(-1,1,1,1)
+            self.tbinsize = tbinsize
+        elif isinstance(tbinsize, dict): # Apply different time binsizes to corresponding polarizations
+            tbsize = {}
+            for p in pol:
+                if p not in tbinsize:
+                    img_acc[p] = NP.nansum(self.img_stack[p], axis=0, keepdims=True)
+                    beam_acc[p] = NP.nansum(self.beam_stack[p], axis=0, keepdims=True)
+                    grid_Vf_acc[p] = NP.nansum(self.grid_Vf_stack[p], axis=0, keepdims=True)
+                    grid_illumination_acc[p] = NP.nansum(self.grid_illumination_stack[p], axis=0, keepdims=True)
+                    twts[p] = len(self.timestamps).reshape(-1,1,1,1)
+                    tbsize[p] = None
+                elif isinstance(tbinsize[p], (int,float)):
+                    eps = 1e-10
+                    tbins = NP.arange(timestamps.min(), timestamps.max(), tbinsize[p])
+                    tbins = NP.append(tbins, timestamps.max()+eps)
+                    
+                    counts, tbin_edges, tbinnum, ri = OPS.binned_statistic(timestamps, statistic='count', bins=tbins)
+                    for binnum in range(counts.size):
+                        ind = ri[ri[binnum]:ri[binnum+1]]
+                        twts[p] += [counts]
+                        if img_acc[p] is None:
+                            img_acc[p] = NP.nansum(self.img_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                            beam_acc[p] = NP.nansum(self.beam_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                            grid_Vf_acc[p] = NP.nansum(self.grid_Vf_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                            grid_illumination_acc[p] = NP.nansum(self.grid_illumination_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                        else:
+                            img_acc[p] = NP.vstack((img_acc[p], NP.nansum(self.img_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                            beam_acc[p] = NP.vstack((beam_acc[p], NP.nansum(self.beam_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                            grid_Vf_acc[p] = NP.vstack((grid_Vf_acc[p], NP.nansum(self.grid_Vf_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                            grid_illumination_acc[p] = NP.vstack((grid_illumination_acc[p], NP.nansum(self.grid_illumination_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                    twts[p] = NP.asarray(twts[p]).astype(NP.float).reshape(-1,1,1,1)
+                    tbsize[p] = tbinsize[p]
+                else:
+                    img_acc[p] = NP.nansum(self.img_stack[p], axis=0, keepdims=True)
+                    beam_acc[p] = NP.nansum(self.beam_stack[p], axis=0, keepdims=True)
+                    grid_Vf_acc[p] = NP.nansum(self.grid_Vf_stack[p], axis=0, keepdims=True)
+                    grid_illumination_acc[p] = NP.nansum(self.grid_illumination_stack[p], axis=0, keepdims=True)
+                    twts[p] = len(self.timestamps).reshape(-1,1,1,1)
+                    tbsize[p] = None
+
+            self.tbinsize = tbsize
+
+        # Compute the averaged grid quantities from the accumulated versions
+        for p in pol:
+            self.img_avg[p] = img_acc[p] / twts[p]
+            self.beam_avg[p] = beam_acc[p] / twts[p]
+            self.grid_Vf_avg[p] = grid_Vf_acc / twts[p]
+            self.grid_illumination_avg[p] = grid_illumination_avg[p]
+
+        self.twts = twts
 
     ############################################################################
 
@@ -8371,7 +8496,7 @@ class AntennaArray:
                  mid-point between the extreme x- and y- coordinates of the 
                  antennas
 
-    grid_illuminaton
+    grid_illumination
                  [dictionary] Electric field illumination of antenna aperture
                  for each polarization held under keys 'P1' and 'P2'. Could be 
                  complex. Stored as numpy arrays in the form of cubes with 

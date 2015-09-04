@@ -1,3 +1,17 @@
+From efb0d88 (on branch imgstack):
+=================================
+
+In antenna_array.py,
+
+(*) Add and initialize attribute tbinsize in __init__() member
+function of class NewImage
+(*) Add and initialize attribute twts in __init__() member
+function of class NewImage
+(*) Add member function accumulate() (with docstring) to class
+NewImage where attributes tbinsize and twts are really assigned
+(*) Fix typo in attribute name grid_illumination_stack in class
+NewImage
+
 From c63b1d0 (on branch imgstack):
 =================================
 
