@@ -1,3 +1,21 @@
+From 5d8a0a8 (branch analytic-kernel):
+=====================================
+
+In antenna_array.py,
+
+(*) To obtain attribute grid_Vf of class InterferometerArray,
+include the multiplication of visibilities by the grid illumination
+to obtain the gridded visibilities before imaging in member function
+make_grid_cube_new(). This step was forgotten in earlier version.
+This is a major bug fix that yields the correct amplitude scale for
+the FX images
+(*) To obtain attribute grid_Ef of class AntennaArray,
+include the multiplication of electric fields by the grid illumination
+to obtain the gridded electric fields before imaging in member 
+function make_grid_cube_new(). This step was forgotten in earlier 
+version. This is a major bug fix that yields the correct amplitude 
+scale for the MOFF images
+
 From a898c04 (branch analytic-kernel):
 =====================================
 

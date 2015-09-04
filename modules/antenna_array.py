@@ -4337,7 +4337,7 @@ class InterferometerArray:
                     sum_twts += per_bl2grid_info['twts']
                     vuf_gridind_unraveled = (per_bl2grid_info['v_gridind'],per_bl2grid_info['u_gridind'],per_bl2grid_info['f_gridind'])
                     self.grid_illumination[cpol][vuf_gridind_unraveled] += per_bl2grid_info['per_bl_per_freq_norm_wts'] * per_bl2grid_info['illumination']
-                    self.grid_Vf[cpol][vuf_gridind_unraveled] += per_bl2grid_info['per_bl_per_freq_norm_wts'] * per_bl2grid_info['Vf']
+                    self.grid_Vf[cpol][vuf_gridind_unraveled] += per_bl2grid_info['per_bl_per_freq_norm_wts'] * per_bl2grid_info['Vf'] * per_bl2grid_info['illumination']
                     # self.grid_illumination[cpol][vuf_gridind_unraveled] += per_bl2grid_info['per_bl_per_freq_norm_wts'] * per_bl2grid_info['illumination'] * per_bl2grid_info['twts']
                     # self.grid_Vf[cpol][vuf_gridind_unraveled] += per_bl2grid_info['per_bl_per_freq_norm_wts'] * per_bl2grid_info['Vf'] * per_bl2grid_info['twts']
 
@@ -10144,7 +10144,7 @@ class AntennaArray:
                     num_unflagged += 1
                     vuf_gridind_unraveled = (per_ant2grid_info['v_gridind'],per_ant2grid_info['u_gridind'],per_ant2grid_info['f_gridind'])
                     self.grid_illumination[apol][vuf_gridind_unraveled] += per_ant2grid_info['per_ant_per_freq_norm_wts'] * per_ant2grid_info['illumination']
-                    self.grid_Ef[apol][vuf_gridind_unraveled] += per_ant2grid_info['per_ant_per_freq_norm_wts'] * per_ant2grid_info['Ef']                    
+                    self.grid_Ef[apol][vuf_gridind_unraveled] += per_ant2grid_info['per_ant_per_freq_norm_wts'] * per_ant2grid_info['Ef'] * per_ant2grid_info['illumination']
 
                 if verbose:
                     progress.update(loopcount+1)
