@@ -1,3 +1,181 @@
+From 376f350 (branch analytic-kernel) and f5785c9 (branch imgstack):
+===================================================================
+
+(*) Merge analytic-kernel and imgstack branches
+
+From 10f4625 (on branch imgstack):
+=================================
+
+(*) Test image stacking (primarily from MOFF) using main level script
+compare_simulations_MOFF_FX_test_stacking.py
+
+From 612f745 (on branch imgstack):
+=================================
+
+In antenna_array.py,
+
+(*) Compute uv-grid attributes wts_vuf and vis_vuf in member function
+imagr() of class NewImage for both MOFF and FX cases
+(*) Change attribute name grid_Vf_stack and grid_Vf_avg in class
+NewImage throughout to grid_vis_stack and grid_vis_avg respectively
+(*) Add and initialize attributes wts_vuf and vis_vuf in __init__()
+member function of class NewImage
+(*) Add resetting of attributes wts_vuf and vis_vuf in reset()
+member function of class NewImage
+(*) Minor bug fix in correct estimation of attribute
+grid_illumination_avg in member function accumulate() of NewImage
+class
+(*) Variable pol inside member function imagr() of class NewImage is
+now converted to be a list instead of a numpy array
+(*) Minor bug fix in assignment of variable twts in member function
+accumulate() of class NewImage
+(*) Minor bug fix in estimating attribute grid_vis_avg in accumulate()
+member function of class NewImage
+(*) In member function accumulate() of class NewImage, average
+quantities only when they are not set to None under the corresponding
+polarization
+
+From 1cc3d96 (on branch imgstack):
+=================================
+
+In antenna_array.py,
+
+(*) Remove mean subtraction from imagr() member function of class
+NewImage in case of electric-field based MOFF imaging
+
+From 0a1cd79 (on branch imgstack):
+=================================
+
+In antenna_array.py,
+
+(*) Add input keyword stack to member function imagr() of class
+NewImage to invoke stack() to stack the image and UV quantities.
+Update docstring accordingly
+
+From 852370f (on branch imgstack):
+=================================
+
+In antenna_array.py,
+
+(*) To obtain attribute grid_Vf of class InterferometerArray,
+include the multiplication of visibilities by the grid illumination
+to obtain the gridded visibilities before imaging in member function
+make_grid_cube_new(). This step was forgotten in earlier version.
+This is a major bug fix that yields the correct amplitude scale for
+the FX images
+(*) To obtain attribute grid_Ef of class AntennaArray,
+include the multiplication of electric fields by the grid illumination
+to obtain the gridded electric fields before imaging in member 
+function make_grid_cube_new(). This step was forgotten in earlier 
+version. This is a major bug fix that yields the correct amplitude 
+scale for the MOFF images
+
+From efb0d88 (on branch imgstack):
+=================================
+
+In antenna_array.py,
+
+(*) Add and initialize attribute tbinsize in __init__() member
+function of class NewImage
+(*) Add and initialize attribute twts in __init__() member
+function of class NewImage
+(*) Add member function accumulate() (with docstring) to class
+NewImage where attributes tbinsize and twts are really assigned
+(*) Fix typo in attribute name grid_illumination_stack in class
+NewImage
+
+From c63b1d0 (on branch imgstack):
+=================================
+
+In antenna_array.py,
+
+(*) Add and initialize attributes img_avg, beam_avg, grid_Vf_avg, and
+grid_illumination_avg in __init__() member function of class NewImage
+
+From d9b7910 (on branch imgstack):
+=================================
+
+In antenna_array.py,
+
+(*) In member function stack() of class NewImage, check if the current
+timestamp is included in the attribute timestamps and stack only if
+not included
+(*) In member function stack() of class NewImage, append current
+timestamp onto to attribute timestamps after stacking
+
+From ff40081 (on branch imgstack):
+=================================
+
+In antenna_array.py,
+
+(*) Add and initialize attribute timestamps in __init__() member
+function of class NewImage
+(*) Reset attribute timestamp to None in reset() member function of
+class NewImage
+(*) Reassign attribute timestamp in update() member function of class
+NewImage
+
+From 0698f0b (branch imgstack):
+==============================
+
+In antenna_array.py,
+
+(*) Add member function stack() (with docstring) to class NewImage
+
+From ade3b10 (branch imgstack):
+==============================
+
+In antenna_array.py,
+
+(*) Add and initialize new attributes holimg_stack, holbeam_stack,
+img_stack, beam_stack, grid_illumination_stack, grid_Vf_stack in
+__init__() member function of class NewImage
+
+From 8c2f42c (branch imgstack):
+==============================
+
+In antenna_array.py,
+
+(*) Add member function update() (with docstring) to class NewImage
+(*) Update docstring of member function reset() of class NewImage
+
+From d994199 (branch imgstack):
+==============================
+
+In antenna_array.py,
+
+(*) Add member function reset() (with docstring) to class NewImage
+
+From 48dd92c (branch imgstack):
+==============================
+
+In antenna_array.py,
+
+(*) Rearrange order of initialization of some attributes in member
+function __init__() of class NewImage
+(*) Initialize grid_illumination, grid_wts, grid_Ef, and grid_Vf
+attributes in __init__() member function of class NewImage to None
+and move their real assignment into member function imagr()
+(*) Move invocation of member functions make_grid_cube() and
+make_grid_cube_new() of classes AntennaArray and InterferometerArray
+from inside member function __init__() to member function imagr() of 
+class NewImage
+
+From a966b70 (branch imgstack):
+==============================
+
+In antenna_array.py,
+
+(*) Add attributes antenna_array and interferometer_array to class
+NewImage and initialize them in __init__() member function
+
+From a898c04 (branch imgstack):
+==============================
+
+In antenna_array.py,
+
+(*) Comment out the defunct class Image
+
 From 5d8a0a8 (branch analytic-kernel):
 =====================================
 

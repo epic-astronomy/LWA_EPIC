@@ -5890,527 +5890,527 @@ class InterferometerArray:
 
 ################################################################################
         
-class Image:
+# class Image:
 
-    """
-    ----------------------------------------------------------------------------
-    Class to manage image information and processing pertaining to the class 
-    holding antenna array information.
+#     """
+#     ----------------------------------------------------------------------------
+#     Class to manage image information and processing pertaining to the class 
+#     holding antenna array information.
 
-    Attributes:
+#     Attributes:
 
-    timestamp:   [Scalar] String or float representing the timestamp for the 
-                 current attributes
+#     timestamp:   [Scalar] String or float representing the timestamp for the 
+#                  current attributes
                  
-    f:           [vector] Frequency channels (in Hz)
+#     f:           [vector] Frequency channels (in Hz)
                  
-    f0:          [Scalar] Positive value for the center frequency in Hz.
+#     f0:          [Scalar] Positive value for the center frequency in Hz.
 
-    gridx_P1     [Numpy array] x-locations of the grid lattice for P1 
-                 polarization
+#     gridx_P1     [Numpy array] x-locations of the grid lattice for P1 
+#                  polarization
 
-    gridy_P1     [Numpy array] y-locations of the grid lattice for P1 
-                 polarization
+#     gridy_P1     [Numpy array] y-locations of the grid lattice for P1 
+#                  polarization
 
-    gridx_P2     [Numpy array] x-locations of the grid lattice for P2 
-                 polarization
+#     gridx_P2     [Numpy array] x-locations of the grid lattice for P2 
+#                  polarization
 
-    gridy_P2     [Numpy array] y-locations of the grid lattice for P2 
-                 polarization
+#     gridy_P2     [Numpy array] y-locations of the grid lattice for P2 
+#                  polarization
 
-    grid_illuminaton_P1
-                 [Numpy array] Electric field illumination for P1 polarization 
-                 on the grid. Could be complex. Same size as the grid
+#     grid_illumination_P1
+#                  [Numpy array] Electric field illumination for P1 polarization 
+#                  on the grid. Could be complex. Same size as the grid
 
-    grid_illuminaton_P2
-                 [Numpy array] Electric field illumination for P2 polarization 
-                 on the grid. Could be complex. Same size as the grid
+#     grid_illumination_P2
+#                  [Numpy array] Electric field illumination for P2 polarization 
+#                  on the grid. Could be complex. Same size as the grid
 
-    grid_Ef_P1   [Numpy array] Complex Electric field of polarization P1 
-                 projected on the grid. 
+#     grid_Ef_P1   [Numpy array] Complex Electric field of polarization P1 
+#                  projected on the grid. 
 
-    grid_Ef_P2   [Numpy array] Complex Electric field of polarization P2 
-                 projected on the grid. 
+#     grid_Ef_P2   [Numpy array] Complex Electric field of polarization P2 
+#                  projected on the grid. 
     
-    holograph_PB_P1
-                 [Numpy array] Complex holographic electric field pattern on sky
-                 for polarization P1. Obtained by inverse fourier transforming 
-                 grid_illumination_P1. It is 3-dimensional (third dimension is 
-                 the frequency axis)
+#     holograph_PB_P1
+#                  [Numpy array] Complex holographic electric field pattern on sky
+#                  for polarization P1. Obtained by inverse fourier transforming 
+#                  grid_illumination_P1. It is 3-dimensional (third dimension is 
+#                  the frequency axis)
 
-    holograph_P1 [Numpy array] Complex holographic image cube for polarization 
-                 P1 obtained by inverse fourier transforming Ef_P1
+#     holograph_P1 [Numpy array] Complex holographic image cube for polarization 
+#                  P1 obtained by inverse fourier transforming Ef_P1
 
-    PB_P1        [Numpy array] Power pattern of the antenna obtained by squaring
-                 the absolute value of holograph_PB_P1. It is 3-dimensional 
-                 (third dimension is the frequency axis)
+#     PB_P1        [Numpy array] Power pattern of the antenna obtained by squaring
+#                  the absolute value of holograph_PB_P1. It is 3-dimensional 
+#                  (third dimension is the frequency axis)
 
-    lf_P1        [Numpy array] 3D grid of l-axis in the direction cosines 
-                 coordinate system corresponding to polarization P1, the third 
-                 axis being along frequency.
+#     lf_P1        [Numpy array] 3D grid of l-axis in the direction cosines 
+#                  coordinate system corresponding to polarization P1, the third 
+#                  axis being along frequency.
 
-    mf_P1        [Numpy array] 3D grid of m-axis in the direction cosines 
-                 coordinate system corresponding to polarization P1, the third 
-                 axis being along frequency.
+#     mf_P1        [Numpy array] 3D grid of m-axis in the direction cosines 
+#                  coordinate system corresponding to polarization P1, the third 
+#                  axis being along frequency.
 
-    img_P1       [Numpy array] 3D image cube obtained by squaring the absolute 
-                 value of holograph_P1. The third dimension is along frequency.
+#     img_P1       [Numpy array] 3D image cube obtained by squaring the absolute 
+#                  value of holograph_P1. The third dimension is along frequency.
 
-    holograph_PB_P2
-                 [Numpy array] Complex holographic electric field pattern on sky
-                 for polarization P2. Obtained by inverse fourier transforming 
-                 grid_illumination_P2. It is 3-dimensional (third dimension is 
-                 the frequency axis)
+#     holograph_PB_P2
+#                  [Numpy array] Complex holographic electric field pattern on sky
+#                  for polarization P2. Obtained by inverse fourier transforming 
+#                  grid_illumination_P2. It is 3-dimensional (third dimension is 
+#                  the frequency axis)
 
-    holograph_P2 [Numpy array] Complex holographic image cube for polarization 
-                 P2 obtained by inverse fourier transforming Ef_P2
+#     holograph_P2 [Numpy array] Complex holographic image cube for polarization 
+#                  P2 obtained by inverse fourier transforming Ef_P2
 
-    PB_P2        [Numpy array] Power pattern of the antenna obtained by squaring
-                 the absolute value of holograph_PB_P2. It is 3-dimensional 
-                 (third dimension is the frequency axis)
+#     PB_P2        [Numpy array] Power pattern of the antenna obtained by squaring
+#                  the absolute value of holograph_PB_P2. It is 3-dimensional 
+#                  (third dimension is the frequency axis)
 
-    lf_P2        [Numpy array] 3D grid of l-axis in the direction cosines 
-                 coordinate system corresponding to polarization P2, the third 
-                 axis being along frequency.
+#     lf_P2        [Numpy array] 3D grid of l-axis in the direction cosines 
+#                  coordinate system corresponding to polarization P2, the third 
+#                  axis being along frequency.
 
-    mf_P2        [Numpy array] 3D grid of m-axis in the direction cosines 
-                 coordinate system corresponding to polarization P2, the third 
-                 axis being along frequency.
+#     mf_P2        [Numpy array] 3D grid of m-axis in the direction cosines 
+#                  coordinate system corresponding to polarization P2, the third 
+#                  axis being along frequency.
 
-    img_P2       [Numpy array] 3D image cube obtained by squaring the absolute 
-                 value of holograph_P2. The third dimension is along frequency.
+#     img_P2       [Numpy array] 3D image cube obtained by squaring the absolute 
+#                  value of holograph_P2. The third dimension is along frequency.
 
-    Member Functions:
+#     Member Functions:
 
-    __init__()   Initializes an instance of class Image which manages 
-                 information and processing of images from data obtained by an 
-                 antenna array. It can be initialized either by values in an 
-                 instance of class AntennaArray, by values in a fits file 
-                 containing information about the antenna array, or to defaults.
+#     __init__()   Initializes an instance of class Image which manages 
+#                  information and processing of images from data obtained by an 
+#                  antenna array. It can be initialized either by values in an 
+#                  instance of class AntennaArray, by values in a fits file 
+#                  containing information about the antenna array, or to defaults.
 
-    imagr()      Imaging engine that performs inverse fourier transforms of 
-                 appropriate electric field quantities associated with the 
-                 antenna array.
+#     imagr()      Imaging engine that performs inverse fourier transforms of 
+#                  appropriate electric field quantities associated with the 
+#                  antenna array.
 
-    save()       Saves the image information to disk
+#     save()       Saves the image information to disk
 
-    Read the member function docstrings for more details
-    ----------------------------------------------------------------------------
-    """
+#     Read the member function docstrings for more details
+#     ----------------------------------------------------------------------------
+#     """
 
-    def __init__(self, f0=None, f=None, pol=None, antenna_array=None,
-                 infile=None, timestamp=None, verbose=True):
+#     def __init__(self, f0=None, f=None, pol=None, antenna_array=None,
+#                  infile=None, timestamp=None, verbose=True):
         
-        """
-        ------------------------------------------------------------------------
-        Initializes an instance of class Image which manages information and
-        processing of images from data obtained by an antenna array. It can be
-        initialized either by values in an instance of class AntennaArray, by
-        values in a fits file containing information about the antenna array, or
-        to defaults.
+#         """
+#         ------------------------------------------------------------------------
+#         Initializes an instance of class Image which manages information and
+#         processing of images from data obtained by an antenna array. It can be
+#         initialized either by values in an instance of class AntennaArray, by
+#         values in a fits file containing information about the antenna array, or
+#         to defaults.
 
-        Class attributes initialized are:
-        timestamp, f, f0, gridx_P1, gridy_P1, grid_illumination_P1, grid_Ef_P1, 
-        holograph_P1, holograph_PB_P1, img_P1, PB_P1, lf_P1, mf_P1, gridx_P1,
-        gridy_P1, grid_illumination_P1, grid_Ef_P1, holograph_P1,
-        holograph_PB_P1, img_P1, PB_P1, lf_P1, and mf_P1
+#         Class attributes initialized are:
+#         timestamp, f, f0, gridx_P1, gridy_P1, grid_illumination_P1, grid_Ef_P1, 
+#         holograph_P1, holograph_PB_P1, img_P1, PB_P1, lf_P1, mf_P1, gridx_P1,
+#         gridy_P1, grid_illumination_P1, grid_Ef_P1, holograph_P1,
+#         holograph_PB_P1, img_P1, PB_P1, lf_P1, and mf_P1
 
-        Read docstring of class Image for details on these attributes.
-        ------------------------------------------------------------------------
-        """
+#         Read docstring of class Image for details on these attributes.
+#         ------------------------------------------------------------------------
+#         """
 
-        if verbose:
-            print '\nInitializing an instance of class Image...\n'
-            print '\tVerifying for compatible arguments...'
+#         if verbose:
+#             print '\nInitializing an instance of class Image...\n'
+#             print '\tVerifying for compatible arguments...'
 
-        if timestamp is not None:
-            self.timestamp = timestamp
-            if verbose:
-                print '\t\tInitialized time stamp.'
+#         if timestamp is not None:
+#             self.timestamp = timestamp
+#             if verbose:
+#                 print '\t\tInitialized time stamp.'
 
-        if f0 is not None:
-            self.f0 = f0
-            if verbose:
-                print '\t\tInitialized center frequency.'
+#         if f0 is not None:
+#             self.f0 = f0
+#             if verbose:
+#                 print '\t\tInitialized center frequency.'
 
-        if f is not None:
-            self.f = NP.asarray(f)
-            if verbose:
-                print '\t\tInitialized frequency channels.'
+#         if f is not None:
+#             self.f = NP.asarray(f)
+#             if verbose:
+#                 print '\t\tInitialized frequency channels.'
 
-        if (infile is None) and (antenna_array is None):
-            self.gridx_P1 = None
-            self.gridy_P1 = None
-            self.grid_illumination_P1 = None
-            self.grid_Ef_P1 = None
-            self.holograph_P1 = None
-            self.holograph_PB_P1 = None
-            self.img_P1 = None
-            self.PB_P1 = None
-            self.lf_P1 = None
-            self.mf_P1 = None
+#         if (infile is None) and (antenna_array is None):
+#             self.gridx_P1 = None
+#             self.gridy_P1 = None
+#             self.grid_illumination_P1 = None
+#             self.grid_Ef_P1 = None
+#             self.holograph_P1 = None
+#             self.holograph_PB_P1 = None
+#             self.img_P1 = None
+#             self.PB_P1 = None
+#             self.lf_P1 = None
+#             self.mf_P1 = None
 
-            self.gridx_P2 = None
-            self.gridy_P2 = None
-            self.grid_illumination_P2 = None
-            self.grid_Ef_P2 = None
-            self.holograph_P2 = None
-            self.holograph_PB_P2 = None
-            self.img_P2 = None
-            self.PB_P2 = None
-            self.lf_P2 = None
-            self.mf_P2 = None
+#             self.gridx_P2 = None
+#             self.gridy_P2 = None
+#             self.grid_illumination_P2 = None
+#             self.grid_Ef_P2 = None
+#             self.holograph_P2 = None
+#             self.holograph_PB_P2 = None
+#             self.img_P2 = None
+#             self.PB_P2 = None
+#             self.lf_P2 = None
+#             self.mf_P2 = None
         
-            if verbose:
-                print '\t\tInitialized gridx_P1, gridy_P1, grid_illumination_P1, and grid_Ef_P1'
-                print '\t\tInitialized lf_P1, mf_P1, holograph_PB_P1, PB_P1, holograph_P1, and img_P1'
-                print '\t\tInitialized gridx_P2, gridy_P2, grid_illumination_P2, and grid_Ef_P2'
-                print '\t\tInitialized lf_P2, mf_P2, holograph_PB_P2, PB_P2, holograph_P2, and img_P2'
+#             if verbose:
+#                 print '\t\tInitialized gridx_P1, gridy_P1, grid_illumination_P1, and grid_Ef_P1'
+#                 print '\t\tInitialized lf_P1, mf_P1, holograph_PB_P1, PB_P1, holograph_P1, and img_P1'
+#                 print '\t\tInitialized gridx_P2, gridy_P2, grid_illumination_P2, and grid_Ef_P2'
+#                 print '\t\tInitialized lf_P2, mf_P2, holograph_PB_P2, PB_P2, holograph_P2, and img_P2'
 
-        if (infile is not None) and (antenna_array is not None):
-            raise ValueError('Both gridded data file and antenna array informtion are specified. One and only one of these should be specified. Cannot initialize an instance of class Image.')     
+#         if (infile is not None) and (antenna_array is not None):
+#             raise ValueError('Both gridded data file and antenna array informtion are specified. One and only one of these should be specified. Cannot initialize an instance of class Image.')     
 
-        if verbose:
-            print '\tArguments verified for initialization.'
+#         if verbose:
+#             print '\tArguments verified for initialization.'
 
-        if infile is not None:
-            if verbose:
-                print '\tInitializing from input file...'
+#         if infile is not None:
+#             if verbose:
+#                 print '\tInitializing from input file...'
 
-            try:
-                hdulist = fits.open(infile)
-            except IOError:
-                raise IOError('File not found. Image instance not initialized.')
-            except EOFError:
-                raise EOFError('EOF encountered. File cannot be read. Image instance not initialized.')
-            else:
-                extnames = [hdu.header['EXTNAME'] for hdu in hdulist]
-                if verbose:
-                    print '\t\tFITS file opened successfully. The extensions have been read.'
+#             try:
+#                 hdulist = fits.open(infile)
+#             except IOError:
+#                 raise IOError('File not found. Image instance not initialized.')
+#             except EOFError:
+#                 raise EOFError('EOF encountered. File cannot be read. Image instance not initialized.')
+#             else:
+#                 extnames = [hdu.header['EXTNAME'] for hdu in hdulist]
+#                 if verbose:
+#                     print '\t\tFITS file opened successfully. The extensions have been read.'
 
-                if 'FREQ' in extnames:
-                    self.f = hdulist['FREQ'].data
-                    if verbose:
-                        print '\t\t\tInitialized frequency channels.'
-                else:
-                    raise KeyError('Frequency information unavailable in the input file.')
+#                 if 'FREQ' in extnames:
+#                     self.f = hdulist['FREQ'].data
+#                     if verbose:
+#                         print '\t\t\tInitialized frequency channels.'
+#                 else:
+#                     raise KeyError('Frequency information unavailable in the input file.')
 
-                if 'f0' in hdulist[0].header:
-                    self.f0 = hdulist[0].header['f0']
-                    if verbose:
-                        print '\t\t\tInitialized center frequency to {0} Hz from FITS header.'.format(self.f0)
-                else:
-                    self.f0 = self.f[int(len(self.f)/2)]
-                    if verbose:
-                        print '\t\t\tNo center frequency found in FITS header. Setting it to \n\t\t\t\tthe center of frequency channels: {0} Hz'.format(self.f0)
+#                 if 'f0' in hdulist[0].header:
+#                     self.f0 = hdulist[0].header['f0']
+#                     if verbose:
+#                         print '\t\t\tInitialized center frequency to {0} Hz from FITS header.'.format(self.f0)
+#                 else:
+#                     self.f0 = self.f[int(len(self.f)/2)]
+#                     if verbose:
+#                         print '\t\t\tNo center frequency found in FITS header. Setting it to \n\t\t\t\tthe center of frequency channels: {0} Hz'.format(self.f0)
 
-                if 'tobs' in hdulist[0].header:
-                    self.timestamp = hdulist[0].header['tobs']
-                    if verbose:
-                        print '\t\t\tInitialized time stamp.'
+#                 if 'tobs' in hdulist[0].header:
+#                     self.timestamp = hdulist[0].header['tobs']
+#                     if verbose:
+#                         print '\t\t\tInitialized time stamp.'
 
-                if (pol is None) or (pol == 'P1'):
-                    if verbose:
-                        print '\n\t\t\tWorking on polarization P1...'
+#                 if (pol is None) or (pol == 'P1'):
+#                     if verbose:
+#                         print '\n\t\t\tWorking on polarization P1...'
 
-                    if ('GRIDX_P1' not in extnames) or ('GRIDY_P1' not in extnames) or ('GRID_ILLUMINATION_P1_REAL' not in extnames) or ('GRID_ILLUMINATION_P1_IMAG' not in extnames) or ('GRID_EF_P1_REAL' not in extnames) or ('GRID_EF_P1_IMAG' not in extnames):
-                        raise KeyError('One or more pieces of gridding information is missing in the input file for polarization P1. Verify the file contains appropriate data.')
+#                     if ('GRIDX_P1' not in extnames) or ('GRIDY_P1' not in extnames) or ('GRID_ILLUMINATION_P1_REAL' not in extnames) or ('GRID_ILLUMINATION_P1_IMAG' not in extnames) or ('GRID_EF_P1_REAL' not in extnames) or ('GRID_EF_P1_IMAG' not in extnames):
+#                         raise KeyError('One or more pieces of gridding information is missing in the input file for polarization P1. Verify the file contains appropriate data.')
 
-                    self.gridx_P1 = hdulist['GRIDX_P1'].data
-                    self.gridy_P1 = hdulist['GRIDY_P1'].data
-                    self.grid_illumination_P1 = hdulist['GRID_ILLUMINATION_P1_REAL'].data + 1j * hdulist['GRID_ILLUMINATION_P1_IMAG'].data
-                    self.grid_Ef_P1 = hdulist['GRID_EF_P1_REAL'].data + 1j * hdulist['GRID_EF_P1_IMAG'].data
-                    self.holograph_P1 = None
-                    self.img_P1 = None
-                    self.holograph_PB_P1 = None
-                    self.PB_P1 = None
-                    self.lf_P1 = None
-                    self.mf_P1 = None
-                    if verbose:
-                        print '\t\t\tInitialized gridx_P1, gridy_P1, grid_illumination_P1, and grid_Ef_P1'
-                        print '\t\t\tInitialized lf_P1, mf_P1, holograph_PB_P1, PB_P1, holograph_P1, and img_P1'
+#                     self.gridx_P1 = hdulist['GRIDX_P1'].data
+#                     self.gridy_P1 = hdulist['GRIDY_P1'].data
+#                     self.grid_illumination_P1 = hdulist['GRID_ILLUMINATION_P1_REAL'].data + 1j * hdulist['GRID_ILLUMINATION_P1_IMAG'].data
+#                     self.grid_Ef_P1 = hdulist['GRID_EF_P1_REAL'].data + 1j * hdulist['GRID_EF_P1_IMAG'].data
+#                     self.holograph_P1 = None
+#                     self.img_P1 = None
+#                     self.holograph_PB_P1 = None
+#                     self.PB_P1 = None
+#                     self.lf_P1 = None
+#                     self.mf_P1 = None
+#                     if verbose:
+#                         print '\t\t\tInitialized gridx_P1, gridy_P1, grid_illumination_P1, and grid_Ef_P1'
+#                         print '\t\t\tInitialized lf_P1, mf_P1, holograph_PB_P1, PB_P1, holograph_P1, and img_P1'
 
-                if (pol is None) or (pol == 'P2'):
-                    if verbose:
-                        print '\n\t\t\tWorking on polarization P2...'
+#                 if (pol is None) or (pol == 'P2'):
+#                     if verbose:
+#                         print '\n\t\t\tWorking on polarization P2...'
 
-                    if ('GRIDX_P2' not in extnames) or ('GRIDY_P2' not in extnames) or ('GRID_ILLUMINATION_P2_REAL' not in extnames) or ('GRID_ILLUMINATION_P2_IMAG' not in extnames) or ('GRID_EF_P2_REAL' not in extnames) or ('GRID_EF_P2_IMAG' not in extnames):
-                        raise KeyError('One or more pieces of gridding information is missing in the input file for polarization P2. Verify the file contains appropriate data.')
+#                     if ('GRIDX_P2' not in extnames) or ('GRIDY_P2' not in extnames) or ('GRID_ILLUMINATION_P2_REAL' not in extnames) or ('GRID_ILLUMINATION_P2_IMAG' not in extnames) or ('GRID_EF_P2_REAL' not in extnames) or ('GRID_EF_P2_IMAG' not in extnames):
+#                         raise KeyError('One or more pieces of gridding information is missing in the input file for polarization P2. Verify the file contains appropriate data.')
 
-                    self.gridx_P2 = hdulist['GRIDX_P2'].data
-                    self.gridy_P2 = hdulist['GRIDY_P2'].data
-                    self.grid_illumination_P2 = hdulist['GRID_ILLUMINATION_P2_REAL'].data + 1j * hdulist['GRID_ILLUMINATION_P2_IMAG'].data
-                    self.grid_Ef_P2 = hdulist['GRID_EF_P2_REAL'].data + 1j * hdulist['GRID_EF_P2_IMAG'].data
-                    self.holograph_P2 = None
-                    self.img_P2 = None
-                    self.holograph_PB_P2 = None
-                    self.PB_P2 = None
-                    self.lf_P2 = None
-                    self.mf_P2 = None
-                    if verbose:
-                        print '\t\t\tInitialized gridx_P2, gridy_P2, grid_illumination_P2, and grid_Ef_P2'
-                        print '\t\t\tInitialized lf_P2, mf_P2, holograph_PB_P2, PB_P2, holograph_P2, and img_P2'
+#                     self.gridx_P2 = hdulist['GRIDX_P2'].data
+#                     self.gridy_P2 = hdulist['GRIDY_P2'].data
+#                     self.grid_illumination_P2 = hdulist['GRID_ILLUMINATION_P2_REAL'].data + 1j * hdulist['GRID_ILLUMINATION_P2_IMAG'].data
+#                     self.grid_Ef_P2 = hdulist['GRID_EF_P2_REAL'].data + 1j * hdulist['GRID_EF_P2_IMAG'].data
+#                     self.holograph_P2 = None
+#                     self.img_P2 = None
+#                     self.holograph_PB_P2 = None
+#                     self.PB_P2 = None
+#                     self.lf_P2 = None
+#                     self.mf_P2 = None
+#                     if verbose:
+#                         print '\t\t\tInitialized gridx_P2, gridy_P2, grid_illumination_P2, and grid_Ef_P2'
+#                         print '\t\t\tInitialized lf_P2, mf_P2, holograph_PB_P2, PB_P2, holograph_P2, and img_P2'
 
-            hdulist.close()
-            if verbose:
-                print '\t\tClosed input FITS file.'
+#             hdulist.close()
+#             if verbose:
+#                 print '\t\tClosed input FITS file.'
 
-        if antenna_array is not None:
-            if verbose:
-                print '\tInitializing from an instance of class AntennaArray...'
+#         if antenna_array is not None:
+#             if verbose:
+#                 print '\tInitializing from an instance of class AntennaArray...'
 
-            if isinstance(antenna_array, AntennaArray):
-                self.f = antenna_array.f
-                if verbose:
-                    print '\t\tInitialized frequency channels.'
+#             if isinstance(antenna_array, AntennaArray):
+#                 self.f = antenna_array.f
+#                 if verbose:
+#                     print '\t\tInitialized frequency channels.'
 
-                self.f0 = antenna_array.f0
-                if verbose:
-                    print '\t\tInitialized center frequency to {0} Hz from antenna array info.'.format(self.f0)
+#                 self.f0 = antenna_array.f0
+#                 if verbose:
+#                     print '\t\tInitialized center frequency to {0} Hz from antenna array info.'.format(self.f0)
 
-                self.timestamp = antenna_array.timestamp
-                if verbose:
-                    print '\t\tInitialized time stamp to {0} from antenna array info.'.format(self.timestamp)
+#                 self.timestamp = antenna_array.timestamp
+#                 if verbose:
+#                     print '\t\tInitialized time stamp to {0} from antenna array info.'.format(self.timestamp)
             
-                if (pol is None) or (pol == 'P1'):
-                    if verbose:
-                        print '\n\t\tWorking on polarization P1...'
-                    self.gridx_P1 = antenna_array.gridx_P1
-                    self.gridy_P1 = antenna_array.gridy_P1
-                    self.grid_illumination_P1 = antenna_array.grid_illumination_P1
-                    self.grid_Ef_P1 = antenna_array.grid_Ef_P1
-                    self.holograph_P1 = None
-                    self.img_P1 = None
-                    self.holograph_PB_P1 = None
-                    self.PB_P1 = None
-                    self.lf_P1 = None
-                    self.mf_P1 = None
-                    if verbose:
-                        print '\t\tInitialized gridx_P1, gridy_P1, grid_illumination_P1, and grid_Ef_P1.'
-                        print '\t\tInitialized lf_P1, mf_P1, holograph_PB_P1, PB_P1, holograph_P1, and img_P1'
+#                 if (pol is None) or (pol == 'P1'):
+#                     if verbose:
+#                         print '\n\t\tWorking on polarization P1...'
+#                     self.gridx_P1 = antenna_array.gridx_P1
+#                     self.gridy_P1 = antenna_array.gridy_P1
+#                     self.grid_illumination_P1 = antenna_array.grid_illumination_P1
+#                     self.grid_Ef_P1 = antenna_array.grid_Ef_P1
+#                     self.holograph_P1 = None
+#                     self.img_P1 = None
+#                     self.holograph_PB_P1 = None
+#                     self.PB_P1 = None
+#                     self.lf_P1 = None
+#                     self.mf_P1 = None
+#                     if verbose:
+#                         print '\t\tInitialized gridx_P1, gridy_P1, grid_illumination_P1, and grid_Ef_P1.'
+#                         print '\t\tInitialized lf_P1, mf_P1, holograph_PB_P1, PB_P1, holograph_P1, and img_P1'
 
-                if (pol is None) or (pol == 'P2'):
-                    if verbose:
-                        print '\n\t\tWorking on polarization P2...'
-                    self.gridx_P2 = antenna_array.gridx_P2
-                    self.gridy_P2 = antenna_array.gridy_P2
-                    self.grid_illumination_P2 = antenna_array.grid_illumination_P2
-                    self.grid_Ef_P2 = antenna_array.grid_Ef_P2
-                    self.holograph_P2 = None
-                    self.img_P2 = None
-                    self.holograph_PB_P2 = None
-                    self.PB_P2 = None
-                    self.lf_P2 = None
-                    self.mf_P2 = None
-                    if verbose:
-                        print '\t\tInitialized gridx_P2, gridy_P2, grid_illumination_P2, and grid_Ef_P2.'
-                        print '\t\tInitialized lf_P2, mf_P2, holograph_PB_P2, PB_P2, holograph_P2, and img_P2'
+#                 if (pol is None) or (pol == 'P2'):
+#                     if verbose:
+#                         print '\n\t\tWorking on polarization P2...'
+#                     self.gridx_P2 = antenna_array.gridx_P2
+#                     self.gridy_P2 = antenna_array.gridy_P2
+#                     self.grid_illumination_P2 = antenna_array.grid_illumination_P2
+#                     self.grid_Ef_P2 = antenna_array.grid_Ef_P2
+#                     self.holograph_P2 = None
+#                     self.img_P2 = None
+#                     self.holograph_PB_P2 = None
+#                     self.PB_P2 = None
+#                     self.lf_P2 = None
+#                     self.mf_P2 = None
+#                     if verbose:
+#                         print '\t\tInitialized gridx_P2, gridy_P2, grid_illumination_P2, and grid_Ef_P2.'
+#                         print '\t\tInitialized lf_P2, mf_P2, holograph_PB_P2, PB_P2, holograph_P2, and img_P2'
 
-            else:
-                raise TypeError('antenna_array is not an instance of class AntennaArray. Cannot initiate instance of class Image.')
+#             else:
+#                 raise TypeError('antenna_array is not an instance of class AntennaArray. Cannot initiate instance of class Image.')
 
-        if verbose:
-            print '\nSuccessfully initialized an instance of class Image\n'
+#         if verbose:
+#             print '\nSuccessfully initialized an instance of class Image\n'
 
-    ############################################################################
+#     ############################################################################
 
-    def imagr(self, pol=None, verbose=True):
+#     def imagr(self, pol=None, verbose=True):
 
-        """
-        ------------------------------------------------------------------------
-        Imaging engine that performs inverse fourier transforms of appropriate
-        electric field quantities associated with the antenna array.
+#         """
+#         ------------------------------------------------------------------------
+#         Imaging engine that performs inverse fourier transforms of appropriate
+#         electric field quantities associated with the antenna array.
 
-        Keyword Inputs:
+#         Keyword Inputs:
 
-        pol       [string] indicates which polarization information to be 
-                  imaged. Allowed values are 'P1', 'P2' or None (default). If 
-                  None, both polarizations are imaged.
+#         pol       [string] indicates which polarization information to be 
+#                   imaged. Allowed values are 'P1', 'P2' or None (default). If 
+#                   None, both polarizations are imaged.
 
-        verbose   [boolean] If True (default), prints diagnostic and progress
-                  messages. If False, suppress printing such messages.
-        ------------------------------------------------------------------------
-        """
+#         verbose   [boolean] If True (default), prints diagnostic and progress
+#                   messages. If False, suppress printing such messages.
+#         ------------------------------------------------------------------------
+#         """
 
-        if verbose:
-            print '\nPreparing to image...\n'
+#         if verbose:
+#             print '\nPreparing to image...\n'
 
-        if self.f is None:
-            raise ValueError('Frequency channels have not been initialized. Cannot proceed with imaging.')
+#         if self.f is None:
+#             raise ValueError('Frequency channels have not been initialized. Cannot proceed with imaging.')
 
-        if (pol is None) or (pol == 'P1'):
+#         if (pol is None) or (pol == 'P1'):
             
-            if verbose:
-                print '\tWorking on polarization P1...'
+#             if verbose:
+#                 print '\tWorking on polarization P1...'
 
-            grid_shape = self.grid_Ef_P1.shape
-            if verbose:
-                print '\t\tPreparing to zero pad and Inverse Fourier Transform...'
+#             grid_shape = self.grid_Ef_P1.shape
+#             if verbose:
+#                 print '\t\tPreparing to zero pad and Inverse Fourier Transform...'
 
-            sum_wts = NP.sum(self.grid_illumination_P1, axis=(0,1))
+#             sum_wts = NP.sum(self.grid_illumination_P1, axis=(0,1))
 
-            self.holograph_P1 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_Ef_P1, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
-            if verbose:
-                print '\t\tComputed complex holographic voltage image from antenna array.'
+#             self.holograph_P1 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_Ef_P1, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
+#             if verbose:
+#                 print '\t\tComputed complex holographic voltage image from antenna array.'
 
-            self.holograph_PB_P1 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_illumination_P1, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
-            if verbose:
-                print '\t\tComputed complex holographic voltage pattern of antenna array.'
+#             self.holograph_PB_P1 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_illumination_P1, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
+#             if verbose:
+#                 print '\t\tComputed complex holographic voltage pattern of antenna array.'
 
-            dx = self.gridx_P1[0,1] - self.gridx_P1[0,0]
-            dy = self.gridy_P1[1,0] - self.gridy_P1[0,0]
-            self.lf_P1 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[1], dx)), FCNST.c/self.f)
-            self.mf_P1 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[0], dy)), FCNST.c/self.f)
-            if verbose:
-                print '\t\tComputed the direction cosine coordinates for the image.'
-            grid_lf_P1 = NP.repeat(NP.expand_dims(self.lf_P1, axis=0), self.mf_P1.shape[0], axis=0)
-            grid_mf_P1 = NP.repeat(NP.expand_dims(self.mf_P1, axis=1), self.lf_P1.shape[0], axis=1)
-            nan_ind = grid_lf_P1**2 + grid_mf_P1**2 > 1.0
-            self.holograph_P1[nan_ind] = NP.nan
-            self.holograph_PB_P1[nan_ind] = NP.nan
-            if verbose:
-                print '\t\tImage pixels corresponding to invalid direction cosine coordinates flagged as NAN.'
+#             dx = self.gridx_P1[0,1] - self.gridx_P1[0,0]
+#             dy = self.gridy_P1[1,0] - self.gridy_P1[0,0]
+#             self.lf_P1 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[1], dx)), FCNST.c/self.f)
+#             self.mf_P1 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[0], dy)), FCNST.c/self.f)
+#             if verbose:
+#                 print '\t\tComputed the direction cosine coordinates for the image.'
+#             grid_lf_P1 = NP.repeat(NP.expand_dims(self.lf_P1, axis=0), self.mf_P1.shape[0], axis=0)
+#             grid_mf_P1 = NP.repeat(NP.expand_dims(self.mf_P1, axis=1), self.lf_P1.shape[0], axis=1)
+#             nan_ind = grid_lf_P1**2 + grid_mf_P1**2 > 1.0
+#             self.holograph_P1[nan_ind] = NP.nan
+#             self.holograph_PB_P1[nan_ind] = NP.nan
+#             if verbose:
+#                 print '\t\tImage pixels corresponding to invalid direction cosine coordinates flagged as NAN.'
 
-        if (pol is None) or (pol == 'P2'):
+#         if (pol is None) or (pol == 'P2'):
 
-            if verbose:
-                print '\tWorking on polarization P2...'
+#             if verbose:
+#                 print '\tWorking on polarization P2...'
 
-            grid_shape = self.grid_Ef_P2.shape
-            if verbose:
-                print '\t\tPreparing to zero pad and Inverse Fourier Transform...'
+#             grid_shape = self.grid_Ef_P2.shape
+#             if verbose:
+#                 print '\t\tPreparing to zero pad and Inverse Fourier Transform...'
 
-            sum_wts = NP.sum(self.grid_illumination_P1, axis=(0,1))
+#             sum_wts = NP.sum(self.grid_illumination_P1, axis=(0,1))
 
-            self.holograph_P2 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_Ef_P2, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
-            if verbose:
-                print '\t\tComputed complex holographic voltage image from antenna array.'
+#             self.holograph_P2 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_Ef_P2, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
+#             if verbose:
+#                 print '\t\tComputed complex holographic voltage image from antenna array.'
 
-            self.holograph_PB_P2 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_illumination_P2, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
-            if verbose:
-                print '\t\tComputed complex holographic voltage pattern of antenna array.'
+#             self.holograph_PB_P2 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_illumination_P2, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
+#             if verbose:
+#                 print '\t\tComputed complex holographic voltage pattern of antenna array.'
 
-            dx = self.gridx_P2[0,1] - self.gridx_P2[0,0]
-            dy = self.gridy_P2[1,0] - self.gridy_P2[0,0]
-            self.lf_P2 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[1], dx)), FCNST.c/self.f)
-            self.mf_P2 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[0], dy)), FCNST.c/self.f)
-            if verbose:
-                print '\t\tComputed the direction cosine coordinates for the image.'
-            grid_lf_P2 = NP.repeat(NP.expand_dims(self.lf_P2, axis=0), self.mf_P2.shape[0], axis=0)
-            grid_mf_P2 = NP.repeat(NP.expand_dims(self.mf_P2, axis=1), self.lf_P2.shape[0], axis=1)
-            nan_ind = grid_lf_P2**2 + grid_mf_P2**2 > 1.0
-            self.holograph_P2[nan_ind] = NP.nan
-            self.holograph_PB_P2[nan_ind] = NP.nan
-            if verbose:
-                print '\t\tImage pixels corresponding to invalid direction cosine coordinates (if any) \n\t\t\thave been flagged as NAN.'
-                print '\nImaging completed successfully.\n'
+#             dx = self.gridx_P2[0,1] - self.gridx_P2[0,0]
+#             dy = self.gridy_P2[1,0] - self.gridy_P2[0,0]
+#             self.lf_P2 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[1], dx)), FCNST.c/self.f)
+#             self.mf_P2 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[0], dy)), FCNST.c/self.f)
+#             if verbose:
+#                 print '\t\tComputed the direction cosine coordinates for the image.'
+#             grid_lf_P2 = NP.repeat(NP.expand_dims(self.lf_P2, axis=0), self.mf_P2.shape[0], axis=0)
+#             grid_mf_P2 = NP.repeat(NP.expand_dims(self.mf_P2, axis=1), self.lf_P2.shape[0], axis=1)
+#             nan_ind = grid_lf_P2**2 + grid_mf_P2**2 > 1.0
+#             self.holograph_P2[nan_ind] = NP.nan
+#             self.holograph_PB_P2[nan_ind] = NP.nan
+#             if verbose:
+#                 print '\t\tImage pixels corresponding to invalid direction cosine coordinates (if any) \n\t\t\thave been flagged as NAN.'
+#                 print '\nImaging completed successfully.\n'
 
-    ############################################################################
+#     ############################################################################
         
-    def save(self, imgfile, pol=None, overwrite=False, verbose=True):
+#     def save(self, imgfile, pol=None, overwrite=False, verbose=True):
 
-        """
-        ------------------------------------------------------------------------
-        Saves the image information to disk.
+#         """
+#         ------------------------------------------------------------------------
+#         Saves the image information to disk.
 
-        Input:
+#         Input:
 
-        imgfile     [string] Image filename with full path. Will be appended 
-                     with '.fits' extension
+#         imgfile     [string] Image filename with full path. Will be appended 
+#                      with '.fits' extension
 
-        Keyword Input(s):
+#         Keyword Input(s):
 
-        pol          [string] indicates which polarization information to be 
-                     saved. Allowed values are 'P1', 'P2' or None (default). If 
-                     None, information on both polarizations are saved.
+#         pol          [string] indicates which polarization information to be 
+#                      saved. Allowed values are 'P1', 'P2' or None (default). If 
+#                      None, information on both polarizations are saved.
                      
-        overwrite    [boolean] True indicates overwrite even if a file already 
-                     exists. Default = False (does not overwrite)
+#         overwrite    [boolean] True indicates overwrite even if a file already 
+#                      exists. Default = False (does not overwrite)
                      
-        verbose      [boolean] If True (default), prints diagnostic and progress
-                     messages. If False, suppress printing such messages.
-        ------------------------------------------------------------------------
-        """
+#         verbose      [boolean] If True (default), prints diagnostic and progress
+#                      messages. If False, suppress printing such messages.
+#         ------------------------------------------------------------------------
+#         """
 
-        try:
-            imgfile
-        except NameError:
-            raise NameError('No filename provided. Aborting Image.save()')
+#         try:
+#             imgfile
+#         except NameError:
+#             raise NameError('No filename provided. Aborting Image.save()')
 
-        filename = imgfile + '.fits'
+#         filename = imgfile + '.fits'
 
-        if verbose:
-            print '\nSaving image information...'
+#         if verbose:
+#             print '\nSaving image information...'
             
-        hdulst = []
-        hdulst += [fits.PrimaryHDU()]
-        hdulst[0].header['f0'] = (self.f0, 'Center frequency (Hz)')
-        hdulst[0].header['tobs'] = (self.timestamp, 'Timestamp associated with observation.')
-        hdulst[0].header['EXTNAME'] = 'PRIMARY'
+#         hdulst = []
+#         hdulst += [fits.PrimaryHDU()]
+#         hdulst[0].header['f0'] = (self.f0, 'Center frequency (Hz)')
+#         hdulst[0].header['tobs'] = (self.timestamp, 'Timestamp associated with observation.')
+#         hdulst[0].header['EXTNAME'] = 'PRIMARY'
 
-        if verbose:
-            print '\tCreated a primary HDU.'
+#         if verbose:
+#             print '\tCreated a primary HDU.'
 
-        hdulst += [fits.ImageHDU(self.f, name='FREQ')]
-        if verbose:
-            print '\t\tCreated an extension HDU of {0:0d} frequency channels'.format(len(self.f))
+#         hdulst += [fits.ImageHDU(self.f, name='FREQ')]
+#         if verbose:
+#             print '\t\tCreated an extension HDU of {0:0d} frequency channels'.format(len(self.f))
 
-        if (pol is None) or (pol == 'P1'):
-            if verbose:
-                print '\tWorking on polarization P1...'
+#         if (pol is None) or (pol == 'P1'):
+#             if verbose:
+#                 print '\tWorking on polarization P1...'
 
-            if self.lf_P1 is not None:
-                hdulst += [fits.ImageHDU(self.lf_P1, name='grid_lf_P1')]
-                if verbose:
-                    print '\t\tCreated an extension HDU of l-coordinates of grid of size: {0[0]} \n\t\t\tfor each of the {0[1]} frequency channels'.format(self.lf_P1.shape)
-            if self.mf_P1 is not None:
-                hdulst += [fits.ImageHDU(self.mf_P1, name='grid_mf_P1')]
-                if verbose:
-                    print '\t\tCreated an extension HDU of m-coordinates of grid of size: {0[0]} \n\t\t\tfor each of the {0[1]} frequency channels'.format(self.mf_P1.shape)
+#             if self.lf_P1 is not None:
+#                 hdulst += [fits.ImageHDU(self.lf_P1, name='grid_lf_P1')]
+#                 if verbose:
+#                     print '\t\tCreated an extension HDU of l-coordinates of grid of size: {0[0]} \n\t\t\tfor each of the {0[1]} frequency channels'.format(self.lf_P1.shape)
+#             if self.mf_P1 is not None:
+#                 hdulst += [fits.ImageHDU(self.mf_P1, name='grid_mf_P1')]
+#                 if verbose:
+#                     print '\t\tCreated an extension HDU of m-coordinates of grid of size: {0[0]} \n\t\t\tfor each of the {0[1]} frequency channels'.format(self.mf_P1.shape)
 
-            if self.holograph_PB_P1 is not None:
-                hdulst += [fits.ImageHDU(self.holograph_PB_P1.real, name='holograph_PB_P1_real')]
-                hdulst += [fits.ImageHDU(self.holograph_PB_P1.imag, name='holograph_PB_P1_imag')]
-                if verbose:
-                    print "\t\tCreated separate extension HDUs of grid's voltage reception pattern spectra\n\t\t\twith size {0[0]}x{0[1]}x{0[2]} for real and imaginary parts.".format(self.holograph_PB_P1.shape)
-            if self.holograph_P1 is not None:
-                hdulst += [fits.ImageHDU(self.holograph_P1.real, name='holograph_P1_real')]
-                hdulst += [fits.ImageHDU(self.holograph_P1.imag, name='holograph_P1_imag')]
-                if verbose:
-                    print "\t\tCreated separate extension HDUs of grid's voltage holograph spectra of \n\t\t\tsize {0[0]}x{0[1]}x{0[2]} for real and imaginary parts.".format(self.holograph_P1.shape)
+#             if self.holograph_PB_P1 is not None:
+#                 hdulst += [fits.ImageHDU(self.holograph_PB_P1.real, name='holograph_PB_P1_real')]
+#                 hdulst += [fits.ImageHDU(self.holograph_PB_P1.imag, name='holograph_PB_P1_imag')]
+#                 if verbose:
+#                     print "\t\tCreated separate extension HDUs of grid's voltage reception pattern spectra\n\t\t\twith size {0[0]}x{0[1]}x{0[2]} for real and imaginary parts.".format(self.holograph_PB_P1.shape)
+#             if self.holograph_P1 is not None:
+#                 hdulst += [fits.ImageHDU(self.holograph_P1.real, name='holograph_P1_real')]
+#                 hdulst += [fits.ImageHDU(self.holograph_P1.imag, name='holograph_P1_imag')]
+#                 if verbose:
+#                     print "\t\tCreated separate extension HDUs of grid's voltage holograph spectra of \n\t\t\tsize {0[0]}x{0[1]}x{0[2]} for real and imaginary parts.".format(self.holograph_P1.shape)
 
-        if (pol is None) or (pol == 'P2'):
-            if verbose:
-                print '\tWorking on polarization P2...'
+#         if (pol is None) or (pol == 'P2'):
+#             if verbose:
+#                 print '\tWorking on polarization P2...'
 
-            if self.lf_P2 is not None:
-                hdulst += [fits.ImageHDU(self.lf_P2, name='grid_lf_P2')]
-                if verbose:
-                    print '\t\tCreated an extension HDU of l-coordinates of grid of size: {0[0]} \n\t\t\tfor each of the {0[1]} frequency channels'.format(self.lf_P2.shape)
-            if self.mf_P2 is not None:
-                hdulst += [fits.ImageHDU(self.mf_P2, name='grid_mf_P2')]
-                if verbose:
-                    print '\t\tCreated an extension HDU of m-coordinates of grid of size: {0[0]} \n\t\t\tfor each of the {0[1]} frequency channels'.format(self.mf_P2.shape)
+#             if self.lf_P2 is not None:
+#                 hdulst += [fits.ImageHDU(self.lf_P2, name='grid_lf_P2')]
+#                 if verbose:
+#                     print '\t\tCreated an extension HDU of l-coordinates of grid of size: {0[0]} \n\t\t\tfor each of the {0[1]} frequency channels'.format(self.lf_P2.shape)
+#             if self.mf_P2 is not None:
+#                 hdulst += [fits.ImageHDU(self.mf_P2, name='grid_mf_P2')]
+#                 if verbose:
+#                     print '\t\tCreated an extension HDU of m-coordinates of grid of size: {0[0]} \n\t\t\tfor each of the {0[1]} frequency channels'.format(self.mf_P2.shape)
 
-            if self.holograph_PB_P2 is not None:
-                hdulst += [fits.ImageHDU(self.holograph_PB_P2.real, name='holograph_PB_P2_real')]
-                hdulst += [fits.ImageHDU(self.holograph_PB_P2.imag, name='holograph_PB_P2_imag')]
-                if verbose:
-                    print "\t\tCreated separate extension HDUs of grid's voltage reception pattern spectra\n\t\t\twith size {0[0]}x{0[1]}x{0[2]} for real and imaginary parts.".format(self.holograph_PB_P2.shape)
-            if self.holograph_P2 is not None:
-                hdulst += [fits.ImageHDU(self.holograph_P2.real, name='holograph_P2_real')]
-                hdulst += [fits.ImageHDU(self.holograph_P2.imag, name='holograph_P2_imag')]
-                if verbose:
-                    print "\t\tCreated separate extension HDUs of grid's voltage holograph spectra of \n\t\t\tsize {0[0]}x{0[1]}x{0[2]} for real and imaginary parts.".format(self.holograph_P2.shape)
+#             if self.holograph_PB_P2 is not None:
+#                 hdulst += [fits.ImageHDU(self.holograph_PB_P2.real, name='holograph_PB_P2_real')]
+#                 hdulst += [fits.ImageHDU(self.holograph_PB_P2.imag, name='holograph_PB_P2_imag')]
+#                 if verbose:
+#                     print "\t\tCreated separate extension HDUs of grid's voltage reception pattern spectra\n\t\t\twith size {0[0]}x{0[1]}x{0[2]} for real and imaginary parts.".format(self.holograph_PB_P2.shape)
+#             if self.holograph_P2 is not None:
+#                 hdulst += [fits.ImageHDU(self.holograph_P2.real, name='holograph_P2_real')]
+#                 hdulst += [fits.ImageHDU(self.holograph_P2.imag, name='holograph_P2_imag')]
+#                 if verbose:
+#                     print "\t\tCreated separate extension HDUs of grid's voltage holograph spectra of \n\t\t\tsize {0[0]}x{0[1]}x{0[2]} for real and imaginary parts.".format(self.holograph_P2.shape)
 
-        if verbose:
-            print '\tNow writing FITS file to disk:\n\t\t{0}'.format(filename)
+#         if verbose:
+#             print '\tNow writing FITS file to disk:\n\t\t{0}'.format(filename)
 
-        hdu = fits.HDUList(hdulst)
-        hdu.writeto(filename, clobber=overwrite)
+#         hdu = fits.HDUList(hdulst)
+#         hdu.writeto(filename, clobber=overwrite)
 
-        if verbose:
-            print '\tImage information written successfully to FITS file on disk:\n\t\t{0}\n'.format(filename)
+#         if verbose:
+#             print '\tImage information written successfully to FITS file on disk:\n\t\t{0}\n'.format(filename)
 
 ################################################################################
 
@@ -6444,11 +6444,11 @@ class NewImage:
     gridy_P2     [Numpy array] y-locations of the grid lattice for P2 
                  polarization
 
-    grid_illuminaton_P1
+    grid_illumination_P1
                  [Numpy array] Electric field illumination for P1 polarization 
                  on the grid. Could be complex. Same size as the grid
 
-    grid_illuminaton_P2
+    grid_illumination_P2
                  [Numpy array] Electric field illumination for P2 polarization 
                  on the grid. Could be complex. Same size as the grid
 
@@ -6556,6 +6556,9 @@ class NewImage:
             if verbose:
                 print '\t\tInitialized time stamp.'
 
+        self.timestamps = []
+        self.tbinsize = None
+
         if f0 is not None:
             self.f0 = f0
             if verbose:
@@ -6567,6 +6570,8 @@ class NewImage:
                 print '\t\tInitialized frequency channels.'
 
         self.measured_type = None
+        self.antenna_array = None
+        self.interferometer_array = None
 
         if (infile is None) and (antenna_array is None) and (interferometer_array is None):
             self.gridx_P1 = None
@@ -6691,6 +6696,30 @@ class NewImage:
             if verbose:
                 print '\t\tClosed input FITS file.'
 
+        self.grid_illumination = {}
+        self.holimg = {}
+        self.holbeam = {}
+        self.img = {}
+        self.beam = {}
+        self.gridl = {}
+        self.gridm = {}
+        self.grid_wts = {}
+        self.grid_Ef = {}
+        self.grid_Vf = {}
+        self.holimg_stack = {}
+        self.holbeam_stack = {}
+        self.img_stack = {}
+        self.beam_stack = {}
+        self.grid_illumination_stack = {}
+        self.grid_vis_stack = {}
+        self.img_avg = {}
+        self.beam_avg = {}
+        self.grid_vis_avg = {}
+        self.grid_illumination_avg = {}
+        self.wts_vuf = {}
+        self.vis_vuf = {}
+        self.twts = {}
+
         if antenna_array is not None:
             if verbose:
                 print '\tInitializing from an instance of class AntennaArray...'
@@ -6708,46 +6737,38 @@ class NewImage:
                 if verbose:
                     print '\t\tInitialized time stamp to {0} from antenna array info.'.format(self.timestamp)
             
-                self.grid_illumination = {}
-                self.grid_Ef = {}
-                self.holimg = {}
-                self.holbeam = {}
-                self.img = {}
-                self.beam = {}
-                self.gridl = {}
-                self.gridm = {}
-                self.grid_wts = {}
-
                 if pol is None:
                     pol = ['P1', 'P2']
                 pol = NP.unique(NP.asarray(pol))
 
                 self.gridu, self.gridv = antenna_array.gridu, antenna_array.gridv
-                # antenna_array.make_grid_cube(verbose=verbose, pol=pol)
-                antenna_array.make_grid_cube_new(verbose=verbose, pol=pol)
-
-                for apol in pol:
-                    if apol in ['P1', 'P2']:
-                        if verbose:
-                            print '\n\t\tWorking on polarization {0}'.format(apol)
-                                
-                        self.holimg[apol] = None
-                        self.holbeam[apol] = None
-                        self.img[apol] = None
-                        self.beam[apol] = None
-                        self.grid_wts[apol] = NP.zeros(self.gridu.shape+(self.f.size,))
-                        if apol in antenna_array.grid_illumination:
-                            self.grid_illumination[apol] = antenna_array.grid_illumination[apol]
-                            self.grid_Ef[apol] = antenna_array.grid_Ef[apol]
-                        else:
-                            self.grid_illumination[apol] = None
-                            self.grid_Ef[apol] = None
+                for apol in ['P1', 'P2']:
+                    self.holimg[apol] = None
+                    self.holbeam[apol] = None
+                    self.img[apol] = None
+                    self.beam[apol] = None
+                    self.grid_illumination[apol] = None
+                    self.grid_Ef[apol] = None
+                    self.grid_wts[apol] = None
+                    self.holimg_stack[apol] = None
+                    self.holbeam_stack[apol] = None
+                    self.img_stack[apol] = None
+                    self.beam_stack[apol] = None
+                    self.grid_illumination_stack[apol] = None
+                    self.grid_vis_stack[apol] = None
+                    self.grid_vis_avg[apol] = None
+                    self.grid_illumination_avg[apol] = None
+                    self.img_avg[apol] = None
+                    self.beam_avg[apol] = None
+                    self.twts[apol] = None
+                    self.wts_vuf[apol] = None
+                    self.vis_vuf[apol] = None
     
+                self.antenna_array = antenna_array
                 self.measured_type = 'E-field'
 
                 if verbose:
-                    print '\t\tInitialized gridx, gridy, grid_illumination, and grid_Ef.'
-                    print '\t\tInitialized gridl, gridm, and img'
+                    print '\t\tInitialized gridded attributes for image object'
             else:
                 raise TypeError('antenna_array is not an instance of class AntennaArray. Cannot initiate instance of class Image.')
 
@@ -6768,47 +6789,38 @@ class NewImage:
                 if verbose:
                     print '\t\tInitialized time stamp to {0} from interferometer array info.'.format(self.timestamp)
             
-                self.grid_illumination = {}
-                self.grid_Vf = {}
-                self.holimg = {}
-                self.holbeam = {}
-                self.img = {}
-                self.beam = {}
-                self.gridl = {}
-                self.gridm = {}
-                self.grid_wts = {}
-
                 if pol is None:
                     pol = ['P11', 'P12', 'P21', 'P22']
                 pol = NP.unique(NP.asarray(pol))
 
                 self.gridu, self.gridv = interferometer_array.gridu, interferometer_array.gridv
-                # interferometer_array.make_grid_cube(verbose=verbose, pol=pol)
-                interferometer_array.make_grid_cube_new(verbose=verbose, pol=pol)
-
-                for cpol in pol:
-                    if cpol in ['P11', 'P12', 'P21', 'P22']:
-                        if verbose:
-                            print '\n\t\tWorking on polarization {0}'.format(cpol)
-                                
-                        self.holimg[cpol] = None
-                        self.holbeam[cpol] = None
-                        self.img[cpol] = None
-                        self.beam[cpol] = None
-                        self.grid_wts[cpol] = NP.zeros(self.gridu.shape+(self.f.size,))
-                        if cpol in interferometer_array.grid_illumination:
-                            self.grid_illumination[cpol] = interferometer_array.grid_illumination[cpol]
-                            self.grid_Vf[cpol] = interferometer_array.grid_Vf[cpol]
-                        else:
-                            self.grid_illumination[cpol] = None
-                            self.grid_Vf[cpol] = None
+                for cpol in ['P11', 'P12', 'P21', 'P22']:
+                    self.holimg[cpol] = None
+                    self.holbeam[cpol] = None
+                    self.img[cpol] = None
+                    self.beam[cpol] = None
+                    self.grid_illumination[cpol] = None
+                    self.grid_Vf[cpol] = None
+                    self.grid_wts[cpol] = None
+                    self.holimg_stack[cpol] = None
+                    self.holbeam_stack[cpol] = None
+                    self.img_stack[cpol] = None
+                    self.beam_stack[cpol] = None
+                    self.grid_illumination_stack[cpol] = None
+                    self.grid_vis_stack[cpol] = None
+                    self.grid_vis_avg[cpol] = None
+                    self.grid_illumination_avg[cpol] = None
+                    self.img_avg[cpol] = None
+                    self.beam_avg[cpol] = None
+                    self.twts[cpol] = None
+                    self.wts_vuf[cpol] = None
+                    self.vis_vuf[cpol] = None
     
+                self.interferometer_array = interferometer_array
                 self.measured_type = 'visibility'
 
                 if verbose:
-                    print '\t\tInitialized gridx, gridy, grid_illumination, and grid_Vf.'
-                    print '\t\tInitialized gridl, gridm, and img'
-                        
+                    print '\t\tInitialized gridded attributes for image object'
             else:
                 raise TypeError('interferometer_array is not an instance of class InterferometerArray. Cannot initiate instance of class Image.')
 
@@ -6817,7 +6829,129 @@ class NewImage:
 
     ############################################################################
 
-    def imagr(self, pol=None, weighting='natural', pad='on', verbose=True):
+    def reset(self, verbose=True):
+
+        """
+        ------------------------------------------------------------------------
+        Reset some grid level attributes of image object to init values
+
+        Inputs:
+
+        verbose   [boolean] If True (default), prints diagnostic and progress
+                  messages. If False, suppress printing such messages.
+
+        The attributes reset to init values are grid_illumination, holbeam, 
+        grid_Vf, grid_Ef, interferometer_array, antenna_array, holimg, gridl, 
+        gridm, img, beam, grid_wts
+        ------------------------------------------------------------------------
+        """
+        
+        if verbose:
+            print 'Resetting grid level attributes of image object...'
+
+        self.antenna_array = None
+        self.interferometer_array = None
+        self.timestamp = None
+        self.grid_illumination = {}
+        self.holimg = {}
+        self.holbeam = {}
+        self.img = {}
+        self.beam = {}
+        self.gridl = {}
+        self.gridm = {}
+        self.grid_wts = {}
+        self.grid_Ef = {}
+        self.grid_Vf = {}
+        self.wts_vuf = {}
+        self.vis_vuf = {}
+
+        if self.measured_type == 'E-field':
+            for apol in ['P1', 'P2']:
+                self.holimg[apol] = None
+                self.holbeam[apol] = None
+                self.img[apol] = None
+                self.beam[apol] = None
+                self.grid_illumination[apol] = None
+                self.grid_Ef[apol] = None
+                self.grid_wts[apol] = None
+                self.wts_vuf[apol] = None
+                self.vis_vuf[apol] = None
+        else:
+            for cpol in ['P11', 'P12', 'P21', 'P22']:
+                self.holimg[cpol] = None
+                self.holbeam[cpol] = None
+                self.img[cpol] = None
+                self.beam[cpol] = None
+                self.grid_illumination[cpol] = None
+                self.grid_Vf[cpol] = None
+                self.grid_wts[cpol] = None
+                self.wts_vuf[cpol] = None
+                self.vis_vuf[cpol] = None
+
+    ############################################################################
+
+    def update(self, antenna_array=None, interferometer_array=None, reset=True, 
+               verbose=True):
+
+        """
+        ------------------------------------------------------------------------
+        Updates the image object with newer instance of class AntennaArray or
+        InterferometerArray
+
+        Inputs:
+
+        antenna_array [instance of class AntennaArray] Update the image object 
+                      with this new instance of class AntennaArray (if attribute
+                      measured_type is 'E-field')
+
+        interferometer_array 
+                      [instance of class InterferometerArray] Update the image 
+                      object with this new instance of class InterferometerArray 
+                      (if attribute measured_type is 'visibility')
+
+        reset         [boolean] if set to True (default), resets some of the
+                      image object attribtues by calling member function reset()
+
+        verbose       [boolean] If True (default), prints diagnostic and progress
+                      messages. If False, suppress printing such messages.    
+        ------------------------------------------------------------------------
+        """
+
+        if not isinstance(reset, bool):
+            raise TypeError('reset keyword must be of boolean type')
+
+        if not isinstance(verbose, bool):
+            raise TypeError('verbose keyword must be of boolean type')
+
+        if self.measured_type == 'E-field':
+            if antenna_array is not None:
+                if isinstance(antenna_array, AntennaArray):
+                    if reset:
+                        self.reset(verbose=verbose)
+                        self.gridu, self.gridv = antenna_array.gridu, antenna_array.gridv
+                        self.antenna_array = antenna_array
+                else:
+                    raise TypeError('Input antenna_array must be an instance of class AntennaArray')
+                self.timestamp = antenna_array.timestamp
+                if verbose:
+                    print 'Updated antenna array attributes of the image instance'
+        else:
+            if interferometer_array is not None:
+                if isinstance(interferometer_array, InterferometerArray):
+                    if reset:
+                        self.reset(verbose=verbose)
+                        self.gridu, self.gridv = interferometer_array.gridu, interferometer_array.gridv
+                        self.interferometer_array = interferometer_array
+                else:
+                    raise TypeError('Input interferometer_array must be an instance of class InterferometerArray')
+                self.timestamp = interferometer_array.timestamp
+                if verbose:
+                    print 'Updated interferometer array attributes of the image instance'
+
+    ############################################################################
+
+    def imagr(self, pol=None, weighting='natural', pad='on', stack=True,
+              verbose=True):
 
         """
         ------------------------------------------------------------------------
@@ -6842,6 +6976,9 @@ class NewImage:
                   extends on each side in each direction by 50%. Thus the size
                   of the padded grid is twice that of the interferometer array 
                   grid and would be the 4 times that of an antenna array grid.
+
+        stack     [boolean] If True (default), stacks the imaged and uv-gridded
+                  data to the stack for batch processing later
 
         verbose   [boolean] If True (default), prints diagnostic and progress
                   messages. If False, suppress printing such messages.
@@ -6869,9 +7006,17 @@ class NewImage:
 
         if self.measured_type == 'E-field':
             if pol is None: pol = ['P1', 'P2']
-            pol = NP.unique(NP.asarray(pol))
+            pol = NP.unique(NP.asarray(pol)).tolist()
             for apol in pol:
                 if apol in ['P1', 'P2']:
+                    # self.antenna_array.make_grid_cube(verbose=verbose, pol=apol)
+                    self.antenna_array.make_grid_cube_new(verbose=verbose, pol=apol)
+
+                    self.grid_wts[apol] = NP.zeros(self.gridu.shape+(self.f.size,))
+                    if apol in self.antenna_array.grid_illumination:
+                        self.grid_illumination[apol] = self.antenna_array.grid_illumination[apol]
+                        self.grid_Ef[apol] = self.antenna_array.grid_Ef[apol]
+                    
                     if verbose: print 'Preparing to Inverse Fourier Transform...'
                     if weighting == 'uniform':
                         self.grid_wts[apol][NP.abs(self.grid_illumination[apol]) > 0.0] = 1.0/NP.abs(self.grid_illumination[apol][NP.abs(self.grid_illumination[apol]) > 0.0])
@@ -6889,25 +7034,39 @@ class NewImage:
                         dirty_image = NP.fft.fft2(self.grid_wts[apol]*self.grid_Ef[apol], axes=(0,1))
                         self.gridl, self.gridm = NP.meshgrid(NP.fft.fftshift(NP.fft.fftfreq(grid_shape[1], du)), NP.fft.fftshift(NP.fft.fftfreq(grid_shape[0], dv)))
 
-                    self.holbeam[apol] = NP.fft.fftshift(syn_beam, axes=(0,1)) / sum_wts
-                    self.holimg[apol] = NP.fft.fftshift(dirty_image, axes=(0,1)) / sum_wts
-                    syn_beam = NP.abs(syn_beam) ** 2
-                    meanval = NP.sum(syn_beam, axis=(0,1), keepdims=True) / (syn_beam.shape[0]*syn_beam.shape[1])
-                    # meanval = NP.nanmean(syn_beam.reshape(-1,dirty_image.shape[2]), axis=0).reshape(1,1,-1)
-                    sum_wts2 = sum_wts**2 - meanval
-                    syn_beam -= meanval
-                    dirty_image = NP.abs(dirty_image) ** 2
-                    meanval = NP.sum(dirty_image, axis=(0,1), keepdims=True) / (dirty_image.shape[0]*dirty_image.shape[1])
-                    # meanval = NP.nanmean(dirty_image.reshape(-1,syn_beam.shape[2]), axis=0).reshape(1,1,-1)
-                    dirty_image -= meanval
-                    self.beam[apol] = NP.fft.fftshift(syn_beam, axes=(0,1)) / sum_wts2
-                    self.img[apol] = NP.fft.fftshift(dirty_image, axes=(0,1)) / sum_wts2
+                    self.holbeam[apol] = NP.fft.fftshift(syn_beam/sum_wts, axes=(0,1))
+                    self.holimg[apol] = NP.fft.fftshift(dirty_image/sum_wts, axes=(0,1))
+                    syn_beam = NP.abs(syn_beam)**2
+                    sum_wts2 = sum_wts**2
+                    # meanval = NP.sum(syn_beam, axis=(0,1), keepdims=True) / (syn_beam.shape[0]*syn_beam.shape[1])
+                    # # meanval = NP.nanmean(syn_beam.reshape(-1,dirty_image.shape[2]), axis=0).reshape(1,1,-1)
+                    # sum_wts2 -= meanval
+                    # syn_beam -= meanval
+                    dirty_image = NP.abs(dirty_image)**2
+                    # meanval = NP.sum(dirty_image, axis=(0,1), keepdims=True) / (dirty_image.shape[0]*dirty_image.shape[1])
+                    # # meanval = NP.nanmean(dirty_image.reshape(-1,syn_beam.shape[2]), axis=0).reshape(1,1,-1)
+                    # dirty_image -= meanval
+                    self.beam[apol] = NP.fft.fftshift(syn_beam/sum_wts2, axes=(0,1))
+                    self.img[apol] = NP.fft.fftshift(dirty_image/sum_wts2, axes=(0,1))
+                    qty_vuf = NP.fft.ifft2(syn_beam/sum_wts2, axes=(0,1)) # Inverse FT
+                    qty_vuf = NP.fft.ifftshift(qty_vuf, axes=(0,1)) # Shift array to be centered
+                    self.wts_vuf[apol] = qty_vuf[self.gridv.shape[0]:3*self.gridv.shape[0],self.gridu.shape[0]:3*self.gridu.shape[0],:]
+                    qty_vuf = NP.fft.ifft2(dirty_image/sum_wts2, axes=(0,1)) # Inverse FT
+                    qty_vuf = NP.fft.ifftshift(qty_vuf, axes=(0,1)) # Shift array to be centered
+                    self.vis_vuf[apol] = qty_vuf[self.gridv.shape[0]:3*self.gridv.shape[0],self.gridu.shape[0]:3*self.gridu.shape[0],:]
                        
         if self.measured_type == 'visibility':
             if pol is None: pol = ['P11', 'P12', 'P21', 'P22']
-            pol = NP.unique(NP.asarray(pol))
+            pol = NP.unique(NP.asarray(pol)).tolist()
             for cpol in pol:
                 if cpol in ['P11', 'P12', 'P21', 'P22']:
+                    # self.interferometer_array.make_grid_cube(verbose=verbose, pol=cpol)
+                    self.interferometer_array.make_grid_cube_new(verbose=verbose, pol=cpol)
+                    self.grid_wts[cpol] = NP.zeros(self.gridu.shape+(self.f.size,))
+                    if cpol in self.interferometer_array.grid_illumination:
+                        self.grid_illumination[cpol] = self.interferometer_array.grid_illumination[cpol]
+                        self.grid_Vf[cpol] = self.interferometer_array.grid_Vf[cpol]
+
                     if verbose: print 'Preparing to Inverse Fourier Transform...'
                     if weighting == 'uniform':
                         self.grid_wts[cpol][NP.abs(self.grid_illumination[cpol]) > 0.0] = 1.0/NP.abs(self.grid_illumination[cpol][NP.abs(self.grid_illumination[cpol]) > 0.0])
@@ -6937,8 +7096,14 @@ class NewImage:
                     dirty_image = dirty_image.real
                     syn_beam = syn_beam.real
 
-                    self.beam[cpol] = NP.fft.fftshift(syn_beam, axes=(0,1)) / sum_wts
-                    self.img[cpol] = NP.fft.fftshift(dirty_image, axes=(0,1)) / sum_wts
+                    self.beam[cpol] = NP.fft.fftshift(syn_beam/sum_wts, axes=(0,1))
+                    self.img[cpol] = NP.fft.fftshift(dirty_image/sum_wts, axes=(0,1))
+                    qty_vuf = NP.fft.ifft2(syn_beam/sum_wts, axes=(0,1)) # Inverse FT
+                    qty_vuf = NP.fft.ifftshift(qty_vuf, axes=(0,1)) # Shift array to be centered
+                    self.wts_vuf[apol] = qty_vuf[self.gridv.shape[0]/2:3*self.gridv.shape[0]/2,self.gridu.shape[0]/2:3*self.gridu.shape[0]/2,:]
+                    qty_vuf = NP.fft.ifft2(dirty_image/sum_wts, axes=(0,1)) # Inverse FT
+                    qty_vuf = NP.fft.ifftshift(qty_vuf, axes=(0,1)) # Shift array to be centered
+                    self.vis_vuf[apol] = qty_vuf[self.gridv.shape[0]/2:3*self.gridv.shape[0]/2,self.gridu.shape[0]/2:3*self.gridu.shape[0]/2,:]
 
         nan_ind = NP.where(self.gridl**2 + self.gridm**2 > 1.0)
         # nan_ind_unraveled = NP.unravel_index(nan_ind, self.gridl.shape)
@@ -6948,8 +7113,195 @@ class NewImage:
         if verbose:
             print 'Successfully imaged.'
 
+        # Call stack() if required
+        if stack:
+            self.stack(pol=pol)
+
     ############################################################################
         
+    def stack(self, pol=None):
+
+        """
+        ------------------------------------------------------------------------
+        Stacks current images and UV-grid information onto a stack
+
+        Inputs:
+
+        pol     [string] indicates which polarization information to be saved. 
+                Allowed values are 'P1', 'P2' in case of MOFF or 'P11', 'P12', 
+                'P21', 'P22' in case of FX or None (default). If None, 
+                information on all polarizations appropriate for MOFF or FX 
+                are stacked
+        ------------------------------------------------------------------------
+        """
+
+        if self.timestamp not in self.timestamps:
+            if pol is None:
+                if self.measured_type == 'E-field':
+                    pol = ['P1', 'P2']
+                else:
+                    pol = ['P11', 'P12', 'P21', 'P22']
+            elif isinstance(pol, str):
+                pol = [pol]
+            elif isinstance(pol, list):
+                p = [item for item in pol if item in ['P1', 'P2', 'P11', 'P12', 'P21', 'P22']]
+                pol = p
+            else:
+                raise TypeError('Input pol must be a string or list specifying polarization(s)')
+    
+            for p in pol:
+                if self.img_stack[p] is None:
+                    self.img_stack[p] = self.img[p][NP.newaxis,:,:,:]
+                    self.beam_stack[p] = self.beam[p][NP.newaxis,:,:,:]
+                    self.grid_illumination_stack[p] = self.wts_vuf[p][NP.newaxis,:,:,:]
+                    self.grid_vis_stack[p] = self.vis_vuf[p][NP.newaxis,:,:,:]
+                else:
+                    self.img_stack[p] = NP.concatenate((self.img_stack[p], self.img[p][NP.newaxis,:,:,:]), axis=0)
+                    self.beam_stack[p] = NP.concatenate((self.beam_stack[p], self.beam[p][NP.newaxis,:,:,:]), axis=0)
+                    self.grid_illumination_stack[p] = NP.concatenate((self.grid_illumination_stack[p], self.wts_vuf[p][NP.newaxis,:,:,:]), axis=0)
+                    self.grid_vis_stack[p] = NP.concatenate((self.grid_vis_stack[p], self.vis_vuf[p][NP.newaxis,:,:,:]), axis=0)
+    
+                if self.measured_type == 'E-field':
+                    if self.holimg_stack[p] is None:
+                        self.holimg_stack[p] = self.holimg[p][NP.newaxis,:,:,:]
+                        self.holbeam_stack[p] = self.holbeam[p][NP.newaxis,:,:,:]
+                    else:
+                        self.holimg_stack[p] = NP.concatenate((self.holimg_stack[p], self.holimg[p][NP.newaxis,:,:,:]), axis=0)
+                        self.holbeam_stack[p] = NP.concatenate((self.holbeam_stack[p], self.holbeam[p][NP.newaxis,:,:,:]), axis=0)
+
+            self.timestamps += [self.timestamp]
+
+    ############################################################################
+
+    def accumulate(self, tbinsize=None, verbose=True):
+
+        """
+        ------------------------------------------------------------------------
+        Accumulates and averages gridded quantities that are statistically
+        stationary such as images and visibilities
+
+        Input:
+
+        tbinsize [scalar or dictionary] Contains bin size of timestamps while
+                 averaging. Default = None means gridded quantities over all
+                 timestamps are averaged. If scalar, the same (positive) value 
+                 applies to all polarizations. If dictionary, timestamp bin size
+                 (positive) is provided under each key 'P11', 'P12', 'P21', 
+                 'P22'. If any of the keys is missing the gridded quantities 
+                 for that polarization are averaged over all timestamps.
+
+        verbose  [boolean] If True (default), prints diagnostic and progress
+                 messages. If False, suppress printing such messages.
+        ------------------------------------------------------------------------
+        """
+        
+        if self.measured_type == 'E-field':
+            pol = ['P1', 'P2']
+        else:
+            pol = ['P11', 'P12', 'P21', 'P22']
+
+        timestamps = NP.asarray(self.timestamps).astype(NP.float)
+        twts = {}
+        img_acc = {}
+        beam_acc = {}
+        grid_vis_acc = {}
+        grid_illumination_acc = {}
+        for p in pol:
+            img_acc[p] = None
+            beam_acc[p] = None
+            grid_vis_acc[p] = None
+            grid_illumination_acc[p] = None
+            twts[p] = []
+
+        if tbinsize is None:   # Average across all timestamps
+            for p in pol:
+                if self.img_stack[p] is not None:
+                    img_acc[p] = NP.nansum(self.img_stack[p], axis=0, keepdims=True)
+                    beam_acc[p] = NP.nansum(self.beam_stack[p], axis=0, keepdims=True)
+                    grid_vis_acc[p] = NP.nansum(self.grid_vis_stack[p], axis=0, keepdims=True)
+                    grid_illumination_acc[p] = NP.nansum(self.grid_illumination_stack[p], axis=0, keepdims=True)
+                twts[p] = NP.asarray(len(self.timestamps)).reshape(-1,1,1,1)
+            self.tbinsize = tbinsize
+        elif isinstance(tbinsize, (int, float)): # Apply same time bin size to all polarizations 
+            eps = 1e-10
+            tbins = NP.arange(timestamps.min(), timestamps.max(), tbinsize)
+            tbins = NP.append(tbins, timestamps.max()+eps)
+            for p in pol:
+                counts, tbin_edges, tbinnum, ri = OPS.binned_statistic(timestamps, statistic='count', bins=tbins)
+                for binnum in range(counts.size):
+                    ind = ri[ri[binnum]:ri[binnum+1]]
+                    twts[p] += [counts]
+                    if img_acc[p] is None:
+                        if self.img_stack[p] is not None:
+                            img_acc[p] = NP.nansum(self.img_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                            beam_acc[p] = NP.nansum(self.beam_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                            grid_vis_acc[p] = NP.nansum(self.grid_vis_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                            grid_illumination_acc[p] = NP.nansum(self.grid_illumination_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                    else:
+                        if self.img_stack[p] is not None:
+                            img_acc[p] = NP.vstack((img_acc[p], NP.nansum(self.img_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                            beam_acc[p] = NP.vstack((beam_acc[p], NP.nansum(self.beam_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                            grid_vis_acc[p] = NP.vstack((grid_vis_acc[p], NP.nansum(self.grid_vis_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                            grid_illumination_acc[p] = NP.vstack((grid_illumination_acc[p], NP.nansum(self.grid_illumination_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                twts[p] = NP.asarray(twts[p]).astype(NP.float).reshape(-1,1,1,1)
+            self.tbinsize = tbinsize
+        elif isinstance(tbinsize, dict): # Apply different time binsizes to corresponding polarizations
+            tbsize = {}
+            for p in pol:
+                if p not in tbinsize:
+                    if self.img_stack[p] is not None:
+                        img_acc[p] = NP.nansum(self.img_stack[p], axis=0, keepdims=True)
+                        beam_acc[p] = NP.nansum(self.beam_stack[p], axis=0, keepdims=True)
+                        grid_vis_acc[p] = NP.nansum(self.grid_vis_stack[p], axis=0, keepdims=True)
+                        grid_illumination_acc[p] = NP.nansum(self.grid_illumination_stack[p], axis=0, keepdims=True)
+                    twts[p] = NP.asarray(len(self.timestamps)).reshape(-1,1,1,1)
+                    tbsize[p] = None
+                elif isinstance(tbinsize[p], (int,float)):
+                    eps = 1e-10
+                    tbins = NP.arange(timestamps.min(), timestamps.max(), tbinsize[p])
+                    tbins = NP.append(tbins, timestamps.max()+eps)
+                    
+                    counts, tbin_edges, tbinnum, ri = OPS.binned_statistic(timestamps, statistic='count', bins=tbins)
+                    for binnum in range(counts.size):
+                        ind = ri[ri[binnum]:ri[binnum+1]]
+                        twts[p] += [counts]
+                        if img_acc[p] is None:
+                            if self.img_stack[p] is not None:
+                                img_acc[p] = NP.nansum(self.img_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                                beam_acc[p] = NP.nansum(self.beam_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                                grid_vis_acc[p] = NP.nansum(self.grid_vis_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                                grid_illumination_acc[p] = NP.nansum(self.grid_illumination_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                        else:
+                            if self.img_stack[p] is not None:
+                                img_acc[p] = NP.vstack((img_acc[p], NP.nansum(self.img_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                                beam_acc[p] = NP.vstack((beam_acc[p], NP.nansum(self.beam_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                                grid_vis_acc[p] = NP.vstack((grid_vis_acc[p], NP.nansum(self.grid_vis_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                                grid_illumination_acc[p] = NP.vstack((grid_illumination_acc[p], NP.nansum(self.grid_illumination_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                    twts[p] = NP.asarray(twts[p]).astype(NP.float).reshape(-1,1,1,1)
+                    tbsize[p] = tbinsize[p]
+                else:
+                    if self.img_stack[p] is not None:
+                        img_acc[p] = NP.nansum(self.img_stack[p], axis=0, keepdims=True)
+                        beam_acc[p] = NP.nansum(self.beam_stack[p], axis=0, keepdims=True)
+                        grid_vis_acc[p] = NP.nansum(self.grid_vis_stack[p], axis=0, keepdims=True)
+                        grid_illumination_acc[p] = NP.nansum(self.grid_illumination_stack[p], axis=0, keepdims=True)
+                    twts[p] = NP.asarray(len(self.timestamps)).reshape(-1,1,1,1)
+                    tbsize[p] = None
+
+            self.tbinsize = tbsize
+
+        # Compute the averaged grid quantities from the accumulated versions
+        for p in pol:
+            if img_acc[p] is not None:
+                self.img_avg[p] = img_acc[p] / twts[p]
+                self.beam_avg[p] = beam_acc[p] / twts[p]
+                self.grid_vis_avg[p] = grid_vis_acc[p] / twts[p]
+                self.grid_illumination_avg[p] = grid_illumination_acc[p] / twts[p]
+
+        self.twts = twts
+
+    ############################################################################
+
     def save(self, imgfile, pol=None, overwrite=False, verbose=True):
 
         """
@@ -8185,7 +8537,7 @@ class AntennaArray:
                  mid-point between the extreme x- and y- coordinates of the 
                  antennas
 
-    grid_illuminaton
+    grid_illumination
                  [dictionary] Electric field illumination of antenna aperture
                  for each polarization held under keys 'P1' and 'P2'. Could be 
                  complex. Stored as numpy arrays in the form of cubes with 
