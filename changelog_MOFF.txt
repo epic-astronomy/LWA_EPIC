@@ -1,3 +1,11 @@
+From 1cc3d96 (on branch imgstack):
+=================================
+
+In antenna_array.py,
+
+(*) Remove mean subtraction from imagr() member function of class
+NewImage in case of electric-field based MOFF imaging
+
 From 0a1cd79 (on branch imgstack):
 =================================
 
