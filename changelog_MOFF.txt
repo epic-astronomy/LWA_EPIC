@@ -1,3 +1,9 @@
+From 10f4625 (on branch imgstack):
+=================================
+
+(*) Test image stacking (primarily from MOFF) using main level script
+compare_simulations_MOFF_FX_test_stacking.py
+
 From 612f745 (on branch imgstack):
 =================================
 
