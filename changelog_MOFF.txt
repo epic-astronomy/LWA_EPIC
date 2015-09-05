@@ -1,3 +1,29 @@
+From 612f745 (on branch imgstack):
+=================================
+
+In antenna_array.py,
+
+(*) Compute uv-grid attributes wts_vuf and vis_vuf in member function
+imagr() of class NewImage for both MOFF and FX cases
+(*) Change attribute name grid_Vf_stack and grid_Vf_avg in class
+NewImage throughout to grid_vis_stack and grid_vis_avg respectively
+(*) Add and initialize attributes wts_vuf and vis_vuf in __init__()
+member function of class NewImage
+(*) Add resetting of attributes wts_vuf and vis_vuf in reset()
+member function of class NewImage
+(*) Minor bug fix in correct estimation of attribute
+grid_illumination_avg in member function accumulate() of NewImage
+class
+(*) Variable pol inside member function imagr() of class NewImage is
+now converted to be a list instead of a numpy array
+(*) Minor bug fix in assignment of variable twts in member function
+accumulate() of class NewImage
+(*) Minor bug fix in estimating attribute grid_vis_avg in accumulate()
+member function of class NewImage
+(*) In member function accumulate() of class NewImage, average
+quantities only when they are not set to None under the corresponding
+polarization
+
 From 1cc3d96 (on branch imgstack):
 =================================
 

@@ -6711,11 +6711,13 @@ class NewImage:
         self.img_stack = {}
         self.beam_stack = {}
         self.grid_illumination_stack = {}
-        self.grid_Vf_stack = {}
+        self.grid_vis_stack = {}
         self.img_avg = {}
         self.beam_avg = {}
-        self.grid_Vf_avg = {}
+        self.grid_vis_avg = {}
         self.grid_illumination_avg = {}
+        self.wts_vuf = {}
+        self.vis_vuf = {}
         self.twts = {}
 
         if antenna_array is not None:
@@ -6753,12 +6755,14 @@ class NewImage:
                     self.img_stack[apol] = None
                     self.beam_stack[apol] = None
                     self.grid_illumination_stack[apol] = None
-                    self.grid_Vf_stack[apol] = None
-                    self.grid_Vf_avg[apol] = None
+                    self.grid_vis_stack[apol] = None
+                    self.grid_vis_avg[apol] = None
                     self.grid_illumination_avg[apol] = None
                     self.img_avg[apol] = None
                     self.beam_avg[apol] = None
                     self.twts[apol] = None
+                    self.wts_vuf[apol] = None
+                    self.vis_vuf[apol] = None
     
                 self.antenna_array = antenna_array
                 self.measured_type = 'E-field'
@@ -6803,12 +6807,14 @@ class NewImage:
                     self.img_stack[cpol] = None
                     self.beam_stack[cpol] = None
                     self.grid_illumination_stack[cpol] = None
-                    self.grid_Vf_stack[cpol] = None
-                    self.grid_Vf_avg[cpol] = None
+                    self.grid_vis_stack[cpol] = None
+                    self.grid_vis_avg[cpol] = None
                     self.grid_illumination_avg[cpol] = None
                     self.img_avg[cpol] = None
                     self.beam_avg[cpol] = None
                     self.twts[cpol] = None
+                    self.wts_vuf[cpol] = None
+                    self.vis_vuf[cpol] = None
     
                 self.interferometer_array = interferometer_array
                 self.measured_type = 'visibility'
@@ -6856,6 +6862,8 @@ class NewImage:
         self.grid_wts = {}
         self.grid_Ef = {}
         self.grid_Vf = {}
+        self.wts_vuf = {}
+        self.vis_vuf = {}
 
         if self.measured_type == 'E-field':
             for apol in ['P1', 'P2']:
@@ -6866,6 +6874,8 @@ class NewImage:
                 self.grid_illumination[apol] = None
                 self.grid_Ef[apol] = None
                 self.grid_wts[apol] = None
+                self.wts_vuf[apol] = None
+                self.vis_vuf[apol] = None
         else:
             for cpol in ['P11', 'P12', 'P21', 'P22']:
                 self.holimg[cpol] = None
@@ -6875,6 +6885,8 @@ class NewImage:
                 self.grid_illumination[cpol] = None
                 self.grid_Vf[cpol] = None
                 self.grid_wts[cpol] = None
+                self.wts_vuf[cpol] = None
+                self.vis_vuf[cpol] = None
 
     ############################################################################
 
@@ -6994,7 +7006,7 @@ class NewImage:
 
         if self.measured_type == 'E-field':
             if pol is None: pol = ['P1', 'P2']
-            pol = NP.unique(NP.asarray(pol))
+            pol = NP.unique(NP.asarray(pol)).tolist()
             for apol in pol:
                 if apol in ['P1', 'P2']:
                     # self.antenna_array.make_grid_cube(verbose=verbose, pol=apol)
@@ -7022,8 +7034,8 @@ class NewImage:
                         dirty_image = NP.fft.fft2(self.grid_wts[apol]*self.grid_Ef[apol], axes=(0,1))
                         self.gridl, self.gridm = NP.meshgrid(NP.fft.fftshift(NP.fft.fftfreq(grid_shape[1], du)), NP.fft.fftshift(NP.fft.fftfreq(grid_shape[0], dv)))
 
-                    self.holbeam[apol] = NP.fft.fftshift(syn_beam, axes=(0,1)) / sum_wts
-                    self.holimg[apol] = NP.fft.fftshift(dirty_image, axes=(0,1)) / sum_wts
+                    self.holbeam[apol] = NP.fft.fftshift(syn_beam/sum_wts, axes=(0,1))
+                    self.holimg[apol] = NP.fft.fftshift(dirty_image/sum_wts, axes=(0,1))
                     syn_beam = NP.abs(syn_beam)**2
                     sum_wts2 = sum_wts**2
                     # meanval = NP.sum(syn_beam, axis=(0,1), keepdims=True) / (syn_beam.shape[0]*syn_beam.shape[1])
@@ -7034,12 +7046,18 @@ class NewImage:
                     # meanval = NP.sum(dirty_image, axis=(0,1), keepdims=True) / (dirty_image.shape[0]*dirty_image.shape[1])
                     # # meanval = NP.nanmean(dirty_image.reshape(-1,syn_beam.shape[2]), axis=0).reshape(1,1,-1)
                     # dirty_image -= meanval
-                    self.beam[apol] = NP.fft.fftshift(syn_beam, axes=(0,1)) / sum_wts2
-                    self.img[apol] = NP.fft.fftshift(dirty_image, axes=(0,1)) / sum_wts2
+                    self.beam[apol] = NP.fft.fftshift(syn_beam/sum_wts2, axes=(0,1))
+                    self.img[apol] = NP.fft.fftshift(dirty_image/sum_wts2, axes=(0,1))
+                    qty_vuf = NP.fft.ifft2(syn_beam/sum_wts2, axes=(0,1)) # Inverse FT
+                    qty_vuf = NP.fft.ifftshift(qty_vuf, axes=(0,1)) # Shift array to be centered
+                    self.wts_vuf[apol] = qty_vuf[self.gridv.shape[0]:3*self.gridv.shape[0],self.gridu.shape[0]:3*self.gridu.shape[0],:]
+                    qty_vuf = NP.fft.ifft2(dirty_image/sum_wts2, axes=(0,1)) # Inverse FT
+                    qty_vuf = NP.fft.ifftshift(qty_vuf, axes=(0,1)) # Shift array to be centered
+                    self.vis_vuf[apol] = qty_vuf[self.gridv.shape[0]:3*self.gridv.shape[0],self.gridu.shape[0]:3*self.gridu.shape[0],:]
                        
         if self.measured_type == 'visibility':
             if pol is None: pol = ['P11', 'P12', 'P21', 'P22']
-            pol = NP.unique(NP.asarray(pol))
+            pol = NP.unique(NP.asarray(pol)).tolist()
             for cpol in pol:
                 if cpol in ['P11', 'P12', 'P21', 'P22']:
                     # self.interferometer_array.make_grid_cube(verbose=verbose, pol=cpol)
@@ -7078,8 +7096,14 @@ class NewImage:
                     dirty_image = dirty_image.real
                     syn_beam = syn_beam.real
 
-                    self.beam[cpol] = NP.fft.fftshift(syn_beam, axes=(0,1)) / sum_wts
-                    self.img[cpol] = NP.fft.fftshift(dirty_image, axes=(0,1)) / sum_wts
+                    self.beam[cpol] = NP.fft.fftshift(syn_beam/sum_wts, axes=(0,1))
+                    self.img[cpol] = NP.fft.fftshift(dirty_image/sum_wts, axes=(0,1))
+                    qty_vuf = NP.fft.ifft2(syn_beam/sum_wts, axes=(0,1)) # Inverse FT
+                    qty_vuf = NP.fft.ifftshift(qty_vuf, axes=(0,1)) # Shift array to be centered
+                    self.wts_vuf[apol] = qty_vuf[self.gridv.shape[0]/2:3*self.gridv.shape[0]/2,self.gridu.shape[0]/2:3*self.gridu.shape[0]/2,:]
+                    qty_vuf = NP.fft.ifft2(dirty_image/sum_wts, axes=(0,1)) # Inverse FT
+                    qty_vuf = NP.fft.ifftshift(qty_vuf, axes=(0,1)) # Shift array to be centered
+                    self.vis_vuf[apol] = qty_vuf[self.gridv.shape[0]/2:3*self.gridv.shape[0]/2,self.gridu.shape[0]/2:3*self.gridu.shape[0]/2,:]
 
         nan_ind = NP.where(self.gridl**2 + self.gridm**2 > 1.0)
         # nan_ind_unraveled = NP.unravel_index(nan_ind, self.gridl.shape)
@@ -7129,13 +7153,13 @@ class NewImage:
                 if self.img_stack[p] is None:
                     self.img_stack[p] = self.img[p][NP.newaxis,:,:,:]
                     self.beam_stack[p] = self.beam[p][NP.newaxis,:,:,:]
-                    self.grid_illumination_stack[p] = self.grid_illumination[p][NP.newaxis,:,:,:]
-                    self.grid_Vf_stack[p] = self.grid_Vf[p][NP.newaxis,:,:,:]
+                    self.grid_illumination_stack[p] = self.wts_vuf[p][NP.newaxis,:,:,:]
+                    self.grid_vis_stack[p] = self.vis_vuf[p][NP.newaxis,:,:,:]
                 else:
                     self.img_stack[p] = NP.concatenate((self.img_stack[p], self.img[p][NP.newaxis,:,:,:]), axis=0)
                     self.beam_stack[p] = NP.concatenate((self.beam_stack[p], self.beam[p][NP.newaxis,:,:,:]), axis=0)
-                    self.grid_illumination_stack[p] = NP.concatenate((self.grid_illumination_stack[p], self.grid_illumination[p][NP.newaxis,:,:,:]), axis=0)
-                    self.grid_Vf_stack[p] = NP.concatenate((self.grid_Vf_stack[p], self.grid_Vf[p][NP.newaxis,:,:,:]), axis=0)
+                    self.grid_illumination_stack[p] = NP.concatenate((self.grid_illumination_stack[p], self.wts_vuf[p][NP.newaxis,:,:,:]), axis=0)
+                    self.grid_vis_stack[p] = NP.concatenate((self.grid_vis_stack[p], self.vis_vuf[p][NP.newaxis,:,:,:]), axis=0)
     
                 if self.measured_type == 'E-field':
                     if self.holimg_stack[p] is None:
@@ -7180,22 +7204,23 @@ class NewImage:
         twts = {}
         img_acc = {}
         beam_acc = {}
-        grid_Vf_acc = {}
+        grid_vis_acc = {}
         grid_illumination_acc = {}
         for p in pol:
             img_acc[p] = None
             beam_acc[p] = None
-            grid_Vf_acc[p] = None
+            grid_vis_acc[p] = None
             grid_illumination_acc[p] = None
             twts[p] = []
 
         if tbinsize is None:   # Average across all timestamps
             for p in pol:
-                img_acc[p] = NP.nansum(self.img_stack[p], axis=0, keepdims=True)
-                beam_acc[p] = NP.nansum(self.beam_stack[p], axis=0, keepdims=True)
-                grid_Vf_acc[p] = NP.nansum(self.grid_Vf_stack[p], axis=0, keepdims=True)
-                grid_illumination_acc[p] = NP.nansum(self.grid_illumination_stack[p], axis=0, keepdims=True)
-                twts[p] = len(self.timestamps).reshape(-1,1,1,1)
+                if self.img_stack[p] is not None:
+                    img_acc[p] = NP.nansum(self.img_stack[p], axis=0, keepdims=True)
+                    beam_acc[p] = NP.nansum(self.beam_stack[p], axis=0, keepdims=True)
+                    grid_vis_acc[p] = NP.nansum(self.grid_vis_stack[p], axis=0, keepdims=True)
+                    grid_illumination_acc[p] = NP.nansum(self.grid_illumination_stack[p], axis=0, keepdims=True)
+                twts[p] = NP.asarray(len(self.timestamps)).reshape(-1,1,1,1)
             self.tbinsize = tbinsize
         elif isinstance(tbinsize, (int, float)): # Apply same time bin size to all polarizations 
             eps = 1e-10
@@ -7207,26 +7232,29 @@ class NewImage:
                     ind = ri[ri[binnum]:ri[binnum+1]]
                     twts[p] += [counts]
                     if img_acc[p] is None:
-                        img_acc[p] = NP.nansum(self.img_stack[p][ind,:,:,:], axis=0, keepdims=True)
-                        beam_acc[p] = NP.nansum(self.beam_stack[p][ind,:,:,:], axis=0, keepdims=True)
-                        grid_Vf_acc[p] = NP.nansum(self.grid_Vf_stack[p][ind,:,:,:], axis=0, keepdims=True)
-                        grid_illumination_acc[p] = NP.nansum(self.grid_illumination_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                        if self.img_stack[p] is not None:
+                            img_acc[p] = NP.nansum(self.img_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                            beam_acc[p] = NP.nansum(self.beam_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                            grid_vis_acc[p] = NP.nansum(self.grid_vis_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                            grid_illumination_acc[p] = NP.nansum(self.grid_illumination_stack[p][ind,:,:,:], axis=0, keepdims=True)
                     else:
-                        img_acc[p] = NP.vstack((img_acc[p], NP.nansum(self.img_stack[p][ind,:,:,:], axis=0, keepdims=True)))
-                        beam_acc[p] = NP.vstack((beam_acc[p], NP.nansum(self.beam_stack[p][ind,:,:,:], axis=0, keepdims=True)))
-                        grid_Vf_acc[p] = NP.vstack((grid_Vf_acc[p], NP.nansum(self.grid_Vf_stack[p][ind,:,:,:], axis=0, keepdims=True)))
-                        grid_illumination_acc[p] = NP.vstack((grid_illumination_acc[p], NP.nansum(self.grid_illumination_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                        if self.img_stack[p] is not None:
+                            img_acc[p] = NP.vstack((img_acc[p], NP.nansum(self.img_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                            beam_acc[p] = NP.vstack((beam_acc[p], NP.nansum(self.beam_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                            grid_vis_acc[p] = NP.vstack((grid_vis_acc[p], NP.nansum(self.grid_vis_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                            grid_illumination_acc[p] = NP.vstack((grid_illumination_acc[p], NP.nansum(self.grid_illumination_stack[p][ind,:,:,:], axis=0, keepdims=True)))
                 twts[p] = NP.asarray(twts[p]).astype(NP.float).reshape(-1,1,1,1)
             self.tbinsize = tbinsize
         elif isinstance(tbinsize, dict): # Apply different time binsizes to corresponding polarizations
             tbsize = {}
             for p in pol:
                 if p not in tbinsize:
-                    img_acc[p] = NP.nansum(self.img_stack[p], axis=0, keepdims=True)
-                    beam_acc[p] = NP.nansum(self.beam_stack[p], axis=0, keepdims=True)
-                    grid_Vf_acc[p] = NP.nansum(self.grid_Vf_stack[p], axis=0, keepdims=True)
-                    grid_illumination_acc[p] = NP.nansum(self.grid_illumination_stack[p], axis=0, keepdims=True)
-                    twts[p] = len(self.timestamps).reshape(-1,1,1,1)
+                    if self.img_stack[p] is not None:
+                        img_acc[p] = NP.nansum(self.img_stack[p], axis=0, keepdims=True)
+                        beam_acc[p] = NP.nansum(self.beam_stack[p], axis=0, keepdims=True)
+                        grid_vis_acc[p] = NP.nansum(self.grid_vis_stack[p], axis=0, keepdims=True)
+                        grid_illumination_acc[p] = NP.nansum(self.grid_illumination_stack[p], axis=0, keepdims=True)
+                    twts[p] = NP.asarray(len(self.timestamps)).reshape(-1,1,1,1)
                     tbsize[p] = None
                 elif isinstance(tbinsize[p], (int,float)):
                     eps = 1e-10
@@ -7238,33 +7266,37 @@ class NewImage:
                         ind = ri[ri[binnum]:ri[binnum+1]]
                         twts[p] += [counts]
                         if img_acc[p] is None:
-                            img_acc[p] = NP.nansum(self.img_stack[p][ind,:,:,:], axis=0, keepdims=True)
-                            beam_acc[p] = NP.nansum(self.beam_stack[p][ind,:,:,:], axis=0, keepdims=True)
-                            grid_Vf_acc[p] = NP.nansum(self.grid_Vf_stack[p][ind,:,:,:], axis=0, keepdims=True)
-                            grid_illumination_acc[p] = NP.nansum(self.grid_illumination_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                            if self.img_stack[p] is not None:
+                                img_acc[p] = NP.nansum(self.img_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                                beam_acc[p] = NP.nansum(self.beam_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                                grid_vis_acc[p] = NP.nansum(self.grid_vis_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                                grid_illumination_acc[p] = NP.nansum(self.grid_illumination_stack[p][ind,:,:,:], axis=0, keepdims=True)
                         else:
-                            img_acc[p] = NP.vstack((img_acc[p], NP.nansum(self.img_stack[p][ind,:,:,:], axis=0, keepdims=True)))
-                            beam_acc[p] = NP.vstack((beam_acc[p], NP.nansum(self.beam_stack[p][ind,:,:,:], axis=0, keepdims=True)))
-                            grid_Vf_acc[p] = NP.vstack((grid_Vf_acc[p], NP.nansum(self.grid_Vf_stack[p][ind,:,:,:], axis=0, keepdims=True)))
-                            grid_illumination_acc[p] = NP.vstack((grid_illumination_acc[p], NP.nansum(self.grid_illumination_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                            if self.img_stack[p] is not None:
+                                img_acc[p] = NP.vstack((img_acc[p], NP.nansum(self.img_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                                beam_acc[p] = NP.vstack((beam_acc[p], NP.nansum(self.beam_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                                grid_vis_acc[p] = NP.vstack((grid_vis_acc[p], NP.nansum(self.grid_vis_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                                grid_illumination_acc[p] = NP.vstack((grid_illumination_acc[p], NP.nansum(self.grid_illumination_stack[p][ind,:,:,:], axis=0, keepdims=True)))
                     twts[p] = NP.asarray(twts[p]).astype(NP.float).reshape(-1,1,1,1)
                     tbsize[p] = tbinsize[p]
                 else:
-                    img_acc[p] = NP.nansum(self.img_stack[p], axis=0, keepdims=True)
-                    beam_acc[p] = NP.nansum(self.beam_stack[p], axis=0, keepdims=True)
-                    grid_Vf_acc[p] = NP.nansum(self.grid_Vf_stack[p], axis=0, keepdims=True)
-                    grid_illumination_acc[p] = NP.nansum(self.grid_illumination_stack[p], axis=0, keepdims=True)
-                    twts[p] = len(self.timestamps).reshape(-1,1,1,1)
+                    if self.img_stack[p] is not None:
+                        img_acc[p] = NP.nansum(self.img_stack[p], axis=0, keepdims=True)
+                        beam_acc[p] = NP.nansum(self.beam_stack[p], axis=0, keepdims=True)
+                        grid_vis_acc[p] = NP.nansum(self.grid_vis_stack[p], axis=0, keepdims=True)
+                        grid_illumination_acc[p] = NP.nansum(self.grid_illumination_stack[p], axis=0, keepdims=True)
+                    twts[p] = NP.asarray(len(self.timestamps)).reshape(-1,1,1,1)
                     tbsize[p] = None
 
             self.tbinsize = tbsize
 
         # Compute the averaged grid quantities from the accumulated versions
         for p in pol:
-            self.img_avg[p] = img_acc[p] / twts[p]
-            self.beam_avg[p] = beam_acc[p] / twts[p]
-            self.grid_Vf_avg[p] = grid_Vf_acc / twts[p]
-            self.grid_illumination_avg[p] = grid_illumination_avg[p]
+            if img_acc[p] is not None:
+                self.img_avg[p] = img_acc[p] / twts[p]
+                self.beam_avg[p] = beam_acc[p] / twts[p]
+                self.grid_vis_avg[p] = grid_vis_acc[p] / twts[p]
+                self.grid_illumination_avg[p] = grid_illumination_acc[p] / twts[p]
 
         self.twts = twts
 
