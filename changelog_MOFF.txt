@@ -1,3 +1,19 @@
+From d7ba9c1 (branch zero-spacing):
+==================================
+
+In aperture.py,
+
+(*) Minor change in docstring of member function __init__() of class
+Aperture
+
+In antenna_array.py,
+
+(*) Add attributes autocorr_set and autocorr_wts_vuf and initialize
+in __init__() member function of class NewImage
+(*) Add member function evalAutoCorr() (with docstring) to class
+NewImage. Set attributes autocorr_set and autocorr_wts_vuf inside this
+member function
+
 From 376f350 (branch analytic-kernel) and f5785c9 (branch imgstack):
 ===================================================================
 

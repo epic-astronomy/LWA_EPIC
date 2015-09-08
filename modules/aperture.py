@@ -830,7 +830,7 @@ class Aperture(object):
                             polarization. The value (default=0.0) held by each 
                             key is a scalar
 
-        lkpinfo     [dicitonary] consists of weights information for each of 
+        lkpinfo     [dictionary] consists of weights information for each of 
                     the polarizations under polarization keys. Each of 
                     the values under the keys is a string containing the full
                     path to a filename that contains the positions and 

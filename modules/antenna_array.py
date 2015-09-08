@@ -6572,6 +6572,7 @@ class NewImage:
         self.measured_type = None
         self.antenna_array = None
         self.interferometer_array = None
+        self.autocorr_set = False
 
         if (infile is None) and (antenna_array is None) and (interferometer_array is None):
             self.gridx_P1 = None
@@ -6719,6 +6720,7 @@ class NewImage:
         self.wts_vuf = {}
         self.vis_vuf = {}
         self.twts = {}
+        self.autocorr_wts_vuf = {}
 
         if antenna_array is not None:
             if verbose:
@@ -6763,6 +6765,7 @@ class NewImage:
                     self.twts[apol] = None
                     self.wts_vuf[apol] = None
                     self.vis_vuf[apol] = None
+                    self.autocorr_wts_vuf[apol] = None
     
                 self.antenna_array = antenna_array
                 self.measured_type = 'E-field'
@@ -6815,6 +6818,7 @@ class NewImage:
                     self.twts[cpol] = None
                     self.wts_vuf[cpol] = None
                     self.vis_vuf[cpol] = None
+                    self.autocorr_wts_vuf[cpol] = None                    
     
                 self.interferometer_array = interferometer_array
                 self.measured_type = 'visibility'
@@ -7300,6 +7304,95 @@ class NewImage:
 
         self.twts = twts
 
+    ############################################################################
+
+    def evalAutoCorr(self, lkpinfo=None, forceeval=False):
+
+        """
+        ------------------------------------------------------------------------
+        Evaluate auto-correlation of single antenna weights with itself on the
+        UV-plane. 
+
+        Inputs:
+
+        lkpinfo   [dictionary] consists of weights information for each of 
+                  the polarizations under polarization keys. Each of 
+                  the values under the keys is a string containing the full
+                  path to a filename that contains the positions and 
+                  weights for the aperture illumination in the form of 
+                  a lookup table as columns (x-loc [float], y-loc 
+                  [float], wts[real], wts[imag if any]). In this case, the 
+                  lookup is for auto-corrlation of antenna weights. It only 
+                  applies when the antenna aperture class is set to 
+                  lookup-based kernel estimation instead of a functional form
+
+        forceeval [boolean] When set to False (default) the auto-correlation in
+                  the UV plane is not evaluated if it was already evaluated 
+                  earlier. If set to True, it will be forcibly evaluated 
+                  independent of whether they were already evaluated or not
+        ------------------------------------------------------------------------
+        """
+
+        if forceeval or (not self.autocorr_set):
+            if self.measured_type == 'E-field':
+    
+                pol = ['P1', 'P2']
+    
+                # Assume all antenna apertures are identical and make a copy of the
+                # antenna aperture
+                # Need serious development for non-identical apertures
+    
+                ant_aprtr = copy.deepcopy(self.antenna_array.antennas.itervalues().next().aperture)
+                pol_type = 'dual'
+                kerntype = ant_aprtr.kernel_type
+                shape = ant_aprtr.shape
+                # kernshapeparms = {'xmax': {p: ant_aprtr.xmax[p] for p in pol}, 'ymax': {p: ant_aprtr.ymax[p] for p in pol}, 'rmin': {p: ant_aprtr.rmin[p] for p in pol}, 'rmax': {p: ant_aprtr.rmax[p] for p in pol}, 'rotangle': {p: ant_aprtr.rotangle[p] for p in pol}}
+                kernshapeparms = {p: {'xmax': ant_aprtr.xmax[p], 'ymax': ant_aprtr.ymax[p], 'rmax': ant_aprtr.rmax[p], 'rmin': ant_aprtr.rmin[p], 'rotangle': ant_aprtr.rotangle[p]} for p in pol}
+    
+                for p in pol:
+                    if kerntype[p] == 'func':
+                        if shape[p] == 'rect':
+                            shape[p] = 'auto_convolved_rect'
+                        elif shape[p] == 'square':
+                            shape[p] = 'auto_convolved_square'
+                        elif shape[p] == 'circular':
+                            shape[p] = 'auto_convolved_circular'
+                        else:
+                            raise ValueError('Aperture kernel footprint shape - {0} - currently unsupported'.format(shape[p]))
+                        
+                aprtr = APR.Aperture(pol_type=pol_type, kernel_type=kerntype,
+                                     shape=shape, parms=kernshapeparms,
+                                     lkpinfo=lkpinfo, load_lookup=True)
+                
+                du = self.gridu[0,1] - self.gridu[0,0]
+                dv = self.gridv[1,0] - self.gridv[0,0]
+                if self.measured_type == 'E-field':
+                    gridu, gridv = NP.meshgrid(du*(NP.arange(2*self.gridu.shape[1])-self.gridu.shape[1]), dv*(NP.arange(2*self.gridu.shape[0])-self.gridu.shape[0]))
+                else:
+                    gridu, gridv = self.gridu, self.gridv
+    
+                wavelength = FCNST.c / self.f
+                min_lambda = NP.abs(wavelength).min()
+                rmaxNN = 0.5 * NP.sqrt(du**2 + dv**2) * min_lambda
+    
+                gridx = gridu[:,:,NP.newaxis] * wavelength.reshape(1,1,-1)
+                gridy = gridv[:,:,NP.newaxis] * wavelength.reshape(1,1,-1)
+                gridxy = NP.hstack((gridx.reshape(-1,1), gridy.reshape(-1,1)))
+                wl = NP.ones(gridu.shape)[:,:,NP.newaxis] * wavelength.reshape(1,1,-1)
+                wl = wl.reshape(-1)
+                distNN = max([NP.sqrt(aprtr.xmax['P1']**2 + NP.sqrt(aprtr.ymax['P1']**2)), NP.sqrt(aprtr.xmax['P1']**2 + NP.sqrt(aprtr.ymax['P1']**2)), aprtr.rmax['P1'], aprtr.rmax['P2']])
+                indNN_list, blind, vuf_gridind = LKP.find_NN(NP.zeros((1,2)), gridxy, distance_ULIM=distNN, flatten=True, parallel=False)
+                dxy = gridxy[vuf_gridind,:]
+                unraveled_vuf_ind = NP.unravel_index(vuf_gridind, gridu.shape+(self.f.size,))
+    
+                self.autocorr_wts_vuf = {p: NP.zeros(gridu.shape+(self.f.size,), dtype=NP.complex64) for p in pol}
+                for p in pol:
+                    krn = aprtr.compute(dxy, wavelength=wl[vuf_gridind], pol=p, rmaxNN=rmaxNN, load_lookup=False)
+                    self.autocorr_wts_vuf[p][unraveled_vuf_ind] = krn[p]
+                    self.autocorr_wts_vuf[p] = self.autocorr_wts_vuf[p] / NP.sum(self.autocorr_wts_vuf[p], axis=(0,1), keepdims=True)
+                
+                self.autocorr_set = True
+            
     ############################################################################
 
     def save(self, imgfile, pol=None, overwrite=False, verbose=True):
