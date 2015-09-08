@@ -9,33 +9,43 @@ class cal:
     -------------------------------------------------------------------------------
     Class to handle everything calibration for MOFF
   
-    Attributes:
+    *** Attributes ***
   
-    n_ant:          Number of antennas.
+    n_ant:          Number of antennas. Calculated from ant_pos.
     
-    n_chan:         Number of frequency channels.
+    n_chan:         Number of frequency channels. Calculated from freqs.
     
     curr_gains:     Complex numpy array representing current estimate of gains.
+                    Dimensions n_ant x n_chan
     
-    n_iter:         [integer] Number of iterations before updating the calibration
+    n_iter:         [integer] Number of iterations before updating the calibration.
     
-    count:          [integer] Current iteration number
+    count:          [integer] Current iteration number.
     
-    gain_factor:    Weighting factor when updating gains
+    gain_factor:    Weighting factor when updating gains.
     
-    temp_gains:     Complex numpy array, gains currently being integrated/averaged
+    tempt_gains:     Complex numpy array, gains currently being integrated/averaged.
     
     sim_mode:       [Boolean] representing whether in simulation mode. Default = False.
     
-    sim_gains:      Complex numpy array representing the simulated gains (if sim_mode), which areapplied to the simulated data.
+    sim_gains:      Complex numpy array representing the simulated gains (if sim_mode), 
+                    which are applied to the simulated data.
     
     cal_method:     String indicating which calibration method/algorithm to use.
+                    Current options: 'single' (single source), 'multi' (multi source).
     
-    inv_gains:      [Boolean] If False (default), calibrate by dividing by gains. If True, calibrate by multiplying by conjugate of gains.
+    inv_gains:      [Boolean] If False (default), calibrate by dividing by gains. If 
+                    True, calibrate by multiplying by conjugate of gains.
     
-    sky_model:      Numpy array containing l,m,n,flux for sources in sky model for each channel. Dimensions should be n_source x n_chan x 4.
+    sky_model:      Numpy array containing l,m,n,flux for sources in sky model for each 
+                    channel. Dimensions should be n_source x n_chan x 4.
 
-    ant_pos:        Numpy array with antenna locations in wavelengths for each frequency. Dimesions should be n_ant x n_chan x 3. If n_ant x 3, assumed to be in meters and rebroadcasted in init.
+    model_vis:      Model visibilities if cal_method='multi'. Calculated in init.
+                    Dimensions are n_ant x n_ant x n_chan.
+
+    ant_pos:        Numpy array with antenna locations in wavelengths for each frequency. 
+                    Dimesions should be n_ant x n_chan x 3. If n_ant x 3, assumed to be 
+                    in meters and rebroadcasted in init.
 
     ref_ant:        Antenna index to fix phase.
 
@@ -48,15 +58,20 @@ class cal:
 
     cal_ver:        Calibration version. To keep track of different cal loops.
     
-    Functions:
+    *** Functions ***
     
     simulate_gains: Create a set of gains for simulation purposes
     
-    update_cal:     Updates the calibration solution given the curr_gains, sky_model, and input data.
+    update_cal:     Updates the calibration solution given the curr_gains, sky_model, and 
+                    input data.
     
     apply_cal:      Applies current gain solutions to data.
     
-    scramble_gains: Apply a random jitter to the current gains.
+    scramble_gains: Apply a random jitter to the current gains. Useful for testing/simulating.
+
+    simple_cal:     Calibrates for a single point source on the center of the field.
+
+    off_center_cal: Calibrates for single point source in arbitrary location.
     
     ----------------------------------------------------------------------------------
     """
@@ -149,6 +164,9 @@ class cal:
         self.temp_gains = NP.zeros([n_ant,n_chan], dtype=NP.complex64)
         self.count = 0
 
+        if self.cal_method == self.multi_source_cal:
+            self.gen_model_vis()
+
 
 
     ####################################
@@ -204,6 +222,25 @@ class cal:
         return
 
     #######
+
+    def gen_model_vis(self):
+        # Function to generate the model visibilites, given sky model and ant positions
+        # This will eventually move out to Nithya's modules to account for beams,
+        # but for testing we'll just do it here.
+
+        # first reshape arrays to match: n_src x n_ant x n_chan x 3
+        n_src = self.sky_model.shape[0]
+        model_pos = NP.reshape(self.sky_model[:,:,0:3]-self.ref_point.reshape((1,1,3)),(n_src,1,self.n_chan,3))
+        model_flux = NP.reshape(self.sky_model[:,:,3],(n_src,1,self.n_chan))
+        ant_pos = NP.reshape(self.ant_pos,(1,self.n_ant,self.n_chan,3))
+        
+        model_vis = NP.zeros((self.n_ant,self.n_ant,self.n_chan),dtype=NP.complex128)
+        for ant in xrange(self.n_ant):
+            # TODO: check conjugation
+            model_vis[ant,:,:] = NP.sum(model_flux*NP.exp(-1j * 2*NP.pi * NP.sum(model_pos*(ant_pos-NP.reshape(ant_pos[:,ant,:,:],(1,1,self.n_chan,3))),axis=3)),axis=0)
+
+        self.model_vis = model_vis
+        
     """
     ------------
     Calibration method functions
@@ -212,7 +249,7 @@ class cal:
 
     def default_cal(self,*args):
         # point to whatever routine is currently the default
-        out = self.simple_cal(args)
+        out = self.off_center_cal(args)
         return out
   
     ######
@@ -293,6 +330,8 @@ class cal:
 
         return new_gains
 
+    # Thid multi-source cal is now obsolete (and never really worked).    
+    """
     def multi_source_cal(self,*args):
         #
         ### Calibrate on several sources simultaneously.
@@ -315,6 +354,35 @@ class cal:
 
         
         new_gains /= NP.reshape(NP.sum(weights,axis=0),(1,self.n_chan))
+
+        return new_gains
+    """
+
+    def multi_source_cal(self,*args):
+        #
+        ### Calibrate on several sources simultaneously.
+        # Inputs
+        #   Edata:    _uncalibrated E-field data from antennas.
+        #   imgobj:   Image object output from latest correlator image.
+
+        while isinstance(args[0],tuple):
+            args=args[0]
+        Edata = args[0]
+        imgobj = args[1]
+
+        xind,yind = NP.unravel_index(NP.argmin((imgobj.gridl)**2+(imgobj.gridm)**2),imgobj.gridl.shape) # will eventually generalize this to use any pixel of interest
+        imgdata = imgobj.holimg[self.pol][xind,yind,:].flatten()
+        
+        new_gains = NP.zeros((self.n_ant,self.n_chan),dtype=NP.complex64)
+
+        # TODO:
+        # push the sum of vis and gains outside of the integration
+        if self.inv_gains:
+            # inverted gains version
+            new_gains = self.n_ant * Edata * NP.reshape(NP.conj(imgdata),(1,self.n_chan)) / NP.sum(self.model_vis * NP.reshape(NP.abs(self.curr_gains)**2,(1,self.n_ant,self.n_chan)),axis=1)
+        else:
+            # regular version
+            new_gains = self.n_ant * Edata * NP.reshape(NP.conj(imgdata),(1,self.n_chan)) / NP.sum(self.model_vis,axis=1)
 
         return new_gains
             

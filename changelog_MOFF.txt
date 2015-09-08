@@ -1,3 +1,15 @@
+From b867de8:
+============
+
+(*) Revamped the multi-source calibration to incorporate all sources
+    at once.
+(*) Requires model visibilities to be formed before the cal loop.
+(*) Multi-source is now independent of the single source loop, but
+    does conform with it under the single-source limit.
+(*) Added option to add receiver noise (independent for each antenna)
+    at the script level of cal loops. Will eventually want this in
+	antenna class
+
 From d49e4c4:
 ============
 
