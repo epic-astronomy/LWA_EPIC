@@ -1,3 +1,19 @@
+From b937371 (branch zero-spacing):
+==================================
+
+In antenna_array.py,
+
+(*) Add attributes nzsp_grid_vis_avg, nzsp_grid_illumination_avg,
+nzsp_wts_vuf, nzsp_vis_vuf, nzsp_img, nzsp_beam, nzsp_img_avg,
+nzsp_beam_avg, pbeam and initialize in __init__() member function of 
+class NewImage
+(*) Add member function removeAutoCorr() (with docstring) to class
+NewImage. Set attributes nzsp_grid_illumination_avg, nzsp_wts_vuf, 
+nzsp_grid_vis_avg, nzsp_vis_vuf, nzsp_img, nzsp_beam, nzsp_img_avg,
+nzsp_beam_avg in this member function
+(*) In member function evalAutoCorr() of class NewImage, estimate
+and store power pattern in attribute pbeam
+
 From d7ba9c1 (branch zero-spacing):
 ==================================
 

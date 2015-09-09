@@ -6573,6 +6573,7 @@ class NewImage:
         self.antenna_array = None
         self.interferometer_array = None
         self.autocorr_set = False
+        self.autocorr_removed = False
 
         if (infile is None) and (antenna_array is None) and (interferometer_array is None):
             self.gridx_P1 = None
@@ -6702,6 +6703,7 @@ class NewImage:
         self.holbeam = {}
         self.img = {}
         self.beam = {}
+        self.pbeam = {}
         self.gridl = {}
         self.gridm = {}
         self.grid_wts = {}
@@ -6721,6 +6723,14 @@ class NewImage:
         self.vis_vuf = {}
         self.twts = {}
         self.autocorr_wts_vuf = {}
+        self.nzsp_grid_vis_avg = {}
+        self.nzsp_grid_illumination_avg = {}
+        self.nzsp_wts_vuf = {}
+        self.nzsp_vis_vuf = {}
+        self.nzsp_img_avg = {}
+        self.nzsp_beam_avg = {}
+        self.nzsp_img = {}
+        self.nzsp_beam = {}
 
         if antenna_array is not None:
             if verbose:
@@ -6766,7 +6776,16 @@ class NewImage:
                     self.wts_vuf[apol] = None
                     self.vis_vuf[apol] = None
                     self.autocorr_wts_vuf[apol] = None
-    
+                    self.nzsp_grid_vis_avg[apol] = None
+                    self.nzsp_grid_illumination_avg[apol] = None
+                    self.nzsp_wts_vuf[apol] = None
+                    self.nzsp_vis_vuf[apol] = None
+                    self.nzsp_img_avg[apol] = None
+                    self.nzsp_beam_avg[apol] = None
+                    self.nzsp_img[apol] = None
+                    self.nzsp_beam[apol] = None
+                    self.pbeam[apol] = None
+
                 self.antenna_array = antenna_array
                 self.measured_type = 'E-field'
 
@@ -6819,6 +6838,15 @@ class NewImage:
                     self.wts_vuf[cpol] = None
                     self.vis_vuf[cpol] = None
                     self.autocorr_wts_vuf[cpol] = None                    
+                    self.nzsp_grid_vis_avg[cpol] = None
+                    self.nzsp_grid_illumination_avg[cpol] = None
+                    self.nzsp_wts_vuf[cpol] = None
+                    self.nzsp_vis_vuf[cpol] = None
+                    self.nzsp_img_avg[cpol] = None
+                    self.nzsp_beam_avg[cpol] = None
+                    self.nzsp_img[cpol] = None
+                    self.nzsp_beam[cpol] = None
+                    self.pbeam[cpol] = None
     
                 self.interferometer_array = interferometer_array
                 self.measured_type = 'visibility'
@@ -7386,12 +7414,109 @@ class NewImage:
                 unraveled_vuf_ind = NP.unravel_index(vuf_gridind, gridu.shape+(self.f.size,))
     
                 self.autocorr_wts_vuf = {p: NP.zeros(gridu.shape+(self.f.size,), dtype=NP.complex64) for p in pol}
+                self.pbeam = {p: NP.zeros((2*gridv.shape[0],2*gridu.shape[1],self.f.size), dtype=NP.complex64) for p in pol}                
                 for p in pol:
                     krn = aprtr.compute(dxy, wavelength=wl[vuf_gridind], pol=p, rmaxNN=rmaxNN, load_lookup=False)
                     self.autocorr_wts_vuf[p][unraveled_vuf_ind] = krn[p]
                     self.autocorr_wts_vuf[p] = self.autocorr_wts_vuf[p] / NP.sum(self.autocorr_wts_vuf[p], axis=(0,1), keepdims=True)
-                
+                    sum_wts = NP.sum(self.autocorr_wts_vuf[p], axis=(0,1), keepdims=True)
+                    padded_wts_vuf = NP.pad(self.autocorr_wts_vuf[p], ((self.gridv.shape[0],self.gridv.shape[0]),(self.gridu.shape[1],self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
+                    padded_wts_vuf = NP.fft.ifftshift(padded_wts_vuf, axes=(0,1))
+                    wts_lmf = NP.fft.fft2(padded_wts_vuf, axes=(0,1)) / sum_wts
+                    if NP.abs(wts_lmf.imag).max() < 1e-10:
+                        self.pbeam[p] = NP.fft.fftshift(wts_lmf.real, axes=(0,1))
+                    else:
+                        raise ValueError('Significant imaginary component found in the power pattern')
+                    
                 self.autocorr_set = True
+            
+    ############################################################################
+
+    def removeAutoCorr(self, lkpinfo=None, forceeval=False, datapool='avg'):
+
+        """
+        ------------------------------------------------------------------------
+        Remove auto-correlation of single antenna weights with itself from the
+        UV-plane. 
+
+        Inputs:
+
+        lkpinfo   [dictionary] consists of weights information for each of 
+                  the polarizations under polarization keys. Each of 
+                  the values under the keys is a string containing the full
+                  path to a filename that contains the positions and 
+                  weights for the aperture illumination in the form of 
+                  a lookup table as columns (x-loc [float], y-loc 
+                  [float], wts[real], wts[imag if any]). In this case, the 
+                  lookup is for auto-corrlation of antenna weights. It only 
+                  applies when the antenna aperture class is set to 
+                  lookup-based kernel estimation instead of a functional form
+
+        forceeval [boolean] When set to False (default) the auto-correlation in
+                  the UV plane is not evaluated if it was already evaluated 
+                  earlier. If set to True, it will be forcibly evaluated 
+                  independent of whether they were already evaluated or not
+
+        datapool  [string] When set to 'avg' (or None) (default), 
+                  auto-correlations from antennas (zero-spacing with a width) 
+                  are removed from the averaged data set. If set to 'current',
+                  the latest timestamp is used in subtracting the zero-spacing
+                  visibilities information
+        ------------------------------------------------------------------------
+        """
+
+        if self.measured_type == 'E-field':
+            if forceeval or (not self.autocorr_removed):
+                if isinstance(datapool, str):
+                    if datapool is None: datapool = 'avg'
+                    if datapool not in ['avg', 'current']:
+                        raise ValueError('Input keywrod datapool must be set to "avg" or "current"')
+                else:
+                    raise TypeError('Input keyword data pool must be a string')
+        
+                if forceeval or (not self.autocorr_set):
+                    self.evalAutoCorr(lkpinfo=lkpinfo, forceeval=forceeval)
+        
+                autocorr_wts_vuf = copy.deepcopy(self.autocorr_wts_vuf)
+                pol = ['P1', 'P2']
+                for p in pol:
+                    if datapool == 'avg':
+                        if self.grid_illumination_avg[p] is not None:
+                            vis_vuf = NP.copy(self.grid_vis_avg[p])
+                            wts_vuf = NP.copy(self.grid_illumination_avg[p])
+    
+                            autocorr_wts_vuf[p] = autocorr_wts_vuf[p][NP.newaxis,:,:,:]
+                            vis_vuf = vis_vuf - (vis_vuf[:,self.gridv.shape[0],self.gridu.shape[1],:].reshape(vis_vuf.shape[0],1,1,self.f.size) / autocorr_wts_vuf[p][0,self.gridv.shape[0],self.gridu.shape[1],:].reshape(1,1,1,self.f.size)) * autocorr_wts_vuf[p]
+                            wts_vuf = wts_vuf - (wts_vuf[:,self.gridv.shape[0],self.gridu.shape[1],:].reshape(wts_vuf.shape[0],1,1,self.f.size) / autocorr_wts_vuf[p][0,self.gridv.shape[0],self.gridu.shape[1],:].reshape(1,1,1,self.f.size)) * autocorr_wts_vuf[p]
+                            sum_wts = NP.sum(wts_vuf, axis=(1,2), keepdims=True)
+                            padded_wts_vuf = NP.pad(wts_vuf, ((0,0),(self.gridv.shape[0],self.gridv.shape[0]),(self.gridu.shape[1],self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
+                            padded_wts_vuf = NP.fft.ifftshift(padded_wts_vuf, axes=(1,2))
+                            wts_lmf = NP.fft.fft2(padded_wts_vuf, axes=(1,2)) / sum_wts
+                            self.nzsp_beam[p] = NP.fft.fftshift(wts_lmf, axes=(1,2))
+                            padded_vis_vuf = NP.pad(vis_vuf, ((0,0),(self.gridv.shape[0],self.gridv.shape[0]),(self.gridu.shape[1],self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
+                            padded_vis_vuf = NP.fft.ifftshift(padded_vis_vuf, axes=(1,2))
+                            vis_lmf = NP.fft.fft2(padded_vis_vuf, axes=(1,2)) / sum_wts
+                            self.nzsp_img[p] = NP.fft.fftshift(vis_lmf, axes=(1,2))
+                    else:
+                        if self.wts_vuf[p] is not None:
+                            vis_vuf = NP.copy(self.vis_vuf[p])
+                            wts_vuf = NP.copy(self.wts_vuf[p])
+
+                            vis_vuf = vis_vuf - (vis_vuf[self.gridv.shape[0],self.gridu.shape[1],:].reshape(1,1,self.f.size) / autocorr_wts_vuf[p][self.gridv.shape[0],self.gridu.shape[1],:].reshape(1,1,self.f.size)) * autocorr_wts_vuf[p]
+                            wts_vuf = wts_vuf - (wts_vuf[self.gridv.shape[0],self.gridu.shape[1],:].reshape(1,1,self.f.size) / autocorr_wts_vuf[p][self.gridv.shape[0],self.gridu.shape[1],:].reshape(1,1,self.f.size)) * autocorr_wts_vuf[p]
+                            sum_wts = NP.sum(wts_vuf, axis=(0,1), keepdims=True)
+                            padded_wts_vuf = NP.pad(wts_vuf, ((self.gridv.shape[0],self.gridv.shape[0]),(self.gridu.shape[1],self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
+                            padded_wts_vuf = NP.fft.ifftshift(padded_wts_vuf, axes=(0,1))
+                            wts_lmf = NP.fft.fft2(padded_wts_vuf, axes=(0,1)) / sum_wts
+                            self.nzsp_beam[p] = NP.fft.fftshift(wts_lmf, axes=(0,1))
+                            padded_vis_vuf = NP.pad(vis_vuf, ((self.gridv.shape[0],self.gridv.shape[0]),(self.gridu.shape[1],self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
+                            padded_vis_vuf = NP.fft.ifftshift(padded_vis_vuf, axes=(0,1))
+                            vis_lmf = NP.fft.fft2(padded_vis_vuf, axes=(0,1)) / sum_wts
+                            self.nzsp_img[p] = NP.fft.fftshift(vis_lmf, axes=(0,1))
+
+                self.autocorr_removed = True
+            else:
+                print 'Antenna auto-correlations have been removed already'
             
     ############################################################################
 
