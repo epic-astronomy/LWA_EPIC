@@ -1,3 +1,18 @@
+From fed207e (branch zero-spacing):
+==================================
+
+In antenna_array.py,
+
+(*) Fix bug in calling the right polarization variable cpol instead
+of apol in member function imagr() of class NewImage
+(*) Add value checking of synthesized beam and dirty image inside
+member function removeAutoCorr() of member function NewImage to ensure
+they have no non-negligible imaginary component
+(*) Assign values to attributes nzsp_beam, nzsP_img, nzsp_wts_vuf,
+nzsp_vis_vuf, nzsp_beam_avg, nzsp_img_avg, nzsp_grid_vis_avg,
+nzsp_grid_illumination_avg in member function removeAutoCorr() of
+class NewImage
+
 From b937371 (branch zero-spacing):
 ==================================
 

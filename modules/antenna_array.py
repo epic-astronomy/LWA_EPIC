@@ -7132,10 +7132,10 @@ class NewImage:
                     self.img[cpol] = NP.fft.fftshift(dirty_image/sum_wts, axes=(0,1))
                     qty_vuf = NP.fft.ifft2(syn_beam/sum_wts, axes=(0,1)) # Inverse FT
                     qty_vuf = NP.fft.ifftshift(qty_vuf, axes=(0,1)) # Shift array to be centered
-                    self.wts_vuf[apol] = qty_vuf[self.gridv.shape[0]/2:3*self.gridv.shape[0]/2,self.gridu.shape[0]/2:3*self.gridu.shape[0]/2,:]
+                    self.wts_vuf[cpol] = qty_vuf[self.gridv.shape[0]/2:3*self.gridv.shape[0]/2,self.gridu.shape[0]/2:3*self.gridu.shape[0]/2,:]
                     qty_vuf = NP.fft.ifft2(dirty_image/sum_wts, axes=(0,1)) # Inverse FT
                     qty_vuf = NP.fft.ifftshift(qty_vuf, axes=(0,1)) # Shift array to be centered
-                    self.vis_vuf[apol] = qty_vuf[self.gridv.shape[0]/2:3*self.gridv.shape[0]/2,self.gridu.shape[0]/2:3*self.gridu.shape[0]/2,:]
+                    self.vis_vuf[cpol] = qty_vuf[self.gridv.shape[0]/2:3*self.gridv.shape[0]/2,self.gridu.shape[0]/2:3*self.gridu.shape[0]/2,:]
 
         nan_ind = NP.where(self.gridl**2 + self.gridm**2 > 1.0)
         # nan_ind_unraveled = NP.unravel_index(nan_ind, self.gridl.shape)
@@ -7492,11 +7492,18 @@ class NewImage:
                             padded_wts_vuf = NP.pad(wts_vuf, ((0,0),(self.gridv.shape[0],self.gridv.shape[0]),(self.gridu.shape[1],self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
                             padded_wts_vuf = NP.fft.ifftshift(padded_wts_vuf, axes=(1,2))
                             wts_lmf = NP.fft.fft2(padded_wts_vuf, axes=(1,2)) / sum_wts
-                            self.nzsp_beam[p] = NP.fft.fftshift(wts_lmf, axes=(1,2))
+                            if NP.abs(wts_lmf.imag).max() > 1e-10:
+                                raise ValueError('Significant imaginary component found in the synthesized beam.')
+                            self.nzsp_beam_avg[p] = NP.fft.fftshift(wts_lmf.real, axes=(1,2))
                             padded_vis_vuf = NP.pad(vis_vuf, ((0,0),(self.gridv.shape[0],self.gridv.shape[0]),(self.gridu.shape[1],self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
                             padded_vis_vuf = NP.fft.ifftshift(padded_vis_vuf, axes=(1,2))
                             vis_lmf = NP.fft.fft2(padded_vis_vuf, axes=(1,2)) / sum_wts
-                            self.nzsp_img[p] = NP.fft.fftshift(vis_lmf, axes=(1,2))
+                            if NP.abs(vis_lmf.imag).max() > 1e-10:
+                                raise ValueError('Significant imaginary component found in the synthesized dirty image.')
+
+                            self.nzsp_img_avg[p] = NP.fft.fftshift(vis_lmf.real, axes=(1,2))
+                            self.nzsp_grid_vis_avg[p] = vis_vuf
+                            self.nzsp_grid_illumination_avg[p] = wts_vuf
                     else:
                         if self.wts_vuf[p] is not None:
                             vis_vuf = NP.copy(self.vis_vuf[p])
@@ -7508,11 +7515,19 @@ class NewImage:
                             padded_wts_vuf = NP.pad(wts_vuf, ((self.gridv.shape[0],self.gridv.shape[0]),(self.gridu.shape[1],self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
                             padded_wts_vuf = NP.fft.ifftshift(padded_wts_vuf, axes=(0,1))
                             wts_lmf = NP.fft.fft2(padded_wts_vuf, axes=(0,1)) / sum_wts
-                            self.nzsp_beam[p] = NP.fft.fftshift(wts_lmf, axes=(0,1))
+                            if NP.abs(wts_lmf.imag).max() > 1e-10:
+                                raise ValueError('Significant imaginary component found in the synthesized beam.')
+
+                            self.nzsp_beam[p] = NP.fft.fftshift(wts_lmf.real, axes=(0,1))
                             padded_vis_vuf = NP.pad(vis_vuf, ((self.gridv.shape[0],self.gridv.shape[0]),(self.gridu.shape[1],self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
                             padded_vis_vuf = NP.fft.ifftshift(padded_vis_vuf, axes=(0,1))
                             vis_lmf = NP.fft.fft2(padded_vis_vuf, axes=(0,1)) / sum_wts
-                            self.nzsp_img[p] = NP.fft.fftshift(vis_lmf, axes=(0,1))
+                            if NP.abs(vis_lmf.imag).max() > 1e-10:
+                                raise ValueError('Significant imaginary component found in the synthesized dirty image.')
+
+                            self.nzsp_img[p] = NP.fft.fftshift(vis_lmf.real, axes=(0,1))
+                            self.nzsp_wts_vuf[p] = wts_vuf
+                            self.nzsp_vis_vuf[p] = vis_vuf
 
                 self.autocorr_removed = True
             else:
