@@ -1,3 +1,17 @@
+From 17d033b (branch zero-spacing):
+==================================
+
+In antenna_array.py,
+
+(*) Increase distNN by a factor 2 to make estimation of neighbour
+pixels liberal in member function removeAutoCorr() of class NewImage
+(*) Increase distNN by a factor 2 to make estimation of neighbour
+pixels liberal in member function grid_convolve_new() of class
+AntennaArray
+(*) Increase distNN by a factor 2 to make estimation of neighbour
+pixels liberal in member function grid_convolve_new() of class
+InterferometerArray
+
 From fed207e (branch zero-spacing):
 ==================================
 

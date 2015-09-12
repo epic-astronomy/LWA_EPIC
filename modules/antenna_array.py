@@ -4026,7 +4026,9 @@ class InterferometerArray:
                    attribute location and interferometer array attribute gridx 
                    and gridy. Default is NP.inf (infinite distance). It will be 
                    internally converted to have same units as interferometer 
-                   attributes wtspos (units in number of wavelengths)
+                   attributes wtspos (units in number of wavelengths). To ensure
+                   all relevant pixels in the grid, the search distance used 
+                   internally will be a fraction more than distNN
 
         identical_interferometers
                    [boolean] indicates if all interferometer elements are to be
@@ -4132,7 +4134,7 @@ class InterferometerArray:
                         wl = NP.ones(gridlocs.shape[0])[NP.newaxis,:] * wavelength.reshape(-1,1)
                         grid_xy = grid_xy.reshape(-1,2)
                         wl = wl.reshape(-1)
-                        indNN_list, blind, fvu_gridind = LKP.find_NN(bl_xy, grid_xy, distance_ULIM=distNN, flatten=True, parallel=False)
+                        indNN_list, blind, fvu_gridind = LKP.find_NN(bl_xy, grid_xy, distance_ULIM=2.0*distNN, flatten=True, parallel=False)
                         dxy = grid_xy[fvu_gridind,:] - bl_xy[blind,:]
                         fvu_gridind_unraveled = NP.unravel_index(fvu_gridind, (self.f.size,)+self.gridu.shape)   # f-v-u order since temporary grid was created as nchan x nv x nu
                         self.grid_mapper[cpol]['all_bl2grid']['blind'] = NP.copy(blind)
@@ -7401,14 +7403,14 @@ class NewImage:
     
                 wavelength = FCNST.c / self.f
                 min_lambda = NP.abs(wavelength).min()
-                rmaxNN = 0.5 * NP.sqrt(du**2 + dv**2) * min_lambda
+                rmaxNN = 0.5 * NP.sqrt(du**2 + dv**2) * min_lambda 
     
                 gridx = gridu[:,:,NP.newaxis] * wavelength.reshape(1,1,-1)
                 gridy = gridv[:,:,NP.newaxis] * wavelength.reshape(1,1,-1)
                 gridxy = NP.hstack((gridx.reshape(-1,1), gridy.reshape(-1,1)))
                 wl = NP.ones(gridu.shape)[:,:,NP.newaxis] * wavelength.reshape(1,1,-1)
                 wl = wl.reshape(-1)
-                distNN = max([NP.sqrt(aprtr.xmax['P1']**2 + NP.sqrt(aprtr.ymax['P1']**2)), NP.sqrt(aprtr.xmax['P1']**2 + NP.sqrt(aprtr.ymax['P1']**2)), aprtr.rmax['P1'], aprtr.rmax['P2']])
+                distNN = 2.0 * max([NP.sqrt(aprtr.xmax['P1']**2 + NP.sqrt(aprtr.ymax['P1']**2)), NP.sqrt(aprtr.xmax['P1']**2 + NP.sqrt(aprtr.ymax['P1']**2)), aprtr.rmax['P1'], aprtr.rmax['P2']]) # factor in the front is to safely estimate kernel around some extra grid pixels
                 indNN_list, blind, vuf_gridind = LKP.find_NN(NP.zeros((1,2)), gridxy, distance_ULIM=distNN, flatten=True, parallel=False)
                 dxy = gridxy[vuf_gridind,:]
                 unraveled_vuf_ind = NP.unravel_index(vuf_gridind, gridu.shape+(self.f.size,))
@@ -10422,7 +10424,9 @@ class AntennaArray:
                    attribute location and antenna array attribute gridx 
                    and gridy. Default is NP.inf (infinite distance). It will be 
                    internally converted to have same units as antenna 
-                   attributes wtspos (units in number of wavelengths)
+                   attributes wtspos (units in number of wavelengths). To ensure
+                   all relevant pixels in the grid, the search distance used 
+                   internally will be a fraction more than distNN
 
         identical_antennas
                    [boolean] indicates if all antenna elements are to be
@@ -10533,7 +10537,7 @@ class AntennaArray:
                         wl = NP.ones(gridlocs.shape[0])[NP.newaxis,:] * wavelength.reshape(-1,1)
                         grid_xy = grid_xy.reshape(-1,2)
                         wl = wl.reshape(-1)
-                        indNN_list, antind, fvu_gridind = LKP.find_NN(ant_xy, grid_xy, distance_ULIM=distNN, flatten=True, parallel=False)
+                        indNN_list, antind, fvu_gridind = LKP.find_NN(ant_xy, grid_xy, distance_ULIM=2.0*distNN, flatten=True, parallel=False)
                         dxy = grid_xy[fvu_gridind,:] - ant_xy[antind,:]
                         fvu_gridind_unraveled = NP.unravel_index(fvu_gridind, (self.f.size,)+self.gridu.shape)   # f-v-u order since temporary grid was created as nchan x nv x nu
                         self.grid_mapper[apol]['all_ant2grid']['antind'] = NP.copy(antind)
