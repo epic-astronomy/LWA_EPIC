@@ -9019,6 +9019,12 @@ class AntennaArray:
                       fields from the array of antennas onto the grid. It has 
                       elements very common to grid_convolve_new()
 
+    applyMappingMatrix()
+                      Constructs the grid of complex field illumination and 
+                      electric fields using the sparse antenna-to-grid mapping 
+                      matrix. Intended to serve as a "matrix" alternative to 
+                      make_grid_cube_new() 
+
     grid_unconvolve() Routine to de-project the electric field illumination 
                       pattern and the electric fields on the grid. It can 
                       operate on the entire antenna array or incrementally 
@@ -10823,6 +10829,80 @@ class AntennaArray:
                             self.ant2grid_mapper[apol] = SM.hstack([self.ant2grid_mapper[apol], spmat], format='csr')
 
                     self.grid_mapper[apol]['all_ant2grid']['per_ant_per_freq_norm_wts'] = NP.copy(per_ant_per_freq_norm_wts)
+
+    ############################################################################
+
+    def applyMappingMatrix(self, pol=None, cal_loop=False, verbose=True):
+
+        """
+        ------------------------------------------------------------------------
+        Constructs the grid of complex field illumination and electric fields 
+        using the sparse antenna-to-grid mapping matrix. Intended to serve as a 
+        "matrix" alternative to make_grid_cube_new() 
+
+        Inputs:
+
+        pol     [String] The polarization to be gridded. Can be set to 'P1' or 
+                'P2'. If set to None, gridding for all the polarizations is 
+                performed. Default=None
+        
+        cal_loop
+                [boolean] If True, the calibration loop is assumed to be ON 
+                and hence the calibrated electric fields are set in the 
+                calibration loop. If False (default), the calibration loop is
+                assumed to be OFF and the current electric fields are assumed 
+                to be the calibrated data to be mapped to the grid 
+                via gridding convolution.
+
+        verbose [boolean] If True, prints diagnostic and progress messages. 
+                If False (default), suppress printing such messages.
+        ------------------------------------------------------------------------
+        """
+        
+        if pol is None:
+            pol = ['P1', 'P2']
+
+        pol = NP.unique(NP.asarray(pol))
+        
+        for apol in pol:
+
+            if verbose:
+                print 'Gridding aperture illumination and electric fields for polarization {0} ...'.format(apol)
+
+            if apol not in ['P1', 'P2']:
+                raise ValueError('Invalid specification for input parameter pol')
+
+            if not cal_loop:
+                self.caldata[apol] = self.get_E_fields(apol, flag=None, tselect=-1, fselect=None, aselect=None, datapool='current', sort=True)
+            else:
+                if self.caldata[apol] is None:
+                    self.caldata[apol] = self.get_E_fields(apol, flag=None, tselect=-1, fselect=None, aselect=None, datapool='current', sort=True)
+
+            Ef = self.caldata[apol]['E-fields'].astype(NP.complex64)  #  (n_ts=1) x n_ant x nchan
+            Ef = NP.squeeze(Ef, axis=0)  # n_ant x nchan
+
+            twts = self.caldata[apol]['twts']  # (n_ts=1) x n_ant x 1
+            twts = NP.squeeze(twts, axis=0)  # n_ant x 1
+
+            Ef = Ef * twts    # applies antenna flagging, n_ant x nchan
+            wts = twts * NP.ones(self.f.size).reshape(1,-1)  # n_ant x nchan
+
+            Ef = Ef.ravel()
+            wts = wts.ravel()
+
+            sparse_Ef = SM.csr_matrix(Ef)
+            sparse_wts = SM.csr_matrix(wts)
+
+            # Store as sparse matrices
+            self.grid_illumination[apol] = self.ant2grid_mapper[apol].dot(sparse_wts.T)
+            self.grid_Ef[apol] = self.ant2grid_mapper[apol].dot(sparse_Ef.T)
+
+            # # Store as dense matrices
+            # self.grid_illumination[apol] = self.ant2grid_mapper[apol].dot(wts).reshape(self.gridu.shape+(self.f.size,))
+            # self.grid_Ef[apol] = self.ant2grid_mapper[apol].dot(Ef).reshape(self.gridu.shape+(self.f.size,))   
+            
+            if verbose:
+                print 'Gridded aperture illumination and electric fields for polarization {0} from {1:0d} unflagged contributing antennas'.format(apol, NP.sum(twts).astype(int))
 
     ############################################################################
 

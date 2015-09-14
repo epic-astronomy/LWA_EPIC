@@ -1,3 +1,16 @@
+From 7fc4eea (branch mapping-matrix):
+====================================
+
+In antenna_array.py,
+
+(*) Add member function applyMappingMatrix() (with docstring) to class
+AntennaArray. At the moment the gridded quantities after application
+of the antenna-to-grid mapping matrix can be stored as dense or sparse
+matrices. Yet to be determined which is the best format to store these
+quantities
+(*) Add description of newly added member function 
+applyMappingMatrix() in the docstring of class AntennaArray
+
 From 69dbe0d (branch mapping-matrix):
 ====================================
 
