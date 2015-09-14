@@ -1,3 +1,17 @@
+From b46acfc (branch mapping-matrix):
+====================================
+
+In antenna_array.py,
+
+(*) In member function imagr() of class NewImage, in case of MOFF
+imaging, replace call to member function make_grid_cube_new() of
+class AntennaArray with new member function applyMappingMatrix()
+of class AntennaArray
+(*) Add type checking in imagr() member function of class NewImage to
+ensure the gridded quantities if in sparse matrix form are converted
+appropriately
+(*) Remove commented and obsolete class Image
+
 From 7fc4eea (branch mapping-matrix):
 ====================================
 
