@@ -1,3 +1,16 @@
+From 69dbe0d (branch mapping-matrix):
+====================================
+
+In antenna_array.py,
+
+(*) Add attribute ant2grid_mapper to class AntennaArray to hold sparse
+mapping matrix information
+(*) Import scipy module sparse for sparse matrix operations
+(*) Add member function genMappingMatrix() (with docstring) to class
+AntennaArray
+(*) Add description of newly added member function genMappingMatrix()
+in the docstring of class AntennaArray
+
 From 17d033b (branch zero-spacing):
 ==================================
 
