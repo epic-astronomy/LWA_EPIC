@@ -92,6 +92,26 @@ def baseline_grid_mapper(gridind_raveled, values, bins, label, outq):
 def find_1NN_arg_splitter(args, **kwargs):
     return LKP.find_1NN(*args, **kwargs)
 
+def genMatrixMapper_arg_splitter(args, **kwargs):
+    return genMatrixMapper(*args, **kwargs)
+
+def genMatrixMapper(val, ind, shape):
+    if not isinstance(val, NP.ndarray):
+        raise TypeError('Input parameter val must be a numpy array')
+    if not isinstance(ind, (list,tuple)):
+        raise TypeError('Input parameter ind must be a list or tuple containing numpy arrays')
+    if val.size != ind[0].size:
+        raise ValueError('Input parameters val and ind must have the same size')
+    if not isinstance(shape, (tuple,list)):
+        raise TypeError('Input parameter shape must be a tuple or list')
+    if len(ind) != len(shape):
+        raise ValueError('Number of index groups in input parameter must match the number of dimensions specified in input parameter shape')
+    if len(ind) > 1:
+        for i in range(len(ind)-1):
+            if ind[i+1].size != ind[i].size:
+                raise ValueError('All index groups must have same size')
+    return SM.csr_matrix((val, ind), shape=shape)
+
 ################################################################################
 
 class CrossPolInfo:
@@ -4238,7 +4258,8 @@ class InterferometerArray:
 
     def genMappingMatrix(self, pol=None, normalize=True, method='NN',
                          distNN=NP.inf, identical_interferometers=True,
-                         gridfunc_freq=None, wts_change=False, verbose=True):
+                         gridfunc_freq=None, wts_change=False, parallel=False,
+                         nproc=None, verbose=True):
 
         """
         ------------------------------------------------------------------------
@@ -4298,8 +4319,25 @@ class InterferometerArray:
                    previous snapshot can be used. If True, a new mapping has to 
                    be determined.
 
+        parallel   [boolean] specifies if parallelization is to be invoked. 
+                   False (default) means only serial processing
+
+        nproc      [integer] specifies number of independent processes to spawn.
+                   Default = None, means automatically determines the number of 
+                   process cores in the system and use one less than that to 
+                   avoid locking the system for other processes. Applies only 
+                   if input parameter 'parallel' (see above) is set to True. 
+                   If nproc is set to a value more than the number of process
+                   cores in the system, it will be reset to number of process 
+                   cores in the system minus one to avoid locking the system out 
+                   for other processes
         verbose    [boolean] If True, prints diagnostic and progress messages. 
                    If False (default), suppress printing such messages.
+
+        NOTE: Although certain portions are parallelizable, the overheads in 
+        these processes seem to make it worse than serial processing. It is 
+        advisable to stick to serialized version unless testing with larger
+        data sets clearly indicates otherwise.
         ------------------------------------------------------------------------
         """
 
@@ -4386,6 +4424,14 @@ class InterferometerArray:
                     per_bl_per_freq_norm_wts = NP.zeros(blind.size, dtype=NP.complex64)
                     # per_bl_per_freq_norm_wts = NP.ones(blind.size, dtype=NP.complex64)                    
                     
+                    if parallel or (nproc is not None):
+                        list_of_val = []
+                        list_of_rowcol_tuple = []
+                    else:
+                        spval = []
+                        sprow = []
+                        spcol = []
+                        
                     runsum = 0
                     if verbose:
                         progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} Baselines '.format(n_bl), PGB.ETA()], maxval=n_bl).start()
@@ -4415,22 +4461,41 @@ class InterferometerArray:
                         self.grid_mapper[cpol]['per_bl2grid'] += [copy.deepcopy(per_bl2grid_info)]
                         runsum += len(gi)
 
-                        # determine the sparse interferometer-to-grid mapping matrix
-                        
+                        # determine the sparse interferometer-to-grid mapping matrix pre-requisites
+
+                        val = per_bl2grid_info['per_bl_per_freq_norm_wts']*per_bl2grid_info['illumination']
                         vuf_gridind_unraveled = (per_bl2grid_info['v_gridind'],per_bl2grid_info['u_gridind'],per_bl2grid_info['f_gridind'])
                         vuf_gridind_raveled = NP.ravel_multi_index(vuf_gridind_unraveled, (self.gridu.shape+(self.f.size,)))
-                        if self.bl2grid_mapper[cpol] is None:
-                            self.bl2grid_mapper[cpol] = SM.csr_matrix((per_bl2grid_info['per_bl_per_freq_norm_wts']*per_bl2grid_info['illumination'], (vuf_gridind_raveled,per_bl2grid_info['f_gridind'])), shape=(self.gridu.size*self.f.size,self.f.size))
+                        
+                        if (not parallel) and (nproc is None):
+                            spval += val.tolist()
+                            sprow += vuf_gridind_raveled.tolist()
+                            spcol += (per_bl2grid_info['f_gridind'] + bi*self.f.size).tolist()
                         else:
-                            spmat = SM.csr_matrix((per_bl2grid_info['per_bl_per_freq_norm_wts']*per_bl2grid_info['illumination'], (vuf_gridind_raveled,per_bl2grid_info['f_gridind'])), shape=(self.gridu.size*self.f.size,self.f.size))
-                            self.bl2grid_mapper[cpol] = SM.hstack([self.bl2grid_mapper[cpol], spmat], format='csr')
-
+                            list_of_val += [per_bl2grid_info['per_bl_per_freq_norm_wts']*per_bl2grid_info['illumination']]
+                            list_of_rowcol_tuple += [(vuf_gridind_raveled, per_bl2grid_info['f_gridind'])]
+                    
                         if verbose:
                             progress.update(bi+1)
 
                     if verbose:
                         progress.finish()
 
+                    # determine the sparse interferometer-to-grid mapping matrix
+                    if parallel or (nproc is not None):
+                        list_of_shapes = [(self.gridu.size*self.f.size, self.f.size)] * n_bl
+                        if nproc is None:
+                            nproc = max(MP.cpu_count()-1, 1) 
+                        else:
+                            nproc = min(nproc, max(MP.cpu_count()-1, 1))
+                        pool = MP.Pool(processes=nproc)
+                        list_of_spmat = pool.map(genMatrixMapper_arg_splitter, IT.izip(list_of_val, list_of_rowcol_tuple, list_of_shapes))
+                        self.bl2grid_mapper[cpol] = SM.hstack(list_of_spmat, format='csr')
+                    else:
+                        spval = NP.asarray(spval)
+                        sprowcol = (NP.asarray(sprow), NP.asarray(spcol))
+                        self.bl2grid_mapper[cpol] = SM.csr_matrix((spval, sprowcol), shape=(self.gridu.size*self.f.size, n_bl*self.f.size))
+                    
                     self.grid_mapper[cpol]['all_bl2grid']['per_bl_per_freq_norm_wts'] = NP.copy(per_bl_per_freq_norm_wts)
 
     ############################################################################
@@ -10411,7 +10476,8 @@ class AntennaArray:
 
     def genMappingMatrix(self, pol=None, normalize=True, method='NN',
                          distNN=NP.inf, identical_antennas=True,
-                         gridfunc_freq=None, wts_change=False, verbose=True):
+                         gridfunc_freq=None, wts_change=False, parallel=False,
+                         nproc=None, verbose=True):
 
         """
         ------------------------------------------------------------------------
@@ -10471,8 +10537,26 @@ class AntennaArray:
                    previous snapshot can be used. If True, a new mapping has to 
                    be determined.
 
+        parallel   [boolean] specifies if parallelization is to be invoked. 
+                   False (default) means only serial processing
+
+        nproc      [integer] specifies number of independent processes to spawn.
+                   Default = None, means automatically determines the number of 
+                   process cores in the system and use one less than that to 
+                   avoid locking the system for other processes. Applies only 
+                   if input parameter 'parallel' (see above) is set to True. 
+                   If nproc is set to a value more than the number of process
+                   cores in the system, it will be reset to number of process 
+                   cores in the system minus one to avoid locking the system out 
+                   for other processes
+
         verbose    [boolean] If True, prints diagnostic and progress messages. 
                    If False (default), suppress printing such messages.
+
+        NOTE: Although certain portions are parallelizable, the overheads in 
+        these processes seem to make it worse than serial processing. It is 
+        advisable to stick to serialized version unless testing with larger
+        data sets clearly indicates otherwise.
         ------------------------------------------------------------------------
         """
 
@@ -10559,6 +10643,14 @@ class AntennaArray:
                     per_ant_per_freq_norm_wts = NP.zeros(antind.size, dtype=NP.complex64)
                     # per_ant_per_freq_norm_wts = NP.ones(antind.size, dtype=NP.complex64)                    
                     
+                    if parallel or (nproc is not None):
+                        list_of_val = []
+                        list_of_rowcol_tuple = []
+                    else:
+                        spval = []
+                        sprow = []
+                        spcol = []
+                        
                     runsum = 0
                     if verbose:
                         progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} Antennas '.format(n_ant), PGB.ETA()], maxval=n_ant).start()
@@ -10587,21 +10679,38 @@ class AntennaArray:
                         self.grid_mapper[apol]['per_ant2grid'] += [copy.deepcopy(per_ant2grid_info)]
                         runsum += len(gi)
 
-                        # determine the sparse antenna-to-grid mapping matrix
-                        
+                        # determine the sparse interferometer-to-grid mapping matrix pre-requisites
+                        val = per_ant2grid_info['per_ant_per_freq_norm_wts']*per_ant2grid_info['illumination']
                         vuf_gridind_unraveled = (per_ant2grid_info['v_gridind'],per_ant2grid_info['u_gridind'],per_ant2grid_info['f_gridind'])
                         vuf_gridind_raveled = NP.ravel_multi_index(vuf_gridind_unraveled, (self.gridu.shape+(self.f.size,)))
-                        if self.ant2grid_mapper[apol] is None:
-                            self.ant2grid_mapper[apol] = SM.csr_matrix((per_ant2grid_info['per_ant_per_freq_norm_wts']*per_ant2grid_info['illumination'], (vuf_gridind_raveled,per_ant2grid_info['f_gridind'])), shape=(self.gridu.size*self.f.size,self.f.size))
+                        
+                        if (not parallel) and (nproc is None):
+                            spval += val.tolist()
+                            sprow += vuf_gridind_raveled.tolist()
+                            spcol += (per_ant2grid_info['f_gridind'] + ai*self.f.size).tolist()
                         else:
-                            spmat = SM.csr_matrix((per_ant2grid_info['per_ant_per_freq_norm_wts']*per_ant2grid_info['illumination'], (vuf_gridind_raveled,per_ant2grid_info['f_gridind'])), shape=(self.gridu.size*self.f.size,self.f.size))
-                            self.ant2grid_mapper[apol] = SM.hstack([self.ant2grid_mapper[apol], spmat], format='csr')
-
+                            list_of_val += [per_ant2grid_info['per_ant_per_freq_norm_wts']*per_ant2grid_info['illumination']]
+                            list_of_rowcol_tuple += [(vuf_gridind_raveled, per_ant2grid_info['f_gridind'])]
                         if verbose:
                             progress.update(ai+1)
 
                     if verbose:
                         progress.finish()
+
+                    # determine the sparse interferometer-to-grid mapping matrix
+                    if parallel or (nproc is not None):
+                        list_of_shapes = [(self.gridu.size*self.f.size, self.f.size)] * n_ant
+                        if nproc is None:
+                            nproc = max(MP.cpu_count()-1, 1) 
+                        else:
+                            nproc = min(nproc, max(MP.cpu_count()-1, 1))
+                        pool = MP.Pool(processes=nproc)
+                        list_of_spmat = pool.map(genMatrixMapper_arg_splitter, IT.izip(list_of_val, list_of_rowcol_tuple, list_of_shapes))
+                        self.ant2grid_mapper[apol] = SM.hstack(list_of_spmat, format='csr')
+                    else:
+                        spval = NP.asarray(spval)
+                        sprowcol = (NP.asarray(sprow), NP.asarray(spcol))
+                        self.ant2grid_mapper[apol] = SM.csr_matrix((spval, sprowcol), shape=(self.gridu.size*self.f.size, n_ant*self.f.size))
 
                     self.grid_mapper[apol]['all_ant2grid']['per_ant_per_freq_norm_wts'] = NP.copy(per_ant_per_freq_norm_wts)
 

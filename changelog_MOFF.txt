@@ -1,3 +1,26 @@
+From 51648e1 (branch mapping-matrix):
+====================================
+
+In antenna_array.py,
+
+(*) Make sparse matrix initialization more efficient in member
+functions genMatrixMapping() of classes InterferometerArray and
+AntennaArray
+(*) Create global functions genMatrixMapper_arg_splitter() and
+genMatrixMapper() required for parallelization of sparse matrix
+generation
+(*) Add keyword inputs parallel and nproc in member functions
+genMatrixMapping() of classes InterferometerArray and
+AntennaArray. Modify docstring accordingly
+(*) Add parallelization to member functions genMatrixMapping() of
+classes InterferometerArray and AntennaArray
+(*) The parallelized version tested so far seems to have worse
+performance relative to the serial version possibly due to large
+overheads. Unless testing with larger data sets clearly indicates
+otherwise, it is advised to stick to the serial version of the
+member functions genMappingMatrix() in classes InterferometerArray
+and AntennaArray
+
 From 56bcd6b (branch mapping-matrix):
 ====================================
 
