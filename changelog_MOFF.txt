@@ -1,3 +1,28 @@
+From 56bcd6b (branch mapping-matrix):
+====================================
+
+In antenna_array.py,
+
+(*) Add attribute bl2grid_mapper to class InterferometerArray to hold 
+sparse mapping matrix information
+(*) Add description of newly added attribute bl2grid_mapper in
+docstring of class InterferometerArray
+(*) Add member function genMappingMatrix() (with docstring) to class
+InterferometerArray
+(*) In member function imagr() of class NewImage, in case of FX
+imaging, replace call to member function make_grid_cube_new() of
+class InterferometerArray with new member function applyMappingMatrix()
+of class InterferometerArray
+(*) Add progressbar in member functions genMappingMatrix() of classes
+AntennaArray and InterferometerArray
+(*) Add description of newly added member function genMappingMatrix()
+in the docstring of class InterferometerArray
+(*) In docstring of member function genMappingMatrix() of class
+AntennaArray, remove description for cal_loop input (which is
+non-existent in the member function definition)
+(*) Add description of attribute ant2grid_mapper in docstring of class
+AntennaArray
+
 From b46acfc (branch mapping-matrix):
 ====================================
 
