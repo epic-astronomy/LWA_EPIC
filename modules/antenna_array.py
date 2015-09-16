@@ -6804,7 +6804,7 @@ class NewImage:
     ############################################################################
 
     def imagr(self, pol=None, weighting='natural', pad='on', stack=True,
-              verbose=True):
+              grid_map_method='sparse', verbose=True):
 
         """
         ------------------------------------------------------------------------
@@ -6832,6 +6832,12 @@ class NewImage:
 
         stack     [boolean] If True (default), stacks the imaged and uv-gridded
                   data to the stack for batch processing later
+
+        grid_map_method
+                  [string] Accepted values are 'regular' and 'sparse' (default).
+                  If 'regular' it applies the regular grid mapping while 
+                  'sparse' applies the grid mapping based on sparse matrix 
+                  methods
 
         verbose   [boolean] If True (default), prints diagnostic and progress
                   messages. If False, suppress printing such messages.
@@ -6862,9 +6868,12 @@ class NewImage:
             pol = NP.unique(NP.asarray(pol)).tolist()
             for apol in pol:
                 if apol in ['P1', 'P2']:
-                    # self.antenna_array.make_grid_cube(verbose=verbose, pol=apol)
-                    # self.antenna_array.make_grid_cube_new(verbose=verbose, pol=apol)
-                    self.antenna_array.applyMappingMatrix(pol=apol, verbose=verbose)
+                    if grid_map_method == 'regular':
+                        self.antenna_array.make_grid_cube_new(verbose=verbose, pol=apol)
+                    elif grid_map_method == 'sparse':
+                        self.antenna_array.applyMappingMatrix(pol=apol, verbose=verbose)
+                    else:
+                        raise ValueError('Invalid value specified for input parameter grid_map_method')
 
                     self.grid_wts[apol] = NP.zeros(self.gridu.shape+(self.f.size,))
                     if apol in self.antenna_array.grid_illumination:
@@ -6918,9 +6927,13 @@ class NewImage:
             pol = NP.unique(NP.asarray(pol)).tolist()
             for cpol in pol:
                 if cpol in ['P11', 'P12', 'P21', 'P22']:
-                    # self.interferometer_array.make_grid_cube(verbose=verbose, pol=cpol)
-                    # self.interferometer_array.make_grid_cube_new(verbose=verbose, pol=cpol)
-                    self.interferometer_array.applyMappingMatrix(pol=cpol, verbose=verbose)
+                    if grid_map_method == 'regular':
+                        self.interferometer_array.make_grid_cube_new(verbose=verbose, pol=cpol)
+                    elif grid_map_method == 'sparse':
+                        self.interferometer_array.applyMappingMatrix(pol=cpol, verbose=verbose)
+                    else:
+                        raise ValueError('Invalid value specified for input parameter grid_map_method')
+
                     self.grid_wts[cpol] = NP.zeros(self.gridu.shape+(self.f.size,))
                     if cpol in self.interferometer_array.grid_illumination:
                         if SM.issparse(self.interferometer_array.grid_illumination[cpol]):

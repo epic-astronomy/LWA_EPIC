@@ -1,3 +1,17 @@
+From 5b125b4 (branch mapping-matrix):
+====================================
+
+(*) Rename MOFF_simulations_test_sparse_matrix.py to
+compare_MOFF_FX_simulations_test_sparse_matrix.py under
+git repository
+
+In antenna_array.py,
+
+(*) Add input parameter grid_map_method in member function
+imagr() of class NewImage whch allows it to handle the regular
+gridding mapping method or the one based on sparse matrix
+operations. Modify member function docstring accordingly
+
 From 51648e1 (branch mapping-matrix):
 ====================================
 
