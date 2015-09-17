@@ -1,3 +1,12 @@
+From 99344bf (branch performance):
+====================================
+
+In antenna_array.py,
+
+(*) Fix bug in imagr() member function of class NewImage in
+selecting the original unpadded portion of the qunaities in
+UV-plane for both MOFF and FX imaging
+
 From 5b125b4 (branch mapping-matrix):
 ====================================
 

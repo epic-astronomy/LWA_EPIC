@@ -4025,7 +4025,6 @@ class InterferometerArray:
 
     ############################################################################
 
-    # @profile
     def grid_convolve_new(self, pol=None, normalize=False, method='NN',
                           distNN=NP.inf, identical_interferometers=True,
                           cal_loop=False, gridfunc_freq=None, wts_change=False,
@@ -6917,10 +6916,10 @@ class NewImage:
                     self.img[apol] = NP.fft.fftshift(dirty_image/sum_wts2, axes=(0,1))
                     qty_vuf = NP.fft.ifft2(syn_beam/sum_wts2, axes=(0,1)) # Inverse FT
                     qty_vuf = NP.fft.ifftshift(qty_vuf, axes=(0,1)) # Shift array to be centered
-                    self.wts_vuf[apol] = qty_vuf[self.gridv.shape[0]:3*self.gridv.shape[0],self.gridu.shape[0]:3*self.gridu.shape[0],:]
+                    self.wts_vuf[apol] = qty_vuf[self.gridv.shape[0]:3*self.gridv.shape[0],self.gridu.shape[1]:3*self.gridu.shape[1],:]
                     qty_vuf = NP.fft.ifft2(dirty_image/sum_wts2, axes=(0,1)) # Inverse FT
                     qty_vuf = NP.fft.ifftshift(qty_vuf, axes=(0,1)) # Shift array to be centered
-                    self.vis_vuf[apol] = qty_vuf[self.gridv.shape[0]:3*self.gridv.shape[0],self.gridu.shape[0]:3*self.gridu.shape[0],:]
+                    self.vis_vuf[apol] = qty_vuf[self.gridv.shape[0]:3*self.gridv.shape[0],self.gridu.shape[1]:3*self.gridu.shape[1],:]
                        
         if self.measured_type == 'visibility':
             if pol is None: pol = ['P11', 'P12', 'P21', 'P22']
@@ -6952,8 +6951,8 @@ class NewImage:
                     sum_wts = NP.sum(NP.abs(self.grid_wts[cpol] * self.grid_illumination[cpol]), axis=(0,1), keepdims=True)
 
                     if pad == 'on': # Pad it with zeros on either side to be twice the size
-                        padded_syn_beam_in_uv = NP.pad(self.grid_wts[cpol]*self.grid_illumination[cpol], ((self.gridu.shape[0]/2,self.gridu.shape[0]/2),(self.gridv.shape[1]/2,self.gridv.shape[1]/2),(0,0)), mode='constant', constant_values=0)
-                        padded_grid_Vf = NP.pad(self.grid_wts[cpol]*self.grid_Vf[cpol], ((self.gridu.shape[0]/2,self.gridu.shape[0]/2),(self.gridv.shape[1]/2,self.gridv.shape[1]/2),(0,0)), mode='constant', constant_values=0)
+                        padded_syn_beam_in_uv = NP.pad(self.grid_wts[cpol]*self.grid_illumination[cpol], ((self.gridv.shape[0]/2,self.gridv.shape[0]/2),(self.gridu.shape[1]/2,self.gridu.shape[1]/2),(0,0)), mode='constant', constant_values=0)
+                        padded_grid_Vf = NP.pad(self.grid_wts[cpol]*self.grid_Vf[cpol], ((self.gridv.shape[0]/2,self.gridv.shape[0]/2),(self.gridu.shape[1]/2,self.gridu.shape[1]/2),(0,0)), mode='constant', constant_values=0)
                         self.gridl, self.gridm = NP.meshgrid(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[1], du)), NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[0], dv)))
                     else:  # No padding
                         padded_syn_beam_in_uv = self.grid_wts[cpol]*self.grid_illumination[cpol]
@@ -6976,10 +6975,10 @@ class NewImage:
                     self.img[cpol] = NP.fft.fftshift(dirty_image/sum_wts, axes=(0,1))
                     qty_vuf = NP.fft.ifft2(syn_beam/sum_wts, axes=(0,1)) # Inverse FT
                     qty_vuf = NP.fft.ifftshift(qty_vuf, axes=(0,1)) # Shift array to be centered
-                    self.wts_vuf[cpol] = qty_vuf[self.gridv.shape[0]/2:3*self.gridv.shape[0]/2,self.gridu.shape[0]/2:3*self.gridu.shape[0]/2,:]
+                    self.wts_vuf[cpol] = qty_vuf[self.gridv.shape[0]/2:3*self.gridv.shape[0]/2,self.gridu.shape[1]/2:3*self.gridu.shape[1]/2,:]
                     qty_vuf = NP.fft.ifft2(dirty_image/sum_wts, axes=(0,1)) # Inverse FT
                     qty_vuf = NP.fft.ifftshift(qty_vuf, axes=(0,1)) # Shift array to be centered
-                    self.vis_vuf[cpol] = qty_vuf[self.gridv.shape[0]/2:3*self.gridv.shape[0]/2,self.gridu.shape[0]/2:3*self.gridu.shape[0]/2,:]
+                    self.vis_vuf[cpol] = qty_vuf[self.gridv.shape[0]/2:3*self.gridv.shape[0]/2,self.gridu.shape[1]/2:3*self.gridu.shape[1]/2,:]
 
         nan_ind = NP.where(self.gridl**2 + self.gridm**2 > 1.0)
         # nan_ind_unraveled = NP.unravel_index(nan_ind, self.gridl.shape)
@@ -9568,7 +9567,6 @@ class AntennaArray:
 
     ############################################################################
 
-    # @profile
     def grid_convolve(self, pol=None, ants=None, unconvolve_existing=False,
                       normalize=False, method='NN', distNN=NP.inf, tol=None,
                       maxmatch=None, identical_antennas=True, cal_loop=False,
@@ -10255,7 +10253,6 @@ class AntennaArray:
 
     ############################################################################
     
-    # @profile
     def grid_convolve_new(self, pol=None, normalize=False, method='NN',
                           distNN=NP.inf, identical_antennas=True,
                           cal_loop=False, gridfunc_freq=None, wts_change=False,
@@ -11263,7 +11260,6 @@ class AntennaArray:
 
     ############################################################################
 
-    # @profile
     def update(self, updates=None, parallel=False, nproc=None, verbose=False):
 
         """
