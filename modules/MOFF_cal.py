@@ -24,7 +24,7 @@ class cal:
     
     gain_factor:    Weighting factor when updating gains.
     
-    tempt_gains:     Complex numpy array, gains currently being integrated/averaged.
+    temp_gains:     Complex numpy array, gains currently being integrated/averaged.
     
     sim_mode:       [Boolean] representing whether in simulation mode. Default = False.
     
@@ -377,6 +377,7 @@ class cal:
 
         # TODO:
         # push the sum of vis and gains outside of the integration
+        # intelligently select pixel to correlate
         if self.inv_gains:
             # inverted gains version
             new_gains = self.n_ant * Edata * NP.reshape(NP.conj(imgdata),(1,self.n_chan)) / NP.sum(self.model_vis * NP.reshape(NP.abs(self.curr_gains)**2,(1,self.n_ant,self.n_chan)),axis=1)

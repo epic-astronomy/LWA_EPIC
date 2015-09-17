@@ -1,3 +1,11 @@
+From 4a47ed5:
+============
+
+(*) Tweaking some parameters in cal script, cleaning code
+(*) Fixed typo in cal module
+(*) Note somewhere I introduced a bug in the multi-cal which I'm
+    still hunting!
+
 From b867de8:
 ============
 
