@@ -1,4 +1,4 @@
-From 4a47ed5:
+From 4a47ed5 (branch cal_devel):
 ============
 
 (*) Tweaking some parameters in cal script, cleaning code
@@ -6,7 +6,7 @@ From 4a47ed5:
 (*) Note somewhere I introduced a bug in the multi-cal which I'm
     still hunting!
 
-From b867de8:
+From b867de8 (branch cal_devel):
 ============
 
 (*) Revamped the multi-source calibration to incorporate all sources
@@ -18,12 +18,12 @@ From b867de8:
     at the script level of cal loops. Will eventually want this in
 	antenna class
 
-From d49e4c4:
+From d49e4c4 (branch cal_devel):
 ============
 
 (*) Added LWA antenna positions for calibration script.
 
-From a6e8d49:
+From a6e8d49 (branch cal_devel):
 ============
 
 (*) Added a new expression for calibration updates.
@@ -31,20 +31,20 @@ From a6e8d49:
 (*) Keeping the old expression by setting the cal_ver='old' when initializing
 	cal object.
 
-From b55db4b:
+From b55db4b (branch cal_devel):
 ============
 
 (*) Adding structure for first-attempt multi-source calibration.
 	Note: NOT currently working, but conforms to single source just fine.
 
-From 47b54557:
+From 47b54557 (branch cal_devel):
 =============
 
 (*) Fixed bug in the way gains were averaged over time for the non-inverted
 gains case.
 
 
-From e533f496:
+From e533f496 (branch cal_devel):
 =============
 
 (*) Major upgrade to cal algorithm to include proper frequency dependence.
@@ -54,7 +54,7 @@ multi-source calibration.
 (*) Added reference point to cal class for phasing of antennas.
 (*) Fixed bug when averaging gains and gain_inv = False.
 
-From a0c1b87:
+From a0c1b87 (branch cal_devel):
 ============
 
 (*) Added functionality for off-center calibrator.
@@ -63,16 +63,705 @@ From a0c1b87:
 (*) Still have bugs that need to be worked out. Specifically, there seems to
 be a systematic bias in my off-center calibration solutions.
 (*) More cleaning of code.	
+=======
+From 99344bf (branch performance):
+====================================
+
+In antenna_array.py,
+
+(*) Fix bug in imagr() member function of class NewImage in
+selecting the original unpadded portion of the qunaities in
+UV-plane for both MOFF and FX imaging
+
+From 5b125b4 (branch mapping-matrix):
+====================================
+
+(*) Rename MOFF_simulations_test_sparse_matrix.py to
+compare_MOFF_FX_simulations_test_sparse_matrix.py under
+git repository
+
+In antenna_array.py,
+
+(*) Add input parameter grid_map_method in member function
+imagr() of class NewImage whch allows it to handle the regular
+gridding mapping method or the one based on sparse matrix
+operations. Modify member function docstring accordingly
+
+From 51648e1 (branch mapping-matrix):
+====================================
+
+In antenna_array.py,
+
+(*) Make sparse matrix initialization more efficient in member
+functions genMatrixMapping() of classes InterferometerArray and
+AntennaArray
+(*) Create global functions genMatrixMapper_arg_splitter() and
+genMatrixMapper() required for parallelization of sparse matrix
+generation
+(*) Add keyword inputs parallel and nproc in member functions
+genMatrixMapping() of classes InterferometerArray and
+AntennaArray. Modify docstring accordingly
+(*) Add parallelization to member functions genMatrixMapping() of
+classes InterferometerArray and AntennaArray
+(*) The parallelized version tested so far seems to have worse
+performance relative to the serial version possibly due to large
+overheads. Unless testing with larger data sets clearly indicates
+otherwise, it is advised to stick to the serial version of the
+member functions genMappingMatrix() in classes InterferometerArray
+and AntennaArray
+
+From 56bcd6b (branch mapping-matrix):
+====================================
+
+In antenna_array.py,
+
+(*) Add attribute bl2grid_mapper to class InterferometerArray to hold 
+sparse mapping matrix information
+(*) Add description of newly added attribute bl2grid_mapper in
+docstring of class InterferometerArray
+(*) Add member function genMappingMatrix() (with docstring) to class
+InterferometerArray
+(*) In member function imagr() of class NewImage, in case of FX
+imaging, replace call to member function make_grid_cube_new() of
+class InterferometerArray with new member function applyMappingMatrix()
+of class InterferometerArray
+(*) Add progressbar in member functions genMappingMatrix() of classes
+AntennaArray and InterferometerArray
+(*) Add description of newly added member function genMappingMatrix()
+in the docstring of class InterferometerArray
+(*) In docstring of member function genMappingMatrix() of class
+AntennaArray, remove description for cal_loop input (which is
+non-existent in the member function definition)
+(*) Add description of attribute ant2grid_mapper in docstring of class
+AntennaArray
+
+From b46acfc (branch mapping-matrix):
+====================================
+
+In antenna_array.py,
+
+(*) In member function imagr() of class NewImage, in case of MOFF
+imaging, replace call to member function make_grid_cube_new() of
+class AntennaArray with new member function applyMappingMatrix()
+of class AntennaArray
+(*) Add type checking in imagr() member function of class NewImage to
+ensure the gridded quantities if in sparse matrix form are converted
+appropriately
+(*) Remove commented and obsolete class Image
+
+From 7fc4eea (branch mapping-matrix):
+====================================
+
+In antenna_array.py,
+
+(*) Add member function applyMappingMatrix() (with docstring) to class
+AntennaArray. At the moment the gridded quantities after application
+of the antenna-to-grid mapping matrix can be stored as dense or sparse
+matrices. Yet to be determined which is the best format to store these
+quantities
+(*) Add description of newly added member function 
+applyMappingMatrix() in the docstring of class AntennaArray
+
+From 69dbe0d (branch mapping-matrix):
+====================================
+
+In antenna_array.py,
+
+(*) Add attribute ant2grid_mapper to class AntennaArray to hold sparse
+mapping matrix information
+(*) Import scipy module sparse for sparse matrix operations
+(*) Add member function genMappingMatrix() (with docstring) to class
+AntennaArray
+(*) Add description of newly added member function genMappingMatrix()
+in the docstring of class AntennaArray
+
+From 17d033b (branch zero-spacing):
+==================================
+
+In antenna_array.py,
+
+(*) Increase distNN by a factor 2 to make estimation of neighbour
+pixels liberal in member function removeAutoCorr() of class NewImage
+(*) Increase distNN by a factor 2 to make estimation of neighbour
+pixels liberal in member function grid_convolve_new() of class
+AntennaArray
+(*) Increase distNN by a factor 2 to make estimation of neighbour
+pixels liberal in member function grid_convolve_new() of class
+InterferometerArray
+
+From fed207e (branch zero-spacing):
+==================================
+
+In antenna_array.py,
+
+(*) Fix bug in calling the right polarization variable cpol instead
+of apol in member function imagr() of class NewImage
+(*) Add value checking of synthesized beam and dirty image inside
+member function removeAutoCorr() of member function NewImage to ensure
+they have no non-negligible imaginary component
+(*) Assign values to attributes nzsp_beam, nzsP_img, nzsp_wts_vuf,
+nzsp_vis_vuf, nzsp_beam_avg, nzsp_img_avg, nzsp_grid_vis_avg,
+nzsp_grid_illumination_avg in member function removeAutoCorr() of
+class NewImage
+
+From b937371 (branch zero-spacing):
+==================================
+
+In antenna_array.py,
+
+(*) Add attributes nzsp_grid_vis_avg, nzsp_grid_illumination_avg,
+nzsp_wts_vuf, nzsp_vis_vuf, nzsp_img, nzsp_beam, nzsp_img_avg,
+nzsp_beam_avg, pbeam and initialize in __init__() member function of 
+class NewImage
+(*) Add member function removeAutoCorr() (with docstring) to class
+NewImage. Set attributes nzsp_grid_illumination_avg, nzsp_wts_vuf, 
+nzsp_grid_vis_avg, nzsp_vis_vuf, nzsp_img, nzsp_beam, nzsp_img_avg,
+nzsp_beam_avg in this member function
+(*) In member function evalAutoCorr() of class NewImage, estimate
+and store power pattern in attribute pbeam
+
+From d7ba9c1 (branch zero-spacing):
+==================================
+
+In aperture.py,
+
+(*) Minor change in docstring of member function __init__() of class
+Aperture
+
+In antenna_array.py,
+
+(*) Add attributes autocorr_set and autocorr_wts_vuf and initialize
+in __init__() member function of class NewImage
+(*) Add member function evalAutoCorr() (with docstring) to class
+NewImage. Set attributes autocorr_set and autocorr_wts_vuf inside this
+member function
+
+From 376f350 (branch analytic-kernel) and f5785c9 (branch imgstack):
+===================================================================
+
+(*) Merge analytic-kernel and imgstack branches
+
+From 10f4625 (on branch imgstack):
+=================================
+
+(*) Test image stacking (primarily from MOFF) using main level script
+compare_simulations_MOFF_FX_test_stacking.py
+
+From 612f745 (on branch imgstack):
+=================================
+
+In antenna_array.py,
+
+(*) Compute uv-grid attributes wts_vuf and vis_vuf in member function
+imagr() of class NewImage for both MOFF and FX cases
+(*) Change attribute name grid_Vf_stack and grid_Vf_avg in class
+NewImage throughout to grid_vis_stack and grid_vis_avg respectively
+(*) Add and initialize attributes wts_vuf and vis_vuf in __init__()
+member function of class NewImage
+(*) Add resetting of attributes wts_vuf and vis_vuf in reset()
+member function of class NewImage
+(*) Minor bug fix in correct estimation of attribute
+grid_illumination_avg in member function accumulate() of NewImage
+class
+(*) Variable pol inside member function imagr() of class NewImage is
+now converted to be a list instead of a numpy array
+(*) Minor bug fix in assignment of variable twts in member function
+accumulate() of class NewImage
+(*) Minor bug fix in estimating attribute grid_vis_avg in accumulate()
+member function of class NewImage
+(*) In member function accumulate() of class NewImage, average
+quantities only when they are not set to None under the corresponding
+polarization
+
+From 1cc3d96 (on branch imgstack):
+=================================
+
+In antenna_array.py,
+
+(*) Remove mean subtraction from imagr() member function of class
+NewImage in case of electric-field based MOFF imaging
+
+From 0a1cd79 (on branch imgstack):
+=================================
+
+In antenna_array.py,
+
+(*) Add input keyword stack to member function imagr() of class
+NewImage to invoke stack() to stack the image and UV quantities.
+Update docstring accordingly
+
+From 852370f (on branch imgstack):
+=================================
+
+In antenna_array.py,
+
+(*) To obtain attribute grid_Vf of class InterferometerArray,
+include the multiplication of visibilities by the grid illumination
+to obtain the gridded visibilities before imaging in member function
+make_grid_cube_new(). This step was forgotten in earlier version.
+This is a major bug fix that yields the correct amplitude scale for
+the FX images
+(*) To obtain attribute grid_Ef of class AntennaArray,
+include the multiplication of electric fields by the grid illumination
+to obtain the gridded electric fields before imaging in member 
+function make_grid_cube_new(). This step was forgotten in earlier 
+version. This is a major bug fix that yields the correct amplitude 
+scale for the MOFF images
+
+From efb0d88 (on branch imgstack):
+=================================
+
+In antenna_array.py,
+
+(*) Add and initialize attribute tbinsize in __init__() member
+function of class NewImage
+(*) Add and initialize attribute twts in __init__() member
+function of class NewImage
+(*) Add member function accumulate() (with docstring) to class
+NewImage where attributes tbinsize and twts are really assigned
+(*) Fix typo in attribute name grid_illumination_stack in class
+NewImage
+
+From c63b1d0 (on branch imgstack):
+=================================
+
+In antenna_array.py,
+
+(*) Add and initialize attributes img_avg, beam_avg, grid_Vf_avg, and
+grid_illumination_avg in __init__() member function of class NewImage
+
+From d9b7910 (on branch imgstack):
+=================================
+
+In antenna_array.py,
+
+(*) In member function stack() of class NewImage, check if the current
+timestamp is included in the attribute timestamps and stack only if
+not included
+(*) In member function stack() of class NewImage, append current
+timestamp onto to attribute timestamps after stacking
+
+From ff40081 (on branch imgstack):
+=================================
+
+In antenna_array.py,
+
+(*) Add and initialize attribute timestamps in __init__() member
+function of class NewImage
+(*) Reset attribute timestamp to None in reset() member function of
+class NewImage
+(*) Reassign attribute timestamp in update() member function of class
+NewImage
+
+From 0698f0b (branch imgstack):
+==============================
+
+In antenna_array.py,
+
+(*) Add member function stack() (with docstring) to class NewImage
+
+From ade3b10 (branch imgstack):
+==============================
+
+In antenna_array.py,
+
+(*) Add and initialize new attributes holimg_stack, holbeam_stack,
+img_stack, beam_stack, grid_illumination_stack, grid_Vf_stack in
+__init__() member function of class NewImage
+
+From 8c2f42c (branch imgstack):
+==============================
+
+In antenna_array.py,
+
+(*) Add member function update() (with docstring) to class NewImage
+(*) Update docstring of member function reset() of class NewImage
+
+From d994199 (branch imgstack):
+==============================
+
+In antenna_array.py,
+
+(*) Add member function reset() (with docstring) to class NewImage
+
+From 48dd92c (branch imgstack):
+==============================
+
+In antenna_array.py,
+
+(*) Rearrange order of initialization of some attributes in member
+function __init__() of class NewImage
+(*) Initialize grid_illumination, grid_wts, grid_Ef, and grid_Vf
+attributes in __init__() member function of class NewImage to None
+and move their real assignment into member function imagr()
+(*) Move invocation of member functions make_grid_cube() and
+make_grid_cube_new() of classes AntennaArray and InterferometerArray
+from inside member function __init__() to member function imagr() of 
+class NewImage
+
+From a966b70 (branch imgstack):
+==============================
+
+In antenna_array.py,
+
+(*) Add attributes antenna_array and interferometer_array to class
+NewImage and initialize them in __init__() member function
+
+From a898c04 (branch imgstack):
+==============================
+
+In antenna_array.py,
+
+(*) Comment out the defunct class Image
+
+From 5d8a0a8 (branch analytic-kernel):
+=====================================
+
+In antenna_array.py,
+
+(*) To obtain attribute grid_Vf of class InterferometerArray,
+include the multiplication of visibilities by the grid illumination
+to obtain the gridded visibilities before imaging in member function
+make_grid_cube_new(). This step was forgotten in earlier version.
+This is a major bug fix that yields the correct amplitude scale for
+the FX images
+(*) To obtain attribute grid_Ef of class AntennaArray,
+include the multiplication of electric fields by the grid illumination
+to obtain the gridded electric fields before imaging in member 
+function make_grid_cube_new(). This step was forgotten in earlier 
+version. This is a major bug fix that yields the correct amplitude 
+scale for the MOFF images
+
+From a898c04 (branch analytic-kernel):
+=====================================
+
+Add main level script compare_simulations_MOFF_FX_test_aperture.py
+to git repository (that was forgotten to be done earlier)
+
+From ac6f78d:
+============
+
+In antenna_array.py,
+
+(*) Create member function make_grid_cube_new() under class
+InterferometerArray. Update class docstring
+(*) In member function grid_convolve_new() of class
+InterferometerArray, keep track of twts
+(*) Fix bug in member function grid_convolve_new() of class
+InterferometerArray while assigning bl_xy to value under key
+'baselines' instead of the wrong key 'positions'
+(*) Make zero spacing aperture kernel removal in member function
+quick_beam_synthesis() of class AntennaArray remove the entire
+kernel footprint instead of just the single pixel of exactly zero
+spacing
+(*) In member functions grid_convolve_new() and grid_convolve() of
+classes AntennaArray and InterferometerArray use numpy squeeze() on
+Ef and Vf respectively only on axis=0 to remove the preceding but
+single length time dimension. This will now work even in case of a
+single antenna or interferometer. Use squeeze() on twts on axes 0
+and 2 to retain its antenna/baseline-axis
+
+In aperture.py,
+
+(*) In member function compute() of class Aperture, add support for
+analytic kernel estimation for auto-convolved rect, square and
+circular shapes
+
+From 3f4a16b:
+============
+
+In antenna_array.py,
+
+(*) Add and initialize attributes on antenna-to-grid mapping under
+keys 'per_bl2grid' and 'all_bl2grid' as part of bigger attribute
+dictionary grid_mapper in class InterferometerArray. Update docstring
+of class InterferometerArray accordingly
+(*) Create member function grid_convolve_new() for class
+InterferometerArray and add a description in the class docstring
+(*) Update docstring of class AntennaArray with description on
+attribute grid_mapper with recently added keys 'per_ant2grid' and
+'all_ant2grid'
+(*) Update docstring of class AntennaArray describing member function
+grid_convolve_new()
+(*) These changes to classes Interferometer and InterferometerArray are
+untested
+
+From 70d1ce3:
+============
+
+In aperture.py,
+
+(*) Change one of the accepted values of input parameter pol_type in 
+member function __init__() of class Aperture from 'single' to 'dual'
+
+In antenna_array.py,
+
+(*) Update attribute aperture in update() member function of class
+Interferometer. Update docstring accordingly
+(*) Update interferometer and antenna attributes aperture through
+update() member function of class InterferometerArray. Update
+docstring accordingly
+(*) Minor change in TypeError message in update() member function of
+class Antenna
+(*) Initialize attribute aperture in __init__() member function of
+class Antenna by explicitly passing the input pol_type='dual'
+
+From 4aee864:
+============
+
+In antenna_array.py,
+
+(*) Add attribute aperture to class Interferometer
+(*) Add input keyword aperture in __init__() member function of class
+Interferometer to initialize attribute aperture
+(*) Update docstring accordingly
+(*) Add type checking while initializing attribute aperture in member
+function __init__() of class Antenna
+
+From 23d5910:
+============
+
+In antenna_array.py,
+
+(*) Remove input keywords ants, mapping, tol, maxmatch from member 
+function grid_convolve_new() of class AntennaArray and docstrings. 
+Also remove code block concerning externally supplied ants and 
+instead only work with antenna instances that are part of the antenna 
+array instance
+(*) Remove commented lines in member function make_grid_cube_new() of
+class AntennaArray
+
+From 1c1263f:
+============
+
+In aperture.py,
+
+(*) Rename class AntennaAperture to simply Aperture and modify its
+occurrences throughout the module. Update docstrings accordingly
+
+In antenna_array.py,
+
+(*) Rename occurrences of class AntennaAperture to simply Aperture.
+Update docstrings accordingly
+(*) In __init__() member function of class NewImage, replace call
+to member function make_grid_cube() of class AntennaArray with
+call to make_grid_cube_new()
+
+From 090ab29:
+============
+
+In aperture.py,
+
+(*) Add attribute pol to class AntennaAperture and initialize in
+__init__() member function. Now the same class can work with single
+polarizations like 'P1' and 'P2' or cross-polarizations like 'P11',
+'P12', 'P21', and 'P22'
+(*) Throughout class AntennaAperture modify value checking against
+['P1', 'P2'] to that against attribute pol
+(*) Update docstrings accordingly
+
+From 200765b:
+============
+
+In aperture.py,
+
+(*) Change docstrings throughout to also include newly added analytic
+kernel functions auto_convolved_rect(), auto_convolved_square() and
+auto_convolved_circular()
+(*) In type checking for shape input in member function __init__() of
+class AntennaAperture, include the aforementioned newly added analytic
+kernel functions
+(*) Modify docstrings throughout to indicate that the shape parameters
+for the aforementioned newly added analytic kernels still describe the
+original rectangle, square and circular apertures from which the
+auto-convolutions are derived from
+
+From d6b3cbc:
+============
+
+In aperture.py,
+
+(*) Add function auto_convolved_rect() for analytic estimation of a
+rectangular kernel convolved with itself
+(*) Add function auto_convolved_square() for analytic estimation of a
+square kernel convolved with itself
+(*) Add function auto_convolved_circular() for analytic estimation of a
+circular kernel convolved with itself
+(*) Remove import of scipy.constants for the aperture module
+(*) In function inputcheck(), return wavelength as an array with size
+equal to the number of locations
+(*) In function inputcheck(), pass rmin and rmax in call to function
+parmscheck()
+
+From ff893b8:
+============
+
+In aperture.py,
+
+(*) Remove the use of xmin and ymin throughout the module. Instead
+assume throughout that xmin=-xmax, ymin=-ymax. This includes functions
+rect(), parmscheck(), inputcheck(), square() and class AntennaAperture
+(*) Add more checking of xmax and ymax in functions parmscheck()
+(*) Modify all docstrings in aperture module accordingly
+
+From 25d7cac:
+============
+
+In aperture.py,
+
+(*) Add lookup-based kernel estimation in member function compute()
+of class AntennaAperture. Rename the returned value kern to outdict
+and change the data structure of outdict. Update docstring accodingly
+(*) Add input keyword load_lookup() to member functions __init__() and
+compute() of class AntennaAperture. Update docstrings accordingly
+(*) Add input rmaxNN to member function compute() of class
+AntennaAperture as part of lookup funcitonality. Update docstring
+accordingly
+(*) Move reading of information in the lookup file to member function
+compute() in class AntennaAperture
+(*) In __init__() member function of class AntennaAperture, store
+only lookup information filename instead of reading in the lookup
+data.
+(*) Correct docstring of member function __init__() of class
+AntennaAperture with correct name of input parameter lkpinfo
+which was earlier incorrectly named as lookup
+(*) Update docstring of class AntennaAperture to accurately reflect
+its attributes and member functions
+
+In antenna_array.py,
+
+(*) Pass rmaxNN in call to compute() member function of class
+AntennaAperture from inside member function grid_convolve_new() of
+class AntennaArray
+(*) Pass load_lookup in call to compute() member function of class
+AntennaAperture from inside member function grid_convolve_new() of
+class AntennaArray
+
+From 4279b67:
+============
+
+In antenna_array.py,
+
+(*) Add keys 'per_ant2grid' and 'all_ant2grid' to attribute
+grid_mapper of class AntennaArray. The value under key 'all_ant2grid'
+is a dictionary consisting of keys 'antind', 'u_gridind', 'v_gridind',
+'f_gridind', 'Ef', 'illumination', 'per_ant_per_freq_norm_wts'. The
+value under ley 'per_ant2grid' is a list of dictionaries where each
+dictionary consists of the following keys - 'label', 'f_gridind',
+'u_gridind', 'v_gridind', 'per_ant_per_freq_norm_wts', 'illumination',
+'Ef'. The top level keys are initialized in __init__() member function
+of class AntennaArray
+(*) Create member function grid_convolve_new() for class
+AntennaArray for handling analytic kernel estimation making use of
+the aforementioned new attributes
+(*) Create member function make_grid_cube_new() for class
+AntennaArray for making a grid cube using analytic kernel estimate
+
+In aperture.py,
+
+(*) Fix indexing issues while calculating kernel in circular() and
+rect() 
+
+From 5bb23ec:
+============
+
+In antenna_array.py,
+
+(*) Update attribute aperture in member function update() of class
+Antenna by including it as one of the values passed through
+the input dictionary update_dict. Update docstring accordingly
+(*) Pass aperture update through one of the dictionary keys under
+the key 'antennas' in the updates dictionary input of member function
+update() of class AntennaArray which inside the member function is
+passed to update() member function of class Antenna. Update docstring
+accordingly
+
+In changelog_MOFF.txt,
+
+(*) Insert a log on the previous commit which was missed earlier
+related to import of lookup_operations module
+
+From 2c41e0a:
+============
+
+In aperture.py,
+
+(*) Import lookup_operations module
+(*) Add attributes wtsxy, wtsposxy to class AntennaAperture. 
+(*) Initialize new attributes wtsxy and wtsposxy in __init__()
+member function of class AntennaAperture by adding input keyword
+lkpinfo
+(*) Modify docstrings accordingly
+
+In antenna_array.py,
+
+(*) Minor change to docstring of member function update() of class
+Antenna
+
+From fb53e3a:
+============
+
+In antenna_array.py,
+
+(*) Import module aperture
+(*) Add input keyword aperture in __init__() member function of
+class Antenna. This keyword will provide the initialization with
+an instance of class AntennaAperture into an attribute named
+aperture
+(*) Change docstring accordingly
+
+From a8fa375:
+============
+
+In aperture.py,
+
+(*) Add class AntennaAperture with member functions __init__() and
+compute() with corresponding docstrings
+(*) Add function parmscheck() to check aperture shape parameters
+like xmin, xmax, ymin, ymax, rmin, rmax, rotangle and phase_center.
+Remove checking of these parameters from inputcheck() and instead
+invoke parmscheck() to verify these parameters
+
+From 8dc6512:
+============
+
+In aperture.py,
+
+(*) Add function circular() (with docstring) to create a uniform 
+circular aperture illumination
+(*) Fix bug in estimating kernel at valid indices in rect()
+(*) Add description of output to docstring of function square()
+
+From 4957346:
+============
+
+In aperture.py,
+
+(*) Add function square() (with docstring) to create a uniform square
+aperture illumination
+(*) Tidy up and update missing information in docstring of function
+rect()
+>>>>>>> master
 
 From ef4576a:
 ============
 
+<<<<<<< HEAD
 (*) Created new cal_devel branch for development of calibration capabilities
 (*) Changed cal script to actually mix up the data with "unknown" gains
 (*) Added option to calibrate by either dividing by gains, or by multiplying
 by conjugate of gains.
 (*) Moved file beardsley.py -> simple_cal_script.py
 
+=======
+Add new module aperture.py to repository
+
+In aperture.py,
+
+(*) Add function inputcheck() (with docstring) to check inputs
+(*) Add function rect() (with docstring) to create a uniform
+rectangular aperture illumination
+>>>>>>> master
 
 From 88f97d5:
 ============

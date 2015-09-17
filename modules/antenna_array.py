@@ -3,6 +3,7 @@ import multiprocessing as MP
 import itertools as IT
 import copy
 import scipy.constants as FCNST
+import scipy.sparse as SM
 from astropy.io import fits
 import matplotlib.pyplot as PLT
 import progressbar as PGB
@@ -11,6 +12,7 @@ import geometry as GEOM
 import my_gridding_modules as GRD
 import my_operations as OPS
 import lookup_operations as LKP
+import aperture as APR
 
 ################### Routines essential for parallel processing ################
 
@@ -89,6 +91,26 @@ def baseline_grid_mapper(gridind_raveled, values, bins, label, outq):
 
 def find_1NN_arg_splitter(args, **kwargs):
     return LKP.find_1NN(*args, **kwargs)
+
+def genMatrixMapper_arg_splitter(args, **kwargs):
+    return genMatrixMapper(*args, **kwargs)
+
+def genMatrixMapper(val, ind, shape):
+    if not isinstance(val, NP.ndarray):
+        raise TypeError('Input parameter val must be a numpy array')
+    if not isinstance(ind, (list,tuple)):
+        raise TypeError('Input parameter ind must be a list or tuple containing numpy arrays')
+    if val.size != ind[0].size:
+        raise ValueError('Input parameters val and ind must have the same size')
+    if not isinstance(shape, (tuple,list)):
+        raise TypeError('Input parameter shape must be a tuple or list')
+    if len(ind) != len(shape):
+        raise ValueError('Number of index groups in input parameter must match the number of dimensions specified in input parameter shape')
+    if len(ind) > 1:
+        for i in range(len(ind)-1):
+            if ind[i+1].size != ind[i].size:
+                raise ValueError('All index groups must have same size')
+    return SM.csr_matrix((val, ind), shape=shape)
 
 ################################################################################
 
@@ -325,6 +347,10 @@ class Interferometer:
                 the interferometer. Read docstring of class CrossPolInfo for 
                 details
 
+    aperture    [Instance of class APR.Aperture] aperture information
+                for the interferometer. Read docstring of class Aperture for
+                details
+
     Vt_stack    [dictionary] holds a stack of complex visibility time series 
                 measured at various time stamps under 4 polarizations which are 
                 stored under keys 'P11', 'P12', 'P21', and 'P22'. Each value 
@@ -499,7 +525,7 @@ class Interferometer:
     ----------------------------------------------------------------------------
     """
 
-    def __init__(self, antenna1, antenna2, corr_type=None):
+    def __init__(self, antenna1, antenna2, corr_type=None, aperture=None):
 
         """
         ------------------------------------------------------------------------
@@ -509,7 +535,7 @@ class Interferometer:
         Class attributes initialized are:
         label, latitude, location, pol, t, timestamp, f0, f, wts, wtspos, 
         wtspos_scale, gridinfo, blc, trc, timestamps, Vt_stack, Vf_stack, 
-        flag_stack, Vf_avg, twts, tbinsize
+        flag_stack, Vf_avg, twts, tbinsize, aperture
      
         Read docstring of class Antenna for details on these attributes.
         ------------------------------------------------------------------------
@@ -551,6 +577,16 @@ class Interferometer:
         self.timestamp = 0.0
         self.timestamps = []
         
+        if aperture is not None:
+            if isinstance(aperture, APR.Aperture):
+                if len(aperture.pol) != 4:
+                    raise ValueError('Interferometer aperture must contain four cross-polarization types')
+                self.aperture = aperture
+            else:
+                raise TypeError('aperture must be an instance of class Aperture found in module {0}'.format(APR.__name__))
+        else:
+            self.aperture = APR.Aperture(pol_type='cross')
+
         self.crosspol = CrossPolInfo(self.f.size)
 
         self.Vt_stack = {}
@@ -1375,6 +1411,10 @@ class Interferometer:
                        'P12', 'P21', and 'P22'. Default=None implies no updates 
                        for Vt.
     
+            aperture   [instance of class APR.Aperture] aperture information for 
+                       the interferometer. Read docstring of class Aperture for 
+                       details
+
             wtsinfo    [dictionary] consists of weights information for each of 
                        the four cross-polarizations under keys 'P11', 'P12', 
                        'P21', and 'P22'. Each of the values under the keys is a 
@@ -1458,6 +1498,7 @@ class Interferometer:
         wtsinfo = None
         gridfunc_freq = None
         ref_freq = None
+        aperture = None
 
         if update_dict is not None:
             if not isinstance(update_dict, dict):
@@ -1475,6 +1516,7 @@ class Interferometer:
             if 'wtsinfo' in update_dict: wtsinfo = update_dict['wtsinfo']
             if 'gridfunc_freq' in update_dict: gridfunc_freq = update_dict['gridfunc_freq']
             if 'ref_freq' in update_dict: ref_freq = update_dict['ref_freq']
+            if 'aperture' in update_dict: aperture = update_dict['aperture']
 
         if label is not None: self.label = label
         if location is not None: self.location = location
@@ -1520,6 +1562,12 @@ class Interferometer:
             trc_orig = NP.copy(self.trc)
             eps = 1e-6
     
+            if aperture is not None:
+                if isinstance(aperture, APR.Aperture):
+                    self.aperture = copy.deepcopy(aperture)
+                else:
+                    raise TypeError('Update for aperture must be an instance of class Aperture.')
+
             if wtsinfo is not None:
                 if not isinstance(wtsinfo, dict):
                     raise TypeError('Input parameter wtsinfo must be a dictionary.')
@@ -2181,7 +2229,123 @@ class InterferometerArray:
                                              locations raveled to one dimension
                                              from three dimensions of size 
                                              n_u x n_v x nchan
+                  'per_bl2grid'
+                              [list] each element in the list is a dictionary
+                              corresponding to an interferometer with information 
+                              on its mapping and contribution to the grid. Each 
+                              dictionary has the following keys and values:
+                              'label'        [tuple of two strings] 
+                                             interferometer label
+                              'f_gridind'    [numpy array] mapping information 
+                                             with indices to the frequency axis
+                                             of the grid
+                              'u_gridind'    [numpy array] mapping information 
+                                             with indices to the u-axis
+                                             of the grid. Must be of same size 
+                                             as array under 'f_gridind'
+                              'v_gridind'    [numpy array] mapping information 
+                                             with indices to the v-axis
+                                             of the grid. Must be of same size 
+                                             as array under 'f_gridind'
+                              'per_bl_per_freq_norm_wts'
+                                             [numpy array] mapping information 
+                                             on the (complex) normalizing 
+                                             multiplicative factor required to 
+                                             make the sum of illumination/weights 
+                                             per interferometer per frequency on 
+                                             the grid equal to unity. Must be of 
+                                             same size as array under 'f_gridind'
+                              'illumination' [numpy array] Complex aperture 
+                                             illumination/weights contributed
+                                             by the interferometer onto the grid. 
+                                             The grid pixels to which it 
+                                             contributes is given by 'f_gridind', 
+                                             'u_gridind', 'v_gridind'. Must be of 
+                                             same size as array under 'f_gridind'
+                              'Vf'           [numpy array] Complex visibilities 
+                                             contributed by the 
+                                             interferometer onto the grid. The 
+                                             grid pixels to which it contributes 
+                                             is given by 'f_gridind', 
+                                             'u_gridind', 'v_gridind'. Must be of 
+                                             same size as array under 'f_gridind'
+                  'all_bl2grid'
+                              [dictionary] contains the combined information of
+                              mapping of all interferometers to the grid. It 
+                              consists of the following keys and values:
+                              'blind'        [numpy array] all interferometer 
+                                             indices (to attribute ordered 
+                                             labels) that map to the uvf-grid
+                              'u_gridind'    [numpy array] all indices to the 
+                                             u-axis of the uvf-grid mapped to by 
+                                             all interferometers whose indices 
+                                             are given in key 'blind'. Must be 
+                                             of same size as the array under key 
+                                             'blind'
+                              'v_gridind'    [numpy array] all indices to the 
+                                             v-axis of the uvf-grid mapped to by 
+                                             all interferometers whose indices 
+                                             are given in key 'blind'. Must be 
+                                             of same size as the array under key 
+                                             'blind'
+                              'f_gridind'    [numpy array] all indices to the 
+                                             f-axis of the uvf-grid mapped to by 
+                                             all interferometers whose indices 
+                                             are given in key 'blind'. Must be 
+                                             of same size as the array under key 
+                                             'blind'
+                              'indNN_list'   [list of lists] Each item in the 
+                                             top level list corresponds to an 
+                                             interferometer in the same order as 
+                                             in the attribute ordered_labels. 
+                                             Each of these items is another list 
+                                             consisting of the unraveled grid 
+                                             indices it contributes to. The 
+                                             unraveled indices are what are used 
+                                             to obtain the u-, v- and f-indices 
+                                             in the grid using a conversion 
+                                             assuming f is the first axis, v is 
+                                             the second and u is the third
+                              'illumination' [numpy array] complex values of 
+                                             aperture illumination contributed 
+                                             by all interferometers to the grid. 
+                                             The interferometer indices are in 
+                                             'blind' and the grid indices are 
+                                             in 'u_gridind', 'v_gridind' and 
+                                             'f_gridind'. Must be of same size as 
+                                             these indices
+                              'per_bl_per_freq_norm_wts'
+                                             [numpy array] mapping information 
+                                             on the (complex) normalizing 
+                                             multiplicative factor required to 
+                                             make the sum of illumination or 
+                                             weights per interferometer per 
+                                             frequency on the grid equal to 
+                                             unity. This is appended for all 
+                                             interferometers together. Must be of 
+                                             same size as array under 
+                                             'illumination'
+                              'Vf'           [numpy array] Complex visibilities 
+                                             contributed by all 
+                                             interferometers onto the grid. The 
+                                             grid pixels to which it contributes 
+                                             is given by 'f_gridind', 
+                                             'u_gridind', 'v_gridind'. Must be of 
+                                             same size as array under 'f_gridind' 
+                                             and 'illumination'
                                              
+    bl2grid_mapper
+                  [sparse matrix] contains the interferometer array to grid 
+                  mapping information in sparse matrix format. When converted 
+                  to a dense array, it will have dimensions nrows equal to size 
+                  of the 3D cube and ncols equal to number of visibility spectra 
+                  of all interferometers over all channels. In other words, 
+                  nrows = nu x nv x nchan and ncols = n_bl x nchan. Dot product
+                  of this matrix with flattened visibility spectra or 
+                  interferometer weights will give the 3D cubes of gridded 
+                  visibilities and interferometer array illumination 
+                  respectively
+
     Member Functions:
 
     __init__()      Initializes an instance of class InterferometerArray
@@ -2257,6 +2421,11 @@ class InterferometerArray:
                     illumination patterns from specific antenna pairs on to an
                     already existing grid.
 
+    grid_convolve_new() 
+                    Routine to project the complex illumination power pattern 
+                    and the visibilities on the grid from the interferometer 
+                    array
+
     make_grid_cube()
                     Constructs the grid of complex power illumination and 
                     visibilities using the gridding information determined for 
@@ -2316,6 +2485,7 @@ class InterferometerArray:
 
         self.ordered_labels = [] # Usually output from member function baseline_vectors() or get_visibilities()
         self.grid_mapper = {}
+        self.bl2grid_mapper = {}  # contains the sparse mapping matrix
 
         for pol in ['P11', 'P12', 'P21', 'P22']:
             self.grid_mapper[pol] = {}
@@ -2333,9 +2503,14 @@ class InterferometerArray:
             self.grid_mapper[pol]['grid'] = {}
             self.grid_mapper[pol]['grid']['ind_all'] = None
 
+            self.grid_mapper[pol]['per_bl2grid'] = []
+            self.grid_mapper[pol]['all_bl2grid'] = {}
+
             self.grid_illumination[pol] = None
             self.grid_Vf[pol] = None
             self._bl_contribution[pol] = {}
+
+            self.bl2grid_mapper[pol] = None
 
         if (antenna_array is not None) and (antenna_pairs is not None):
             raise ValueError('InterferometerArray instance cannot be initialized with both inputs antenna_array and antenna_pairs.')
@@ -3390,12 +3565,12 @@ class InterferometerArray:
 
                     Vf_dict = self.get_visibilities(cpol, flag=None, tselect=-1, fselect=None, bselect=None, datapool='avg', sort=True)
                     Vf = Vf_dict['visibilities'].astype(NP.complex64)  #  (n_ts=1) x n_bl x nchan
-                    Vf = NP.squeeze(Vf)  # n_bl x nchan
+                    Vf = NP.squeeze(Vf, axis=0)  # n_bl x nchan
                     if Vf.shape[0] != n_bl:
                         raise ValueError('Encountered unexpected behavior. Need to debug.')
                     bl_labels = Vf_dict['labels']
                     twts = Vf_dict['twts']  # (n_ts=1) x n_bl x (nchan=1)
-                    twts = NP.squeeze(twts)
+                    twts = NP.squeeze(twts, axis=(0,2))  # n_bl
 
                     if verbose:
                         print 'Gathered baseline data for gridding convolution for timestamp {0}'.format(self.timestamp)
@@ -3850,6 +4025,543 @@ class InterferometerArray:
 
     ############################################################################
 
+    def grid_convolve_new(self, pol=None, normalize=False, method='NN',
+                          distNN=NP.inf, identical_interferometers=True,
+                          cal_loop=False, gridfunc_freq=None, wts_change=False,
+                          parallel=False, nproc=None, pp_method='pool',
+                          verbose=True): 
+
+        """
+        ------------------------------------------------------------------------
+        Routine to project the complex illumination power pattern and the 
+        visibilities on the grid from the interferometer array
+
+        Inputs:
+
+        pol        [String] The polarization to be gridded. Can be set to 'P1' 
+                   or 'P2'. If set to None, gridding for all the polarizations 
+                   is performed. Default = None
+
+        normalize  [Boolean] Default = False. If set to True, the gridded 
+                   weights are divided by the sum of weights so that the gridded 
+                   weights add up to unity. (Need to work on normaliation)
+
+        method     [string] The gridding method to be used in applying the 
+                   interferometer weights on to the interferometer array grid. 
+                   Accepted values are 'NN' (nearest neighbour - default), 'CS' 
+                   (cubic spline), or 'BL' (Bi-linear). In case of applying grid 
+                   weights by 'NN' method, an optional distance upper bound for 
+                   the nearest neighbour can be provided in the parameter distNN 
+                   to prune the search and make it efficient. Currently, only 
+                   the nearest neighbour method is operational.
+
+        distNN     [scalar] A positive value indicating the upper bound on 
+                   distance to the nearest neighbour in the gridding process. It 
+                   has units of distance, the same units as the interferometer 
+                   attribute location and interferometer array attribute gridx 
+                   and gridy. Default is NP.inf (infinite distance). It will be 
+                   internally converted to have same units as interferometer 
+                   attributes wtspos (units in number of wavelengths). To ensure
+                   all relevant pixels in the grid, the search distance used 
+                   internally will be a fraction more than distNN
+
+        identical_interferometers
+                   [boolean] indicates if all interferometer elements are to be
+                   treated as identical. If True (default), they are identical
+                   and their gridding kernels are identical. If False, they are
+                   not identical and each one has its own gridding kernel.
+
+        cal_loop   [boolean] If True, the calibration loop is assumed to be ON 
+                   and hence the calibrated electric fields are set in the 
+                   calibration loop. If False (default), the calibration loop is
+                   assumed to be OFF and the current electric fields are assumed 
+                   to be the calibrated data to be mapped to the grid 
+                   via gridding convolution.
+
+        gridfunc_freq
+                   [String scalar] If set to None (not provided) or to 'scale'
+                   assumes that attribute wtspos is given for a
+                   reference frequency which need to be scaled for the frequency
+                   channels. Will be ignored if the number of elements of list 
+                   in this attribute under the specific polarization are the 
+                   same as the number of frequency channels.
+
+        wts_change [boolean] indicates if weights and/or their lcoations have 
+                   changed from the previous intergration or snapshot. 
+                   Default=False means they have not changed. In such a case the 
+                   interferometer-to-grid mapping and grid illumination pattern do not 
+                   have to be determined, and mapping and values from the 
+                   previous snapshot can be used. If True, a new mapping has to 
+                   be determined.
+
+        parallel   [boolean] specifies if parallelization is to be invoked. 
+                   False (default) means only serial processing
+
+        nproc      [integer] specifies number of independent processes to spawn.
+                   Default = None, means automatically determines the number of 
+                   process cores in the system and use one less than that to 
+                   avoid locking the system for other processes. Applies only 
+                   if input parameter 'parallel' (see above) is set to True. 
+                   If nproc is set to a value more than the number of process
+                   cores in the system, it will be reset to number of process 
+                   cores in the system minus one to avoid locking the system out 
+                   for other processes
+
+        pp_method  [string] specifies if the parallelization method is handled
+                   automatically using multirocessing pool or managed manually
+                   by individual processes and collecting results in a queue.
+                   The former is specified by 'pool' (default) and the latter
+                   by 'queue'. These are the two allowed values. The pool method 
+                   has easier bookkeeping and can be fast if the computations 
+                   not expected to be memory bound. The queue method is more
+                   suited for memory bound processes but can be slower or 
+                   inefficient in terms of CPU management.
+
+        verbose    [boolean] If True, prints diagnostic and progress messages. 
+                   If False (default), suppress printing such messages.
+        ------------------------------------------------------------------------
+        """
+
+        eps = 1.0e-10
+        if pol is None:
+            pol = ['P1', 'P2']
+        elif not isinstance(pol, list):
+            pol = [pol]
+
+        if not self.grid_ready:
+            self.grid()
+
+        du = self.gridu[0,1] - self.gridu[0,0]
+        dv = self.gridv[1,0] - self.gridv[0,0]
+        wavelength = FCNST.c / self.f
+        min_lambda = NP.abs(wavelength).min()
+        rmaxNN = 0.5 * NP.sqrt(du**2 + dv**2) * min_lambda
+ 
+        krn = {}
+        crosspol = ['P11', 'P12', 'P21', 'P22']
+        for cpol in crosspol:
+            krn[cpol] = None
+            if cpol in pol:
+
+                bl_dict = self.baseline_vectors(pol=cpol, flag=None, sort=True)
+                self.ordered_labels = bl_dict['labels']
+                bl_xy = bl_dict['baselines'][:,:2] # n_bl x 2
+                n_bl = bl_xy.shape[0]
+
+                Vf_dict = self.get_visibilities(cpol, flag=None, tselect=-1, fselect=None, bselect=None, datapool='avg', sort=True)
+                Vf = Vf_dict['visibilities'].astype(NP.complex64)  #  (n_ts=1) x n_bl x nchan
+                Vf = NP.squeeze(Vf, axis=0)  # n_bl x nchan
+                if Vf.shape[0] != n_bl:
+                    raise ValueError('Encountered unexpected behavior. Need to debug.')
+                bl_labels = Vf_dict['labels']
+                twts = Vf_dict['twts']  # (n_ts=1) x n_bl x (nchan=1)
+                twts = NP.squeeze(twts, axis=(0,2))  # n_bl
+
+                if verbose:
+                    print 'Gathered interferometer data for gridding convolution for timestamp {0}'.format(self.timestamp)
+
+                if wts_change or (not self.grid_mapper[cpol]['all_bl2grid']):
+                    self.grid_mapper[cpol]['per_bl2grid'] = []
+                    self.grid_mapper[cpol]['all_bl2grid'] = {}
+                    gridlocs = NP.hstack((self.gridu.reshape(-1,1), self.gridv.reshape(-1,1)))
+                    if gridfunc_freq == 'scale':
+                        grid_xy = gridlocs[NP.newaxis,:,:] * wavelength.reshape(-1,1,1)   # nchan x nv x nu
+                        wl = NP.ones(gridlocs.shape[0])[NP.newaxis,:] * wavelength.reshape(-1,1)
+                        grid_xy = grid_xy.reshape(-1,2)
+                        wl = wl.reshape(-1)
+                        indNN_list, blind, fvu_gridind = LKP.find_NN(bl_xy, grid_xy, distance_ULIM=2.0*distNN, flatten=True, parallel=False)
+                        dxy = grid_xy[fvu_gridind,:] - bl_xy[blind,:]
+                        fvu_gridind_unraveled = NP.unravel_index(fvu_gridind, (self.f.size,)+self.gridu.shape)   # f-v-u order since temporary grid was created as nchan x nv x nu
+                        self.grid_mapper[cpol]['all_bl2grid']['blind'] = NP.copy(blind)
+                        self.grid_mapper[cpol]['all_bl2grid']['u_gridind'] = NP.copy(fvu_gridind_unraveled[2])
+                        self.grid_mapper[cpol]['all_bl2grid']['v_gridind'] = NP.copy(fvu_gridind_unraveled[1])                            
+                        self.grid_mapper[cpol]['all_bl2grid']['f_gridind'] = NP.copy(fvu_gridind_unraveled[0])
+                        self.grid_mapper[cpol]['all_bl2grid']['indNN_list'] = copy.deepcopy(indNN_list)
+                        self.grid_mapper[cpol]['all_bl2grid']['twts'] = copy.deepcopy(twts)
+
+                        if identical_interferometers:
+                            arbitrary_interferometer_aperture = self.interferometers.itervalues().next().aperture
+                            krn = arbitrary_interferometer_aperture.compute(dxy, wavelength=wl[fvu_gridind], pol=cpol, rmaxNN=rmaxNN, load_lookup=False)
+                        else:
+                            # This block #1 is one way to go about per interferometer
+                            for bi,gi in enumerate(indNN_list):
+                                if len(gi) > 0:
+                                    label = self.ordered_labels[bi]
+                                    ind = NP.asarray(gi)
+                                    diffxy = grid_xy[ind,:].reshape(-1,2) - bl_xy[bi,:].reshape(-1,2)
+                                    krndict = self.interferometers[label].aperture.compute(diffxy, wavelength=wl[ind], pol=cpol, rmaxNN=rmaxNN, load_lookup=False)
+                                    if krn[cpol] is None:
+                                        krn[cpol] = NP.copy(krndict[cpol])
+                                    else:
+                                        krn[cpol] = NP.append(krn[cpol], krndict[cpol])
+                                    
+                            # # This block #2 is another way equivalent to above block #1
+                            # uniq_blind = NP.unique(blind)
+                            # blhist, blbe, blbn, blri = OPS.binned_statistic(blind, statistic='count', bins=NP.append(uniq_blind, uniq_blind.max()+1))
+                            # for i,ublind in enumerate(uniq_blind):
+                            #     label = self.ordered_labels[ublind]
+                            #     ind = blri[blri[i]:blri[i+1]]
+                            #     krndict = self.interferometers[label].aperture.compute(dxy[ind,:], wavelength=wl[ind], pol=cpol, rmaxNN=rmaxNN, load_lookup=False)
+                            #     if krn[cpol] is None:
+                            #         krn[cpol] = NP.copy(krndict[cpol])
+                            #     else:
+                            #         krn[cpol] = NP.append(krn[cpol], krndict[cpol])
+
+                        self.grid_mapper[cpol]['all_bl2grid']['illumination'] = NP.copy(krn[cpol])
+                    else: # Weights do not scale with frequency (needs serious development)
+                        pass
+                        
+                    # Determine weights that can normalize sum of kernel per interferometer per frequency to unity
+                    # per_bl_per_freq_norm_wts = NP.ones(blind.size, dtype=NP.complex64)
+                    per_bl_per_freq_norm_wts = NP.zeros(blind.size, dtype=NP.complex64)
+                    
+                    runsum = 0
+                    for bi,gi in enumerate(indNN_list):
+                        if len(gi) > 0:
+                            fvu_ind = NP.asarray(gi)
+                            unraveled_fvu_ind = NP.unravel_index(fvu_ind, (self.f.size,)+self.gridu.shape)
+                            f_ind = unraveled_fvu_ind[0]
+                            v_ind = unraveled_fvu_ind[1]
+                            u_ind = unraveled_fvu_ind[2]
+                            chanhist, chanbe, chanbn, chanri = OPS.binned_statistic(f_ind, statistic='count', bins=NP.arange(self.f.size+1))
+                            for ci in xrange(self.f.size):
+                                if chanhist[ci] > 0.0:
+                                    select_chan_ind = chanri[chanri[ci]:chanri[ci+1]]
+                                    per_bl_per_freq_kernel_sum = NP.sum(krn[cpol][runsum:runsum+len(gi)][select_chan_ind])
+                                    per_bl_per_freq_norm_wts[runsum:runsum+len(gi)][select_chan_ind] = 1.0 / per_bl_per_freq_kernel_sum
+
+                        per_bl2grid_info = {}
+                        per_bl2grid_info['label'] = self.ordered_labels[bi]
+                        per_bl2grid_info['twts'] = twts[bi]
+                        per_bl2grid_info['f_gridind'] = NP.copy(f_ind)
+                        per_bl2grid_info['u_gridind'] = NP.copy(u_ind)
+                        per_bl2grid_info['v_gridind'] = NP.copy(v_ind)
+                        # per_bl2grid_info['fvu_gridind'] = NP.copy(gi)
+                        per_bl2grid_info['per_bl_per_freq_norm_wts'] = per_bl_per_freq_norm_wts[runsum:runsum+len(gi)]
+                        per_bl2grid_info['illumination'] = krn[cpol][runsum:runsum+len(gi)]
+                        self.grid_mapper[cpol]['per_bl2grid'] += [copy.deepcopy(per_bl2grid_info)]
+                        runsum += len(gi)
+
+                    self.grid_mapper[cpol]['all_bl2grid']['per_bl_per_freq_norm_wts'] = NP.copy(per_bl_per_freq_norm_wts)
+
+                # Determine the gridded electric fields
+                Vf_on_grid = Vf[(self.grid_mapper[cpol]['all_bl2grid']['blind'], self.grid_mapper[cpol]['all_bl2grid']['f_gridind'])]
+                self.grid_mapper[cpol]['all_bl2grid']['Vf'] = copy.deepcopy(Vf_on_grid)
+                runsum = 0
+                for bi,gi in enumerate(self.grid_mapper[cpol]['all_bl2grid']['indNN_list']):
+                    if len(gi) > 0:
+                        self.grid_mapper[cpol]['per_bl2grid'][bi]['Vf'] = Vf_on_grid[runsum:runsum+len(gi)]
+                        runsum += len(gi)
+
+    ############################################################################
+
+    def genMappingMatrix(self, pol=None, normalize=True, method='NN',
+                         distNN=NP.inf, identical_interferometers=True,
+                         gridfunc_freq=None, wts_change=False, parallel=False,
+                         nproc=None, verbose=True):
+
+        """
+        ------------------------------------------------------------------------
+        Routine to construct sparse interferometer-to-grid mapping matrix that 
+        will be used in projecting illumination and visibilities from the 
+        array of interferometers onto the grid. It has elements very common to 
+        grid_convolve_new()
+
+        Inputs:
+
+        pol        [String] The polarization to be gridded. Can be set to 'P11', 
+                   'P12', 'P21', or 'P2'. If set to None, gridding for all the 
+                   polarizations is performed. Default = None
+
+        normalize  [Boolean] Default = False. If set to True, the gridded 
+                   weights are divided by the sum of weights so that the gridded 
+                   weights add up to unity. (Need to work on normaliation)
+
+        method     [string] The gridding method to be used in applying the 
+                   interferometer weights on to the interferometer array grid. 
+                   Accepted values are 'NN' (nearest neighbour - default), 'CS' 
+                   (cubic spline), or 'BL' (Bi-linear). In case of applying grid 
+                   weights by 'NN' method, an optional distance upper bound for 
+                   the nearest neighbour can be provided in the parameter distNN 
+                   to prune the search and make it efficient. Currently, only 
+                   the nearest neighbour method is operational.
+
+        distNN     [scalar] A positive value indicating the upper bound on 
+                   distance to the nearest neighbour in the gridding process. It 
+                   has units of distance, the same units as the interferometer 
+                   attribute location and interferometer array attribute gridx 
+                   and gridy. Default is NP.inf (infinite distance). It will be 
+                   internally converted to have same units as interferometer 
+                   attributes wtspos (units in number of wavelengths). To ensure
+                   all relevant pixels in the grid, the search distance used 
+                   internally will be a fraction more than distNN
+
+        identical_interferometers
+                   [boolean] indicates if all interferometer elements are to be
+                   treated as identical. If True (default), they are identical
+                   and their gridding kernels are identical. If False, they are
+                   not identical and each one has its own gridding kernel.
+
+        gridfunc_freq
+                   [String scalar] If set to None (not provided) or to 'scale'
+                   assumes that attribute wtspos is given for a
+                   reference frequency which need to be scaled for the frequency
+                   channels. Will be ignored if the number of elements of list 
+                   in this attribute under the specific polarization are the 
+                   same as the number of frequency channels.
+
+        wts_change [boolean] indicates if weights and/or their lcoations have 
+                   changed from the previous intergration or snapshot. 
+                   Default=False means they have not changed. In such a case the 
+                   interferometer-to-grid mapping and grid illumination pattern 
+                   do not have to be determined, and mapping and values from the 
+                   previous snapshot can be used. If True, a new mapping has to 
+                   be determined.
+
+        parallel   [boolean] specifies if parallelization is to be invoked. 
+                   False (default) means only serial processing
+
+        nproc      [integer] specifies number of independent processes to spawn.
+                   Default = None, means automatically determines the number of 
+                   process cores in the system and use one less than that to 
+                   avoid locking the system for other processes. Applies only 
+                   if input parameter 'parallel' (see above) is set to True. 
+                   If nproc is set to a value more than the number of process
+                   cores in the system, it will be reset to number of process 
+                   cores in the system minus one to avoid locking the system out 
+                   for other processes
+        verbose    [boolean] If True, prints diagnostic and progress messages. 
+                   If False (default), suppress printing such messages.
+
+        NOTE: Although certain portions are parallelizable, the overheads in 
+        these processes seem to make it worse than serial processing. It is 
+        advisable to stick to serialized version unless testing with larger
+        data sets clearly indicates otherwise.
+        ------------------------------------------------------------------------
+        """
+
+        if pol is None:
+            pol = ['P1', 'P2']
+        elif not isinstance(pol, list):
+            pol = [pol]
+
+        if not self.grid_ready:
+            self.grid()
+
+        du = self.gridu[0,1] - self.gridu[0,0]
+        dv = self.gridv[1,0] - self.gridv[0,0]
+        wavelength = FCNST.c / self.f
+        min_lambda = NP.abs(wavelength).min()
+        rmaxNN = 0.5 * NP.sqrt(du**2 + dv**2) * min_lambda
+ 
+        krn = {}
+        self.bl2grid_mapper = {}
+        crosspol = ['P11', 'P12', 'P21', 'P22']
+        for cpol in crosspol:
+            krn[cpol] = None
+            self.bl2grid_mapper[cpol] = None
+            if cpol in pol:
+                bl_dict = self.baseline_vectors(pol=cpol, flag=None, sort=True)
+                self.ordered_labels = bl_dict['labels']
+                bl_xy = bl_dict['baselines'][:,:2] # n_bl x 2
+                n_bl = bl_xy.shape[0]
+
+                if verbose:
+                    print 'Gathered interferometer data for gridding convolution for timestamp {0}'.format(self.timestamp)
+
+                if wts_change or (not self.grid_mapper[cpol]['all_bl2grid']):
+                    self.grid_mapper[cpol]['per_bl2grid'] = []
+                    self.grid_mapper[cpol]['all_bl2grid'] = {}
+                    gridlocs = NP.hstack((self.gridu.reshape(-1,1), self.gridv.reshape(-1,1)))
+                    if gridfunc_freq == 'scale':
+                        grid_xy = gridlocs[NP.newaxis,:,:] * wavelength.reshape(-1,1,1)   # nchan x nv x nu
+                        wl = NP.ones(gridlocs.shape[0])[NP.newaxis,:] * wavelength.reshape(-1,1)
+                        grid_xy = grid_xy.reshape(-1,2)
+                        wl = wl.reshape(-1)
+                        indNN_list, blind, fvu_gridind = LKP.find_NN(bl_xy, grid_xy, distance_ULIM=2.0*distNN, flatten=True, parallel=False)
+                        dxy = grid_xy[fvu_gridind,:] - bl_xy[blind,:]
+                        fvu_gridind_unraveled = NP.unravel_index(fvu_gridind, (self.f.size,)+self.gridu.shape)   # f-v-u order since temporary grid was created as nchan x nv x nu
+                        self.grid_mapper[cpol]['all_bl2grid']['blind'] = NP.copy(blind)
+                        self.grid_mapper[cpol]['all_bl2grid']['u_gridind'] = NP.copy(fvu_gridind_unraveled[2])
+                        self.grid_mapper[cpol]['all_bl2grid']['v_gridind'] = NP.copy(fvu_gridind_unraveled[1])                            
+                        self.grid_mapper[cpol]['all_bl2grid']['f_gridind'] = NP.copy(fvu_gridind_unraveled[0])
+                        # self.grid_mapper[cpol]['all_bl2grid']['indNN_list'] = copy.deepcopy(indNN_list)
+
+                        if identical_interferometers:
+                            arbitrary_interferometer_aperture = self.interferometers.itervalues().next().aperture
+                            krn = arbitrary_interferometer_aperture.compute(dxy, wavelength=wl[fvu_gridind], pol=cpol, rmaxNN=rmaxNN, load_lookup=False)
+                        else:
+                            # This block #1 is one way to go about per interferometer
+                            for ai,gi in enumerate(indNN_list):
+                                if len(gi) > 0:
+                                    label = self.ordered_labels[ai]
+                                    ind = NP.asarray(gi)
+                                    diffxy = grid_xy[ind,:].reshape(-1,2) - bl_xy[ai,:].reshape(-1,2)
+                                    krndict = self.interferometers[label].aperture.compute(diffxy, wavelength=wl[ind], pol=cpol, rmaxNN=rmaxNN, load_lookup=False)
+                                    if krn[cpol] is None:
+                                        krn[cpol] = NP.copy(krndict[cpol])
+                                    else:
+                                        krn[cpol] = NP.append(krn[cpol], krndict[cpol])
+                                    
+                            # # This block #2 is another way equivalent to above block #1
+                            # uniq_blind = NP.unique(blind)
+                            # blhist, blbe, blbn, blri = OPS.binned_statistic(blind, statistic='count', bins=NP.append(uniq_blind, uniq_blind.max()+1))
+                            # for i,ublind in enumerate(uniq_blind):
+                            #     label = self.ordered_labels[ublind]
+                            #     ind = blri[blri[i]:blri[i+1]]
+                            #     krndict = self.interferometers[label].aperture.compute(dxy[ind,:], wavelength=wl[ind], pol=cpol, rmaxNN=rmaxNN, load_lookup=False)
+                            #     if krn[cpol] is None:
+                            #         krn[cpol] = NP.copy(krndict[cpol])
+                            #     else:
+                            #         krn[cpol] = NP.append(krn[cpol], krndict[cpol])
+
+                        self.grid_mapper[cpol]['all_bl2grid']['illumination'] = NP.copy(krn[cpol])
+                    else: # Weights do not scale with frequency (needs serious development)
+                        pass
+                        
+                    # Determine weights that can normalize sum of kernel per interferometer per frequency to unity
+                    per_bl_per_freq_norm_wts = NP.zeros(blind.size, dtype=NP.complex64)
+                    # per_bl_per_freq_norm_wts = NP.ones(blind.size, dtype=NP.complex64)                    
+                    
+                    if parallel or (nproc is not None):
+                        list_of_val = []
+                        list_of_rowcol_tuple = []
+                    else:
+                        spval = []
+                        sprow = []
+                        spcol = []
+                        
+                    runsum = 0
+                    if verbose:
+                        progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} Baselines '.format(n_bl), PGB.ETA()], maxval=n_bl).start()
+
+                    for bi,gi in enumerate(indNN_list):
+                        if len(gi) > 0:
+                            fvu_ind = NP.asarray(gi)
+                            unraveled_fvu_ind = NP.unravel_index(fvu_ind, (self.f.size,)+self.gridu.shape)
+                            f_ind = unraveled_fvu_ind[0]
+                            v_ind = unraveled_fvu_ind[1]
+                            u_ind = unraveled_fvu_ind[2]
+                            chanhist, chanbe, chanbn, chanri = OPS.binned_statistic(f_ind, statistic='count', bins=NP.arange(self.f.size+1))
+                            for ci in xrange(self.f.size):
+                                if chanhist[ci] > 0.0:
+                                    select_chan_ind = chanri[chanri[ci]:chanri[ci+1]]
+                                    per_bl_per_freq_kernel_sum = NP.sum(krn[cpol][runsum:runsum+len(gi)][select_chan_ind])
+                                    per_bl_per_freq_norm_wts[runsum:runsum+len(gi)][select_chan_ind] = 1.0 / per_bl_per_freq_kernel_sum
+
+                        per_bl2grid_info = {}
+                        per_bl2grid_info['label'] = self.ordered_labels[bi]
+                        per_bl2grid_info['f_gridind'] = NP.copy(f_ind)
+                        per_bl2grid_info['u_gridind'] = NP.copy(u_ind)
+                        per_bl2grid_info['v_gridind'] = NP.copy(v_ind)
+                        # per_bl2grid_info['fvu_gridind'] = NP.copy(gi)
+                        per_bl2grid_info['per_bl_per_freq_norm_wts'] = per_bl_per_freq_norm_wts[runsum:runsum+len(gi)]
+                        per_bl2grid_info['illumination'] = krn[cpol][runsum:runsum+len(gi)]
+                        self.grid_mapper[cpol]['per_bl2grid'] += [copy.deepcopy(per_bl2grid_info)]
+                        runsum += len(gi)
+
+                        # determine the sparse interferometer-to-grid mapping matrix pre-requisites
+
+                        val = per_bl2grid_info['per_bl_per_freq_norm_wts']*per_bl2grid_info['illumination']
+                        vuf_gridind_unraveled = (per_bl2grid_info['v_gridind'],per_bl2grid_info['u_gridind'],per_bl2grid_info['f_gridind'])
+                        vuf_gridind_raveled = NP.ravel_multi_index(vuf_gridind_unraveled, (self.gridu.shape+(self.f.size,)))
+                        
+                        if (not parallel) and (nproc is None):
+                            spval += val.tolist()
+                            sprow += vuf_gridind_raveled.tolist()
+                            spcol += (per_bl2grid_info['f_gridind'] + bi*self.f.size).tolist()
+                        else:
+                            list_of_val += [per_bl2grid_info['per_bl_per_freq_norm_wts']*per_bl2grid_info['illumination']]
+                            list_of_rowcol_tuple += [(vuf_gridind_raveled, per_bl2grid_info['f_gridind'])]
+                    
+                        if verbose:
+                            progress.update(bi+1)
+
+                    if verbose:
+                        progress.finish()
+
+                    # determine the sparse interferometer-to-grid mapping matrix
+                    if parallel or (nproc is not None):
+                        list_of_shapes = [(self.gridu.size*self.f.size, self.f.size)] * n_bl
+                        if nproc is None:
+                            nproc = max(MP.cpu_count()-1, 1) 
+                        else:
+                            nproc = min(nproc, max(MP.cpu_count()-1, 1))
+                        pool = MP.Pool(processes=nproc)
+                        list_of_spmat = pool.map(genMatrixMapper_arg_splitter, IT.izip(list_of_val, list_of_rowcol_tuple, list_of_shapes))
+                        self.bl2grid_mapper[cpol] = SM.hstack(list_of_spmat, format='csr')
+                    else:
+                        spval = NP.asarray(spval)
+                        sprowcol = (NP.asarray(sprow), NP.asarray(spcol))
+                        self.bl2grid_mapper[cpol] = SM.csr_matrix((spval, sprowcol), shape=(self.gridu.size*self.f.size, n_bl*self.f.size))
+                    
+                    self.grid_mapper[cpol]['all_bl2grid']['per_bl_per_freq_norm_wts'] = NP.copy(per_bl_per_freq_norm_wts)
+
+    ############################################################################
+
+    def applyMappingMatrix(self, pol=None, verbose=True):
+
+        """
+        ------------------------------------------------------------------------
+        Constructs the grid of complex illumination and visibilities
+        using the sparse baseline-to-grid mapping matrix. Intended to serve as a 
+        "matrix" alternative to make_grid_cube_new() 
+
+        Inputs:
+
+        pol     [String] The polarization to be gridded. Can be set to 'P11', 
+                'P12', 'P21', or 'P22'. If set to None, gridding for all the 
+                polarizations is performed. Default=None
+        
+        verbose [boolean] If True, prints diagnostic and progress messages. 
+                If False (default), suppress printing such messages.
+        ------------------------------------------------------------------------
+        """
+        
+        if pol is None:
+            pol = ['P11', 'P12', 'P21', 'P22']
+
+        pol = NP.unique(NP.asarray(pol))
+        
+        for cpol in pol:
+
+            if verbose:
+                print 'Gridding aperture illumination and visibilities for polarization {0} ...'.format(cpol)
+
+            if cpol not in ['P11', 'P12', 'P21', 'P22']:
+                raise ValueError('Invalid specification for input parameter pol')
+
+            Vf_dict = self.get_visibilities(cpol, flag=None, tselect=-1, fselect=None, bselect=None, datapool='avg', sort=True)
+            Vf = Vf_dict['visibilities'].astype(NP.complex64)  #  (n_ts=1) x n_bl x nchan
+            Vf = NP.squeeze(Vf, axis=0)  # n_bl x nchan
+
+            twts = Vf_dict['twts']  # (n_ts=1) x n_ant x 1
+            twts = NP.squeeze(twts, axis=0)  # n_ant x 1
+            unflagged = twts > 0.0
+            unflagged = unflagged.astype(int)
+
+            Vf = Vf * unflagged    # applies antenna flagging, n_ant x nchan
+            wts = unflagged * NP.ones(self.f.size).reshape(1,-1)  # n_ant x nchan
+
+            Vf = Vf.ravel()
+            wts = wts.ravel()
+
+            sparse_Vf = SM.csr_matrix(Vf)
+            sparse_wts = SM.csr_matrix(wts)
+
+            # Store as sparse matrices
+            self.grid_illumination[cpol] = self.bl2grid_mapper[cpol].dot(sparse_wts.T)
+            self.grid_Vf[cpol] = self.bl2grid_mapper[cpol].dot(sparse_Vf.T)
+
+            # # Store as dense matrices
+            # self.grid_illumination[cpol] = self.bl2grid_mapper[cpol].dot(wts).reshape(self.gridu.shape+(self.f.size,))
+            # self.grid_Vf[cpol] = self.bl2grid_mapper[cpol].dot(Vf).reshape(self.gridu.shape+(self.f.size,))   
+            
+            if verbose:
+                print 'Gridded aperture illumination and electric fields for polarization {0} from {1:0d} unflagged contributing antennas'.format(cpol, NP.sum(unflagged).astype(int))
+
+    ############################################################################
+
     def make_grid_cube(self, pol=None, verbose=True):
 
         """
@@ -3912,6 +4624,75 @@ class InterferometerArray:
 
             # self.grid_Vf[cpol] *= num_unflagged/sum_twts
                 
+            if verbose:
+                print 'Gridded aperture illumination and visibilities for polarization {0} from {1:0d} unflagged contributing baselines'.format(cpol, num_unflagged)
+
+    ############################################################################
+
+    def make_grid_cube_new(self, pol=None, verbose=True):
+
+        """
+        ------------------------------------------------------------------------
+        Constructs the grid of complex power illumination and visibilities using 
+        the gridding information determined for every baseline. Flags are taken
+        into account while constructing this grid.
+
+        Inputs:
+
+        pol     [String] The polarization to be gridded. Can be set to 'P11', 
+                'P12', 'P21' or 'P22'. If set to None, gridding for all the
+                polarizations is performed. Default = None
+        
+        verbose [boolean] If True, prints diagnostic and progress messages. 
+                If False (default), suppress printing such messages.
+        ------------------------------------------------------------------------
+        """
+
+        if pol is None:
+            pol = ['P11', 'P12', 'P21', 'P22']
+
+        pol = NP.unique(NP.asarray(pol))
+        
+        for cpol in pol:
+
+            if verbose:
+                print 'Gridding aperture illumination and visibilities for polarization {0} ...'.format(cpol)
+
+            if cpol not in ['P11', 'P12', 'P21', 'P22']:
+                raise ValueError('Invalid specification for input parameter pol')
+
+            if cpol not in self._bl_contribution:
+                raise KeyError('Key {0} not found in attribute _bl_contribution'.format(cpol))
+    
+            self.grid_illumination[cpol] = NP.zeros((self.gridu.shape + (self.f.size,)), dtype=NP.complex_)
+            self.grid_Vf[cpol] = NP.zeros((self.gridu.shape + (self.f.size,)), dtype=NP.complex_)
+    
+            nlabels = len(self.grid_mapper[cpol]['per_bl2grid'])
+            loopcount = 0
+            num_unflagged = 0
+            sum_twts = 0.0
+            if verbose:
+                progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} Antennas '.format(nlabels), PGB.ETA()], maxval=nlabels).start()
+
+            for bi, per_bl2grid_info in enumerate(self.grid_mapper[cpol]['per_bl2grid']):
+                bllabel = per_bl2grid_info['label']
+                if per_bl2grid_info['twts'] > 0.0:
+                    num_unflagged += 1
+                    sum_twts += per_bl2grid_info['twts']
+                    vuf_gridind_unraveled = (per_bl2grid_info['v_gridind'],per_bl2grid_info['u_gridind'],per_bl2grid_info['f_gridind'])
+                    self.grid_illumination[cpol][vuf_gridind_unraveled] += per_bl2grid_info['per_bl_per_freq_norm_wts'] * per_bl2grid_info['illumination']
+                    self.grid_Vf[cpol][vuf_gridind_unraveled] += per_bl2grid_info['per_bl_per_freq_norm_wts'] * per_bl2grid_info['Vf'] * per_bl2grid_info['illumination']
+                    # self.grid_illumination[cpol][vuf_gridind_unraveled] += per_bl2grid_info['per_bl_per_freq_norm_wts'] * per_bl2grid_info['illumination'] * per_bl2grid_info['twts']
+                    # self.grid_Vf[cpol][vuf_gridind_unraveled] += per_bl2grid_info['per_bl_per_freq_norm_wts'] * per_bl2grid_info['Vf'] * per_bl2grid_info['twts']
+
+                if verbose:
+                    progress.update(loopcount+1)
+                    loopcount += 1
+            if verbose:
+                progress.finish()
+            # self.grid_illumination[cpol] *= num_unflagged/sum_twts
+            # self.grid_Vf[cpol] *= num_unflagged/sum_twts
+
             if verbose:
                 print 'Gridded aperture illumination and visibilities for polarization {0} from {1:0d} unflagged contributing baselines'.format(cpol, num_unflagged)
 
@@ -5029,6 +5810,11 @@ class InterferometerArray:
                                               coordinate system. Used only if 
                                               set and if 'action' key value is 
                                               set to 'modify'. Default = None.
+                                'aperture'    [instance of class 
+                                              APR.Aperture] aperture 
+                                              information for the antenna. Read 
+                                              docstring of class 
+                                              Aperture for details
                                 'wtsinfo'     [Optional. Dictionary] 
                                               See description in Antenna class 
                                               member function update(). Is used 
@@ -5209,6 +5995,11 @@ class InterferometerArray:
                                               Used only if set and if 'action' 
                                               key value is set to 'modify'.
                                               Default=None.
+                                'aperture'    [instance of class 
+                                              APR.Aperture] aperture 
+                                              information for the 
+                                              interferometer. Read docstring of 
+                                              class Aperture for details
                                 'wtsinfo'     [Optional. Dictionary] See 
                                               description in Interferometer 
                                               class member function update(). 
@@ -5406,6 +6197,7 @@ class InterferometerArray:
                             if 'maxmatch' not in dictitem: dictitem['maxmatch']=None
                             if 'tol' not in dictitem: dictitem['tol']=None
                             if 'do_correlate' not in dictitem: dictitem['do_correlate']=None
+                            if 'aperture' not in dictitem: dictitem['aperture']=None
 
                             if not parallel:
                                 # self.interferometers[dictitem['label']].update_old(dictitem['label'], dictitem['Vt'], dictitem['t'], dictitem['timestamp'], dictitem['location'], dictitem['wtsinfo'], dictitem['flags'], dictitem['gridfunc_freq'], dictitem['ref_freq'], dictitem['do_correlate'], verbose)
@@ -5442,530 +6234,6 @@ class InterferometerArray:
 
 ################################################################################
         
-class Image:
-
-    """
-    ----------------------------------------------------------------------------
-    Class to manage image information and processing pertaining to the class 
-    holding antenna array information.
-
-    Attributes:
-
-    timestamp:   [Scalar] String or float representing the timestamp for the 
-                 current attributes
-                 
-    f:           [vector] Frequency channels (in Hz)
-                 
-    f0:          [Scalar] Positive value for the center frequency in Hz.
-
-    gridx_P1     [Numpy array] x-locations of the grid lattice for P1 
-                 polarization
-
-    gridy_P1     [Numpy array] y-locations of the grid lattice for P1 
-                 polarization
-
-    gridx_P2     [Numpy array] x-locations of the grid lattice for P2 
-                 polarization
-
-    gridy_P2     [Numpy array] y-locations of the grid lattice for P2 
-                 polarization
-
-    grid_illuminaton_P1
-                 [Numpy array] Electric field illumination for P1 polarization 
-                 on the grid. Could be complex. Same size as the grid
-
-    grid_illuminaton_P2
-                 [Numpy array] Electric field illumination for P2 polarization 
-                 on the grid. Could be complex. Same size as the grid
-
-    grid_Ef_P1   [Numpy array] Complex Electric field of polarization P1 
-                 projected on the grid. 
-
-    grid_Ef_P2   [Numpy array] Complex Electric field of polarization P2 
-                 projected on the grid. 
-    
-    holograph_PB_P1
-                 [Numpy array] Complex holographic electric field pattern on sky
-                 for polarization P1. Obtained by inverse fourier transforming 
-                 grid_illumination_P1. It is 3-dimensional (third dimension is 
-                 the frequency axis)
-
-    holograph_P1 [Numpy array] Complex holographic image cube for polarization 
-                 P1 obtained by inverse fourier transforming Ef_P1
-
-    PB_P1        [Numpy array] Power pattern of the antenna obtained by squaring
-                 the absolute value of holograph_PB_P1. It is 3-dimensional 
-                 (third dimension is the frequency axis)
-
-    lf_P1        [Numpy array] 3D grid of l-axis in the direction cosines 
-                 coordinate system corresponding to polarization P1, the third 
-                 axis being along frequency.
-
-    mf_P1        [Numpy array] 3D grid of m-axis in the direction cosines 
-                 coordinate system corresponding to polarization P1, the third 
-                 axis being along frequency.
-
-    img_P1       [Numpy array] 3D image cube obtained by squaring the absolute 
-                 value of holograph_P1. The third dimension is along frequency.
-
-    holograph_PB_P2
-                 [Numpy array] Complex holographic electric field pattern on sky
-                 for polarization P2. Obtained by inverse fourier transforming 
-                 grid_illumination_P2. It is 3-dimensional (third dimension is 
-                 the frequency axis)
-
-    holograph_P2 [Numpy array] Complex holographic image cube for polarization 
-                 P2 obtained by inverse fourier transforming Ef_P2
-
-    PB_P2        [Numpy array] Power pattern of the antenna obtained by squaring
-                 the absolute value of holograph_PB_P2. It is 3-dimensional 
-                 (third dimension is the frequency axis)
-
-    lf_P2        [Numpy array] 3D grid of l-axis in the direction cosines 
-                 coordinate system corresponding to polarization P2, the third 
-                 axis being along frequency.
-
-    mf_P2        [Numpy array] 3D grid of m-axis in the direction cosines 
-                 coordinate system corresponding to polarization P2, the third 
-                 axis being along frequency.
-
-    img_P2       [Numpy array] 3D image cube obtained by squaring the absolute 
-                 value of holograph_P2. The third dimension is along frequency.
-
-    Member Functions:
-
-    __init__()   Initializes an instance of class Image which manages 
-                 information and processing of images from data obtained by an 
-                 antenna array. It can be initialized either by values in an 
-                 instance of class AntennaArray, by values in a fits file 
-                 containing information about the antenna array, or to defaults.
-
-    imagr()      Imaging engine that performs inverse fourier transforms of 
-                 appropriate electric field quantities associated with the 
-                 antenna array.
-
-    save()       Saves the image information to disk
-
-    Read the member function docstrings for more details
-    ----------------------------------------------------------------------------
-    """
-
-    def __init__(self, f0=None, f=None, pol=None, antenna_array=None,
-                 infile=None, timestamp=None, verbose=True):
-        
-        """
-        ------------------------------------------------------------------------
-        Initializes an instance of class Image which manages information and
-        processing of images from data obtained by an antenna array. It can be
-        initialized either by values in an instance of class AntennaArray, by
-        values in a fits file containing information about the antenna array, or
-        to defaults.
-
-        Class attributes initialized are:
-        timestamp, f, f0, gridx_P1, gridy_P1, grid_illumination_P1, grid_Ef_P1, 
-        holograph_P1, holograph_PB_P1, img_P1, PB_P1, lf_P1, mf_P1, gridx_P1,
-        gridy_P1, grid_illumination_P1, grid_Ef_P1, holograph_P1,
-        holograph_PB_P1, img_P1, PB_P1, lf_P1, and mf_P1
-
-        Read docstring of class Image for details on these attributes.
-        ------------------------------------------------------------------------
-        """
-
-        if verbose:
-            print '\nInitializing an instance of class Image...\n'
-            print '\tVerifying for compatible arguments...'
-
-        if timestamp is not None:
-            self.timestamp = timestamp
-            if verbose:
-                print '\t\tInitialized time stamp.'
-
-        if f0 is not None:
-            self.f0 = f0
-            if verbose:
-                print '\t\tInitialized center frequency.'
-
-        if f is not None:
-            self.f = NP.asarray(f)
-            if verbose:
-                print '\t\tInitialized frequency channels.'
-
-        if (infile is None) and (antenna_array is None):
-            self.gridx_P1 = None
-            self.gridy_P1 = None
-            self.grid_illumination_P1 = None
-            self.grid_Ef_P1 = None
-            self.holograph_P1 = None
-            self.holograph_PB_P1 = None
-            self.img_P1 = None
-            self.PB_P1 = None
-            self.lf_P1 = None
-            self.mf_P1 = None
-
-            self.gridx_P2 = None
-            self.gridy_P2 = None
-            self.grid_illumination_P2 = None
-            self.grid_Ef_P2 = None
-            self.holograph_P2 = None
-            self.holograph_PB_P2 = None
-            self.img_P2 = None
-            self.PB_P2 = None
-            self.lf_P2 = None
-            self.mf_P2 = None
-        
-            if verbose:
-                print '\t\tInitialized gridx_P1, gridy_P1, grid_illumination_P1, and grid_Ef_P1'
-                print '\t\tInitialized lf_P1, mf_P1, holograph_PB_P1, PB_P1, holograph_P1, and img_P1'
-                print '\t\tInitialized gridx_P2, gridy_P2, grid_illumination_P2, and grid_Ef_P2'
-                print '\t\tInitialized lf_P2, mf_P2, holograph_PB_P2, PB_P2, holograph_P2, and img_P2'
-
-        if (infile is not None) and (antenna_array is not None):
-            raise ValueError('Both gridded data file and antenna array informtion are specified. One and only one of these should be specified. Cannot initialize an instance of class Image.')     
-
-        if verbose:
-            print '\tArguments verified for initialization.'
-
-        if infile is not None:
-            if verbose:
-                print '\tInitializing from input file...'
-
-            try:
-                hdulist = fits.open(infile)
-            except IOError:
-                raise IOError('File not found. Image instance not initialized.')
-            except EOFError:
-                raise EOFError('EOF encountered. File cannot be read. Image instance not initialized.')
-            else:
-                extnames = [hdu.header['EXTNAME'] for hdu in hdulist]
-                if verbose:
-                    print '\t\tFITS file opened successfully. The extensions have been read.'
-
-                if 'FREQ' in extnames:
-                    self.f = hdulist['FREQ'].data
-                    if verbose:
-                        print '\t\t\tInitialized frequency channels.'
-                else:
-                    raise KeyError('Frequency information unavailable in the input file.')
-
-                if 'f0' in hdulist[0].header:
-                    self.f0 = hdulist[0].header['f0']
-                    if verbose:
-                        print '\t\t\tInitialized center frequency to {0} Hz from FITS header.'.format(self.f0)
-                else:
-                    self.f0 = self.f[int(len(self.f)/2)]
-                    if verbose:
-                        print '\t\t\tNo center frequency found in FITS header. Setting it to \n\t\t\t\tthe center of frequency channels: {0} Hz'.format(self.f0)
-
-                if 'tobs' in hdulist[0].header:
-                    self.timestamp = hdulist[0].header['tobs']
-                    if verbose:
-                        print '\t\t\tInitialized time stamp.'
-
-                if (pol is None) or (pol == 'P1'):
-                    if verbose:
-                        print '\n\t\t\tWorking on polarization P1...'
-
-                    if ('GRIDX_P1' not in extnames) or ('GRIDY_P1' not in extnames) or ('GRID_ILLUMINATION_P1_REAL' not in extnames) or ('GRID_ILLUMINATION_P1_IMAG' not in extnames) or ('GRID_EF_P1_REAL' not in extnames) or ('GRID_EF_P1_IMAG' not in extnames):
-                        raise KeyError('One or more pieces of gridding information is missing in the input file for polarization P1. Verify the file contains appropriate data.')
-
-                    self.gridx_P1 = hdulist['GRIDX_P1'].data
-                    self.gridy_P1 = hdulist['GRIDY_P1'].data
-                    self.grid_illumination_P1 = hdulist['GRID_ILLUMINATION_P1_REAL'].data + 1j * hdulist['GRID_ILLUMINATION_P1_IMAG'].data
-                    self.grid_Ef_P1 = hdulist['GRID_EF_P1_REAL'].data + 1j * hdulist['GRID_EF_P1_IMAG'].data
-                    self.holograph_P1 = None
-                    self.img_P1 = None
-                    self.holograph_PB_P1 = None
-                    self.PB_P1 = None
-                    self.lf_P1 = None
-                    self.mf_P1 = None
-                    if verbose:
-                        print '\t\t\tInitialized gridx_P1, gridy_P1, grid_illumination_P1, and grid_Ef_P1'
-                        print '\t\t\tInitialized lf_P1, mf_P1, holograph_PB_P1, PB_P1, holograph_P1, and img_P1'
-
-                if (pol is None) or (pol == 'P2'):
-                    if verbose:
-                        print '\n\t\t\tWorking on polarization P2...'
-
-                    if ('GRIDX_P2' not in extnames) or ('GRIDY_P2' not in extnames) or ('GRID_ILLUMINATION_P2_REAL' not in extnames) or ('GRID_ILLUMINATION_P2_IMAG' not in extnames) or ('GRID_EF_P2_REAL' not in extnames) or ('GRID_EF_P2_IMAG' not in extnames):
-                        raise KeyError('One or more pieces of gridding information is missing in the input file for polarization P2. Verify the file contains appropriate data.')
-
-                    self.gridx_P2 = hdulist['GRIDX_P2'].data
-                    self.gridy_P2 = hdulist['GRIDY_P2'].data
-                    self.grid_illumination_P2 = hdulist['GRID_ILLUMINATION_P2_REAL'].data + 1j * hdulist['GRID_ILLUMINATION_P2_IMAG'].data
-                    self.grid_Ef_P2 = hdulist['GRID_EF_P2_REAL'].data + 1j * hdulist['GRID_EF_P2_IMAG'].data
-                    self.holograph_P2 = None
-                    self.img_P2 = None
-                    self.holograph_PB_P2 = None
-                    self.PB_P2 = None
-                    self.lf_P2 = None
-                    self.mf_P2 = None
-                    if verbose:
-                        print '\t\t\tInitialized gridx_P2, gridy_P2, grid_illumination_P2, and grid_Ef_P2'
-                        print '\t\t\tInitialized lf_P2, mf_P2, holograph_PB_P2, PB_P2, holograph_P2, and img_P2'
-
-            hdulist.close()
-            if verbose:
-                print '\t\tClosed input FITS file.'
-
-        if antenna_array is not None:
-            if verbose:
-                print '\tInitializing from an instance of class AntennaArray...'
-
-            if isinstance(antenna_array, AntennaArray):
-                self.f = antenna_array.f
-                if verbose:
-                    print '\t\tInitialized frequency channels.'
-
-                self.f0 = antenna_array.f0
-                if verbose:
-                    print '\t\tInitialized center frequency to {0} Hz from antenna array info.'.format(self.f0)
-
-                self.timestamp = antenna_array.timestamp
-                if verbose:
-                    print '\t\tInitialized time stamp to {0} from antenna array info.'.format(self.timestamp)
-            
-                if (pol is None) or (pol == 'P1'):
-                    if verbose:
-                        print '\n\t\tWorking on polarization P1...'
-                    self.gridx_P1 = antenna_array.gridx_P1
-                    self.gridy_P1 = antenna_array.gridy_P1
-                    self.grid_illumination_P1 = antenna_array.grid_illumination_P1
-                    self.grid_Ef_P1 = antenna_array.grid_Ef_P1
-                    self.holograph_P1 = None
-                    self.img_P1 = None
-                    self.holograph_PB_P1 = None
-                    self.PB_P1 = None
-                    self.lf_P1 = None
-                    self.mf_P1 = None
-                    if verbose:
-                        print '\t\tInitialized gridx_P1, gridy_P1, grid_illumination_P1, and grid_Ef_P1.'
-                        print '\t\tInitialized lf_P1, mf_P1, holograph_PB_P1, PB_P1, holograph_P1, and img_P1'
-
-                if (pol is None) or (pol == 'P2'):
-                    if verbose:
-                        print '\n\t\tWorking on polarization P2...'
-                    self.gridx_P2 = antenna_array.gridx_P2
-                    self.gridy_P2 = antenna_array.gridy_P2
-                    self.grid_illumination_P2 = antenna_array.grid_illumination_P2
-                    self.grid_Ef_P2 = antenna_array.grid_Ef_P2
-                    self.holograph_P2 = None
-                    self.img_P2 = None
-                    self.holograph_PB_P2 = None
-                    self.PB_P2 = None
-                    self.lf_P2 = None
-                    self.mf_P2 = None
-                    if verbose:
-                        print '\t\tInitialized gridx_P2, gridy_P2, grid_illumination_P2, and grid_Ef_P2.'
-                        print '\t\tInitialized lf_P2, mf_P2, holograph_PB_P2, PB_P2, holograph_P2, and img_P2'
-
-            else:
-                raise TypeError('antenna_array is not an instance of class AntennaArray. Cannot initiate instance of class Image.')
-
-        if verbose:
-            print '\nSuccessfully initialized an instance of class Image\n'
-
-    ############################################################################
-
-    def imagr(self, pol=None, verbose=True):
-
-        """
-        ------------------------------------------------------------------------
-        Imaging engine that performs inverse fourier transforms of appropriate
-        electric field quantities associated with the antenna array.
-
-        Keyword Inputs:
-
-        pol       [string] indicates which polarization information to be 
-                  imaged. Allowed values are 'P1', 'P2' or None (default). If 
-                  None, both polarizations are imaged.
-
-        verbose   [boolean] If True (default), prints diagnostic and progress
-                  messages. If False, suppress printing such messages.
-        ------------------------------------------------------------------------
-        """
-
-        if verbose:
-            print '\nPreparing to image...\n'
-
-        if self.f is None:
-            raise ValueError('Frequency channels have not been initialized. Cannot proceed with imaging.')
-
-        if (pol is None) or (pol == 'P1'):
-            
-            if verbose:
-                print '\tWorking on polarization P1...'
-
-            grid_shape = self.grid_Ef_P1.shape
-            if verbose:
-                print '\t\tPreparing to zero pad and Inverse Fourier Transform...'
-
-            sum_wts = NP.sum(self.grid_illumination_P1, axis=(0,1))
-
-            self.holograph_P1 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_Ef_P1, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
-            if verbose:
-                print '\t\tComputed complex holographic voltage image from antenna array.'
-
-            self.holograph_PB_P1 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_illumination_P1, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
-            if verbose:
-                print '\t\tComputed complex holographic voltage pattern of antenna array.'
-
-            dx = self.gridx_P1[0,1] - self.gridx_P1[0,0]
-            dy = self.gridy_P1[1,0] - self.gridy_P1[0,0]
-            self.lf_P1 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[1], dx)), FCNST.c/self.f)
-            self.mf_P1 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[0], dy)), FCNST.c/self.f)
-            if verbose:
-                print '\t\tComputed the direction cosine coordinates for the image.'
-            grid_lf_P1 = NP.repeat(NP.expand_dims(self.lf_P1, axis=0), self.mf_P1.shape[0], axis=0)
-            grid_mf_P1 = NP.repeat(NP.expand_dims(self.mf_P1, axis=1), self.lf_P1.shape[0], axis=1)
-            nan_ind = grid_lf_P1**2 + grid_mf_P1**2 > 1.0
-            self.holograph_P1[nan_ind] = NP.nan
-            self.holograph_PB_P1[nan_ind] = NP.nan
-            if verbose:
-                print '\t\tImage pixels corresponding to invalid direction cosine coordinates flagged as NAN.'
-
-        if (pol is None) or (pol == 'P2'):
-
-            if verbose:
-                print '\tWorking on polarization P2...'
-
-            grid_shape = self.grid_Ef_P2.shape
-            if verbose:
-                print '\t\tPreparing to zero pad and Inverse Fourier Transform...'
-
-            sum_wts = NP.sum(self.grid_illumination_P1, axis=(0,1))
-
-            self.holograph_P2 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_Ef_P2, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
-            if verbose:
-                print '\t\tComputed complex holographic voltage image from antenna array.'
-
-            self.holograph_PB_P2 = NP.fft.fftshift(NP.fft.fft2(NP.pad(self.grid_illumination_P2, ((0,grid_shape[0]), (0,grid_shape[1]), (0,0)), 'constant', constant_values=(0,)), axes=(0,1))) / sum_wts
-            if verbose:
-                print '\t\tComputed complex holographic voltage pattern of antenna array.'
-
-            dx = self.gridx_P2[0,1] - self.gridx_P2[0,0]
-            dy = self.gridy_P2[1,0] - self.gridy_P2[0,0]
-            self.lf_P2 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[1], dx)), FCNST.c/self.f)
-            self.mf_P2 = NP.outer(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[0], dy)), FCNST.c/self.f)
-            if verbose:
-                print '\t\tComputed the direction cosine coordinates for the image.'
-            grid_lf_P2 = NP.repeat(NP.expand_dims(self.lf_P2, axis=0), self.mf_P2.shape[0], axis=0)
-            grid_mf_P2 = NP.repeat(NP.expand_dims(self.mf_P2, axis=1), self.lf_P2.shape[0], axis=1)
-            nan_ind = grid_lf_P2**2 + grid_mf_P2**2 > 1.0
-            self.holograph_P2[nan_ind] = NP.nan
-            self.holograph_PB_P2[nan_ind] = NP.nan
-            if verbose:
-                print '\t\tImage pixels corresponding to invalid direction cosine coordinates (if any) \n\t\t\thave been flagged as NAN.'
-                print '\nImaging completed successfully.\n'
-
-    ############################################################################
-        
-    def save(self, imgfile, pol=None, overwrite=False, verbose=True):
-
-        """
-        ------------------------------------------------------------------------
-        Saves the image information to disk.
-
-        Input:
-
-        imgfile     [string] Image filename with full path. Will be appended 
-                     with '.fits' extension
-
-        Keyword Input(s):
-
-        pol          [string] indicates which polarization information to be 
-                     saved. Allowed values are 'P1', 'P2' or None (default). If 
-                     None, information on both polarizations are saved.
-                     
-        overwrite    [boolean] True indicates overwrite even if a file already 
-                     exists. Default = False (does not overwrite)
-                     
-        verbose      [boolean] If True (default), prints diagnostic and progress
-                     messages. If False, suppress printing such messages.
-        ------------------------------------------------------------------------
-        """
-
-        try:
-            imgfile
-        except NameError:
-            raise NameError('No filename provided. Aborting Image.save()')
-
-        filename = imgfile + '.fits'
-
-        if verbose:
-            print '\nSaving image information...'
-            
-        hdulst = []
-        hdulst += [fits.PrimaryHDU()]
-        hdulst[0].header['f0'] = (self.f0, 'Center frequency (Hz)')
-        hdulst[0].header['tobs'] = (self.timestamp, 'Timestamp associated with observation.')
-        hdulst[0].header['EXTNAME'] = 'PRIMARY'
-
-        if verbose:
-            print '\tCreated a primary HDU.'
-
-        hdulst += [fits.ImageHDU(self.f, name='FREQ')]
-        if verbose:
-            print '\t\tCreated an extension HDU of {0:0d} frequency channels'.format(len(self.f))
-
-        if (pol is None) or (pol == 'P1'):
-            if verbose:
-                print '\tWorking on polarization P1...'
-
-            if self.lf_P1 is not None:
-                hdulst += [fits.ImageHDU(self.lf_P1, name='grid_lf_P1')]
-                if verbose:
-                    print '\t\tCreated an extension HDU of l-coordinates of grid of size: {0[0]} \n\t\t\tfor each of the {0[1]} frequency channels'.format(self.lf_P1.shape)
-            if self.mf_P1 is not None:
-                hdulst += [fits.ImageHDU(self.mf_P1, name='grid_mf_P1')]
-                if verbose:
-                    print '\t\tCreated an extension HDU of m-coordinates of grid of size: {0[0]} \n\t\t\tfor each of the {0[1]} frequency channels'.format(self.mf_P1.shape)
-
-            if self.holograph_PB_P1 is not None:
-                hdulst += [fits.ImageHDU(self.holograph_PB_P1.real, name='holograph_PB_P1_real')]
-                hdulst += [fits.ImageHDU(self.holograph_PB_P1.imag, name='holograph_PB_P1_imag')]
-                if verbose:
-                    print "\t\tCreated separate extension HDUs of grid's voltage reception pattern spectra\n\t\t\twith size {0[0]}x{0[1]}x{0[2]} for real and imaginary parts.".format(self.holograph_PB_P1.shape)
-            if self.holograph_P1 is not None:
-                hdulst += [fits.ImageHDU(self.holograph_P1.real, name='holograph_P1_real')]
-                hdulst += [fits.ImageHDU(self.holograph_P1.imag, name='holograph_P1_imag')]
-                if verbose:
-                    print "\t\tCreated separate extension HDUs of grid's voltage holograph spectra of \n\t\t\tsize {0[0]}x{0[1]}x{0[2]} for real and imaginary parts.".format(self.holograph_P1.shape)
-
-        if (pol is None) or (pol == 'P2'):
-            if verbose:
-                print '\tWorking on polarization P2...'
-
-            if self.lf_P2 is not None:
-                hdulst += [fits.ImageHDU(self.lf_P2, name='grid_lf_P2')]
-                if verbose:
-                    print '\t\tCreated an extension HDU of l-coordinates of grid of size: {0[0]} \n\t\t\tfor each of the {0[1]} frequency channels'.format(self.lf_P2.shape)
-            if self.mf_P2 is not None:
-                hdulst += [fits.ImageHDU(self.mf_P2, name='grid_mf_P2')]
-                if verbose:
-                    print '\t\tCreated an extension HDU of m-coordinates of grid of size: {0[0]} \n\t\t\tfor each of the {0[1]} frequency channels'.format(self.mf_P2.shape)
-
-            if self.holograph_PB_P2 is not None:
-                hdulst += [fits.ImageHDU(self.holograph_PB_P2.real, name='holograph_PB_P2_real')]
-                hdulst += [fits.ImageHDU(self.holograph_PB_P2.imag, name='holograph_PB_P2_imag')]
-                if verbose:
-                    print "\t\tCreated separate extension HDUs of grid's voltage reception pattern spectra\n\t\t\twith size {0[0]}x{0[1]}x{0[2]} for real and imaginary parts.".format(self.holograph_PB_P2.shape)
-            if self.holograph_P2 is not None:
-                hdulst += [fits.ImageHDU(self.holograph_P2.real, name='holograph_P2_real')]
-                hdulst += [fits.ImageHDU(self.holograph_P2.imag, name='holograph_P2_imag')]
-                if verbose:
-                    print "\t\tCreated separate extension HDUs of grid's voltage holograph spectra of \n\t\t\tsize {0[0]}x{0[1]}x{0[2]} for real and imaginary parts.".format(self.holograph_P2.shape)
-
-        if verbose:
-            print '\tNow writing FITS file to disk:\n\t\t{0}'.format(filename)
-
-        hdu = fits.HDUList(hdulst)
-        hdu.writeto(filename, clobber=overwrite)
-
-        if verbose:
-            print '\tImage information written successfully to FITS file on disk:\n\t\t{0}\n'.format(filename)
-
-################################################################################
-
 class NewImage:
 
     """
@@ -5996,11 +6264,11 @@ class NewImage:
     gridy_P2     [Numpy array] y-locations of the grid lattice for P2 
                  polarization
 
-    grid_illuminaton_P1
+    grid_illumination_P1
                  [Numpy array] Electric field illumination for P1 polarization 
                  on the grid. Could be complex. Same size as the grid
 
-    grid_illuminaton_P2
+    grid_illumination_P2
                  [Numpy array] Electric field illumination for P2 polarization 
                  on the grid. Could be complex. Same size as the grid
 
@@ -6108,6 +6376,9 @@ class NewImage:
             if verbose:
                 print '\t\tInitialized time stamp.'
 
+        self.timestamps = []
+        self.tbinsize = None
+
         if f0 is not None:
             self.f0 = f0
             if verbose:
@@ -6119,6 +6390,10 @@ class NewImage:
                 print '\t\tInitialized frequency channels.'
 
         self.measured_type = None
+        self.antenna_array = None
+        self.interferometer_array = None
+        self.autocorr_set = False
+        self.autocorr_removed = False
 
         if (infile is None) and (antenna_array is None) and (interferometer_array is None):
             self.gridx_P1 = None
@@ -6243,6 +6518,40 @@ class NewImage:
             if verbose:
                 print '\t\tClosed input FITS file.'
 
+        self.grid_illumination = {}
+        self.holimg = {}
+        self.holbeam = {}
+        self.img = {}
+        self.beam = {}
+        self.pbeam = {}
+        self.gridl = {}
+        self.gridm = {}
+        self.grid_wts = {}
+        self.grid_Ef = {}
+        self.grid_Vf = {}
+        self.holimg_stack = {}
+        self.holbeam_stack = {}
+        self.img_stack = {}
+        self.beam_stack = {}
+        self.grid_illumination_stack = {}
+        self.grid_vis_stack = {}
+        self.img_avg = {}
+        self.beam_avg = {}
+        self.grid_vis_avg = {}
+        self.grid_illumination_avg = {}
+        self.wts_vuf = {}
+        self.vis_vuf = {}
+        self.twts = {}
+        self.autocorr_wts_vuf = {}
+        self.nzsp_grid_vis_avg = {}
+        self.nzsp_grid_illumination_avg = {}
+        self.nzsp_wts_vuf = {}
+        self.nzsp_vis_vuf = {}
+        self.nzsp_img_avg = {}
+        self.nzsp_beam_avg = {}
+        self.nzsp_img = {}
+        self.nzsp_beam = {}
+
         if antenna_array is not None:
             if verbose:
                 print '\tInitializing from an instance of class AntennaArray...'
@@ -6260,45 +6569,48 @@ class NewImage:
                 if verbose:
                     print '\t\tInitialized time stamp to {0} from antenna array info.'.format(self.timestamp)
             
-                self.grid_illumination = {}
-                self.grid_Ef = {}
-                self.holimg = {}
-                self.holbeam = {}
-                self.img = {}
-                self.beam = {}
-                self.gridl = {}
-                self.gridm = {}
-                self.grid_wts = {}
-
                 if pol is None:
                     pol = ['P1', 'P2']
                 pol = NP.unique(NP.asarray(pol))
 
                 self.gridu, self.gridv = antenna_array.gridu, antenna_array.gridv
-                antenna_array.make_grid_cube(verbose=verbose, pol=pol)
+                for apol in ['P1', 'P2']:
+                    self.holimg[apol] = None
+                    self.holbeam[apol] = None
+                    self.img[apol] = None
+                    self.beam[apol] = None
+                    self.grid_illumination[apol] = None
+                    self.grid_Ef[apol] = None
+                    self.grid_wts[apol] = None
+                    self.holimg_stack[apol] = None
+                    self.holbeam_stack[apol] = None
+                    self.img_stack[apol] = None
+                    self.beam_stack[apol] = None
+                    self.grid_illumination_stack[apol] = None
+                    self.grid_vis_stack[apol] = None
+                    self.grid_vis_avg[apol] = None
+                    self.grid_illumination_avg[apol] = None
+                    self.img_avg[apol] = None
+                    self.beam_avg[apol] = None
+                    self.twts[apol] = None
+                    self.wts_vuf[apol] = None
+                    self.vis_vuf[apol] = None
+                    self.autocorr_wts_vuf[apol] = None
+                    self.nzsp_grid_vis_avg[apol] = None
+                    self.nzsp_grid_illumination_avg[apol] = None
+                    self.nzsp_wts_vuf[apol] = None
+                    self.nzsp_vis_vuf[apol] = None
+                    self.nzsp_img_avg[apol] = None
+                    self.nzsp_beam_avg[apol] = None
+                    self.nzsp_img[apol] = None
+                    self.nzsp_beam[apol] = None
+                    self.pbeam[apol] = None
 
-                for apol in pol:
-                    if apol in ['P1', 'P2']:
-                        if verbose:
-                            print '\n\t\tWorking on polarization {0}'.format(apol)
-                                
-                        self.holimg[apol] = None
-                        self.holbeam[apol] = None
-                        self.img[apol] = None
-                        self.beam[apol] = None
-                        self.grid_wts[apol] = NP.zeros(self.gridu.shape+(self.f.size,))
-                        if apol in antenna_array.grid_illumination:
-                            self.grid_illumination[apol] = antenna_array.grid_illumination[apol]
-                            self.grid_Ef[apol] = antenna_array.grid_Ef[apol]
-                        else:
-                            self.grid_illumination[apol] = None
-                            self.grid_Ef[apol] = None
-    
+                self.antenna_array = antenna_array
                 self.measured_type = 'E-field'
 
                 if verbose:
-                    print '\t\tInitialized gridx, gridy, grid_illumination, and grid_Ef.'
-                    print '\t\tInitialized gridl, gridm, and img'
+                    print '\t\tInitialized gridded attributes for image object'
             else:
                 raise TypeError('antenna_array is not an instance of class AntennaArray. Cannot initiate instance of class Image.')
 
@@ -6319,46 +6631,48 @@ class NewImage:
                 if verbose:
                     print '\t\tInitialized time stamp to {0} from interferometer array info.'.format(self.timestamp)
             
-                self.grid_illumination = {}
-                self.grid_Vf = {}
-                self.holimg = {}
-                self.holbeam = {}
-                self.img = {}
-                self.beam = {}
-                self.gridl = {}
-                self.gridm = {}
-                self.grid_wts = {}
-
                 if pol is None:
                     pol = ['P11', 'P12', 'P21', 'P22']
                 pol = NP.unique(NP.asarray(pol))
 
                 self.gridu, self.gridv = interferometer_array.gridu, interferometer_array.gridv
-                interferometer_array.make_grid_cube(verbose=verbose, pol=pol)
-
-                for cpol in pol:
-                    if cpol in ['P11', 'P12', 'P21', 'P22']:
-                        if verbose:
-                            print '\n\t\tWorking on polarization {0}'.format(cpol)
-                                
-                        self.holimg[cpol] = None
-                        self.holbeam[cpol] = None
-                        self.img[cpol] = None
-                        self.beam[cpol] = None
-                        self.grid_wts[cpol] = NP.zeros(self.gridu.shape+(self.f.size,))
-                        if cpol in interferometer_array.grid_illumination:
-                            self.grid_illumination[cpol] = interferometer_array.grid_illumination[cpol]
-                            self.grid_Vf[cpol] = interferometer_array.grid_Vf[cpol]
-                        else:
-                            self.grid_illumination[cpol] = None
-                            self.grid_Vf[cpol] = None
+                for cpol in ['P11', 'P12', 'P21', 'P22']:
+                    self.holimg[cpol] = None
+                    self.holbeam[cpol] = None
+                    self.img[cpol] = None
+                    self.beam[cpol] = None
+                    self.grid_illumination[cpol] = None
+                    self.grid_Vf[cpol] = None
+                    self.grid_wts[cpol] = None
+                    self.holimg_stack[cpol] = None
+                    self.holbeam_stack[cpol] = None
+                    self.img_stack[cpol] = None
+                    self.beam_stack[cpol] = None
+                    self.grid_illumination_stack[cpol] = None
+                    self.grid_vis_stack[cpol] = None
+                    self.grid_vis_avg[cpol] = None
+                    self.grid_illumination_avg[cpol] = None
+                    self.img_avg[cpol] = None
+                    self.beam_avg[cpol] = None
+                    self.twts[cpol] = None
+                    self.wts_vuf[cpol] = None
+                    self.vis_vuf[cpol] = None
+                    self.autocorr_wts_vuf[cpol] = None                    
+                    self.nzsp_grid_vis_avg[cpol] = None
+                    self.nzsp_grid_illumination_avg[cpol] = None
+                    self.nzsp_wts_vuf[cpol] = None
+                    self.nzsp_vis_vuf[cpol] = None
+                    self.nzsp_img_avg[cpol] = None
+                    self.nzsp_beam_avg[cpol] = None
+                    self.nzsp_img[cpol] = None
+                    self.nzsp_beam[cpol] = None
+                    self.pbeam[cpol] = None
     
+                self.interferometer_array = interferometer_array
                 self.measured_type = 'visibility'
 
                 if verbose:
-                    print '\t\tInitialized gridx, gridy, grid_illumination, and grid_Vf.'
-                    print '\t\tInitialized gridl, gridm, and img'
-                        
+                    print '\t\tInitialized gridded attributes for image object'
             else:
                 raise TypeError('interferometer_array is not an instance of class InterferometerArray. Cannot initiate instance of class Image.')
 
@@ -6367,7 +6681,129 @@ class NewImage:
 
     ############################################################################
 
-    def imagr(self, pol=None, weighting='natural', pad='on', verbose=True):
+    def reset(self, verbose=True):
+
+        """
+        ------------------------------------------------------------------------
+        Reset some grid level attributes of image object to init values
+
+        Inputs:
+
+        verbose   [boolean] If True (default), prints diagnostic and progress
+                  messages. If False, suppress printing such messages.
+
+        The attributes reset to init values are grid_illumination, holbeam, 
+        grid_Vf, grid_Ef, interferometer_array, antenna_array, holimg, gridl, 
+        gridm, img, beam, grid_wts
+        ------------------------------------------------------------------------
+        """
+        
+        if verbose:
+            print 'Resetting grid level attributes of image object...'
+
+        self.antenna_array = None
+        self.interferometer_array = None
+        self.timestamp = None
+        self.grid_illumination = {}
+        self.holimg = {}
+        self.holbeam = {}
+        self.img = {}
+        self.beam = {}
+        self.gridl = {}
+        self.gridm = {}
+        self.grid_wts = {}
+        self.grid_Ef = {}
+        self.grid_Vf = {}
+        self.wts_vuf = {}
+        self.vis_vuf = {}
+
+        if self.measured_type == 'E-field':
+            for apol in ['P1', 'P2']:
+                self.holimg[apol] = None
+                self.holbeam[apol] = None
+                self.img[apol] = None
+                self.beam[apol] = None
+                self.grid_illumination[apol] = None
+                self.grid_Ef[apol] = None
+                self.grid_wts[apol] = None
+                self.wts_vuf[apol] = None
+                self.vis_vuf[apol] = None
+        else:
+            for cpol in ['P11', 'P12', 'P21', 'P22']:
+                self.holimg[cpol] = None
+                self.holbeam[cpol] = None
+                self.img[cpol] = None
+                self.beam[cpol] = None
+                self.grid_illumination[cpol] = None
+                self.grid_Vf[cpol] = None
+                self.grid_wts[cpol] = None
+                self.wts_vuf[cpol] = None
+                self.vis_vuf[cpol] = None
+
+    ############################################################################
+
+    def update(self, antenna_array=None, interferometer_array=None, reset=True, 
+               verbose=True):
+
+        """
+        ------------------------------------------------------------------------
+        Updates the image object with newer instance of class AntennaArray or
+        InterferometerArray
+
+        Inputs:
+
+        antenna_array [instance of class AntennaArray] Update the image object 
+                      with this new instance of class AntennaArray (if attribute
+                      measured_type is 'E-field')
+
+        interferometer_array 
+                      [instance of class InterferometerArray] Update the image 
+                      object with this new instance of class InterferometerArray 
+                      (if attribute measured_type is 'visibility')
+
+        reset         [boolean] if set to True (default), resets some of the
+                      image object attribtues by calling member function reset()
+
+        verbose       [boolean] If True (default), prints diagnostic and progress
+                      messages. If False, suppress printing such messages.    
+        ------------------------------------------------------------------------
+        """
+
+        if not isinstance(reset, bool):
+            raise TypeError('reset keyword must be of boolean type')
+
+        if not isinstance(verbose, bool):
+            raise TypeError('verbose keyword must be of boolean type')
+
+        if self.measured_type == 'E-field':
+            if antenna_array is not None:
+                if isinstance(antenna_array, AntennaArray):
+                    if reset:
+                        self.reset(verbose=verbose)
+                        self.gridu, self.gridv = antenna_array.gridu, antenna_array.gridv
+                        self.antenna_array = antenna_array
+                else:
+                    raise TypeError('Input antenna_array must be an instance of class AntennaArray')
+                self.timestamp = antenna_array.timestamp
+                if verbose:
+                    print 'Updated antenna array attributes of the image instance'
+        else:
+            if interferometer_array is not None:
+                if isinstance(interferometer_array, InterferometerArray):
+                    if reset:
+                        self.reset(verbose=verbose)
+                        self.gridu, self.gridv = interferometer_array.gridu, interferometer_array.gridv
+                        self.interferometer_array = interferometer_array
+                else:
+                    raise TypeError('Input interferometer_array must be an instance of class InterferometerArray')
+                self.timestamp = interferometer_array.timestamp
+                if verbose:
+                    print 'Updated interferometer array attributes of the image instance'
+
+    ############################################################################
+
+    def imagr(self, pol=None, weighting='natural', pad='on', stack=True,
+              grid_map_method='sparse', verbose=True):
 
         """
         ------------------------------------------------------------------------
@@ -6392,6 +6828,15 @@ class NewImage:
                   extends on each side in each direction by 50%. Thus the size
                   of the padded grid is twice that of the interferometer array 
                   grid and would be the 4 times that of an antenna array grid.
+
+        stack     [boolean] If True (default), stacks the imaged and uv-gridded
+                  data to the stack for batch processing later
+
+        grid_map_method
+                  [string] Accepted values are 'regular' and 'sparse' (default).
+                  If 'regular' it applies the regular grid mapping while 
+                  'sparse' applies the grid mapping based on sparse matrix 
+                  methods
 
         verbose   [boolean] If True (default), prints diagnostic and progress
                   messages. If False, suppress printing such messages.
@@ -6419,9 +6864,25 @@ class NewImage:
 
         if self.measured_type == 'E-field':
             if pol is None: pol = ['P1', 'P2']
-            pol = NP.unique(NP.asarray(pol))
+            pol = NP.unique(NP.asarray(pol)).tolist()
             for apol in pol:
                 if apol in ['P1', 'P2']:
+                    if grid_map_method == 'regular':
+                        self.antenna_array.make_grid_cube_new(verbose=verbose, pol=apol)
+                    elif grid_map_method == 'sparse':
+                        self.antenna_array.applyMappingMatrix(pol=apol, verbose=verbose)
+                    else:
+                        raise ValueError('Invalid value specified for input parameter grid_map_method')
+
+                    self.grid_wts[apol] = NP.zeros(self.gridu.shape+(self.f.size,))
+                    if apol in self.antenna_array.grid_illumination:
+                        if SM.issparse(self.antenna_array.grid_illumination[apol]):
+                            self.grid_illumination[apol] = self.antenna_array.grid_illumination[apol].A.reshape(self.gridu.shape+(self.f.size,))
+                            self.grid_Ef[apol] = self.antenna_array.grid_Ef[apol].A.reshape(self.gridu.shape+(self.f.size,))
+                        else:
+                            self.grid_illumination[apol] = self.antenna_array.grid_illumination[apol]
+                            self.grid_Ef[apol] = self.antenna_array.grid_Ef[apol]
+                    
                     if verbose: print 'Preparing to Inverse Fourier Transform...'
                     if weighting == 'uniform':
                         self.grid_wts[apol][NP.abs(self.grid_illumination[apol]) > 0.0] = 1.0/NP.abs(self.grid_illumination[apol][NP.abs(self.grid_illumination[apol]) > 0.0])
@@ -6439,25 +6900,48 @@ class NewImage:
                         dirty_image = NP.fft.fft2(self.grid_wts[apol]*self.grid_Ef[apol], axes=(0,1))
                         self.gridl, self.gridm = NP.meshgrid(NP.fft.fftshift(NP.fft.fftfreq(grid_shape[1], du)), NP.fft.fftshift(NP.fft.fftfreq(grid_shape[0], dv)))
 
-                    self.holbeam[apol] = NP.fft.fftshift(syn_beam, axes=(0,1)) / sum_wts
-                    self.holimg[apol] = NP.fft.fftshift(dirty_image, axes=(0,1)) / sum_wts
-                    syn_beam = NP.abs(syn_beam) ** 2
-                    meanval = NP.sum(syn_beam, axis=(0,1), keepdims=True) / (syn_beam.shape[0]*syn_beam.shape[1])
-                    # meanval = NP.nanmean(syn_beam.reshape(-1,dirty_image.shape[2]), axis=0).reshape(1,1,-1)
-                    sum_wts2 = sum_wts**2 - meanval
-                    syn_beam -= meanval
-                    dirty_image = NP.abs(dirty_image) ** 2
-                    meanval = NP.sum(dirty_image, axis=(0,1), keepdims=True) / (dirty_image.shape[0]*dirty_image.shape[1])
-                    # meanval = NP.nanmean(dirty_image.reshape(-1,syn_beam.shape[2]), axis=0).reshape(1,1,-1)
-                    dirty_image -= meanval
-                    self.beam[apol] = NP.fft.fftshift(syn_beam, axes=(0,1)) / sum_wts2
-                    self.img[apol] = NP.fft.fftshift(dirty_image, axes=(0,1)) / sum_wts2
+                    self.holbeam[apol] = NP.fft.fftshift(syn_beam/sum_wts, axes=(0,1))
+                    self.holimg[apol] = NP.fft.fftshift(dirty_image/sum_wts, axes=(0,1))
+                    syn_beam = NP.abs(syn_beam)**2
+                    sum_wts2 = sum_wts**2
+                    # meanval = NP.sum(syn_beam, axis=(0,1), keepdims=True) / (syn_beam.shape[0]*syn_beam.shape[1])
+                    # # meanval = NP.nanmean(syn_beam.reshape(-1,dirty_image.shape[2]), axis=0).reshape(1,1,-1)
+                    # sum_wts2 -= meanval
+                    # syn_beam -= meanval
+                    dirty_image = NP.abs(dirty_image)**2
+                    # meanval = NP.sum(dirty_image, axis=(0,1), keepdims=True) / (dirty_image.shape[0]*dirty_image.shape[1])
+                    # # meanval = NP.nanmean(dirty_image.reshape(-1,syn_beam.shape[2]), axis=0).reshape(1,1,-1)
+                    # dirty_image -= meanval
+                    self.beam[apol] = NP.fft.fftshift(syn_beam/sum_wts2, axes=(0,1))
+                    self.img[apol] = NP.fft.fftshift(dirty_image/sum_wts2, axes=(0,1))
+                    qty_vuf = NP.fft.ifft2(syn_beam/sum_wts2, axes=(0,1)) # Inverse FT
+                    qty_vuf = NP.fft.ifftshift(qty_vuf, axes=(0,1)) # Shift array to be centered
+                    self.wts_vuf[apol] = qty_vuf[self.gridv.shape[0]:3*self.gridv.shape[0],self.gridu.shape[1]:3*self.gridu.shape[1],:]
+                    qty_vuf = NP.fft.ifft2(dirty_image/sum_wts2, axes=(0,1)) # Inverse FT
+                    qty_vuf = NP.fft.ifftshift(qty_vuf, axes=(0,1)) # Shift array to be centered
+                    self.vis_vuf[apol] = qty_vuf[self.gridv.shape[0]:3*self.gridv.shape[0],self.gridu.shape[1]:3*self.gridu.shape[1],:]
                        
         if self.measured_type == 'visibility':
             if pol is None: pol = ['P11', 'P12', 'P21', 'P22']
-            pol = NP.unique(NP.asarray(pol))
+            pol = NP.unique(NP.asarray(pol)).tolist()
             for cpol in pol:
                 if cpol in ['P11', 'P12', 'P21', 'P22']:
+                    if grid_map_method == 'regular':
+                        self.interferometer_array.make_grid_cube_new(verbose=verbose, pol=cpol)
+                    elif grid_map_method == 'sparse':
+                        self.interferometer_array.applyMappingMatrix(pol=cpol, verbose=verbose)
+                    else:
+                        raise ValueError('Invalid value specified for input parameter grid_map_method')
+
+                    self.grid_wts[cpol] = NP.zeros(self.gridu.shape+(self.f.size,))
+                    if cpol in self.interferometer_array.grid_illumination:
+                        if SM.issparse(self.interferometer_array.grid_illumination[cpol]):
+                            self.grid_illumination[cpol] = self.interferometer_array.grid_illumination[cpol].A.reshape(self.gridu.shape+(self.f.size,))
+                            self.grid_Vf[cpol] = self.interferometer_array.grid_Vf[cpol].A.reshape(self.gridu.shape+(self.f.size,))
+                        else:
+                            self.grid_illumination[cpol] = self.interferometer_array.grid_illumination[cpol]
+                            self.grid_Vf[cpol] = self.interferometer_array.grid_Vf[cpol]
+
                     if verbose: print 'Preparing to Inverse Fourier Transform...'
                     if weighting == 'uniform':
                         self.grid_wts[cpol][NP.abs(self.grid_illumination[cpol]) > 0.0] = 1.0/NP.abs(self.grid_illumination[cpol][NP.abs(self.grid_illumination[cpol]) > 0.0])
@@ -6467,8 +6951,8 @@ class NewImage:
                     sum_wts = NP.sum(NP.abs(self.grid_wts[cpol] * self.grid_illumination[cpol]), axis=(0,1), keepdims=True)
 
                     if pad == 'on': # Pad it with zeros on either side to be twice the size
-                        padded_syn_beam_in_uv = NP.pad(self.grid_wts[cpol]*self.grid_illumination[cpol], ((self.gridu.shape[0]/2,self.gridu.shape[0]/2),(self.gridv.shape[1]/2,self.gridv.shape[1]/2),(0,0)), mode='constant', constant_values=0)
-                        padded_grid_Vf = NP.pad(self.grid_wts[cpol]*self.grid_Vf[cpol], ((self.gridu.shape[0]/2,self.gridu.shape[0]/2),(self.gridv.shape[1]/2,self.gridv.shape[1]/2),(0,0)), mode='constant', constant_values=0)
+                        padded_syn_beam_in_uv = NP.pad(self.grid_wts[cpol]*self.grid_illumination[cpol], ((self.gridv.shape[0]/2,self.gridv.shape[0]/2),(self.gridu.shape[1]/2,self.gridu.shape[1]/2),(0,0)), mode='constant', constant_values=0)
+                        padded_grid_Vf = NP.pad(self.grid_wts[cpol]*self.grid_Vf[cpol], ((self.gridv.shape[0]/2,self.gridv.shape[0]/2),(self.gridu.shape[1]/2,self.gridu.shape[1]/2),(0,0)), mode='constant', constant_values=0)
                         self.gridl, self.gridm = NP.meshgrid(NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[1], du)), NP.fft.fftshift(NP.fft.fftfreq(2*grid_shape[0], dv)))
                     else:  # No padding
                         padded_syn_beam_in_uv = self.grid_wts[cpol]*self.grid_illumination[cpol]
@@ -6487,8 +6971,14 @@ class NewImage:
                     dirty_image = dirty_image.real
                     syn_beam = syn_beam.real
 
-                    self.beam[cpol] = NP.fft.fftshift(syn_beam, axes=(0,1)) / sum_wts
-                    self.img[cpol] = NP.fft.fftshift(dirty_image, axes=(0,1)) / sum_wts
+                    self.beam[cpol] = NP.fft.fftshift(syn_beam/sum_wts, axes=(0,1))
+                    self.img[cpol] = NP.fft.fftshift(dirty_image/sum_wts, axes=(0,1))
+                    qty_vuf = NP.fft.ifft2(syn_beam/sum_wts, axes=(0,1)) # Inverse FT
+                    qty_vuf = NP.fft.ifftshift(qty_vuf, axes=(0,1)) # Shift array to be centered
+                    self.wts_vuf[cpol] = qty_vuf[self.gridv.shape[0]/2:3*self.gridv.shape[0]/2,self.gridu.shape[1]/2:3*self.gridu.shape[1]/2,:]
+                    qty_vuf = NP.fft.ifft2(dirty_image/sum_wts, axes=(0,1)) # Inverse FT
+                    qty_vuf = NP.fft.ifftshift(qty_vuf, axes=(0,1)) # Shift array to be centered
+                    self.vis_vuf[cpol] = qty_vuf[self.gridv.shape[0]/2:3*self.gridv.shape[0]/2,self.gridu.shape[1]/2:3*self.gridu.shape[1]/2,:]
 
         nan_ind = NP.where(self.gridl**2 + self.gridm**2 > 1.0)
         # nan_ind_unraveled = NP.unravel_index(nan_ind, self.gridl.shape)
@@ -6498,8 +6988,396 @@ class NewImage:
         if verbose:
             print 'Successfully imaged.'
 
+        # Call stack() if required
+        if stack:
+            self.stack(pol=pol)
+
     ############################################################################
         
+    def stack(self, pol=None):
+
+        """
+        ------------------------------------------------------------------------
+        Stacks current images and UV-grid information onto a stack
+
+        Inputs:
+
+        pol     [string] indicates which polarization information to be saved. 
+                Allowed values are 'P1', 'P2' in case of MOFF or 'P11', 'P12', 
+                'P21', 'P22' in case of FX or None (default). If None, 
+                information on all polarizations appropriate for MOFF or FX 
+                are stacked
+        ------------------------------------------------------------------------
+        """
+
+        if self.timestamp not in self.timestamps:
+            if pol is None:
+                if self.measured_type == 'E-field':
+                    pol = ['P1', 'P2']
+                else:
+                    pol = ['P11', 'P12', 'P21', 'P22']
+            elif isinstance(pol, str):
+                pol = [pol]
+            elif isinstance(pol, list):
+                p = [item for item in pol if item in ['P1', 'P2', 'P11', 'P12', 'P21', 'P22']]
+                pol = p
+            else:
+                raise TypeError('Input pol must be a string or list specifying polarization(s)')
+    
+            for p in pol:
+                if self.img_stack[p] is None:
+                    self.img_stack[p] = self.img[p][NP.newaxis,:,:,:]
+                    self.beam_stack[p] = self.beam[p][NP.newaxis,:,:,:]
+                    self.grid_illumination_stack[p] = self.wts_vuf[p][NP.newaxis,:,:,:]
+                    self.grid_vis_stack[p] = self.vis_vuf[p][NP.newaxis,:,:,:]
+                else:
+                    self.img_stack[p] = NP.concatenate((self.img_stack[p], self.img[p][NP.newaxis,:,:,:]), axis=0)
+                    self.beam_stack[p] = NP.concatenate((self.beam_stack[p], self.beam[p][NP.newaxis,:,:,:]), axis=0)
+                    self.grid_illumination_stack[p] = NP.concatenate((self.grid_illumination_stack[p], self.wts_vuf[p][NP.newaxis,:,:,:]), axis=0)
+                    self.grid_vis_stack[p] = NP.concatenate((self.grid_vis_stack[p], self.vis_vuf[p][NP.newaxis,:,:,:]), axis=0)
+    
+                if self.measured_type == 'E-field':
+                    if self.holimg_stack[p] is None:
+                        self.holimg_stack[p] = self.holimg[p][NP.newaxis,:,:,:]
+                        self.holbeam_stack[p] = self.holbeam[p][NP.newaxis,:,:,:]
+                    else:
+                        self.holimg_stack[p] = NP.concatenate((self.holimg_stack[p], self.holimg[p][NP.newaxis,:,:,:]), axis=0)
+                        self.holbeam_stack[p] = NP.concatenate((self.holbeam_stack[p], self.holbeam[p][NP.newaxis,:,:,:]), axis=0)
+
+            self.timestamps += [self.timestamp]
+
+    ############################################################################
+
+    def accumulate(self, tbinsize=None, verbose=True):
+
+        """
+        ------------------------------------------------------------------------
+        Accumulates and averages gridded quantities that are statistically
+        stationary such as images and visibilities
+
+        Input:
+
+        tbinsize [scalar or dictionary] Contains bin size of timestamps while
+                 averaging. Default = None means gridded quantities over all
+                 timestamps are averaged. If scalar, the same (positive) value 
+                 applies to all polarizations. If dictionary, timestamp bin size
+                 (positive) is provided under each key 'P11', 'P12', 'P21', 
+                 'P22'. If any of the keys is missing the gridded quantities 
+                 for that polarization are averaged over all timestamps.
+
+        verbose  [boolean] If True (default), prints diagnostic and progress
+                 messages. If False, suppress printing such messages.
+        ------------------------------------------------------------------------
+        """
+        
+        if self.measured_type == 'E-field':
+            pol = ['P1', 'P2']
+        else:
+            pol = ['P11', 'P12', 'P21', 'P22']
+
+        timestamps = NP.asarray(self.timestamps).astype(NP.float)
+        twts = {}
+        img_acc = {}
+        beam_acc = {}
+        grid_vis_acc = {}
+        grid_illumination_acc = {}
+        for p in pol:
+            img_acc[p] = None
+            beam_acc[p] = None
+            grid_vis_acc[p] = None
+            grid_illumination_acc[p] = None
+            twts[p] = []
+
+        if tbinsize is None:   # Average across all timestamps
+            for p in pol:
+                if self.img_stack[p] is not None:
+                    img_acc[p] = NP.nansum(self.img_stack[p], axis=0, keepdims=True)
+                    beam_acc[p] = NP.nansum(self.beam_stack[p], axis=0, keepdims=True)
+                    grid_vis_acc[p] = NP.nansum(self.grid_vis_stack[p], axis=0, keepdims=True)
+                    grid_illumination_acc[p] = NP.nansum(self.grid_illumination_stack[p], axis=0, keepdims=True)
+                twts[p] = NP.asarray(len(self.timestamps)).reshape(-1,1,1,1)
+            self.tbinsize = tbinsize
+        elif isinstance(tbinsize, (int, float)): # Apply same time bin size to all polarizations 
+            eps = 1e-10
+            tbins = NP.arange(timestamps.min(), timestamps.max(), tbinsize)
+            tbins = NP.append(tbins, timestamps.max()+eps)
+            for p in pol:
+                counts, tbin_edges, tbinnum, ri = OPS.binned_statistic(timestamps, statistic='count', bins=tbins)
+                for binnum in range(counts.size):
+                    ind = ri[ri[binnum]:ri[binnum+1]]
+                    twts[p] += [counts]
+                    if img_acc[p] is None:
+                        if self.img_stack[p] is not None:
+                            img_acc[p] = NP.nansum(self.img_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                            beam_acc[p] = NP.nansum(self.beam_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                            grid_vis_acc[p] = NP.nansum(self.grid_vis_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                            grid_illumination_acc[p] = NP.nansum(self.grid_illumination_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                    else:
+                        if self.img_stack[p] is not None:
+                            img_acc[p] = NP.vstack((img_acc[p], NP.nansum(self.img_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                            beam_acc[p] = NP.vstack((beam_acc[p], NP.nansum(self.beam_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                            grid_vis_acc[p] = NP.vstack((grid_vis_acc[p], NP.nansum(self.grid_vis_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                            grid_illumination_acc[p] = NP.vstack((grid_illumination_acc[p], NP.nansum(self.grid_illumination_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                twts[p] = NP.asarray(twts[p]).astype(NP.float).reshape(-1,1,1,1)
+            self.tbinsize = tbinsize
+        elif isinstance(tbinsize, dict): # Apply different time binsizes to corresponding polarizations
+            tbsize = {}
+            for p in pol:
+                if p not in tbinsize:
+                    if self.img_stack[p] is not None:
+                        img_acc[p] = NP.nansum(self.img_stack[p], axis=0, keepdims=True)
+                        beam_acc[p] = NP.nansum(self.beam_stack[p], axis=0, keepdims=True)
+                        grid_vis_acc[p] = NP.nansum(self.grid_vis_stack[p], axis=0, keepdims=True)
+                        grid_illumination_acc[p] = NP.nansum(self.grid_illumination_stack[p], axis=0, keepdims=True)
+                    twts[p] = NP.asarray(len(self.timestamps)).reshape(-1,1,1,1)
+                    tbsize[p] = None
+                elif isinstance(tbinsize[p], (int,float)):
+                    eps = 1e-10
+                    tbins = NP.arange(timestamps.min(), timestamps.max(), tbinsize[p])
+                    tbins = NP.append(tbins, timestamps.max()+eps)
+                    
+                    counts, tbin_edges, tbinnum, ri = OPS.binned_statistic(timestamps, statistic='count', bins=tbins)
+                    for binnum in range(counts.size):
+                        ind = ri[ri[binnum]:ri[binnum+1]]
+                        twts[p] += [counts]
+                        if img_acc[p] is None:
+                            if self.img_stack[p] is not None:
+                                img_acc[p] = NP.nansum(self.img_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                                beam_acc[p] = NP.nansum(self.beam_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                                grid_vis_acc[p] = NP.nansum(self.grid_vis_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                                grid_illumination_acc[p] = NP.nansum(self.grid_illumination_stack[p][ind,:,:,:], axis=0, keepdims=True)
+                        else:
+                            if self.img_stack[p] is not None:
+                                img_acc[p] = NP.vstack((img_acc[p], NP.nansum(self.img_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                                beam_acc[p] = NP.vstack((beam_acc[p], NP.nansum(self.beam_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                                grid_vis_acc[p] = NP.vstack((grid_vis_acc[p], NP.nansum(self.grid_vis_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                                grid_illumination_acc[p] = NP.vstack((grid_illumination_acc[p], NP.nansum(self.grid_illumination_stack[p][ind,:,:,:], axis=0, keepdims=True)))
+                    twts[p] = NP.asarray(twts[p]).astype(NP.float).reshape(-1,1,1,1)
+                    tbsize[p] = tbinsize[p]
+                else:
+                    if self.img_stack[p] is not None:
+                        img_acc[p] = NP.nansum(self.img_stack[p], axis=0, keepdims=True)
+                        beam_acc[p] = NP.nansum(self.beam_stack[p], axis=0, keepdims=True)
+                        grid_vis_acc[p] = NP.nansum(self.grid_vis_stack[p], axis=0, keepdims=True)
+                        grid_illumination_acc[p] = NP.nansum(self.grid_illumination_stack[p], axis=0, keepdims=True)
+                    twts[p] = NP.asarray(len(self.timestamps)).reshape(-1,1,1,1)
+                    tbsize[p] = None
+
+            self.tbinsize = tbsize
+
+        # Compute the averaged grid quantities from the accumulated versions
+        for p in pol:
+            if img_acc[p] is not None:
+                self.img_avg[p] = img_acc[p] / twts[p]
+                self.beam_avg[p] = beam_acc[p] / twts[p]
+                self.grid_vis_avg[p] = grid_vis_acc[p] / twts[p]
+                self.grid_illumination_avg[p] = grid_illumination_acc[p] / twts[p]
+
+        self.twts = twts
+
+    ############################################################################
+
+    def evalAutoCorr(self, lkpinfo=None, forceeval=False):
+
+        """
+        ------------------------------------------------------------------------
+        Evaluate auto-correlation of single antenna weights with itself on the
+        UV-plane. 
+
+        Inputs:
+
+        lkpinfo   [dictionary] consists of weights information for each of 
+                  the polarizations under polarization keys. Each of 
+                  the values under the keys is a string containing the full
+                  path to a filename that contains the positions and 
+                  weights for the aperture illumination in the form of 
+                  a lookup table as columns (x-loc [float], y-loc 
+                  [float], wts[real], wts[imag if any]). In this case, the 
+                  lookup is for auto-corrlation of antenna weights. It only 
+                  applies when the antenna aperture class is set to 
+                  lookup-based kernel estimation instead of a functional form
+
+        forceeval [boolean] When set to False (default) the auto-correlation in
+                  the UV plane is not evaluated if it was already evaluated 
+                  earlier. If set to True, it will be forcibly evaluated 
+                  independent of whether they were already evaluated or not
+        ------------------------------------------------------------------------
+        """
+
+        if forceeval or (not self.autocorr_set):
+            if self.measured_type == 'E-field':
+    
+                pol = ['P1', 'P2']
+    
+                # Assume all antenna apertures are identical and make a copy of the
+                # antenna aperture
+                # Need serious development for non-identical apertures
+    
+                ant_aprtr = copy.deepcopy(self.antenna_array.antennas.itervalues().next().aperture)
+                pol_type = 'dual'
+                kerntype = ant_aprtr.kernel_type
+                shape = ant_aprtr.shape
+                # kernshapeparms = {'xmax': {p: ant_aprtr.xmax[p] for p in pol}, 'ymax': {p: ant_aprtr.ymax[p] for p in pol}, 'rmin': {p: ant_aprtr.rmin[p] for p in pol}, 'rmax': {p: ant_aprtr.rmax[p] for p in pol}, 'rotangle': {p: ant_aprtr.rotangle[p] for p in pol}}
+                kernshapeparms = {p: {'xmax': ant_aprtr.xmax[p], 'ymax': ant_aprtr.ymax[p], 'rmax': ant_aprtr.rmax[p], 'rmin': ant_aprtr.rmin[p], 'rotangle': ant_aprtr.rotangle[p]} for p in pol}
+    
+                for p in pol:
+                    if kerntype[p] == 'func':
+                        if shape[p] == 'rect':
+                            shape[p] = 'auto_convolved_rect'
+                        elif shape[p] == 'square':
+                            shape[p] = 'auto_convolved_square'
+                        elif shape[p] == 'circular':
+                            shape[p] = 'auto_convolved_circular'
+                        else:
+                            raise ValueError('Aperture kernel footprint shape - {0} - currently unsupported'.format(shape[p]))
+                        
+                aprtr = APR.Aperture(pol_type=pol_type, kernel_type=kerntype,
+                                     shape=shape, parms=kernshapeparms,
+                                     lkpinfo=lkpinfo, load_lookup=True)
+                
+                du = self.gridu[0,1] - self.gridu[0,0]
+                dv = self.gridv[1,0] - self.gridv[0,0]
+                if self.measured_type == 'E-field':
+                    gridu, gridv = NP.meshgrid(du*(NP.arange(2*self.gridu.shape[1])-self.gridu.shape[1]), dv*(NP.arange(2*self.gridu.shape[0])-self.gridu.shape[0]))
+                else:
+                    gridu, gridv = self.gridu, self.gridv
+    
+                wavelength = FCNST.c / self.f
+                min_lambda = NP.abs(wavelength).min()
+                rmaxNN = 0.5 * NP.sqrt(du**2 + dv**2) * min_lambda 
+    
+                gridx = gridu[:,:,NP.newaxis] * wavelength.reshape(1,1,-1)
+                gridy = gridv[:,:,NP.newaxis] * wavelength.reshape(1,1,-1)
+                gridxy = NP.hstack((gridx.reshape(-1,1), gridy.reshape(-1,1)))
+                wl = NP.ones(gridu.shape)[:,:,NP.newaxis] * wavelength.reshape(1,1,-1)
+                wl = wl.reshape(-1)
+                distNN = 2.0 * max([NP.sqrt(aprtr.xmax['P1']**2 + NP.sqrt(aprtr.ymax['P1']**2)), NP.sqrt(aprtr.xmax['P1']**2 + NP.sqrt(aprtr.ymax['P1']**2)), aprtr.rmax['P1'], aprtr.rmax['P2']]) # factor in the front is to safely estimate kernel around some extra grid pixels
+                indNN_list, blind, vuf_gridind = LKP.find_NN(NP.zeros((1,2)), gridxy, distance_ULIM=distNN, flatten=True, parallel=False)
+                dxy = gridxy[vuf_gridind,:]
+                unraveled_vuf_ind = NP.unravel_index(vuf_gridind, gridu.shape+(self.f.size,))
+    
+                self.autocorr_wts_vuf = {p: NP.zeros(gridu.shape+(self.f.size,), dtype=NP.complex64) for p in pol}
+                self.pbeam = {p: NP.zeros((2*gridv.shape[0],2*gridu.shape[1],self.f.size), dtype=NP.complex64) for p in pol}                
+                for p in pol:
+                    krn = aprtr.compute(dxy, wavelength=wl[vuf_gridind], pol=p, rmaxNN=rmaxNN, load_lookup=False)
+                    self.autocorr_wts_vuf[p][unraveled_vuf_ind] = krn[p]
+                    self.autocorr_wts_vuf[p] = self.autocorr_wts_vuf[p] / NP.sum(self.autocorr_wts_vuf[p], axis=(0,1), keepdims=True)
+                    sum_wts = NP.sum(self.autocorr_wts_vuf[p], axis=(0,1), keepdims=True)
+                    padded_wts_vuf = NP.pad(self.autocorr_wts_vuf[p], ((self.gridv.shape[0],self.gridv.shape[0]),(self.gridu.shape[1],self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
+                    padded_wts_vuf = NP.fft.ifftshift(padded_wts_vuf, axes=(0,1))
+                    wts_lmf = NP.fft.fft2(padded_wts_vuf, axes=(0,1)) / sum_wts
+                    if NP.abs(wts_lmf.imag).max() < 1e-10:
+                        self.pbeam[p] = NP.fft.fftshift(wts_lmf.real, axes=(0,1))
+                    else:
+                        raise ValueError('Significant imaginary component found in the power pattern')
+                    
+                self.autocorr_set = True
+            
+    ############################################################################
+
+    def removeAutoCorr(self, lkpinfo=None, forceeval=False, datapool='avg'):
+
+        """
+        ------------------------------------------------------------------------
+        Remove auto-correlation of single antenna weights with itself from the
+        UV-plane. 
+
+        Inputs:
+
+        lkpinfo   [dictionary] consists of weights information for each of 
+                  the polarizations under polarization keys. Each of 
+                  the values under the keys is a string containing the full
+                  path to a filename that contains the positions and 
+                  weights for the aperture illumination in the form of 
+                  a lookup table as columns (x-loc [float], y-loc 
+                  [float], wts[real], wts[imag if any]). In this case, the 
+                  lookup is for auto-corrlation of antenna weights. It only 
+                  applies when the antenna aperture class is set to 
+                  lookup-based kernel estimation instead of a functional form
+
+        forceeval [boolean] When set to False (default) the auto-correlation in
+                  the UV plane is not evaluated if it was already evaluated 
+                  earlier. If set to True, it will be forcibly evaluated 
+                  independent of whether they were already evaluated or not
+
+        datapool  [string] When set to 'avg' (or None) (default), 
+                  auto-correlations from antennas (zero-spacing with a width) 
+                  are removed from the averaged data set. If set to 'current',
+                  the latest timestamp is used in subtracting the zero-spacing
+                  visibilities information
+        ------------------------------------------------------------------------
+        """
+
+        if self.measured_type == 'E-field':
+            if forceeval or (not self.autocorr_removed):
+                if isinstance(datapool, str):
+                    if datapool is None: datapool = 'avg'
+                    if datapool not in ['avg', 'current']:
+                        raise ValueError('Input keywrod datapool must be set to "avg" or "current"')
+                else:
+                    raise TypeError('Input keyword data pool must be a string')
+        
+                if forceeval or (not self.autocorr_set):
+                    self.evalAutoCorr(lkpinfo=lkpinfo, forceeval=forceeval)
+        
+                autocorr_wts_vuf = copy.deepcopy(self.autocorr_wts_vuf)
+                pol = ['P1', 'P2']
+                for p in pol:
+                    if datapool == 'avg':
+                        if self.grid_illumination_avg[p] is not None:
+                            vis_vuf = NP.copy(self.grid_vis_avg[p])
+                            wts_vuf = NP.copy(self.grid_illumination_avg[p])
+    
+                            autocorr_wts_vuf[p] = autocorr_wts_vuf[p][NP.newaxis,:,:,:]
+                            vis_vuf = vis_vuf - (vis_vuf[:,self.gridv.shape[0],self.gridu.shape[1],:].reshape(vis_vuf.shape[0],1,1,self.f.size) / autocorr_wts_vuf[p][0,self.gridv.shape[0],self.gridu.shape[1],:].reshape(1,1,1,self.f.size)) * autocorr_wts_vuf[p]
+                            wts_vuf = wts_vuf - (wts_vuf[:,self.gridv.shape[0],self.gridu.shape[1],:].reshape(wts_vuf.shape[0],1,1,self.f.size) / autocorr_wts_vuf[p][0,self.gridv.shape[0],self.gridu.shape[1],:].reshape(1,1,1,self.f.size)) * autocorr_wts_vuf[p]
+                            sum_wts = NP.sum(wts_vuf, axis=(1,2), keepdims=True)
+                            padded_wts_vuf = NP.pad(wts_vuf, ((0,0),(self.gridv.shape[0],self.gridv.shape[0]),(self.gridu.shape[1],self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
+                            padded_wts_vuf = NP.fft.ifftshift(padded_wts_vuf, axes=(1,2))
+                            wts_lmf = NP.fft.fft2(padded_wts_vuf, axes=(1,2)) / sum_wts
+                            if NP.abs(wts_lmf.imag).max() > 1e-10:
+                                raise ValueError('Significant imaginary component found in the synthesized beam.')
+                            self.nzsp_beam_avg[p] = NP.fft.fftshift(wts_lmf.real, axes=(1,2))
+                            padded_vis_vuf = NP.pad(vis_vuf, ((0,0),(self.gridv.shape[0],self.gridv.shape[0]),(self.gridu.shape[1],self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
+                            padded_vis_vuf = NP.fft.ifftshift(padded_vis_vuf, axes=(1,2))
+                            vis_lmf = NP.fft.fft2(padded_vis_vuf, axes=(1,2)) / sum_wts
+                            if NP.abs(vis_lmf.imag).max() > 1e-10:
+                                raise ValueError('Significant imaginary component found in the synthesized dirty image.')
+
+                            self.nzsp_img_avg[p] = NP.fft.fftshift(vis_lmf.real, axes=(1,2))
+                            self.nzsp_grid_vis_avg[p] = vis_vuf
+                            self.nzsp_grid_illumination_avg[p] = wts_vuf
+                    else:
+                        if self.wts_vuf[p] is not None:
+                            vis_vuf = NP.copy(self.vis_vuf[p])
+                            wts_vuf = NP.copy(self.wts_vuf[p])
+
+                            vis_vuf = vis_vuf - (vis_vuf[self.gridv.shape[0],self.gridu.shape[1],:].reshape(1,1,self.f.size) / autocorr_wts_vuf[p][self.gridv.shape[0],self.gridu.shape[1],:].reshape(1,1,self.f.size)) * autocorr_wts_vuf[p]
+                            wts_vuf = wts_vuf - (wts_vuf[self.gridv.shape[0],self.gridu.shape[1],:].reshape(1,1,self.f.size) / autocorr_wts_vuf[p][self.gridv.shape[0],self.gridu.shape[1],:].reshape(1,1,self.f.size)) * autocorr_wts_vuf[p]
+                            sum_wts = NP.sum(wts_vuf, axis=(0,1), keepdims=True)
+                            padded_wts_vuf = NP.pad(wts_vuf, ((self.gridv.shape[0],self.gridv.shape[0]),(self.gridu.shape[1],self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
+                            padded_wts_vuf = NP.fft.ifftshift(padded_wts_vuf, axes=(0,1))
+                            wts_lmf = NP.fft.fft2(padded_wts_vuf, axes=(0,1)) / sum_wts
+                            if NP.abs(wts_lmf.imag).max() > 1e-10:
+                                raise ValueError('Significant imaginary component found in the synthesized beam.')
+
+                            self.nzsp_beam[p] = NP.fft.fftshift(wts_lmf.real, axes=(0,1))
+                            padded_vis_vuf = NP.pad(vis_vuf, ((self.gridv.shape[0],self.gridv.shape[0]),(self.gridu.shape[1],self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
+                            padded_vis_vuf = NP.fft.ifftshift(padded_vis_vuf, axes=(0,1))
+                            vis_lmf = NP.fft.fft2(padded_vis_vuf, axes=(0,1)) / sum_wts
+                            if NP.abs(vis_lmf.imag).max() > 1e-10:
+                                raise ValueError('Significant imaginary component found in the synthesized dirty image.')
+
+                            self.nzsp_img[p] = NP.fft.fftshift(vis_lmf.real, axes=(0,1))
+                            self.nzsp_wts_vuf[p] = wts_vuf
+                            self.nzsp_vis_vuf[p] = vis_vuf
+
+                self.autocorr_removed = True
+            else:
+                print 'Antenna auto-correlations have been removed already'
+            
+    ############################################################################
+
     def save(self, imgfile, pol=None, overwrite=False, verbose=True):
 
         """
@@ -6981,6 +7859,10 @@ class Antenna:
     antpol:     [Instance of class PolInfo] polarization information for the 
                 antenna. Read docstring of class PolInfo for details
 
+    aperture    [Instance of class APR.Aperture] aperture information
+                for the antenna. Read docstring of class Aperture for
+                details
+
     Et_stack    [dictionary] holds a stack of complex electric field time series 
                 measured at various time stamps under 2 polarizations which are 
                 stored under keys 'P1' and 'P2'
@@ -7075,7 +7957,8 @@ class Antenna:
     ----------------------------------------------------------------------------
     """
 
-    def __init__(self, label, latitude, location, center_freq, nsamples=1):
+    def __init__(self, label, latitude, location, center_freq, nsamples=1,
+                 aperture=None):
 
         """
         ------------------------------------------------------------------------
@@ -7083,8 +7966,8 @@ class Antenna:
 
         Class attributes initialized are:
         label, latitude, location, pol, t, timestamp, f0, f, wts, wtspos, 
-        wtspos_scale, blc, trc, timestamps, antpol, Et_stack, Ef_stack, and
-        flag_stack
+        wtspos_scale, blc, trc, timestamps, antpol, Et_stack, Ef_stack, 
+        flag_stack, aperture
      
         Read docstring of class Antenna for details on these attributes.
         ------------------------------------------------------------------------
@@ -7119,6 +8002,16 @@ class Antenna:
             self.location = GEOM.Point(location)
         else:
             raise TypeError('Antenna position must be a 3-element tuple or an instance of GEOM.Point')
+
+        if aperture is not None:
+            if isinstance(aperture, APR.Aperture):
+                if len(aperture.pol) != 2:
+                    raise ValueError('Antenna aperture must contain dual polarization types')
+                self.aperture = aperture
+            else:
+                raise TypeError('aperture must be an instance of class Aperture found in module {0}'.format(APR.__name__))
+        else:
+            self.aperture = APR.Aperture(pol_type='dual')
 
         self.antpol = PolInfo(nsamples=nsamples)
         self.t = 0.0
@@ -7311,8 +8204,12 @@ class Antenna:
                        which are stored under keys 'P1' and 'P22'. Default=None 
                        implies no updates for Et.
     
+            aperture   [instance of class APR.Aperture] aperture 
+                       information for the antenna. Read docstring of class 
+                       Aperture for details
+
             wtsinfo    [dictionary] consists of weights information for each of 
-                       the two polarizations under keys 'P1' and 'P22'. Each of 
+                       the two polarizations under keys 'P1' and 'P2'. Each of 
                        the values under the keys is a list of dictionaries. 
                        Length of list is equal to the number of frequency 
                        channels or one (equivalent to setting wtspos_scale to 
@@ -7390,6 +8287,7 @@ class Antenna:
         gridfunc_freq = None
         ref_freq = None
         delaydict = None
+        aperture = None
             
         if update_dict is not None:
             if not isinstance(update_dict, dict):
@@ -7407,6 +8305,7 @@ class Antenna:
             if 'gridfunc_freq' in update_dict: gridfunc_freq = update_dict['gridfunc_freq']
             if 'ref_freq' in update_dict: ref_freq = update_dict['ref_freq']
             if 'delaydict' in update_dict: delaydict = update_dict['delaydict']
+            if 'aperture' in update_dict: aperture = update_dict['aperture']
 
         if label is not None: self.label = label
         if location is not None: self.location = location
@@ -7439,6 +8338,12 @@ class Antenna:
         blc_orig = NP.copy(self.blc)
         trc_orig = NP.copy(self.trc)
         eps = 1e-6
+
+        if aperture is not None:
+            if isinstance(aperture, APR.Aperture):
+                self.aperture = copy.deepcopy(aperture)
+            else:
+                raise TypeError('Update for aperture must be an instance of class Aperture.')
 
         if wtsinfo is not None:
             if not isinstance(wtsinfo, dict):
@@ -7708,7 +8613,7 @@ class AntennaArray:
                  mid-point between the extreme x- and y- coordinates of the 
                  antennas
 
-    grid_illuminaton
+    grid_illumination
                  [dictionary] Electric field illumination of antenna aperture
                  for each polarization held under keys 'P1' and 'P2'. Could be 
                  complex. Stored as numpy arrays in the form of cubes with 
@@ -7819,6 +8724,113 @@ class AntennaArray:
                                            locations raveled to one dimension
                                            from three dimensions of size 
                                            n_u x n_v x nchan
+                'per_ant2grid'
+                            [list] each element in the list is a dictionary
+                            corresponding to an antenna with information on
+                            its mapping and contribution to the grid. Each 
+                            dictionary has the following keys and values:
+                            'label'        [string] antenna label
+                            'f_gridind'    [numpy array] mapping information 
+                                           with indices to the frequency axis
+                                           of the grid
+                            'u_gridind'    [numpy array] mapping information 
+                                           with indices to the u-axis
+                                           of the grid. Must be of same size 
+                                           as array under 'f_gridind'
+                            'v_gridind'    [numpy array] mapping information 
+                                           with indices to the v-axis
+                                           of the grid. Must be of same size 
+                                           as array under 'f_gridind'
+                            'per_ant_per_freq_norm_wts'
+                                           [numpy array] mapping information 
+                                           on the (complex) normalizing 
+                                           multiplicative factor required to 
+                                           make the sum of illumination/weights 
+                                           per antenna per frequency on the 
+                                           grid equal to unity. Must be of same 
+                                           size as array under 'f_gridind'
+                            'illumination' [numpy array] Complex aperture 
+                                           illumination/weights contributed
+                                           by the antenna onto the grid. The 
+                                           grid pixels to which it contributes 
+                                           is given by 'f_gridind', 'u_gridind',
+                                           'v_gridind'. Must be of same size 
+                                           as array under 'f_gridind'
+                            'Ef'           [numpy array] Complex electric fields
+                                           contributed by the antenna onto the 
+                                           grid. The grid pixels to which it 
+                                           contributes is given by 'f_gridind', 
+                                           'u_gridind', 'v_gridind'. Must be of 
+                                           same size as array under 'f_gridind'
+                'all_ant2grid'
+                            [dictionary] contains the combined information of
+                            mapping of all antennas to the grid. It consists of
+                            the following keys and values:
+                            'antind'       [numpy array] all antenna indices (to
+                                           attribute ordered labels) that map to
+                                           the uvf-grid
+                            'u_gridind'    [numpy array] all indices to the 
+                                           u-axis of the uvf-grid mapped to by 
+                                           all antennas whose indices are given
+                                           in key 'antind'. Must be of same size
+                                           as the array under key 'antind'
+                            'v_gridind'    [numpy array] all indices to the 
+                                           v-axis of the uvf-grid mapped to by 
+                                           all antennas whose indices are given
+                                           in key 'antind'. Must be of same size
+                                           as the array under key 'antind'
+                            'f_gridind'    [numpy array] all indices to the 
+                                           f-axis of the uvf-grid mapped to by 
+                                           all antennas whose indices are given
+                                           in key 'antind'. Must be of same size
+                                           as the array under key 'antind'
+                            'indNN_list'   [list of lists] Each item in the top
+                                           level list corresponds to an antenna
+                                           in the same order as in the attribute
+                                           ordered_labels. Each of these items 
+                                           is another list consisting of the 
+                                           unraveled grid indices it contributes 
+                                           to. The unraveled indices are what 
+                                           are used to obtain the u-, v- and f-
+                                           indices in the grid using a 
+                                           conversion assuming f is the 
+                                           first axis, v is the second and u is 
+                                           the third
+                            'illumination' [numpy array] complex values of 
+                                           aperture illumination contributed by
+                                           all antennas to the grid. The antenna
+                                           indices are in 'antind' and the grid 
+                                           indices are in 'u_gridind', 
+                                           'v_gridind' and 'f_gridind'. Must be 
+                                           of same size as these indices
+                            'per_ant_per_freq_norm_wts'
+                                           [numpy array] mapping information 
+                                           on the (complex) normalizing 
+                                           multiplicative factor required to 
+                                           make the sum of illumination/weights 
+                                           per antenna per frequency on the 
+                                           grid equal to unity. This is appended 
+                                           for all antennas together. Must be of 
+                                           same size as array under 
+                                           'illumination'
+                            'Ef'           [numpy array] Complex electric fields
+                                           contributed by all antennas onto the 
+                                           grid. The grid pixels to which it 
+                                           contributes is given by 'f_gridind', 
+                                           'u_gridind', 'v_gridind'. Must be of 
+                                           same size as array under 'f_gridind'
+                                           and 'illumination'
+    
+    ant2grid_mapper
+                [sparse matrix] contains the antenna array to grid mapping 
+                information in sparse matrix format. When converted to a dense
+                array, it will have dimensions nrows equal to size of the 3D
+                cube and ncols equal to number of electric field spectra of all
+                antennas over all channels. In other words, 
+                nrows = nu x nv x nchan and ncols = n_ant x nchan. Dot product
+                of this matrix with flattened electric field spectra or antenna
+                weights will give the 3D cubes of gridded electric fields and 
+                antenna array illumination respectively
 
     Member Functions:
 
@@ -7848,6 +8860,22 @@ class AntennaArray:
                       fields and illumination patterns from specific antennas on
                       to an already existing grid.
 
+    grid_convolve_new()   
+                      Routine to project the electric field illumination pattern
+                      and the electric fields on the grid. 
+
+    genMappingMatrix() 
+                      Routine to construct sparse antenna-to-grid mapping matrix 
+                      that will be used in projecting illumination and electric 
+                      fields from the array of antennas onto the grid. It has 
+                      elements very common to grid_convolve_new()
+
+    applyMappingMatrix()
+                      Constructs the grid of complex field illumination and 
+                      electric fields using the sparse antenna-to-grid mapping 
+                      matrix. Intended to serve as a "matrix" alternative to 
+                      make_grid_cube_new() 
+
     grid_unconvolve() Routine to de-project the electric field illumination 
                       pattern and the electric fields on the grid. It can 
                       operate on the entire antenna array or incrementally 
@@ -7861,6 +8889,12 @@ class AntennaArray:
                       recent or stack)
 
     make_grid_cube()  Constructs the grid of complex field illumination and 
+                      electric fields using the gridding information determined 
+                      for every antenna. Flags are taken into account while 
+                      constructing this grid.
+
+    make_grid_cube_new()  
+                      Constructs the grid of complex field illumination and 
                       electric fields using the gridding information determined 
                       for every antenna. Flags are taken into account while 
                       constructing this grid.
@@ -7927,6 +8961,7 @@ class AntennaArray:
 
         self.ordered_labels = [] # Usually output from member function baseline_vectors() or get_visibilities()
         self.grid_mapper = {}
+        self.ant2grid_mapper = {}  # contains the sparse mapping matrix
 
         for pol in ['P1', 'P2']:
             self.grid_mapper[pol] = {}
@@ -7944,10 +8979,15 @@ class AntennaArray:
             self.grid_mapper[pol]['grid'] = {}
             self.grid_mapper[pol]['grid']['ind_all'] = None
 
+            self.grid_mapper[pol]['per_ant2grid'] = []
+            self.grid_mapper[pol]['all_ant2grid'] = {}
+
             self.grid_illumination[pol] = None
             self.grid_Ef[pol] = None
             self._ant_contribution[pol] = {}
             self.caldata[pol] = None
+
+            self.ant2grid_mapper[pol] = None
 
         if antenna_array is not None:
             self += antenna_array
@@ -8527,7 +9567,6 @@ class AntennaArray:
 
     ############################################################################
 
-    # @profile
     def grid_convolve(self, pol=None, ants=None, unconvolve_existing=False,
                       normalize=False, method='NN', distNN=NP.inf, tol=None,
                       maxmatch=None, identical_antennas=True, cal_loop=False,
@@ -8754,12 +9793,12 @@ class AntennaArray:
                             self.caldata[apol] = self.get_E_fields(apol, flag=None, tselect=-1, fselect=None, aselect=None, datapool='current', sort=True)
 
                     Ef = self.caldata[apol]['E-fields'].astype(NP.complex64)  #  (n_ts=1) x n_ant x nchan
-                    Ef = NP.squeeze(Ef)  # n_ant x nchan
+                    Ef = NP.squeeze(Ef, axis=0)  # n_ant x nchan
                     if Ef.shape[0] != n_ant:
                         raise ValueError('Encountered unexpected behavior. Need to debug.')
                     ant_labels = self.caldata[apol]['labels']
                     twts = self.caldata[apol]['twts']  # (n_ts=1) x n_ant x (nchan=1)
-                    twts = NP.squeeze(twts)
+                    twts = NP.squeeze(twts, axis=(0,2)) # n_ant
 
                     if verbose:
                         print 'Gathered antenna data for gridding convolution for timestamp {0}'.format(self.timestamp)
@@ -9213,6 +10252,553 @@ class AntennaArray:
                                 progress.finish()
 
     ############################################################################
+    
+    def grid_convolve_new(self, pol=None, normalize=False, method='NN',
+                          distNN=NP.inf, identical_antennas=True,
+                          cal_loop=False, gridfunc_freq=None, wts_change=False,
+                          parallel=False, nproc=None, pp_method='pool',
+                          verbose=True): 
+
+        """
+        ------------------------------------------------------------------------
+        Routine to project the complex illumination field pattern and the 
+        electric fields on the grid from the antenna array
+
+        Inputs:
+
+        pol        [String] The polarization to be gridded. Can be set to 'P1' 
+                   or 'P2'. If set to None, gridding for all the polarizations 
+                   is performed. Default = None
+
+        normalize  [Boolean] Default = False. If set to True, the gridded 
+                   weights are divided by the sum of weights so that the gridded 
+                   weights add up to unity. (Need to work on normaliation)
+
+        method     [string] The gridding method to be used in applying the 
+                   antenna weights on to the antenna array grid. 
+                   Accepted values are 'NN' (nearest neighbour - default), 'CS' 
+                   (cubic spline), or 'BL' (Bi-linear). In case of applying grid 
+                   weights by 'NN' method, an optional distance upper bound for 
+                   the nearest neighbour can be provided in the parameter distNN 
+                   to prune the search and make it efficient. Currently, only 
+                   the nearest neighbour method is operational.
+
+        distNN     [scalar] A positive value indicating the upper bound on 
+                   distance to the nearest neighbour in the gridding process. It 
+                   has units of distance, the same units as the antenna 
+                   attribute location and antenna array attribute gridx 
+                   and gridy. Default is NP.inf (infinite distance). It will be 
+                   internally converted to have same units as antenna 
+                   attributes wtspos (units in number of wavelengths). To ensure
+                   all relevant pixels in the grid, the search distance used 
+                   internally will be a fraction more than distNN
+
+        identical_antennas
+                   [boolean] indicates if all antenna elements are to be
+                   treated as identical. If True (default), they are identical
+                   and their gridding kernels are identical. If False, they are
+                   not identical and each one has its own gridding kernel.
+
+        cal_loop   [boolean] If True, the calibration loop is assumed to be ON 
+                   and hence the calibrated electric fields are set in the 
+                   calibration loop. If False (default), the calibration loop is
+                   assumed to be OFF and the current electric fields are assumed 
+                   to be the calibrated data to be mapped to the grid 
+                   via gridding convolution.
+
+        gridfunc_freq
+                   [String scalar] If set to None (not provided) or to 'scale'
+                   assumes that attribute wtspos is given for a
+                   reference frequency which need to be scaled for the frequency
+                   channels. Will be ignored if the number of elements of list 
+                   in this attribute under the specific polarization are the 
+                   same as the number of frequency channels.
+
+        wts_change [boolean] indicates if weights and/or their lcoations have 
+                   changed from the previous intergration or snapshot. 
+                   Default=False means they have not changed. In such a case the 
+                   antenna-to-grid mapping and grid illumination pattern do not 
+                   have to be determined, and mapping and values from the 
+                   previous snapshot can be used. If True, a new mapping has to 
+                   be determined.
+
+        parallel   [boolean] specifies if parallelization is to be invoked. 
+                   False (default) means only serial processing
+
+        nproc      [integer] specifies number of independent processes to spawn.
+                   Default = None, means automatically determines the number of 
+                   process cores in the system and use one less than that to 
+                   avoid locking the system for other processes. Applies only 
+                   if input parameter 'parallel' (see above) is set to True. 
+                   If nproc is set to a value more than the number of process
+                   cores in the system, it will be reset to number of process 
+                   cores in the system minus one to avoid locking the system out 
+                   for other processes
+
+        pp_method  [string] specifies if the parallelization method is handled
+                   automatically using multirocessing pool or managed manually
+                   by individual processes and collecting results in a queue.
+                   The former is specified by 'pool' (default) and the latter
+                   by 'queue'. These are the two allowed values. The pool method 
+                   has easier bookkeeping and can be fast if the computations 
+                   not expected to be memory bound. The queue method is more
+                   suited for memory bound processes but can be slower or 
+                   inefficient in terms of CPU management.
+
+        verbose    [boolean] If True, prints diagnostic and progress messages. 
+                   If False (default), suppress printing such messages.
+        ------------------------------------------------------------------------
+        """
+
+        if pol is None:
+            pol = ['P1', 'P2']
+        elif not isinstance(pol, list):
+            pol = [pol]
+
+        if not self.grid_ready:
+            self.grid()
+
+        du = self.gridu[0,1] - self.gridu[0,0]
+        dv = self.gridv[1,0] - self.gridv[0,0]
+        wavelength = FCNST.c / self.f
+        min_lambda = NP.abs(wavelength).min()
+        rmaxNN = 0.5 * NP.sqrt(du**2 + dv**2) * min_lambda
+ 
+        krn = {}
+        antpol = ['P1', 'P2']
+        for apol in antpol:
+            krn[apol] = None
+            if apol in pol:
+                ant_dict = self.antenna_positions(pol=apol, flag=None, sort=True, centering=True)
+                self.ordered_labels = ant_dict['labels']
+                ant_xy = ant_dict['positions'][:,:2] # n_ant x 2
+                n_ant = ant_xy.shape[0]
+
+                if not cal_loop:
+                    self.caldata[apol] = self.get_E_fields(apol, flag=None, tselect=-1, fselect=None, aselect=None, datapool='current', sort=True)
+                else:
+                    if self.caldata[apol] is None:
+                        self.caldata[apol] = self.get_E_fields(apol, flag=None, tselect=-1, fselect=None, aselect=None, datapool='current', sort=True)
+
+                Ef = self.caldata[apol]['E-fields'].astype(NP.complex64)  #  (n_ts=1) x n_ant x nchan
+                Ef = NP.squeeze(Ef, axis=0)  # n_ant x nchan
+                if Ef.shape[0] != n_ant:
+                    raise ValueError('Encountered unexpected behavior. Need to debug.')
+                ant_labels = self.caldata[apol]['labels']
+                twts = self.caldata[apol]['twts']  # (n_ts=1) x n_ant x (nchan=1)
+                twts = NP.squeeze(twts, axis=(0,2)) # n_ant
+
+                if verbose:
+                    print 'Gathered antenna data for gridding convolution for timestamp {0}'.format(self.timestamp)
+
+                if wts_change or (not self.grid_mapper[apol]['all_ant2grid']):
+                    self.grid_mapper[apol]['per_ant2grid'] = []
+                    self.grid_mapper[apol]['all_ant2grid'] = {}
+                    gridlocs = NP.hstack((self.gridu.reshape(-1,1), self.gridv.reshape(-1,1)))
+                    if gridfunc_freq == 'scale':
+                        grid_xy = gridlocs[NP.newaxis,:,:] * wavelength.reshape(-1,1,1)   # nchan x nv x nu
+                        wl = NP.ones(gridlocs.shape[0])[NP.newaxis,:] * wavelength.reshape(-1,1)
+                        grid_xy = grid_xy.reshape(-1,2)
+                        wl = wl.reshape(-1)
+                        indNN_list, antind, fvu_gridind = LKP.find_NN(ant_xy, grid_xy, distance_ULIM=2.0*distNN, flatten=True, parallel=False)
+                        dxy = grid_xy[fvu_gridind,:] - ant_xy[antind,:]
+                        fvu_gridind_unraveled = NP.unravel_index(fvu_gridind, (self.f.size,)+self.gridu.shape)   # f-v-u order since temporary grid was created as nchan x nv x nu
+                        self.grid_mapper[apol]['all_ant2grid']['antind'] = NP.copy(antind)
+                        self.grid_mapper[apol]['all_ant2grid']['u_gridind'] = NP.copy(fvu_gridind_unraveled[2])
+                        self.grid_mapper[apol]['all_ant2grid']['v_gridind'] = NP.copy(fvu_gridind_unraveled[1])                            
+                        self.grid_mapper[apol]['all_ant2grid']['f_gridind'] = NP.copy(fvu_gridind_unraveled[0])
+                        self.grid_mapper[apol]['all_ant2grid']['indNN_list'] = copy.deepcopy(indNN_list)
+
+                        if identical_antennas:
+                            arbitrary_antenna_aperture = self.antennas.itervalues().next().aperture
+                            krn = arbitrary_antenna_aperture.compute(dxy, wavelength=wl[fvu_gridind], pol=apol, rmaxNN=rmaxNN, load_lookup=False)
+                        else:
+                            # This block #1 is one way to go about per antenna
+                            for ai,gi in enumerate(indNN_list):
+                                if len(gi) > 0:
+                                    label = self.ordered_labels[ai]
+                                    ind = NP.asarray(gi)
+                                    diffxy = grid_xy[ind,:].reshape(-1,2) - ant_xy[ai,:].reshape(-1,2)
+                                    krndict = self.antennas[label].aperture.compute(diffxy, wavelength=wl[ind], pol=apol, rmaxNN=rmaxNN, load_lookup=False)
+                                    if krn[apol] is None:
+                                        krn[apol] = NP.copy(krndict[apol])
+                                    else:
+                                        krn[apol] = NP.append(krn[apol], krndict[apol])
+                                    
+                            # # This block #2 is another way equivalent to above block #1
+                            # uniq_antind = NP.unique(antind)
+                            # anthist, antbe, antbn, antri = OPS.binned_statistic(antind, statistic='count', bins=NP.append(uniq_antind, uniq_antind.max()+1))
+                            # for i,uantind in enumerate(uniq_antind):
+                            #     label = self.ordered_labels[uantind]
+                            #     ind = antri[antri[i]:antri[i+1]]
+                            #     krndict = self.antennas[label].aperture.compute(dxy[ind,:], wavelength=wl[ind], pol=apol, rmaxNN=rmaxNN, load_lookup=False)
+                            #     if krn[apol] is None:
+                            #         krn[apol] = NP.copy(krndict[apol])
+                            #     else:
+                            #         krn[apol] = NP.append(krn[apol], krndict[apol])
+
+                        self.grid_mapper[apol]['all_ant2grid']['illumination'] = NP.copy(krn[apol])
+                    else: # Weights do not scale with frequency (needs serious development)
+                        pass
+                        
+                    # Determine weights that can normalize sum of kernel per antenna per frequency to unity
+                    per_ant_per_freq_norm_wts = NP.zeros(antind.size, dtype=NP.complex64)
+                    # per_ant_per_freq_norm_wts = NP.ones(antind.size, dtype=NP.complex64)                    
+                    
+                    runsum = 0
+                    for ai,gi in enumerate(indNN_list):
+                        if len(gi) > 0:
+                            fvu_ind = NP.asarray(gi)
+                            unraveled_fvu_ind = NP.unravel_index(fvu_ind, (self.f.size,)+self.gridu.shape)
+                            f_ind = unraveled_fvu_ind[0]
+                            v_ind = unraveled_fvu_ind[1]
+                            u_ind = unraveled_fvu_ind[2]
+                            chanhist, chanbe, chanbn, chanri = OPS.binned_statistic(f_ind, statistic='count', bins=NP.arange(self.f.size+1))
+                            for ci in xrange(self.f.size):
+                                if chanhist[ci] > 0.0:
+                                    select_chan_ind = chanri[chanri[ci]:chanri[ci+1]]
+                                    per_ant_per_freq_kernel_sum = NP.sum(krn[apol][runsum:runsum+len(gi)][select_chan_ind])
+                                    per_ant_per_freq_norm_wts[runsum:runsum+len(gi)][select_chan_ind] = 1.0 / per_ant_per_freq_kernel_sum
+
+                        per_ant2grid_info = {}
+                        per_ant2grid_info['label'] = self.ordered_labels[ai]
+                        per_ant2grid_info['f_gridind'] = NP.copy(f_ind)
+                        per_ant2grid_info['u_gridind'] = NP.copy(u_ind)
+                        per_ant2grid_info['v_gridind'] = NP.copy(v_ind)
+                        # per_ant2grid_info['fvu_gridind'] = NP.copy(gi)
+                        per_ant2grid_info['per_ant_per_freq_norm_wts'] = per_ant_per_freq_norm_wts[runsum:runsum+len(gi)]
+                        per_ant2grid_info['illumination'] = krn[apol][runsum:runsum+len(gi)]
+                        self.grid_mapper[apol]['per_ant2grid'] += [copy.deepcopy(per_ant2grid_info)]
+                        runsum += len(gi)
+
+                    self.grid_mapper[apol]['all_ant2grid']['per_ant_per_freq_norm_wts'] = NP.copy(per_ant_per_freq_norm_wts)
+
+                # Determine the gridded electric fields
+                Ef_on_grid = Ef[(self.grid_mapper[apol]['all_ant2grid']['antind'], self.grid_mapper[apol]['all_ant2grid']['f_gridind'])]
+                self.grid_mapper[apol]['all_ant2grid']['Ef'] = copy.deepcopy(Ef_on_grid)
+                runsum = 0
+                for ai,gi in enumerate(self.grid_mapper[apol]['all_ant2grid']['indNN_list']):
+                    if len(gi) > 0:
+                        self.grid_mapper[apol]['per_ant2grid'][ai]['Ef'] = Ef_on_grid[runsum:runsum+len(gi)]
+                        runsum += len(gi)
+
+    ############################################################################
+
+    def genMappingMatrix(self, pol=None, normalize=True, method='NN',
+                         distNN=NP.inf, identical_antennas=True,
+                         gridfunc_freq=None, wts_change=False, parallel=False,
+                         nproc=None, verbose=True):
+
+        """
+        ------------------------------------------------------------------------
+        Routine to construct sparse antenna-to-grid mapping matrix that will be
+        used in projecting illumination and electric fields from the array of 
+        antennas onto the grid. It has elements very common to 
+        grid_convolve_new()
+
+        Inputs:
+
+        pol        [String] The polarization to be gridded. Can be set to 'P1' 
+                   or 'P2'. If set to None, gridding for all the polarizations 
+                   is performed. Default = None
+
+        normalize  [Boolean] Default = False. If set to True, the gridded 
+                   weights are divided by the sum of weights so that the gridded 
+                   weights add up to unity. (Need to work on normaliation)
+
+        method     [string] The gridding method to be used in applying the 
+                   antenna weights on to the antenna array grid. 
+                   Accepted values are 'NN' (nearest neighbour - default), 'CS' 
+                   (cubic spline), or 'BL' (Bi-linear). In case of applying grid 
+                   weights by 'NN' method, an optional distance upper bound for 
+                   the nearest neighbour can be provided in the parameter distNN 
+                   to prune the search and make it efficient. Currently, only 
+                   the nearest neighbour method is operational.
+
+        distNN     [scalar] A positive value indicating the upper bound on 
+                   distance to the nearest neighbour in the gridding process. It 
+                   has units of distance, the same units as the antenna 
+                   attribute location and antenna array attribute gridx 
+                   and gridy. Default is NP.inf (infinite distance). It will be 
+                   internally converted to have same units as antenna 
+                   attributes wtspos (units in number of wavelengths). To ensure
+                   all relevant pixels in the grid, the search distance used 
+                   internally will be a fraction more than distNN
+
+        identical_antennas
+                   [boolean] indicates if all antenna elements are to be
+                   treated as identical. If True (default), they are identical
+                   and their gridding kernels are identical. If False, they are
+                   not identical and each one has its own gridding kernel.
+
+        gridfunc_freq
+                   [String scalar] If set to None (not provided) or to 'scale'
+                   assumes that attribute wtspos is given for a
+                   reference frequency which need to be scaled for the frequency
+                   channels. Will be ignored if the number of elements of list 
+                   in this attribute under the specific polarization are the 
+                   same as the number of frequency channels.
+
+        wts_change [boolean] indicates if weights and/or their lcoations have 
+                   changed from the previous intergration or snapshot. 
+                   Default=False means they have not changed. In such a case the 
+                   antenna-to-grid mapping and grid illumination pattern do not 
+                   have to be determined, and mapping and values from the 
+                   previous snapshot can be used. If True, a new mapping has to 
+                   be determined.
+
+        parallel   [boolean] specifies if parallelization is to be invoked. 
+                   False (default) means only serial processing
+
+        nproc      [integer] specifies number of independent processes to spawn.
+                   Default = None, means automatically determines the number of 
+                   process cores in the system and use one less than that to 
+                   avoid locking the system for other processes. Applies only 
+                   if input parameter 'parallel' (see above) is set to True. 
+                   If nproc is set to a value more than the number of process
+                   cores in the system, it will be reset to number of process 
+                   cores in the system minus one to avoid locking the system out 
+                   for other processes
+
+        verbose    [boolean] If True, prints diagnostic and progress messages. 
+                   If False (default), suppress printing such messages.
+
+        NOTE: Although certain portions are parallelizable, the overheads in 
+        these processes seem to make it worse than serial processing. It is 
+        advisable to stick to serialized version unless testing with larger
+        data sets clearly indicates otherwise.
+        ------------------------------------------------------------------------
+        """
+
+        if pol is None:
+            pol = ['P1', 'P2']
+        elif not isinstance(pol, list):
+            pol = [pol]
+
+        if not self.grid_ready:
+            self.grid()
+
+        du = self.gridu[0,1] - self.gridu[0,0]
+        dv = self.gridv[1,0] - self.gridv[0,0]
+        wavelength = FCNST.c / self.f
+        min_lambda = NP.abs(wavelength).min()
+        rmaxNN = 0.5 * NP.sqrt(du**2 + dv**2) * min_lambda
+ 
+        krn = {}
+        self.ant2grid_mapper = {}
+        antpol = ['P1', 'P2']
+        for apol in antpol:
+            krn[apol] = None
+            self.ant2grid_mapper[apol] = None
+            if apol in pol:
+                ant_dict = self.antenna_positions(pol=apol, flag=None, sort=True, centering=True)
+                self.ordered_labels = ant_dict['labels']
+                ant_xy = ant_dict['positions'][:,:2] # n_ant x 2
+                n_ant = ant_xy.shape[0]
+
+                if verbose:
+                    print 'Gathered antenna data for gridding convolution for timestamp {0}'.format(self.timestamp)
+
+                if wts_change or (not self.grid_mapper[apol]['all_ant2grid']):
+                    self.grid_mapper[apol]['per_ant2grid'] = []
+                    self.grid_mapper[apol]['all_ant2grid'] = {}
+                    gridlocs = NP.hstack((self.gridu.reshape(-1,1), self.gridv.reshape(-1,1)))
+                    if gridfunc_freq == 'scale':
+                        grid_xy = gridlocs[NP.newaxis,:,:] * wavelength.reshape(-1,1,1)   # nchan x nv x nu
+                        wl = NP.ones(gridlocs.shape[0])[NP.newaxis,:] * wavelength.reshape(-1,1)
+                        grid_xy = grid_xy.reshape(-1,2)
+                        wl = wl.reshape(-1)
+                        indNN_list, antind, fvu_gridind = LKP.find_NN(ant_xy, grid_xy, distance_ULIM=2.0*distNN, flatten=True, parallel=False)
+                        dxy = grid_xy[fvu_gridind,:] - ant_xy[antind,:]
+                        fvu_gridind_unraveled = NP.unravel_index(fvu_gridind, (self.f.size,)+self.gridu.shape)   # f-v-u order since temporary grid was created as nchan x nv x nu
+                        self.grid_mapper[apol]['all_ant2grid']['antind'] = NP.copy(antind)
+                        self.grid_mapper[apol]['all_ant2grid']['u_gridind'] = NP.copy(fvu_gridind_unraveled[2])
+                        self.grid_mapper[apol]['all_ant2grid']['v_gridind'] = NP.copy(fvu_gridind_unraveled[1])                            
+                        self.grid_mapper[apol]['all_ant2grid']['f_gridind'] = NP.copy(fvu_gridind_unraveled[0])
+                        # self.grid_mapper[apol]['all_ant2grid']['indNN_list'] = copy.deepcopy(indNN_list)
+
+                        if identical_antennas:
+                            arbitrary_antenna_aperture = self.antennas.itervalues().next().aperture
+                            krn = arbitrary_antenna_aperture.compute(dxy, wavelength=wl[fvu_gridind], pol=apol, rmaxNN=rmaxNN, load_lookup=False)
+                        else:
+                            # This block #1 is one way to go about per antenna
+                            for ai,gi in enumerate(indNN_list):
+                                if len(gi) > 0:
+                                    label = self.ordered_labels[ai]
+                                    ind = NP.asarray(gi)
+                                    diffxy = grid_xy[ind,:].reshape(-1,2) - ant_xy[ai,:].reshape(-1,2)
+                                    krndict = self.antennas[label].aperture.compute(diffxy, wavelength=wl[ind], pol=apol, rmaxNN=rmaxNN, load_lookup=False)
+                                    if krn[apol] is None:
+                                        krn[apol] = NP.copy(krndict[apol])
+                                    else:
+                                        krn[apol] = NP.append(krn[apol], krndict[apol])
+                                    
+                            # # This block #2 is another way equivalent to above block #1
+                            # uniq_antind = NP.unique(antind)
+                            # anthist, antbe, antbn, antri = OPS.binned_statistic(antind, statistic='count', bins=NP.append(uniq_antind, uniq_antind.max()+1))
+                            # for i,uantind in enumerate(uniq_antind):
+                            #     label = self.ordered_labels[uantind]
+                            #     ind = antri[antri[i]:antri[i+1]]
+                            #     krndict = self.antennas[label].aperture.compute(dxy[ind,:], wavelength=wl[ind], pol=apol, rmaxNN=rmaxNN, load_lookup=False)
+                            #     if krn[apol] is None:
+                            #         krn[apol] = NP.copy(krndict[apol])
+                            #     else:
+                            #         krn[apol] = NP.append(krn[apol], krndict[apol])
+
+                        self.grid_mapper[apol]['all_ant2grid']['illumination'] = NP.copy(krn[apol])
+                    else: # Weights do not scale with frequency (needs serious development)
+                        pass
+                        
+                    # Determine weights that can normalize sum of kernel per antenna per frequency to unity
+                    per_ant_per_freq_norm_wts = NP.zeros(antind.size, dtype=NP.complex64)
+                    # per_ant_per_freq_norm_wts = NP.ones(antind.size, dtype=NP.complex64)                    
+                    
+                    if parallel or (nproc is not None):
+                        list_of_val = []
+                        list_of_rowcol_tuple = []
+                    else:
+                        spval = []
+                        sprow = []
+                        spcol = []
+                        
+                    runsum = 0
+                    if verbose:
+                        progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} Antennas '.format(n_ant), PGB.ETA()], maxval=n_ant).start()
+                    for ai,gi in enumerate(indNN_list):
+                        if len(gi) > 0:
+                            fvu_ind = NP.asarray(gi)
+                            unraveled_fvu_ind = NP.unravel_index(fvu_ind, (self.f.size,)+self.gridu.shape)
+                            f_ind = unraveled_fvu_ind[0]
+                            v_ind = unraveled_fvu_ind[1]
+                            u_ind = unraveled_fvu_ind[2]
+                            chanhist, chanbe, chanbn, chanri = OPS.binned_statistic(f_ind, statistic='count', bins=NP.arange(self.f.size+1))
+                            for ci in xrange(self.f.size):
+                                if chanhist[ci] > 0.0:
+                                    select_chan_ind = chanri[chanri[ci]:chanri[ci+1]]
+                                    per_ant_per_freq_kernel_sum = NP.sum(krn[apol][runsum:runsum+len(gi)][select_chan_ind])
+                                    per_ant_per_freq_norm_wts[runsum:runsum+len(gi)][select_chan_ind] = 1.0 / per_ant_per_freq_kernel_sum
+
+                        per_ant2grid_info = {}
+                        per_ant2grid_info['label'] = self.ordered_labels[ai]
+                        per_ant2grid_info['f_gridind'] = NP.copy(f_ind)
+                        per_ant2grid_info['u_gridind'] = NP.copy(u_ind)
+                        per_ant2grid_info['v_gridind'] = NP.copy(v_ind)
+                        # per_ant2grid_info['fvu_gridind'] = NP.copy(gi)
+                        per_ant2grid_info['per_ant_per_freq_norm_wts'] = per_ant_per_freq_norm_wts[runsum:runsum+len(gi)]
+                        per_ant2grid_info['illumination'] = krn[apol][runsum:runsum+len(gi)]
+                        self.grid_mapper[apol]['per_ant2grid'] += [copy.deepcopy(per_ant2grid_info)]
+                        runsum += len(gi)
+
+                        # determine the sparse interferometer-to-grid mapping matrix pre-requisites
+                        val = per_ant2grid_info['per_ant_per_freq_norm_wts']*per_ant2grid_info['illumination']
+                        vuf_gridind_unraveled = (per_ant2grid_info['v_gridind'],per_ant2grid_info['u_gridind'],per_ant2grid_info['f_gridind'])
+                        vuf_gridind_raveled = NP.ravel_multi_index(vuf_gridind_unraveled, (self.gridu.shape+(self.f.size,)))
+                        
+                        if (not parallel) and (nproc is None):
+                            spval += val.tolist()
+                            sprow += vuf_gridind_raveled.tolist()
+                            spcol += (per_ant2grid_info['f_gridind'] + ai*self.f.size).tolist()
+                        else:
+                            list_of_val += [per_ant2grid_info['per_ant_per_freq_norm_wts']*per_ant2grid_info['illumination']]
+                            list_of_rowcol_tuple += [(vuf_gridind_raveled, per_ant2grid_info['f_gridind'])]
+                        if verbose:
+                            progress.update(ai+1)
+
+                    if verbose:
+                        progress.finish()
+
+                    # determine the sparse interferometer-to-grid mapping matrix
+                    if parallel or (nproc is not None):
+                        list_of_shapes = [(self.gridu.size*self.f.size, self.f.size)] * n_ant
+                        if nproc is None:
+                            nproc = max(MP.cpu_count()-1, 1) 
+                        else:
+                            nproc = min(nproc, max(MP.cpu_count()-1, 1))
+                        pool = MP.Pool(processes=nproc)
+                        list_of_spmat = pool.map(genMatrixMapper_arg_splitter, IT.izip(list_of_val, list_of_rowcol_tuple, list_of_shapes))
+                        self.ant2grid_mapper[apol] = SM.hstack(list_of_spmat, format='csr')
+                    else:
+                        spval = NP.asarray(spval)
+                        sprowcol = (NP.asarray(sprow), NP.asarray(spcol))
+                        self.ant2grid_mapper[apol] = SM.csr_matrix((spval, sprowcol), shape=(self.gridu.size*self.f.size, n_ant*self.f.size))
+
+                    self.grid_mapper[apol]['all_ant2grid']['per_ant_per_freq_norm_wts'] = NP.copy(per_ant_per_freq_norm_wts)
+
+    ############################################################################
+
+    def applyMappingMatrix(self, pol=None, cal_loop=False, verbose=True):
+
+        """
+        ------------------------------------------------------------------------
+        Constructs the grid of complex field illumination and electric fields 
+        using the sparse antenna-to-grid mapping matrix. Intended to serve as a 
+        "matrix" alternative to make_grid_cube_new() 
+
+        Inputs:
+
+        pol     [String] The polarization to be gridded. Can be set to 'P1' or 
+                'P2'. If set to None, gridding for all the polarizations is 
+                performed. Default=None
+        
+        cal_loop
+                [boolean] If True, the calibration loop is assumed to be ON 
+                and hence the calibrated electric fields are set in the 
+                calibration loop. If False (default), the calibration loop is
+                assumed to be OFF and the current electric fields are assumed 
+                to be the calibrated data to be mapped to the grid 
+                via gridding convolution.
+
+        verbose [boolean] If True, prints diagnostic and progress messages. 
+                If False (default), suppress printing such messages.
+        ------------------------------------------------------------------------
+        """
+        
+        if pol is None:
+            pol = ['P1', 'P2']
+
+        pol = NP.unique(NP.asarray(pol))
+        
+        for apol in pol:
+
+            if verbose:
+                print 'Gridding aperture illumination and electric fields for polarization {0} ...'.format(apol)
+
+            if apol not in ['P1', 'P2']:
+                raise ValueError('Invalid specification for input parameter pol')
+
+            if not cal_loop:
+                self.caldata[apol] = self.get_E_fields(apol, flag=None, tselect=-1, fselect=None, aselect=None, datapool='current', sort=True)
+            else:
+                if self.caldata[apol] is None:
+                    self.caldata[apol] = self.get_E_fields(apol, flag=None, tselect=-1, fselect=None, aselect=None, datapool='current', sort=True)
+
+            Ef = self.caldata[apol]['E-fields'].astype(NP.complex64)  #  (n_ts=1) x n_ant x nchan
+            Ef = NP.squeeze(Ef, axis=0)  # n_ant x nchan
+
+            twts = self.caldata[apol]['twts']  # (n_ts=1) x n_ant x 1
+            twts = NP.squeeze(twts, axis=0)  # n_ant x 1
+
+            Ef = Ef * twts    # applies antenna flagging, n_ant x nchan
+            wts = twts * NP.ones(self.f.size).reshape(1,-1)  # n_ant x nchan
+
+            Ef = Ef.ravel()
+            wts = wts.ravel()
+
+            sparse_Ef = SM.csr_matrix(Ef)
+            sparse_wts = SM.csr_matrix(wts)
+
+            # Store as sparse matrices
+            self.grid_illumination[apol] = self.ant2grid_mapper[apol].dot(sparse_wts.T)
+            self.grid_Ef[apol] = self.ant2grid_mapper[apol].dot(sparse_Ef.T)
+
+            # # Store as dense matrices
+            # self.grid_illumination[apol] = self.ant2grid_mapper[apol].dot(wts).reshape(self.gridu.shape+(self.f.size,))
+            # self.grid_Ef[apol] = self.ant2grid_mapper[apol].dot(Ef).reshape(self.gridu.shape+(self.f.size,))   
+            
+            if verbose:
+                print 'Gridded aperture illumination and electric fields for polarization {0} from {1:0d} unflagged contributing antennas'.format(apol, NP.sum(twts).astype(int))
+
+    ############################################################################
 
     def make_grid_cube(self, pol=None, verbose=True):
 
@@ -9265,6 +10851,68 @@ class AntennaArray:
                     gridind_unraveled = NP.unravel_index(antinfo['gridind'], self.gridu.shape+(self.f.size,))
                     self.grid_illumination[apol][gridind_unraveled] += antinfo['illumination']
                     self.grid_Ef[apol][gridind_unraveled] += antinfo['Ef']
+
+                if verbose:
+                    progress.update(loopcount+1)
+                    loopcount += 1
+            if verbose:
+                progress.finish()
+                
+            if verbose:
+                print 'Gridded aperture illumination and electric fields for polarization {0} from {1:0d} unflagged contributing antennas'.format(apol, num_unflagged)
+
+    ############################################################################ 
+
+    def make_grid_cube_new(self, pol=None, verbose=True):
+
+        """
+        ------------------------------------------------------------------------
+        Constructs the grid of complex field illumination and electric fields 
+        using the gridding information determined for every antenna. Flags are 
+        taken into account while constructing this grid.
+
+        Inputs:
+
+        pol     [String] The polarization to be gridded. Can be set to 'P1' or 
+                'P2'. If set to None, gridding for all the polarizations is 
+                performed. Default=None
+        
+        verbose [boolean] If True, prints diagnostic and progress messages. 
+                If False (default), suppress printing such messages.
+        ------------------------------------------------------------------------
+        """
+
+        if pol is None:
+            pol = ['P1', 'P2']
+
+        pol = NP.unique(NP.asarray(pol))
+        
+        for apol in pol:
+
+            if verbose:
+                print 'Gridding aperture illumination and electric fields for polarization {0} ...'.format(apol)
+
+            if apol not in ['P1', 'P2']:
+                raise ValueError('Invalid specification for input parameter pol')
+
+            if apol not in self._ant_contribution:
+                raise KeyError('Key {0} not found in attribute _ant_contribution'.format(apol))
+    
+            self.grid_illumination[apol] = NP.zeros((self.gridu.shape + (self.f.size,)), dtype=NP.complex_)
+            self.grid_Ef[apol] = NP.zeros((self.gridu.shape + (self.f.size,)), dtype=NP.complex_)
+    
+            nlabels = len(self.grid_mapper[apol]['per_ant2grid'])
+            loopcount = 0
+            num_unflagged = 0
+            if verbose:
+                progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} Antennas '.format(nlabels), PGB.ETA()], maxval=nlabels).start()
+            for ai,per_ant2grid_info in enumerate(self.grid_mapper[apol]['per_ant2grid']):
+                antlabel = per_ant2grid_info['label']
+                if not self.antennas[antlabel].antpol.flag[apol]:
+                    num_unflagged += 1
+                    vuf_gridind_unraveled = (per_ant2grid_info['v_gridind'],per_ant2grid_info['u_gridind'],per_ant2grid_info['f_gridind'])
+                    self.grid_illumination[apol][vuf_gridind_unraveled] += per_ant2grid_info['per_ant_per_freq_norm_wts'] * per_ant2grid_info['illumination']
+                    self.grid_Ef[apol][vuf_gridind_unraveled] += per_ant2grid_info['per_ant_per_freq_norm_wts'] * per_ant2grid_info['Ef'] * per_ant2grid_info['illumination']
 
                 if verbose:
                     progress.update(loopcount+1)
@@ -9361,7 +11009,52 @@ class AntennaArray:
 
         syn_beam /= syn_beam.max()  # Normalize to get unit peak for PSF
         syn_beam_in_uv = NP.fft.ifft2(syn_beam, axes=(0,1)) # Inverse FT
-
+        du = self.gridu[0,1] - self.gridu[0,0]
+        dv = self.gridv[1,0] - self.gridv[0,0]
+        # if not keep_zero_spacing:  # Filter out the interferometer aperture kernel footprint centered on zero
+        #     l4 = DSP.spectax(4*self.gridu.shape[1], resolution=du, shift=False)
+        #     m4 = DSP.spectax(4*self.gridv.shape[0], resolution=dv, shift=False)
+        #     u4 = DSP.spectax(l4.size, resolution=l4[1]-l4[0], shift=False)
+        #     v4 = DSP.spectax(m4.size, resolution=m4[1]-m4[0], shift=False)
+        #     gridu4, gridv4 = NP.meshgrid(u4,v4)
+        #     gridxy4 = NP.hstack((gridu4.reshape(-1,1), gridv4.reshape(-1,1))) * FCNST.c/self.f[chan]
+    
+        #     # assume identical antennas
+        #     aperture = self.antennas.itervalues().next().aperture
+        #     zero_vind = []
+        #     zero_uind = []
+        #     zero_pind = []
+        #     for pi,apol in enumerate(pol):
+        #         if aperture.kernel_type[apol] == 'func':
+        #             if aperture.shape[apol] == 'circular':
+        #                 z_ind = NP.where(NP.sqrt(NP.sum(gridxy4**2, axis=1)) <= 2*aperture.rmax[apol])[0]
+        #             else:
+        #                 rotang = aperture.rotangle[apol]
+        #                 rotmat = NP.asarray([[NP.cos(-rotang), -NP.sin(-rotang)],
+        #                                      [NP.sin(-rotang),  NP.cos(-rotang)]])
+        #                 gridxy4 = NP.dot(gridxy4, rotmat.T)
+        #                 if aperture.shape[apol] == 'square':
+        #                     z_ind = NP.where(NP.logical_and(NP.abs(gridxy4[:,0]) <= 2*aperture.xmax[apol], NP.abs(gridxy4[:,1]) <= 2*aperture.xmax[apol]))[0]
+        #                 else:
+        #                     z_ind = NP.where(NP.logical_and(NP.abs(gridxy4[:,0]) <= 2*aperture.xmax[apol], NP.abs(gridxy4[:,1]) <= 2*aperture.ymax[apol]))[0]
+                
+        #         z_vind, z_uind = NP.unravel_index(z_ind, gridu4.shape)
+        #         zero_vind += z_vind.tolist()
+        #         zero_uind += z_uind.tolist()
+        #         zero_pind += [pi]*z_vind.size
+        #     zero_vind = NP.asarray(zero_vind).ravel()
+        #     zero_uind = NP.asarray(zero_uind).ravel()
+        #     zero_pind = NP.asarray(zero_pind).ravel()            
+        #     syn_beam_in_uv[(zero_vind, zero_uind, zero_pind)] = 0.0
+        #     syn_beam = NP.fft.fft2(syn_beam_in_uv, axes=(0,1))  # FT
+        #     if NP.abs(syn_beam.imag).max() > 1e-10:
+        #         raise ValueError('Synthesized beam after zero spacing aperture removal has significant imaginary component')
+        #     else:
+        #         syn_beam = syn_beam.real
+        #         norm_factor = 1.0 / syn_beam.max()
+        #         syn_beam *= norm_factor  # Normalize to get unit peak for PSF
+        #         syn_beam_in_uv *= norm_factor  # Normalize to get unit peak for PSF
+        
         # shift the array to be centered
         syn_beam_in_uv = NP.fft.ifftshift(syn_beam_in_uv, axes=(0,1)) # Shift array to be centered
 
@@ -9369,10 +11062,154 @@ class AntennaArray:
         syn_beam_in_uv = syn_beam_in_uv[grid_field_illumination.shape[0]:3*grid_field_illumination.shape[0],grid_field_illumination.shape[1]:3*grid_field_illumination.shape[1],:]
         syn_beam = NP.fft.fftshift(syn_beam[::2,::2,:], axes=(0,1))  # Downsample by factor 2 to get native resolution and shift to be centered
         
+        l = DSP.spectax(2*self.gridu.shape[1], resolution=du, shift=True)
+        m = DSP.spectax(2*self.gridv.shape[0], resolution=dv, shift=True)
+
+        return {'syn_beam': syn_beam, 'grid_power_illumination': syn_beam_in_uv, 'l': l, 'm': m}
+
+    ############################################################################ 
+
+    def quick_beam_synthesis_new(self, pol=None, keep_zero_spacing=True):
+        
+        """
+        ------------------------------------------------------------------------
+        A quick generator of synthesized beam using antenna array field 
+        illumination pattern using the center frequency. Not intended to be used
+        rigorously but rather for comparison purposes and making quick plots
+
+        Inputs:
+
+        pol     [String] The polarization of the synthesized beam. Can be set 
+                to 'P1' or 'P2'. If set to None, synthesized beam for all the 
+                polarizations are generated. Default=None
+
+        keep_zero_spacing
+                [boolean] If set to True (default), keep the zero spacing in
+                uv-plane grid illumination and as a result the average value
+                of the synthesized beam could be non-zero. If False, the zero
+                spacing is forced to zero by removing the average value fo the
+                synthesized beam
+
+        Outputs:
+
+        Dictionary with the following keys and information:
+
+        'syn_beam'  [numpy array] synthesized beam of size twice as that of the 
+                    antenna array grid. It is FFT-shifted to place the 
+                    origin at the center of the array. The peak value of the 
+                    synthesized beam is fixed at unity
+
+        'grid_power_illumination'
+                    [numpy array] complex grid illumination obtained from 
+                    inverse fourier transform of the synthesized beam in 
+                    'syn_beam' and has size twice as that of the antenna 
+                    array grid. It is FFT-shifted to have the origin at the 
+                    center. The sum of this array is set to unity to match the 
+                    peak of the synthesized beam
+
+        'l'         [numpy vector] x-values of the direction cosine grid 
+                    corresponding to x-axis (axis=1) of the synthesized beam
+
+        'm'         [numpy vector] y-values of the direction cosine grid 
+                    corresponding to y-axis (axis=0) of the synthesized beam
+        ------------------------------------------------------------------------
+        """
+
+        if not self.grid_ready:
+            raise ValueError('Need to perform gridding of the antenna array before an equivalent UV grid can be simulated')
+
+        if pol is None:
+            pol = ['P1', 'P2']
+        elif isinstance(pol, str):
+            if pol in ['P1', 'P2']:
+                pol = [pol]
+            else:
+                raise ValueError('Invalid polarization specified')
+        elif isinstance(pol, list):
+            p = [apol for apol in pol if apol in ['P1', 'P2']]
+            if len(p) == 0:
+                raise ValueError('Invalid polarization specified')
+            pol = p
+        else:
+            raise TypeError('Input keyword pol must be string, list or set to None')
+
+        pol = sorted(pol)
+
+        for apol in pol:
+            if self.grid_illumination[apol] is None:
+                raise ValueError('Grid illumination for the specified polarization is not determined yet. Must use make_grid_cube()')
+
+        chan = NP.argmin(NP.abs(self.f - self.f0))
+        grid_field_illumination = NP.empty(self.gridu.shape+(len(pol),), dtype=NP.complex)
+        for pind, apol in enumerate(pol):
+            grid_field_illumination[:,:,pind] = self.grid_illumination[apol][:,:,chan]
+
+        syn_beam = NP.fft.fft2(grid_field_illumination, s=[4*self.gridu.shape[0], 4*self.gridv.shape[1]], axes=(0,1))
+        syn_beam = NP.abs(syn_beam)**2
+
+        # if not keep_zero_spacing:
+        #     dclevel = NP.sum(syn_beam, axis=(0,1), keepdims=True) / (1.0*syn_beam.size/len(pol))
+        #     syn_beam = syn_beam - dclevel
+
+        syn_beam /= syn_beam.max()  # Normalize to get unit peak for PSF
+        syn_beam_in_uv = NP.fft.ifft2(syn_beam, axes=(0,1)) # Inverse FT
+        norm_factor = 1.0
+
         du = self.gridu[0,1] - self.gridu[0,0]
         dv = self.gridv[1,0] - self.gridv[0,0]
+        if not keep_zero_spacing:  # Filter out the interferometer aperture kernel footprint centered on zero
+            l4 = DSP.spectax(4*self.gridu.shape[1], resolution=du, shift=False)
+            m4 = DSP.spectax(4*self.gridv.shape[0], resolution=dv, shift=False)
+            u4 = DSP.spectax(l4.size, resolution=l4[1]-l4[0], shift=False)
+            v4 = DSP.spectax(m4.size, resolution=m4[1]-m4[0], shift=False)
+            gridu4, gridv4 = NP.meshgrid(u4,v4)
+            gridxy4 = NP.hstack((gridu4.reshape(-1,1), gridv4.reshape(-1,1))) * FCNST.c/self.f[chan]
+    
+            # assume identical antennas
+            aperture = self.antennas.itervalues().next().aperture
+            zero_vind = []
+            zero_uind = []
+            zero_pind = []
+            for pi,apol in enumerate(pol):
+                if aperture.kernel_type[apol] == 'func':
+                    if aperture.shape[apol] == 'circular':
+                        z_ind = NP.where(NP.sqrt(NP.sum(gridxy4**2, axis=1)) <= 2*aperture.rmax[apol])[0]
+                    else:
+                        rotang = aperture.rotangle[apol]
+                        rotmat = NP.asarray([[NP.cos(-rotang), -NP.sin(-rotang)],
+                                             [NP.sin(-rotang),  NP.cos(-rotang)]])
+                        gridxy4 = NP.dot(gridxy4, rotmat.T)
+                        if aperture.shape[apol] == 'square':
+                            z_ind = NP.where(NP.logical_and(NP.abs(gridxy4[:,0]) <= 2*aperture.xmax[apol], NP.abs(gridxy4[:,1]) <= 2*aperture.xmax[apol]))[0]
+                        else:
+                            z_ind = NP.where(NP.logical_and(NP.abs(gridxy4[:,0]) <= 2*aperture.xmax[apol], NP.abs(gridxy4[:,1]) <= 2*aperture.ymax[apol]))[0]
+                
+                z_vind, z_uind = NP.unravel_index(z_ind, gridu4.shape)
+                zero_vind += z_vind.tolist()
+                zero_uind += z_uind.tolist()
+                zero_pind += [pi]*z_vind.size
+            zero_vind = NP.asarray(zero_vind).ravel()
+            zero_uind = NP.asarray(zero_uind).ravel()
+            zero_pind = NP.asarray(zero_pind).ravel()            
+            syn_beam_in_uv[(zero_vind, zero_uind, zero_pind)] = 0.0
+            syn_beam = NP.fft.fft2(syn_beam_in_uv, axes=(0,1))  # FT
+            if NP.abs(syn_beam.imag).max() > 1e-10:
+                raise ValueError('Synthesized beam after zero spacing aperture removal has significant imaginary component')
+            else:
+                syn_beam = syn_beam.real
+                norm_factor = 1.0 / syn_beam.max()
+                syn_beam *= norm_factor  # Normalize to get unit peak for PSF
+                syn_beam_in_uv *= norm_factor  # Normalize to get unit peak for PSF
+        
+        # shift the array to be centered
+        syn_beam_in_uv = NP.fft.ifftshift(syn_beam_in_uv, axes=(0,1)) # Shift array to be centered
+
+        # Discard pads at either end and select only the central values of twice the original size
+        syn_beam_in_uv = syn_beam_in_uv[grid_field_illumination.shape[0]:3*grid_field_illumination.shape[0],grid_field_illumination.shape[1]:3*grid_field_illumination.shape[1],:]
+        syn_beam = NP.fft.fftshift(syn_beam[::2,::2,:], axes=(0,1))  # Downsample by factor 2 to get native resolution and shift to be centered
+        
         l = DSP.spectax(2*self.gridu.shape[1], resolution=du, shift=True)
-        m = DSP.spectax(2*self.gridv.shape[0], resolution=dv, shift=True)        
+        m = DSP.spectax(2*self.gridv.shape[0], resolution=dv, shift=True)
 
         return {'syn_beam': syn_beam, 'grid_power_illumination': syn_beam_in_uv, 'l': l, 'm': m}
 
@@ -9423,7 +11260,6 @@ class AntennaArray:
 
     ############################################################################
 
-    # @profile
     def update(self, updates=None, parallel=False, nproc=None, verbose=False):
 
         """
@@ -9515,6 +11351,11 @@ class AntennaArray:
                                               coordinate system. Used only if 
                                               set and if 'action' key value is 
                                               set to 'modify'. Default = None.
+                                'aperture'    [instance of class 
+                                              APR.Aperture] aperture 
+                                              information for the antenna. Read 
+                                              docstring of class 
+                                              Aperture for details
                                 'wtsinfo'     [Optional. Dictionary] 
                                               See description in Antenna class 
                                               member function update(). Is used 
@@ -9695,6 +11536,7 @@ class AntennaArray:
                             if 'maxmatch' not in dictitem: dictitem['maxmatch']=None
                             if 'tol' not in dictitem: dictitem['tol']=None
                             if 'delaydict' not in dictitem: dictitem['delaydict']=None
+                            if 'aperture' not in dictitem: dictitem['aperture']=None
                             
                             if not parallel:
                                 self.antennas[dictitem['label']].update(dictitem, verbose)
