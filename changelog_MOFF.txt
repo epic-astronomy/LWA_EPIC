@@ -1,3 +1,8 @@
+From b48b5b3 (branch cal_devel):
+============
+(*) Updating multi_source_cal wrapper to conform to new gridding.
+(*) Now using square tophat beams for cal script.
+
 From 4a47ed5 (branch cal_devel):
 ============
 
