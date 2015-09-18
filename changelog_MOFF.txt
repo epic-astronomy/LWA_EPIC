@@ -1,3 +1,19 @@
+From d505813 (branch pbeam):
+===========================
+
+In antenna_array.py,
+
+(*) Add member function evalPowerPattern() (with docstring) under
+class NewImage to evaluate the power pattern from auto-correlation in
+the UV-plane
+(*) Detach estimation of power pattern attribute pbeam from member
+function evalAutoCorr() in class NewImage and place it under the new
+member function evalPowerPattern() under the same class
+(*) In member function imagr() of class NewImage, accept the value of
+input keyword pad only if it is positive. Remove lines of code
+estimating various quantities when they were performed with a negative
+value for pad. Modify docstring accordingly
+
 From 5d80d15 (branch padding):
 =============================
 
