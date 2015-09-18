@@ -1,5 +1,17 @@
+From 5d80d15 (branch padding):
+=============================
+
+In antenna_array.py,
+
+(*) Change input keyword pad from string type to integer type in
+member function imagr() of class NewImage. Update docstring
+accordingly
+(*) Make padding flexible and fully controllable by user
+(*) Remove few previously commented lines in imagr() member 
+function of class NewImage
+
 From 99344bf (branch performance):
-====================================
+=================================
 
 In antenna_array.py,
 
