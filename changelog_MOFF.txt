@@ -1,12 +1,57 @@
+5d80d15 (performance) + f87ab5b (padding-patch):
+===============================================
+
+(*) Merge branches performance and padding-patch
+
 From 5d80d15 (branch performance):
-====================================
+=================================
 
 In antenna_array.py,
 
 (*) Add @profile decorators for functions that have to be profiled
 
+From f87ab5b (branch padding):
+=============================
+
+In antenna_array.py,
+
+(*) Add input keyword cal_loop in imagr() member function of class
+NewImage. Update docstring accordingly
+(*) In case of MOFF imaging using sparse matrix mapping function,
+input parameter cal_loop in member function imagr() of class
+NewImage is passed in the call to applyMappingMatrix() member
+function of class AntennaArray
+
+From d505813 (branch pbeam):
+===========================
+
+In antenna_array.py,
+
+(*) Add member function evalPowerPattern() (with docstring) under
+class NewImage to evaluate the power pattern from auto-correlation in
+the UV-plane
+(*) Detach estimation of power pattern attribute pbeam from member
+function evalAutoCorr() in class NewImage and place it under the new
+member function evalPowerPattern() under the same class
+(*) In member function imagr() of class NewImage, accept the value of
+input keyword pad only if it is positive. Remove lines of code
+estimating various quantities when they were performed with a negative
+value for pad. Modify docstring accordingly
+
+From 5d80d15 (branch padding):
+=============================
+
+In antenna_array.py,
+
+(*) Change input keyword pad from string type to integer type in
+member function imagr() of class NewImage. Update docstring
+accordingly
+(*) Make padding flexible and fully controllable by user
+(*) Remove few previously commented lines in imagr() member 
+function of class NewImage
+
 From 99344bf (branch performance):
-====================================
+=================================
 
 In antenna_array.py,
 
