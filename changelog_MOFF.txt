@@ -1,3 +1,10 @@
+From 5d80d15 (branch performance):
+====================================
+
+In antenna_array.py,
+
+(*) Add @profile decorators for functions that have to be profiled
+
 From 99344bf (branch performance):
 ====================================
 
