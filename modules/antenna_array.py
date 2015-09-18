@@ -6803,7 +6803,7 @@ class NewImage:
     ############################################################################
 
     def imagr(self, pol=None, weighting='natural', pad=0, stack=True,
-              grid_map_method='sparse', verbose=True):
+              grid_map_method='sparse', cal_loop=False, verbose=True):
 
         """
         ------------------------------------------------------------------------
@@ -6837,6 +6837,15 @@ class NewImage:
                   If 'regular' it applies the regular grid mapping while 
                   'sparse' applies the grid mapping based on sparse matrix 
                   methods
+
+        cal_loop  [boolean] Applicable only in case when attribute 
+                  measured_type is set to 'E-field' (MOFF imaging) and 
+                  grid_map_method is set to 'sparse'. If True, the calibration 
+                  loop is assumed to be ON and hence the calibrated electric 
+                  fields are used in imaging. If False (default), the 
+                  calibration loop is assumed to be OFF and the current stream 
+                  of electric fields are assumed to be the calibrated data to 
+                  be mapped to the grid 
 
         verbose   [boolean] If True (default), prints diagnostic and progress
                   messages. If False, suppress printing such messages.
@@ -6873,9 +6882,9 @@ class NewImage:
             for apol in pol:
                 if apol in ['P1', 'P2']:
                     if grid_map_method == 'regular':
-                        self.antenna_array.make_grid_cube_new(verbose=verbose, pol=apol)
+                        self.antenna_array.make_grid_cube_new(pol=apol, verbose=verbose)
                     elif grid_map_method == 'sparse':
-                        self.antenna_array.applyMappingMatrix(pol=apol, verbose=verbose)
+                        self.antenna_array.applyMappingMatrix(pol=apol, cal_loop=cal_loop, verbose=verbose)
                     else:
                         raise ValueError('Invalid value specified for input parameter grid_map_method')
 

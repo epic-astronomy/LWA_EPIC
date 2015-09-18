@@ -1,3 +1,15 @@
+From f87ab5b (branch padding):
+=============================
+
+In antenna_array.py,
+
+(*) Add input keyword cal_loop in imagr() member function of class
+NewImage. Update docstring accordingly
+(*) In case of MOFF imaging using sparse matrix mapping function,
+input parameter cal_loop in member function imagr() of class
+NewImage is passed in the call to applyMappingMatrix() member
+function of class AntennaArray
+
 From d505813 (branch pbeam):
 ===========================
 
