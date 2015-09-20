@@ -1,3 +1,8 @@
+From 28de1e2 (performance) + 716213e (patch1):
+=============================================
+
+Merge branch patch1 from master onto performance branch
+
 From 502ef3f (branch performance):
 =================================
 
@@ -20,6 +25,24 @@ From 5d80d15 (branch performance):
 In antenna_array.py,
 
 (*) Add @profile decorators for functions that have to be profiled
+
+From 4fa22d8 (branch master):
+============================
+
+In antenna_array.py,
+
+(*) Minor modification to docstring of removeAutoCorr() member
+function of class NewImage
+
+From ee36176 (branch padding):
+=============================
+
+In antenna_array.py,
+
+(*) Add keyword input pad to member function removeAutoCorr() of class
+NewImage. Update docstring accordingly
+(*) Minor modification to docstring of member function
+evalPowerPattern() of class NewImage
 
 From f87ab5b (branch padding):
 =============================
