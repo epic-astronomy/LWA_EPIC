@@ -7309,7 +7309,7 @@ class NewImage:
                 size of the antenna array grid along u- and v-axes. Value must 
                 not be negative. Default=0 (implies no padding of the 
                 auto-correlated footprint). pad=1 implies padding by factor 2 
-                along u- and v-axes for MOFF, and no padding for FX)
+                along u- and v-axes for MOFF
         ------------------------------------------------------------------------
         """
 
@@ -7334,7 +7334,8 @@ class NewImage:
 
     ############################################################################
 
-    def removeAutoCorr(self, lkpinfo=None, forceeval=False, datapool='avg'):
+    def removeAutoCorr(self, lkpinfo=None, forceeval=False, datapool='avg',
+                       pad=0):
 
         """
         ------------------------------------------------------------------------
@@ -7364,6 +7365,15 @@ class NewImage:
                   are removed from the averaged data set. If set to 'current',
                   the latest timestamp is used in subtracting the zero-spacing
                   visibilities information
+
+        pad       [integer] indicates the amount of padding before estimating
+                  power pattern image. Applicable only when attribute 
+                  measured_type is set to 'E-field' (MOFF imaging). The output 
+                  image of the pwoer pattern will be of size 2**pad-1 times the 
+                  size of the antenna array grid along u- and v-axes. Value must 
+                  not be negative. Default=0 (implies no padding of the 
+                  auto-correlated footprint). pad=1 implies padding by factor 2 
+                  along u- and v-axes for MOFF
         ------------------------------------------------------------------------
         """
 
@@ -7391,13 +7401,13 @@ class NewImage:
                             vis_vuf = vis_vuf - (vis_vuf[:,self.gridv.shape[0],self.gridu.shape[1],:].reshape(vis_vuf.shape[0],1,1,self.f.size) / autocorr_wts_vuf[p][0,self.gridv.shape[0],self.gridu.shape[1],:].reshape(1,1,1,self.f.size)) * autocorr_wts_vuf[p]
                             wts_vuf = wts_vuf - (wts_vuf[:,self.gridv.shape[0],self.gridu.shape[1],:].reshape(wts_vuf.shape[0],1,1,self.f.size) / autocorr_wts_vuf[p][0,self.gridv.shape[0],self.gridu.shape[1],:].reshape(1,1,1,self.f.size)) * autocorr_wts_vuf[p]
                             sum_wts = NP.sum(wts_vuf, axis=(1,2), keepdims=True)
-                            padded_wts_vuf = NP.pad(wts_vuf, ((0,0),(self.gridv.shape[0],self.gridv.shape[0]),(self.gridu.shape[1],self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
+                            padded_wts_vuf = NP.pad(wts_vuf, ((0,0),((2**pad-1)*self.gridv.shape[0],(2**pad-1)*self.gridv.shape[0]),((2**pad-1)*self.gridu.shape[1],(2**pad-1)*self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
                             padded_wts_vuf = NP.fft.ifftshift(padded_wts_vuf, axes=(1,2))
                             wts_lmf = NP.fft.fft2(padded_wts_vuf, axes=(1,2)) / sum_wts
                             if NP.abs(wts_lmf.imag).max() > 1e-10:
                                 raise ValueError('Significant imaginary component found in the synthesized beam.')
                             self.nzsp_beam_avg[p] = NP.fft.fftshift(wts_lmf.real, axes=(1,2))
-                            padded_vis_vuf = NP.pad(vis_vuf, ((0,0),(self.gridv.shape[0],self.gridv.shape[0]),(self.gridu.shape[1],self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
+                            padded_vis_vuf = NP.pad(vis_vuf, ((0,0),((2**pad-1)*self.gridv.shape[0],(2**pad-1)*self.gridv.shape[0]),((2**pad-1)*self.gridu.shape[1],(2**pad-1)*self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
                             padded_vis_vuf = NP.fft.ifftshift(padded_vis_vuf, axes=(1,2))
                             vis_lmf = NP.fft.fft2(padded_vis_vuf, axes=(1,2)) / sum_wts
                             if NP.abs(vis_lmf.imag).max() > 1e-10:
@@ -7414,14 +7424,14 @@ class NewImage:
                             vis_vuf = vis_vuf - (vis_vuf[self.gridv.shape[0],self.gridu.shape[1],:].reshape(1,1,self.f.size) / autocorr_wts_vuf[p][self.gridv.shape[0],self.gridu.shape[1],:].reshape(1,1,self.f.size)) * autocorr_wts_vuf[p]
                             wts_vuf = wts_vuf - (wts_vuf[self.gridv.shape[0],self.gridu.shape[1],:].reshape(1,1,self.f.size) / autocorr_wts_vuf[p][self.gridv.shape[0],self.gridu.shape[1],:].reshape(1,1,self.f.size)) * autocorr_wts_vuf[p]
                             sum_wts = NP.sum(wts_vuf, axis=(0,1), keepdims=True)
-                            padded_wts_vuf = NP.pad(wts_vuf, ((self.gridv.shape[0],self.gridv.shape[0]),(self.gridu.shape[1],self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
+                            padded_wts_vuf = NP.pad(wts_vuf, (((2**pad-1)*self.gridv.shape[0],(2**pad-1)*self.gridv.shape[0]),((2**pad-1)*self.gridu.shape[1],(2**pad-1)*self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
                             padded_wts_vuf = NP.fft.ifftshift(padded_wts_vuf, axes=(0,1))
                             wts_lmf = NP.fft.fft2(padded_wts_vuf, axes=(0,1)) / sum_wts
                             if NP.abs(wts_lmf.imag).max() > 1e-10:
                                 raise ValueError('Significant imaginary component found in the synthesized beam.')
 
                             self.nzsp_beam[p] = NP.fft.fftshift(wts_lmf.real, axes=(0,1))
-                            padded_vis_vuf = NP.pad(vis_vuf, ((self.gridv.shape[0],self.gridv.shape[0]),(self.gridu.shape[1],self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
+                            padded_vis_vuf = NP.pad(vis_vuf, (((2**pad-1)*self.gridv.shape[0],(2**pad-1)*self.gridv.shape[0]),((2**pad-1)*self.gridu.shape[1],(2**pad-1)*self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
                             padded_vis_vuf = NP.fft.ifftshift(padded_vis_vuf, axes=(0,1))
                             vis_lmf = NP.fft.fft2(padded_vis_vuf, axes=(0,1)) / sum_wts
                             if NP.abs(vis_lmf.imag).max() > 1e-10:

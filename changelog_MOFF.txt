@@ -1,3 +1,13 @@
+From ee36176 (branch padding):
+=============================
+
+In antenna_array.py,
+
+(*) Add keyword input pad to member function removeAutoCorr() of class
+NewImage. Update docstring accordingly
+(*) Minor modification to docstring of member function
+evalPowerPattern() of class NewImage
+
 From f87ab5b (branch padding):
 =============================
 
