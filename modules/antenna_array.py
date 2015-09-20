@@ -7366,14 +7366,13 @@ class NewImage:
                   the latest timestamp is used in subtracting the zero-spacing
                   visibilities information
 
-        pad       [integer] indicates the amount of padding before estimating
-                  power pattern image. Applicable only when attribute 
-                  measured_type is set to 'E-field' (MOFF imaging). The output 
-                  image of the pwoer pattern will be of size 2**pad-1 times the 
-                  size of the antenna array grid along u- and v-axes. Value must 
-                  not be negative. Default=0 (implies no padding of the 
-                  auto-correlated footprint). pad=1 implies padding by factor 2 
-                  along u- and v-axes for MOFF
+        pad       [integer] indicates the amount of padding before imaging.
+                  Applicable only when attribute measured_type is set to 
+                  'E-field' (MOFF imaging). The output image will be of size 
+                  2**pad-1 times the size of the antenna array grid along u- 
+                  and v-axes. Value must not be negative. Default=0 (implies no 
+                  padding of the auto-correlated footprint). pad=1 implies 
+                  padding by factor 2 along u- and v-axes for MOFF
         ------------------------------------------------------------------------
         """
 
