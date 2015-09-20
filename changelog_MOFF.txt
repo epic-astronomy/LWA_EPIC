@@ -1,3 +1,14 @@
+From 502ef3f (branch performance):
+=================================
+
+In antenna_array.py,
+
+(*) Add keyword input pad to member function removeAutoCorr() of class
+NewImage. Update docstring accordingly
+(*) Minor modification to docstring of member function
+evalPowerPattern() of class NewImage
+(*) @profile decorators removed for testing
+
 5d80d15 (performance) + f87ab5b (padding-patch):
 ===============================================
 

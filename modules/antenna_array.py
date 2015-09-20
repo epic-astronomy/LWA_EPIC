@@ -747,7 +747,7 @@ class Interferometer:
 
     ############################################################################
 
-    @profile
+    # @profile
     def FX_on_stack(self):
 
         """
@@ -1374,7 +1374,7 @@ class Interferometer:
 
     ############################################################################
 
-    @profile
+    # @profile
     def update(self, update_dict=None, verbose=False):
 
         """
@@ -1962,7 +1962,7 @@ class Interferometer:
 
     ############################################################################
 
-    @profile
+    # @profile
     def accumulate(self, tbinsize=None):
 
         """
@@ -2953,7 +2953,7 @@ class InterferometerArray:
 
     ############################################################################
 
-    @profile
+    # @profile
     def FX(self, parallel=False, nproc=None):
 
         """
@@ -3273,7 +3273,7 @@ class InterferometerArray:
 
     ############################################################################
 
-    @profile
+    # @profile
     def accumulate(self, tbinsize=None):
 
         """
@@ -3300,7 +3300,7 @@ class InterferometerArray:
 
     ############################################################################
 
-    @profile
+    # @profile
     def grid(self, uvspacing=0.5, uvpad=None, pow2=True):
         
         """
@@ -4261,7 +4261,7 @@ class InterferometerArray:
 
     ############################################################################
 
-    @profile
+    # @profile
     def genMappingMatrix(self, pol=None, normalize=True, method='NN',
                          distNN=NP.inf, identical_interferometers=True,
                          gridfunc_freq=None, wts_change=False, parallel=False,
@@ -4506,7 +4506,7 @@ class InterferometerArray:
 
     ############################################################################
 
-    @profile
+    # @profile
     def applyMappingMatrix(self, pol=None, verbose=True):
 
         """
@@ -5721,7 +5721,7 @@ class InterferometerArray:
 
     ############################################################################
 
-    @profile
+    # @profile
     def update(self, interferometer_level_updates=None,
                antenna_level_updates=None, do_correlate=None, parallel=False,
                nproc=None, verbose=False):
@@ -6811,7 +6811,7 @@ class NewImage:
 
     ############################################################################
 
-    @profile
+    # @profile
     def imagr(self, pol=None, weighting='natural', pad=0, stack=True,
               grid_map_method='sparse', cal_loop=False, verbose=True):
 
@@ -7022,7 +7022,7 @@ class NewImage:
 
     ############################################################################
         
-    @profile
+    # @profile
     def stack(self, pol=None):
 
         """
@@ -7077,7 +7077,7 @@ class NewImage:
 
     ############################################################################
 
-    @profile
+    # @profile
     def accumulate(self, tbinsize=None, verbose=True):
 
         """
@@ -7207,7 +7207,7 @@ class NewImage:
 
     ############################################################################
 
-    @profile
+    # @profile
     def evalAutoCorr(self, lkpinfo=None, forceeval=False):
 
         """
@@ -7322,7 +7322,7 @@ class NewImage:
                 size of the antenna array grid along u- and v-axes. Value must 
                 not be negative. Default=0 (implies no padding of the 
                 auto-correlated footprint). pad=1 implies padding by factor 2 
-                along u- and v-axes for MOFF, and no padding for FX)
+                along u- and v-axes for MOFF
         ------------------------------------------------------------------------
         """
 
@@ -7347,8 +7347,9 @@ class NewImage:
 
     ############################################################################
 
-    @profile
-    def removeAutoCorr(self, lkpinfo=None, forceeval=False, datapool='avg'):
+    # @profile
+    def removeAutoCorr(self, lkpinfo=None, forceeval=False, datapool='avg',
+                       pad=0):
 
         """
         ------------------------------------------------------------------------
@@ -7378,6 +7379,14 @@ class NewImage:
                   are removed from the averaged data set. If set to 'current',
                   the latest timestamp is used in subtracting the zero-spacing
                   visibilities information
+
+        pad       [integer] indicates the amount of padding before imaging
+                  Applicable only when attribute measured_type is set to 
+                  'E-field' (MOFF imaging). The output image be of size 
+                  2**pad-1 times the size of the antenna array grid along u- 
+                  and v-axes. Value must not be negative. Default=0 (implies 
+                  no padding of the auto-correlated footprint). pad=1 implies 
+                  padding by factor 2 along u- and v-axes for MOFF
         ------------------------------------------------------------------------
         """
 
@@ -7405,13 +7414,13 @@ class NewImage:
                             vis_vuf = vis_vuf - (vis_vuf[:,self.gridv.shape[0],self.gridu.shape[1],:].reshape(vis_vuf.shape[0],1,1,self.f.size) / autocorr_wts_vuf[p][0,self.gridv.shape[0],self.gridu.shape[1],:].reshape(1,1,1,self.f.size)) * autocorr_wts_vuf[p]
                             wts_vuf = wts_vuf - (wts_vuf[:,self.gridv.shape[0],self.gridu.shape[1],:].reshape(wts_vuf.shape[0],1,1,self.f.size) / autocorr_wts_vuf[p][0,self.gridv.shape[0],self.gridu.shape[1],:].reshape(1,1,1,self.f.size)) * autocorr_wts_vuf[p]
                             sum_wts = NP.sum(wts_vuf, axis=(1,2), keepdims=True)
-                            padded_wts_vuf = NP.pad(wts_vuf, ((0,0),(self.gridv.shape[0],self.gridv.shape[0]),(self.gridu.shape[1],self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
+                            padded_wts_vuf = NP.pad(wts_vuf, ((0,0),((2**pad-1)*self.gridv.shape[0],(2**pad-1)*self.gridv.shape[0]),((2**pad-1)*self.gridu.shape[1],(2**pad-1)*self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
                             padded_wts_vuf = NP.fft.ifftshift(padded_wts_vuf, axes=(1,2))
                             wts_lmf = NP.fft.fft2(padded_wts_vuf, axes=(1,2)) / sum_wts
                             if NP.abs(wts_lmf.imag).max() > 1e-10:
                                 raise ValueError('Significant imaginary component found in the synthesized beam.')
                             self.nzsp_beam_avg[p] = NP.fft.fftshift(wts_lmf.real, axes=(1,2))
-                            padded_vis_vuf = NP.pad(vis_vuf, ((0,0),(self.gridv.shape[0],self.gridv.shape[0]),(self.gridu.shape[1],self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
+                            padded_vis_vuf = NP.pad(vis_vuf, ((0,0),((2**pad-1)*self.gridv.shape[0],(2**pad-1)*self.gridv.shape[0]),((2**pad-1)*self.gridu.shape[1],(2**pad-1)*self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
                             padded_vis_vuf = NP.fft.ifftshift(padded_vis_vuf, axes=(1,2))
                             vis_lmf = NP.fft.fft2(padded_vis_vuf, axes=(1,2)) / sum_wts
                             if NP.abs(vis_lmf.imag).max() > 1e-10:
@@ -7428,14 +7437,14 @@ class NewImage:
                             vis_vuf = vis_vuf - (vis_vuf[self.gridv.shape[0],self.gridu.shape[1],:].reshape(1,1,self.f.size) / autocorr_wts_vuf[p][self.gridv.shape[0],self.gridu.shape[1],:].reshape(1,1,self.f.size)) * autocorr_wts_vuf[p]
                             wts_vuf = wts_vuf - (wts_vuf[self.gridv.shape[0],self.gridu.shape[1],:].reshape(1,1,self.f.size) / autocorr_wts_vuf[p][self.gridv.shape[0],self.gridu.shape[1],:].reshape(1,1,self.f.size)) * autocorr_wts_vuf[p]
                             sum_wts = NP.sum(wts_vuf, axis=(0,1), keepdims=True)
-                            padded_wts_vuf = NP.pad(wts_vuf, ((self.gridv.shape[0],self.gridv.shape[0]),(self.gridu.shape[1],self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
+                            padded_wts_vuf = NP.pad(wts_vuf, (((2**pad-1)*self.gridv.shape[0],(2**pad-1)*self.gridv.shape[0]),((2**pad-1)*self.gridu.shape[1],(2**pad-1)*self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
                             padded_wts_vuf = NP.fft.ifftshift(padded_wts_vuf, axes=(0,1))
                             wts_lmf = NP.fft.fft2(padded_wts_vuf, axes=(0,1)) / sum_wts
                             if NP.abs(wts_lmf.imag).max() > 1e-10:
                                 raise ValueError('Significant imaginary component found in the synthesized beam.')
 
                             self.nzsp_beam[p] = NP.fft.fftshift(wts_lmf.real, axes=(0,1))
-                            padded_vis_vuf = NP.pad(vis_vuf, ((self.gridv.shape[0],self.gridv.shape[0]),(self.gridu.shape[1],self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
+                            padded_vis_vuf = NP.pad(vis_vuf, (((2**pad-1)*self.gridv.shape[0],(2**pad-1)*self.gridv.shape[0]),((2**pad-1)*self.gridu.shape[1],(2**pad-1)*self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
                             padded_vis_vuf = NP.fft.ifftshift(padded_vis_vuf, axes=(0,1))
                             vis_lmf = NP.fft.fft2(padded_vis_vuf, axes=(0,1)) / sum_wts
                             if NP.abs(vis_lmf.imag).max() > 1e-10:
@@ -8139,7 +8148,7 @@ class Antenna:
 
     ############################################################################
 
-    @profile
+    # @profile
     def FT(self, pol=None):
 
         """
@@ -8241,7 +8250,7 @@ class Antenna:
 
     ############################################################################
 
-    @profile
+    # @profile
     def update(self, update_dict=None, verbose=True):
 
         """
@@ -9553,7 +9562,7 @@ class AntennaArray:
 
     ############################################################################
 
-    @profile
+    # @profile
     def FT(self, pol=None, parallel=False, nproc=None):
 
         """
@@ -9582,7 +9591,7 @@ class AntennaArray:
         
     ############################################################################
 
-    @profile
+    # @profile
     def grid(self, uvspacing=0.5, xypad=None, pow2=True):
         
         """
@@ -10561,7 +10570,7 @@ class AntennaArray:
 
     ############################################################################
 
-    @profile
+    # @profile
     def genMappingMatrix(self, pol=None, normalize=True, method='NN',
                          distNN=NP.inf, identical_antennas=True,
                          gridfunc_freq=None, wts_change=False, parallel=False,
@@ -10804,7 +10813,7 @@ class AntennaArray:
 
     ############################################################################
 
-    @profile
+    # @profile
     def applyMappingMatrix(self, pol=None, cal_loop=False, verbose=True):
 
         """
@@ -11339,7 +11348,7 @@ class AntennaArray:
 
     ############################################################################
 
-    @profile
+    # @profile
     def update(self, updates=None, parallel=False, nproc=None, verbose=False):
 
         """
