@@ -747,7 +747,7 @@ class Interferometer:
 
     ############################################################################
 
-    # @profile
+    @profile
     def FX_on_stack(self):
 
         """
@@ -1374,7 +1374,7 @@ class Interferometer:
 
     ############################################################################
 
-    # @profile
+    @profile
     def update(self, update_dict=None, verbose=False):
 
         """
@@ -1962,7 +1962,7 @@ class Interferometer:
 
     ############################################################################
 
-    # @profile
+    @profile
     def accumulate(self, tbinsize=None):
 
         """
@@ -2953,7 +2953,7 @@ class InterferometerArray:
 
     ############################################################################
 
-    # @profile
+    @profile
     def FX(self, parallel=False, nproc=None):
 
         """
@@ -3273,7 +3273,7 @@ class InterferometerArray:
 
     ############################################################################
 
-    # @profile
+    @profile
     def accumulate(self, tbinsize=None):
 
         """
@@ -3300,7 +3300,7 @@ class InterferometerArray:
 
     ############################################################################
 
-    # @profile
+    @profile
     def grid(self, uvspacing=0.5, uvpad=None, pow2=True):
         
         """
@@ -4261,7 +4261,7 @@ class InterferometerArray:
 
     ############################################################################
 
-    # @profile
+    @profile
     def genMappingMatrix(self, pol=None, normalize=True, method='NN',
                          distNN=NP.inf, identical_interferometers=True,
                          gridfunc_freq=None, wts_change=False, parallel=False,
@@ -4506,7 +4506,7 @@ class InterferometerArray:
 
     ############################################################################
 
-    # @profile
+    @profile
     def applyMappingMatrix(self, pol=None, verbose=True):
 
         """
@@ -5721,7 +5721,7 @@ class InterferometerArray:
 
     ############################################################################
 
-    # @profile
+    @profile
     def update(self, interferometer_level_updates=None,
                antenna_level_updates=None, do_correlate=None, parallel=False,
                nproc=None, verbose=False):
@@ -6811,7 +6811,7 @@ class NewImage:
 
     ############################################################################
 
-    # @profile
+    @profile
     def imagr(self, pol=None, weighting='natural', pad=0, stack=True,
               grid_map_method='sparse', cal_loop=False, verbose=True):
 
@@ -7022,7 +7022,7 @@ class NewImage:
 
     ############################################################################
         
-    # @profile
+    @profile
     def stack(self, pol=None):
 
         """
@@ -7077,7 +7077,7 @@ class NewImage:
 
     ############################################################################
 
-    # @profile
+    @profile
     def accumulate(self, tbinsize=None, verbose=True):
 
         """
@@ -7207,7 +7207,7 @@ class NewImage:
 
     ############################################################################
 
-    # @profile
+    @profile
     def evalAutoCorr(self, lkpinfo=None, forceeval=False):
 
         """
@@ -7347,7 +7347,7 @@ class NewImage:
 
     ############################################################################
 
-    # @profile
+    @profile
     def removeAutoCorr(self, lkpinfo=None, forceeval=False, datapool='avg',
                        pad=0):
 
@@ -8148,7 +8148,7 @@ class Antenna:
 
     ############################################################################
 
-    # @profile
+    @profile
     def FT(self, pol=None):
 
         """
@@ -8250,7 +8250,7 @@ class Antenna:
 
     ############################################################################
 
-    # @profile
+    @profile
     def update(self, update_dict=None, verbose=True):
 
         """
@@ -9562,7 +9562,7 @@ class AntennaArray:
 
     ############################################################################
 
-    # @profile
+    @profile
     def FT(self, pol=None, parallel=False, nproc=None):
 
         """
@@ -9591,7 +9591,7 @@ class AntennaArray:
         
     ############################################################################
 
-    # @profile
+    @profile
     def grid(self, uvspacing=0.5, xypad=None, pow2=True):
         
         """
@@ -10570,7 +10570,7 @@ class AntennaArray:
 
     ############################################################################
 
-    # @profile
+    @profile
     def genMappingMatrix(self, pol=None, normalize=True, method='NN',
                          distNN=NP.inf, identical_antennas=True,
                          gridfunc_freq=None, wts_change=False, parallel=False,
@@ -10813,7 +10813,7 @@ class AntennaArray:
 
     ############################################################################
 
-    # @profile
+    @profile
     def applyMappingMatrix(self, pol=None, cal_loop=False, verbose=True):
 
         """
@@ -11348,7 +11348,7 @@ class AntennaArray:
 
     ############################################################################
 
-    # @profile
+    @profile
     def update(self, updates=None, parallel=False, nproc=None, verbose=False):
 
         """

@@ -1,3 +1,18 @@
+From b5eaaaf (performance):
+==========================
+
+(*) Make MOFF_FX_performance_comparison.py modular so it can be
+executed as a main program as well as imported as a module
+(*) Rename MOFF_FX_performance_comparison.py to
+MOFF_FX_performance_profiling.py
+(*) Add files MOFF_FX_performance_profiling_shell_script_generator.py
+and MOFF_FX_performance_profiling_script.sh to git repository
+
+In antenna_array.py,
+
+(*) Add @profile decorators to functions that need to be profiled in
+antenna_array.py
+
 From 28de1e2 (performance) + 716213e (patch1):
 =============================================
 
