@@ -1,3 +1,9 @@
+From 7d31bbb (performance):
+==========================
+
+(*) Add new MOFF_FX_performance_comparison.py to git repo which does
+the timing comparison between MOFF and FX runs
+
 From b5eaaaf (performance):
 ==========================
 
