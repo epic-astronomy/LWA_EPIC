@@ -1,3 +1,17 @@
+From 989fad9 (performance):
+==========================
+
+(*) Reorganize directory structure for profiling outputs
+(*) Add antenna_layout.py to git repo
+
+In antenna_array.py,
+
+(*) Add @profile decorator to all function definition statements
+
+In aperture.py,
+
+(*) Remove usage of rmin in auto_convolved_circular() function
+
 From 7d31bbb (performance):
 ==========================
 
