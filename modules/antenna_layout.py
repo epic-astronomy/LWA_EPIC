@@ -221,7 +221,10 @@ def hexagon_relations(n_total=None, n_side=None, n_center=None):
         n_total = 3*n_side**2 - 3*n_side + 1
         n_center = 2*n_side - 1
     else:
+        if n_center % 2 == 0:
+            raise ValueError('n_center must be odd')
         n_side = (n_center + 1) / 2
+        n_total = 3*n_side**2 - 3*n_side + 1
 
     return (n_center, n_side, n_total)
 

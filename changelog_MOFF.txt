@@ -1,3 +1,18 @@
+From 7da842f (FX-serial-all-lines-profiling):
+============================================
+
+Add MOFF_FX_performance_profiling_script_with_filling_fraction.sh,
+MOFF_FX_performance_profiling_script_filename_corrections.sh,
+MOFF_FX_performance_comparison_all_lines.py, and MOFF_FX_crossover.py,
+to git repository.
+
+In antenna_layout.py,
+
+(*) Estimate n_total in hexagon_relations() for the case when
+n_center is specified in input
+(*) Add value checking in hexagon_relations() that n_center must be
+odd
+
 From 989fad9 (performance):
 ==========================
 
