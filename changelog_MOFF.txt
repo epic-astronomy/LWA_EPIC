@@ -1,3 +1,9 @@
+From 70160c7 (FX-serial-all-lines-profiling):
+============================================
+
+(*) Rename antenna_array.py to antenna_array_for_profiler.py
+(*) Create antenna_array.py without @profile decorators
+
 From 7da842f (FX-serial-all-lines-profiling):
 ============================================
 
