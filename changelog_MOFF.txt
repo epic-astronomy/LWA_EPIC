@@ -1,3 +1,9 @@
+From 9da3ea9 (branch cal_devel):
+============
+(*) Fine tuning some parameters to make multi-source work better.
+(*) Took out functional form in multi_source_cal.py.
+
+
 From b5c3ff6 (branch cal_devel):
 ============
 (*) merging master into cal_devel branch.
