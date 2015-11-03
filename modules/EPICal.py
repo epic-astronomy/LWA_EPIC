@@ -3,7 +3,7 @@ import ipdb as PDB
 import scipy.constants as FCNST
 
 
-class cal:
+class EPICal:
     
     """
     -------------------------------------------------------------------------------
@@ -167,8 +167,6 @@ class cal:
         if self.cal_method == self.multi_source_cal:
             self.gen_model_vis()
 
-
-
     ####################################
 
     def simulate_gains(self,scale=0.25):
@@ -180,7 +178,7 @@ class cal:
     
         return amp*NP.exp(1j*ang)
 
-    ##########
+    ######
 
     def update_cal(self,*args):
         # just one option for now
@@ -194,7 +192,7 @@ class cal:
             self.count = 0
             self.temp_gains[:] = 0.0
 
-    ###########
+    ######
 
     def apply_cal(self,data,meas=False):
         if self.curr_gains.size != data.size:
@@ -221,7 +219,7 @@ class cal:
         
         return
 
-    #######
+    ######
 
     def gen_model_vis(self):
         # Function to generate the model visibilites, given sky model and ant positions
@@ -330,33 +328,7 @@ class cal:
 
         return new_gains
 
-    # Thid multi-source cal is now obsolete (and never really worked).    
-    """
-    def multi_source_cal(self,*args):
-        #
-        ### Calibrate on several sources simultaneously.
-        # Inputs
-        #   Edata:    _uncalibrated E-field data from antennas.
-        #   imgobj:   Image object output from latest correlator image.
-
-        while isinstance(args[0],tuple):
-            args=args[0]
-        Edata = args[0]
-        imgobj = args[1]
-
-        n_src = self.sky_model.shape[0]
-        new_gains = NP.zeros((self.n_ant,self.n_chan),dtype=NP.complex64)
-        
-        weights = NP.reshape(self.sky_model[:,:,3],(n_src,self.n_chan))
-        
-        for sourcei in xrange(n_src):
-            new_gains += self.off_center_cal(Edata,imgobj,sourcei)*NP.reshape(self.sky_model[sourcei,:,3],(1,self.n_chan))
-
-        
-        new_gains /= NP.reshape(NP.sum(weights,axis=0),(1,self.n_chan))
-
-        return new_gains
-    """
+    ######    
 
     def multi_source_cal(self,*args):
         #

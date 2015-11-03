@@ -1,3 +1,7 @@
+From 474b84e (branch cal_devel):
+============
+(*) Small tweaks to rename cal to EPICal.
+
 From 9da3ea9 (branch cal_devel):
 ============
 (*) Fine tuning some parameters to make multi-source work better.
