@@ -1,3 +1,8 @@
+From 0b58e4e (branch cal_devel):
+============
+(*) Fixed calibration phase of reference antenna.
+(*) Added plotting code to cal wrapper.
+
 From e6c6fc4 (branch cal_devel):
 ============
 (*) Mostly added support for cal source off-center.

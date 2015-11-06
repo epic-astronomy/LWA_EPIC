@@ -607,6 +607,10 @@ class cal2:
             # Fix ref_ant's phase.
             temp_gains = temp_gains * NP.exp(-1j * 2*NP.pi * NP.sum(self.ant_pos * self.cal_pix_loc.reshape(1,1,3),axis=2))
 
+            # Fix ref_ant's phase.
+            phasor = temp_gains[self.ref_ant,:]/NP.abs(temp_gains[self.ref_ant,:])
+            temp_gains = temp_gains * NP.conj(phasor).reshape(1,self.n_chan)
+
             self.curr_gains = self.curr_gains * (1 - self.gain_factor) + self.gain_factor * temp_gains
             self.count = 0
             self.cal_corr = NP.zeros((self.n_ant,self.n_chan), dtype=NP.complex64)
