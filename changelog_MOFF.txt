@@ -1,3 +1,19 @@
+From afcf778 (FX-serial-all-lines-profiling):
+============================================
+
+In antenna_array.py,
+
+(*) Assign NaN values in Ef and Vf to 0.0 in member functions
+applyMappingMatrix() of classes InterferometerArray and AntennaArray
+
+In antenna_array_for_profiler.py,
+
+(*) Assign NaN values in Ef and Vf to 0.0 in member functions
+applyMappingMatrix() of classes InterferometerArray and AntennaArray
+(*) THIS CHANGE WILL CHANGE THE LINES WHERE THE APPROPRIATE LINES IN THE
+PROFILE OUTPUT MUST BE PARSED BUT NOT CORRECTING FOR IT AT THE MOMENT.
+NEEDS TO BE CORRECTED EVENTUALLY
+
 From 70160c7 (FX-serial-all-lines-profiling):
 ============================================
 

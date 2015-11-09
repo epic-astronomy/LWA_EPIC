@@ -4543,6 +4543,9 @@ class InterferometerArray:
             Vf = Vf * unflagged    # applies antenna flagging, n_ant x nchan
             wts = unflagged * NP.ones(self.f.size).reshape(1,-1)  # n_ant x nchan
 
+            wts[NP.isnan(Vf)] = 0.0
+            Vf[NP.isnan(Vf)] = 0.0
+
             Vf = Vf.ravel()
             wts = wts.ravel()
 
@@ -10848,6 +10851,9 @@ class AntennaArray:
 
             Ef = Ef * twts    # applies antenna flagging, n_ant x nchan
             wts = twts * NP.ones(self.f.size).reshape(1,-1)  # n_ant x nchan
+
+            wts[NP.isnan(Ef)] = 0.0
+            Ef[NP.isnan(Ef)] = 0.0
 
             Ef = Ef.ravel()
             wts = wts.ravel()
