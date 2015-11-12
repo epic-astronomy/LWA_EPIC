@@ -16,21 +16,27 @@ import aperture as APR
 
 ################### Routines essential for parallel processing ################
 
+@profile
 def unwrap_antenna_FT(arg, **kwarg):
     return Antenna.FT_pp(*arg, **kwarg)
 
+@profile
 def unwrap_interferometer_FX(arg, **kwarg):
     return Interferometer.FX_pp(*arg, **kwarg)
 
+@profile
 def unwrap_interferometer_stack(arg, **kwarg):
     return Interferometer.stack_pp(*arg, **kwarg)
 
+@profile
 def unwrap_antenna_update(arg, **kwarg):
     return Antenna.update_pp(*arg, **kwarg)
 
+@profile
 def unwrap_interferometer_update(arg, **kwarg):
     return Interferometer.update_pp(*arg, **kwarg)
 
+@profile
 def antenna_grid_mapping(gridind_raveled, values, bins=None):
     if bins is None:
         raise ValueError('Input parameter bins must be specified')
@@ -45,9 +51,11 @@ def antenna_grid_mapping(gridind_raveled, values, bins=None):
     # print MP.current_process().name
     return retval
 
+@profile
 def antenna_grid_mapping_arg_splitter(args, **kwargs):
     return antenna_grid_mapping(*args, **kwargs)
 
+@profile
 def antenna_grid_mapper(gridind_raveled, values, bins, label, outq):
     if NP.iscomplexobj(values):
         retval = OPS.binned_statistic(gridind_raveled, values.real, statistic='sum', bins=bins)[0]
@@ -60,6 +68,7 @@ def antenna_grid_mapper(gridind_raveled, values, bins, label, outq):
     # print MP.current_process().name
     outq.put(outdict)
 
+@profile
 def baseline_grid_mapping(gridind_raveled, values, bins=None):
     if bins is None:
         raise ValueError('Input parameter bins must be specified')
@@ -74,9 +83,11 @@ def baseline_grid_mapping(gridind_raveled, values, bins=None):
     # print MP.current_process().name
     return retval
 
+@profile
 def baseline_grid_mapping_arg_splitter(args, **kwargs):
     return baseline_grid_mapping(*args, **kwargs)
 
+@profile
 def baseline_grid_mapper(gridind_raveled, values, bins, label, outq):
     if NP.iscomplexobj(values):
         retval = OPS.binned_statistic(gridind_raveled, values.real, statistic='sum', bins=bins)[0]
@@ -89,12 +100,15 @@ def baseline_grid_mapper(gridind_raveled, values, bins, label, outq):
     # print MP.current_process().name
     outq.put(outdict)
 
+@profile
 def find_1NN_arg_splitter(args, **kwargs):
     return LKP.find_1NN(*args, **kwargs)
 
+@profile
 def genMatrixMapper_arg_splitter(args, **kwargs):
     return genMatrixMapper(*args, **kwargs)
 
+@profile
 def genMatrixMapper(val, ind, shape):
     if not isinstance(val, NP.ndarray):
         raise TypeError('Input parameter val must be a numpy array')
@@ -150,6 +164,7 @@ class CrossPolInfo:
     ----------------------------------------------------------------------------
     """
 
+    @profile
     def __init__(self, nsamples=1):
 
         """
@@ -185,11 +200,13 @@ class CrossPolInfo:
 
     ############################################################################
 
+    @profile
     def __str__(self):
         return ' Instance of class "{0}" in module "{1}" \n flag (P11): {2} \n flag (P12): {3} \n flag (P21): {4} \n flag (P22): {5} '.format(self.__class__.__name__, self.__module__, self.flag['P11'], self.flag['P12'], self.flag['P21'], self.flag['P22'])
 
     ############################################################################
 
+    @profile
     def update_flags(self, flags=None, verify=True):
 
         """
@@ -242,6 +259,7 @@ class CrossPolInfo:
                     
     ############################################################################
 
+    @profile
     def update(self, Vt=None, Vf=None, flags=None, verify=False):
         
         """
@@ -525,6 +543,7 @@ class Interferometer:
     ----------------------------------------------------------------------------
     """
 
+    @profile
     def __init__(self, antenna1, antenna2, corr_type=None, aperture=None):
 
         """
@@ -620,11 +639,13 @@ class Interferometer:
 
     ############################################################################
 
+    @profile
     def __str__(self):
         return ' Instance of class "{0}" in module "{1}" \n label: ({2[0]}, {2[1]}) \n location: {3}'.format(self.__class__.__name__, self.__module__, self.label, self.location.__str__())
 
     ############################################################################
 
+    @profile
     def channels(self):
 
         """
@@ -642,6 +663,7 @@ class Interferometer:
 
     ############################################################################
 
+    @profile
     def FX(self):
 
         """
@@ -666,6 +688,7 @@ class Interferometer:
 
     ############################################################################
 
+    @profile
     def FX_pp(self):
 
         """
@@ -693,6 +716,7 @@ class Interferometer:
 
     ############################################################################
 
+    @profile
     def XF(self):
 
         """
@@ -717,6 +741,7 @@ class Interferometer:
 
     ############################################################################
 
+    @profile
     def f2t(self):
 
         """
@@ -732,6 +757,7 @@ class Interferometer:
 
     ############################################################################
 
+    @profile
     def t2f(self):
         
         """
@@ -747,6 +773,7 @@ class Interferometer:
 
     ############################################################################
 
+    @profile
     def FX_on_stack(self):
 
         """
@@ -776,6 +803,7 @@ class Interferometer:
 
     ############################################################################
 
+    @profile
     def flags_on_stack(self):
         
         """
@@ -803,6 +831,7 @@ class Interferometer:
 
     ############################################################################
     
+    @profile
     def XF_on_stack(self):
 
         """
@@ -836,6 +865,7 @@ class Interferometer:
 
     ############################################################################
 
+    @profile
     def f2t_on_stack(self):
 
         """
@@ -851,6 +881,7 @@ class Interferometer:
 
     ############################################################################
 
+    @profile
     def t2f_on_stack(self):
         
         """
@@ -866,6 +897,7 @@ class Interferometer:
 
     ############################################################################
 
+    @profile
     def flip_antenna_pair(self):
         
         """
@@ -890,6 +922,7 @@ class Interferometer:
        
     ############################################################################
 
+    @profile
     def refresh_antenna_pairs(self, A1=None, A2=None):
 
         """
@@ -921,6 +954,7 @@ class Interferometer:
 
     ############################################################################
 
+    @profile
     def get_visibilities(self, pol, flag=None, tselect=None, fselect=None,
                          datapool=None):
 
@@ -1092,6 +1126,7 @@ class Interferometer:
                 
     ############################################################################
 
+    @profile
     def update_flags(self, flags=None, stack=False, verify=True):
 
         """
@@ -1164,6 +1199,7 @@ class Interferometer:
 
     ############################################################################
 
+    @profile
     def update_old(self, label=None, Vt=None, t=None, timestamp=None,
                    location=None, wtsinfo=None, flags=None, gridfunc_freq=None,
                    ref_freq=None, do_correlate=None, stack=False,
@@ -1373,6 +1409,7 @@ class Interferometer:
 
     ############################################################################
 
+    @profile
     def update(self, update_dict=None, verbose=False):
 
         """
@@ -1633,6 +1670,7 @@ class Interferometer:
 
     ############################################################################
     
+    @profile
     def update_pp_old(self, update_dict=None, verbose=True):
 
         """
@@ -1882,6 +1920,7 @@ class Interferometer:
 
     ############################################################################
 
+    @profile
     def update_pp(self, update_dict=None, verbose=True):
 
         """
@@ -1900,6 +1939,7 @@ class Interferometer:
 
     ############################################################################
 
+    @profile
     def stack(self, on_flags=True, on_data=True):
 
         """
@@ -1935,6 +1975,7 @@ class Interferometer:
 
     ############################################################################
 
+    @profile
     def stack_pp(self, on_flags=True, on_data=True):
 
         """
@@ -1960,6 +2001,7 @@ class Interferometer:
 
     ############################################################################
 
+    @profile
     def accumulate(self, tbinsize=None):
 
         """
@@ -2456,6 +2498,7 @@ class InterferometerArray:
     ----------------------------------------------------------------------------
     """
 
+    @profile
     def __init__(self, antenna_pairs=None, antenna_array=None):
 
         """
@@ -2566,6 +2609,7 @@ class InterferometerArray:
 
     ############################################################################
 
+    @profile
     def __str__(self):
         printstr = '\n-----------------------------------------------------------------'
         printstr += '\n Instance of class "{0}" in module "{1}".\n Holds the following "Interferometer" class instances with labels:\n '.format(self.__class__.__name__, self.__module__)
@@ -2578,6 +2622,7 @@ class InterferometerArray:
 
     ############################################################################
 
+    @profile
     def __add__(self, others):
 
         """
@@ -2643,6 +2688,7 @@ class InterferometerArray:
 
     ############################################################################
 
+    @profile
     def __radd__(self, others):
 
         """
@@ -2667,6 +2713,7 @@ class InterferometerArray:
 
     ############################################################################
 
+    @profile
     def __sub__(self, others):
 
         """
@@ -2727,6 +2774,7 @@ class InterferometerArray:
 
     ############################################################################
 
+    @profile
     def add_interferometers(self, A=None):
 
         """
@@ -2757,6 +2805,7 @@ class InterferometerArray:
 
     ############################################################################
 
+    @profile
     def remove_interferometers(self, A=None):
 
         """
@@ -2785,6 +2834,7 @@ class InterferometerArray:
 
     ############################################################################
 
+    @profile
     def interferometers_containing_antenna(self, antenna_label):
 
         """
@@ -2817,6 +2867,7 @@ class InterferometerArray:
 
     ############################################################################
 
+    @profile
     def baseline_vectors(self, pol=None, flag=False, sort=True):
         
         """
@@ -2901,6 +2952,7 @@ class InterferometerArray:
 
     ############################################################################
 
+    @profile
     def refresh_antenna_pairs(self, interferometer_labels=None,
                                antenna_labels=None):
 
@@ -2950,6 +3002,7 @@ class InterferometerArray:
 
     ############################################################################
 
+    @profile
     def FX(self, parallel=False, nproc=None):
 
         """
@@ -3006,6 +3059,7 @@ class InterferometerArray:
 
     ############################################################################
 
+    @profile
     def XF(self):
 
         """
@@ -3030,6 +3084,7 @@ class InterferometerArray:
         
     ############################################################################
 
+    @profile
     def get_visibilities_old(self, pol, flag=None, sort=True):
 
         """
@@ -3111,6 +3166,7 @@ class InterferometerArray:
 
     ############################################################################
 
+    @profile
     def get_visibilities(self, pol, flag=None, tselect=None, fselect=None,
                              bselect=None, datapool=None, sort=True):
 
@@ -3215,6 +3271,7 @@ class InterferometerArray:
 
     ############################################################################
     
+    @profile
     def stack(self, on_flags=True, on_data=True, parallel=False, nproc=None):
 
         """
@@ -3269,6 +3326,7 @@ class InterferometerArray:
 
     ############################################################################
 
+    @profile
     def accumulate(self, tbinsize=None):
 
         """
@@ -3295,6 +3353,7 @@ class InterferometerArray:
 
     ############################################################################
 
+    @profile
     def grid(self, uvspacing=0.5, uvpad=None, pow2=True):
         
         """
@@ -3348,6 +3407,7 @@ class InterferometerArray:
 
     ############################################################################
 
+    @profile
     def grid_convolve(self, pol=None, antpairs=None, unconvolve_existing=False,
                       normalize=False, method='NN', distNN=NP.inf, tol=None,
                       maxmatch=None, identical_interferometers=True,
@@ -4025,6 +4085,7 @@ class InterferometerArray:
 
     ############################################################################
 
+    @profile
     def grid_convolve_new(self, pol=None, normalize=False, method='NN',
                           distNN=NP.inf, identical_interferometers=True,
                           cal_loop=False, gridfunc_freq=None, wts_change=False,
@@ -4255,6 +4316,7 @@ class InterferometerArray:
 
     ############################################################################
 
+    @profile
     def genMappingMatrix(self, pol=None, normalize=True, method='NN',
                          distNN=NP.inf, identical_interferometers=True,
                          gridfunc_freq=None, wts_change=False, parallel=False,
@@ -4499,6 +4561,7 @@ class InterferometerArray:
 
     ############################################################################
 
+    @profile
     def applyMappingMatrix(self, pol=None, verbose=True):
 
         """
@@ -4565,6 +4628,7 @@ class InterferometerArray:
 
     ############################################################################
 
+    @profile
     def make_grid_cube(self, pol=None, verbose=True):
 
         """
@@ -4632,6 +4696,7 @@ class InterferometerArray:
 
     ############################################################################
 
+    @profile
     def make_grid_cube_new(self, pol=None, verbose=True):
 
         """
@@ -4701,6 +4766,7 @@ class InterferometerArray:
 
     ############################################################################
 
+    @profile
     def quick_beam_synthesis(self, pol=None):
         
         """
@@ -4807,6 +4873,7 @@ class InterferometerArray:
 
     ############################################################################ 
 
+    @profile
     def grid_convolve_old(self, pol=None, antpairs=None, unconvolve_existing=False,
                           normalize=False, method='NN', distNN=NP.inf, tol=None,
                           maxmatch=None): 
@@ -5443,6 +5510,7 @@ class InterferometerArray:
 
     ############################################################################
 
+    @profile
     def grid_unconvolve(self, antpairs, pol=None):
 
         """
@@ -5670,6 +5738,7 @@ class InterferometerArray:
 
     ############################################################################
 
+    @profile
     def update_flags(self, dictflags=None, stack=True, verify=False):
 
         """
@@ -5716,6 +5785,7 @@ class InterferometerArray:
 
     ############################################################################
 
+    @profile
     def update(self, interferometer_level_updates=None,
                antenna_level_updates=None, do_correlate=None, parallel=False,
                nproc=None, verbose=False):
@@ -6347,6 +6417,7 @@ class NewImage:
     ----------------------------------------------------------------------------
     """
 
+    @profile
     def __init__(self, f0=None, f=None, pol=None, antenna_array=None,
                  interferometer_array=None, infile=None, timestamp=None,
                  verbose=True):
@@ -6684,6 +6755,7 @@ class NewImage:
 
     ############################################################################
 
+    @profile
     def reset(self, verbose=True):
 
         """
@@ -6745,6 +6817,7 @@ class NewImage:
 
     ############################################################################
 
+    @profile
     def update(self, antenna_array=None, interferometer_array=None, reset=True, 
                verbose=True):
 
@@ -6805,6 +6878,7 @@ class NewImage:
 
     ############################################################################
 
+    @profile
     def imagr(self, pol=None, weighting='natural', pad=0, stack=True,
               grid_map_method='sparse', cal_loop=False, verbose=True):
 
@@ -7015,6 +7089,7 @@ class NewImage:
 
     ############################################################################
         
+    @profile
     def stack(self, pol=None):
 
         """
@@ -7069,6 +7144,7 @@ class NewImage:
 
     ############################################################################
 
+    @profile
     def accumulate(self, tbinsize=None, verbose=True):
 
         """
@@ -7198,6 +7274,7 @@ class NewImage:
 
     ############################################################################
 
+    @profile
     def evalAutoCorr(self, lkpinfo=None, forceeval=False):
 
         """
@@ -7296,6 +7373,7 @@ class NewImage:
             
     ############################################################################
 
+    @profile
     def evalPowerPattern(self, pad=0):
 
         """
@@ -7337,6 +7415,7 @@ class NewImage:
 
     ############################################################################
 
+    @profile
     def removeAutoCorr(self, lkpinfo=None, forceeval=False, datapool='avg',
                        pad=0):
 
@@ -7449,6 +7528,7 @@ class NewImage:
             
     ############################################################################
 
+    @profile
     def save(self, imgfile, pol=None, overwrite=False, verbose=True):
 
         """
@@ -7601,6 +7681,7 @@ class PolInfo:
     ----------------------------------------------------------------------------
     """
 
+    @profile
     def __init__(self, nsamples=1):
         """
         ------------------------------------------------------------------------
@@ -7634,11 +7715,13 @@ class PolInfo:
 
     ############################################################################ 
 
+    @profile
     def __str__(self):
         return ' Instance of class "{0}" in module "{1}" \n flag (P1): {2} \n flag (P2): {3} '.format(self.__class__.__name__, self.__module__, self.flag['P1'], self.flag['P2'])
 
     ############################################################################ 
 
+    @profile
     def FT(self, pol=None):
 
         """
@@ -7667,6 +7750,7 @@ class PolInfo:
 
     ############################################################################ 
 
+    @profile
     def delay_compensation(self, delaydict):
         
         """
@@ -7754,6 +7838,7 @@ class PolInfo:
 
     ############################################################################ 
 
+    @profile
     def update_flags(self, flags=None, verify=False):
 
         """
@@ -7803,6 +7888,7 @@ class PolInfo:
 
     ############################################################################ 
 
+    @profile
     def update(self, Et=None, Ef=None, flags=None, delaydict=None,
                verify=False):
         
@@ -8028,6 +8114,7 @@ class Antenna:
     ----------------------------------------------------------------------------
     """
 
+    @profile
     def __init__(self, label, latitude, location, center_freq, nsamples=1,
                  aperture=None):
 
@@ -8115,11 +8202,13 @@ class Antenna:
 
     ############################################################################
 
+    @profile
     def __str__(self):
         return ' Instance of class "{0}" in module "{1}" \n label: ({2[0]}, {2[1]}) \n location: {3}'.format(self.__class__.__name__, self.__module__, self.label, self.location.__str__())
 
     ############################################################################
 
+    @profile
     def channels(self):
 
         """
@@ -8137,6 +8226,7 @@ class Antenna:
 
     ############################################################################
 
+    @profile
     def FT(self, pol=None):
 
         """
@@ -8161,6 +8251,7 @@ class Antenna:
         
     ############################################################################
 
+    @profile
     def FT_pp(self, pol=None):
 
         """
@@ -8193,6 +8284,7 @@ class Antenna:
         
     ############################################################################
 
+    @profile
     def update_flags(self, flags=None, stack=False, verify=True):
 
         """
@@ -8238,6 +8330,7 @@ class Antenna:
 
     ############################################################################
 
+    @profile
     def update(self, update_dict=None, verbose=True):
 
         """
@@ -8481,6 +8574,7 @@ class Antenna:
 
     ############################################################################
 
+    @profile
     def update_pp(self, update_dict=None, verbose=True):
 
         """
@@ -8499,6 +8593,7 @@ class Antenna:
 
     ############################################################################
 
+    @profile
     def get_E_fields(self, pol, flag=None, tselect=None, fselect=None,
                      datapool=None):
 
@@ -8985,6 +9080,7 @@ class AntennaArray:
     ----------------------------------------------------------------------------
     """
 
+    @profile
     def __init__(self, antenna_array=None):
 
         """
@@ -9070,6 +9166,7 @@ class AntennaArray:
         
     ############################################################################
 
+    @profile
     def __add__(self, others):
 
         """
@@ -9134,6 +9231,7 @@ class AntennaArray:
 
     ############################################################################
 
+    @profile
     def __radd__(self, others):
 
         """
@@ -9158,6 +9256,7 @@ class AntennaArray:
 
     ############################################################################
 
+    @profile
     def __sub__(self, others):
         """
         ------------------------------------------------------------------------
@@ -9216,6 +9315,7 @@ class AntennaArray:
 
     ############################################################################
 
+    @profile
     def add_antennas(self, A=None):
 
         """
@@ -9246,6 +9346,7 @@ class AntennaArray:
 
     ############################################################################
 
+    @profile
     def remove_antennas(self, A=None):
 
         """
@@ -9274,6 +9375,7 @@ class AntennaArray:
 
     ############################################################################
 
+    @profile
     def antenna_positions(self, pol=None, flag=False, sort=True,
                           centering=False):
         
@@ -9369,6 +9471,7 @@ class AntennaArray:
 
     ############################################################################
 
+    @profile
     def get_E_fields_old(self, pol, flag=False, sort=True):
 
         """
@@ -9449,6 +9552,7 @@ class AntennaArray:
 
     ############################################################################
 
+    @profile
     def get_E_fields(self, pol, flag=None, tselect=None, fselect=None,
                      aselect=None, datapool=None, sort=True):
 
@@ -9549,6 +9653,7 @@ class AntennaArray:
 
     ############################################################################
 
+    @profile
     def FT(self, pol=None, parallel=False, nproc=None):
 
         """
@@ -9577,6 +9682,7 @@ class AntennaArray:
         
     ############################################################################
 
+    @profile
     def grid(self, uvspacing=0.5, xypad=None, pow2=True):
         
         """
@@ -9638,6 +9744,7 @@ class AntennaArray:
 
     ############################################################################
 
+    @profile
     def grid_convolve(self, pol=None, ants=None, unconvolve_existing=False,
                       normalize=False, method='NN', distNN=NP.inf, tol=None,
                       maxmatch=None, identical_antennas=True, cal_loop=False,
@@ -10324,6 +10431,7 @@ class AntennaArray:
 
     ############################################################################
     
+    @profile
     def grid_convolve_new(self, pol=None, normalize=False, method='NN',
                           distNN=NP.inf, identical_antennas=True,
                           cal_loop=False, gridfunc_freq=None, wts_change=False,
@@ -10555,6 +10663,7 @@ class AntennaArray:
 
     ############################################################################
 
+    @profile
     def genMappingMatrix(self, pol=None, normalize=True, method='NN',
                          distNN=NP.inf, identical_antennas=True,
                          gridfunc_freq=None, wts_change=False, parallel=False,
@@ -10797,6 +10906,7 @@ class AntennaArray:
 
     ############################################################################
 
+    @profile
     def applyMappingMatrix(self, pol=None, cal_loop=False, verbose=True):
 
         """
@@ -10874,6 +10984,7 @@ class AntennaArray:
 
     ############################################################################
 
+    @profile
     def make_grid_cube(self, pol=None, verbose=True):
 
         """
@@ -10937,6 +11048,7 @@ class AntennaArray:
 
     ############################################################################ 
 
+    @profile
     def make_grid_cube_new(self, pol=None, verbose=True):
 
         """
@@ -10999,6 +11111,7 @@ class AntennaArray:
 
     ############################################################################ 
 
+    @profile
     def quick_beam_synthesis(self, pol=None, keep_zero_spacing=True):
         
         """
@@ -11143,6 +11256,7 @@ class AntennaArray:
 
     ############################################################################ 
 
+    @profile
     def quick_beam_synthesis_new(self, pol=None, keep_zero_spacing=True):
         
         """
@@ -11289,6 +11403,7 @@ class AntennaArray:
 
     ############################################################################ 
 
+    @profile
     def update_flags(self, dictflags=None, stack=True, verify=False):
 
         """
@@ -11334,6 +11449,7 @@ class AntennaArray:
 
     ############################################################################
 
+    @profile
     def update(self, updates=None, parallel=False, nproc=None, verbose=False):
 
         """
