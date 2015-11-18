@@ -1,3 +1,12 @@
+From 4cab0bc (branch cal_devel):
+============
+(*) Cleaned up a ton of cal code
+(*) Removed "phased visibilities"
+(*) Added script to calibrate LWA data
+(*) Added support to average cal solutions in freq
+(*) Added option to model auto noise
+(*) Started support to exclude autos from cal
+
 <<<<<<< HEAD
 From 0b58e4e (branch cal_devel):
 ============
