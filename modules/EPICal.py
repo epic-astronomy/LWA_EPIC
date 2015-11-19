@@ -246,13 +246,16 @@ class cal:
 
         if self.count == self.n_iter:
             # Reached integration level, update the estimated gains
-            print NP.mean(NP.abs(self.cal_corr))
             # Expression depends on type of calibration
             if self.inv_gains:
                 # Inverted gains version
+                if self.exclude_autos:
+                    self.cal_corr = self.cal_corr - NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos * self.cal_pix_loc.reshape(1,1,3),axis=2)) * self.auto_corr * self.curr_gains / self.n_ant
                 temp_gains = self.n_ant * self.cal_corr / NP.sum(self.n_iter * NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos * self.cal_pix_loc.reshape(1,1,3),axis=2)) * self.model_vis * NP.reshape(NP.abs(self.curr_gains)**2,(1,self.n_ant,self.n_chan)), axis=1)
             else:
                 # Regular version
+                if self.exclude_autos:
+                    self.cal_corr = self.cal_corr - NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos * self.cal_pix_loc.reshape(1,1,3),axis=2)) * self.auto_corr / (self.n_ant * NP.conj(self.curr_gains))
                 temp_gains = self.n_ant * self.cal_corr / NP.sum(self.n_iter * NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos * self.cal_pix_loc.reshape(1,1,3),axis=2)) * self.model_vis, axis=1)
                 
             # TODO:
@@ -278,6 +281,7 @@ class cal:
 
             self.count = 0
             self.cal_corr = NP.zeros((self.n_ant,self.n_chan), dtype=NP.complex64)
+            self.auto_corr = NP.zeros((self.n_ant,self.n_chan), dtype=NP.float32)
 
     ######
 
@@ -285,6 +289,8 @@ class cal:
         # Perform the correlation of antenna data with image output.
         # Kind of silly to separate this into a function, but conceptually it makes sense.
         self.cal_corr = self.cal_corr + Edata*NP.reshape(NP.conj(imgdata),(1,self.n_chan))
+        if self.exclude_autos:
+            self.auto_corr = self.auto_corr + NP.abs(Edata)**2
         self.count += 1
 
     ######

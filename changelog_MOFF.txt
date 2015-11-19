@@ -1,3 +1,8 @@
+From 79df434 (branch cal_devel):
+============
+(*) Finished support to exclude autos in cal
+(*) Fixed rxr noise amplitude in cal simulation
+
 From 4cab0bc (branch cal_devel):
 ============
 (*) Cleaned up a ton of cal code
