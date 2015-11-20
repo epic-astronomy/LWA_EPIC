@@ -112,7 +112,7 @@ class cal:
         elif ant_pos.shape[1] != n_chan:
             ValueError('Antenna positions do not match frequencies!')
 
-        if (gain_factor > 1.0) or (gain_factor < 0.0): gain_factor = 1.0
+        if (damping_factor > 1.0) or (damping_factor < 0.0): damping_factor = 0.0
 
         # Defaults for sky_mdoel:
         #   If no spectral info given, assume constant
@@ -160,7 +160,7 @@ class cal:
             self.sim_gains = self.simulate_gains()
         self.n_iter = n_iter
         self.count = 0
-        self.gain_factor = gain_factor
+        self.damping_factor = damping_factor
         self.inv_gains = inv_gains
         self.phase_fit = phase_fit
         self.sky_model = sky_model
@@ -276,7 +276,7 @@ class cal:
 
             self.curr_gains = self.curr_gains * self.damping_factor + temp_gains * (1 - self.damping_factor)
             if self.phase_fit:
-                # phase correction with gain_factor could result in small amplitude drop. Fix this.
+                # phase correction with damping_factor could result in small amplitude drop. Fix this.
                 self.curr_gains = self.curr_gains / NP.abs(self.curr_gains)
 
             # Reset integrations

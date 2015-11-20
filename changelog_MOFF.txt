@@ -1,3 +1,7 @@
+From 7788225 (branch cal_devel):
+============
+(*) Fixed gain_factor->damping_gain change
+
 From 7da7acd (branch cal_devel):
 ============
 (*) Removed some old code in sim scripts
