@@ -1,3 +1,11 @@
+From fdc18d7 (branch_cal_devel):
+============
+(*) Fixed bug where calibration expression included z*n term that shouldn't have been there.
+(*) Added ability to give sky model to cal with no freq dependence
+(*) Updated cal class to handle nans
+(*) Moved frequency average to before fixing phase
+(*) Inserted temporary fix to holographic image phase issue (fix_holographic_phase)
+
 From 7788225 (branch cal_devel):
 ============
 (*) Fixed gain_factor->damping_gain change

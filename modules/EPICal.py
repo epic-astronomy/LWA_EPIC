@@ -1,6 +1,7 @@
 import numpy as NP
 import ipdb as PDB
 import scipy.constants as FCNST
+import progressbar as PGB
 
        
 class cal:
@@ -43,6 +44,9 @@ class cal:
 
     count:              [integer] Current iteration number.
 
+    ant_twt:            Integer array storing the time weights for each antenna.
+                        Dimension = n_ant x n_chan
+
     damping_factor:     [float] Dampening factor when updating gains. Default = 0.
 
     inv_gains:          [Boolean] If False (default), calibrate by dividing by gains. If
@@ -75,6 +79,9 @@ class cal:
 
     cal_pix_ind:        Index (x,y) of pixel closest to cal_source. Calculated in loop.
 
+    fix_holographic_phase: Temporary fix to undo a phase offset in the holographic images.
+                        Especially important when using exclude_autos.
+
     *** Functions ***
 
     simulate_gains:     Create a set of gains for simulation purposes.
@@ -95,7 +102,7 @@ class cal:
 
     def __init__(self, freqs, ant_pos, ref_ant=0, freq_ave=1, pol='P1', curr_gains=None, sim_mode=False, 
         n_iter=10, damping_factor=0.0, inv_gains=False, sky_model=NP.ones(1,dtype=NP.float32), cal_source=None, 
-        phase_fit=False, auto_noise_model=0.0, exclude_autos=False):
+        phase_fit=False, auto_noise_model=0.0, exclude_autos=False, fix_holographic_phase=True):
 
         # Get derived values and check types, etc.
         n_chan = freqs.shape[0]
@@ -167,13 +174,18 @@ class cal:
         self.auto_noise_model = auto_noise_model
         self.exclude_autos = exclude_autos
         self.auto_corr = NP.zeros((n_ant,n_chan), dtype=NP.float32)
+        self.ant_twt = NP.zeros((n_ant,n_chan), dtype=NP.int32)
         if cal_source is None:
             # Use brightest source in model
-            self.cal_source = sky_model[:,n_chan/2,3].argmax()
+            if self.sky_model.shape[1] > 1:
+                self.cal_source = sky_model[:,n_chan/2,3].argmax()
+            else:
+                self.cal_source = sky_model[:,0,3].argmax()
         else:
             self.cal_source = cal_source
         self.cal_pix_ind = None # placeholder until it can be calculated.
         # model_vis, cal_pix_loc, and cal_pix_ind are determined after an imgobj is passed in.
+        self.fix_holographic_phase = fix_holographic_phase
 
     ####################################
 
@@ -199,6 +211,7 @@ class cal:
         # This function will generate the model visibilities for calibration.
         # Eventually this should be moved to Nithya's modules to account for beams,
         # but for testing we'll do it here.
+        print 'Updating model visibilities.'
 
         # First find the appropriate pixel to phase to.
         xind,yind = NP.unravel_index(NP.argmin((gridl-self.sky_model[self.cal_source,0,0])**2+(gridm-self.sky_model[self.cal_source,0,1])**2),gridl.shape) 
@@ -207,15 +220,31 @@ class cal:
 
         # Reshape arrays to match: n_src x n_ant x n_chan x 3
         n_src = self.sky_model.shape[0]
-        model_pos = NP.reshape(self.sky_model[:,:,0:3],(n_src,1,self.n_chan,3))
-        model_flux = NP.reshape(self.sky_model[:,:,3], (n_src,1,self.n_chan))
+        if self.sky_model.shape[1] > 1:
+            model_pos = NP.reshape(self.sky_model[:,:,0:3],(n_src,1,self.n_chan,3))
+            model_flux = NP.reshape(self.sky_model[:,:,3], (n_src,1,self.n_chan))
+        else:
+            # Only one channel in model - assume constant flux. Save memory.
+            print 'Using same model visibilities for all channels'
+            model_pos = NP.reshape(self.sky_model[:,:,0:3],(n_src,1,1,3))
+            model_flux = NP.reshape(self.sky_model[:,:,3], (n_src,1,1))
+
         ant_pos = NP.reshape(self.ant_pos, (1,self.n_ant,self.n_chan,3))
 
         # Calculate model visibilities
         # TODO: Incorporate beam
+        print 'Forming model visibilities'
         model_vis = NP.zeros((self.n_ant, self.n_ant, self.n_chan), dtype=NP.complex128)
+        antnum=0
+        p = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} Antennas '.format(self.n_ant), PGB.ETA()], maxval=self.n_ant).start()
         for ant in xrange(self.n_ant):
-            model_vis[ant,:,:] = NP.sum(model_flux * NP.exp(-1j * 2*NP.pi * NP.sum(model_pos * (ant_pos-NP.reshape(ant_pos[:,ant,:,:],(1,1,self.n_chan,3))),axis=3)),axis=0)
+            if self.sky_model.shape[1] > 1:
+                model_vis[ant,:,:] = NP.sum(model_flux * NP.exp(-1j * 2*NP.pi * NP.sum(model_pos * (ant_pos-NP.reshape(ant_pos[:,ant,:,:],(1,1,self.n_chan,3))),axis=3)),axis=0)
+            else:
+                model_vis[ant,:,:] = NP.sum(model_flux * NP.exp(-1j * 2*NP.pi * NP.sum(model_pos * (ant_pos[:,:,self.n_chan/2,:].reshape(1,self.n_ant,1,3) - NP.reshape(ant_pos[:,ant,self.n_chan/2,:],(1,1,1,3))),axis=3)),axis=0)
+            p.update(antnum+1)
+            antnum += 1
+        p.finish()
 
         # Add auto noise term
         if isinstance(self.auto_noise_model,NP.float):
@@ -232,6 +261,7 @@ class cal:
                 model_vis[ant,ant,:] = 0.0
 
         self.model_vis = model_vis
+        print 'Finished updating model visibilities.'
 
     ######
 
@@ -246,35 +276,54 @@ class cal:
 
         if self.count == self.n_iter:
             # Reached integration level, update the estimated gains
+
+            # Handle temporary "feature" in the imaging
+            if self.fix_holographic_phase:
+                # The holographic images have a silly phase running through them due to not centering when padding. Take it out.
+                dl = imgobj.gridl[0,1]-imgobj.gridl[0,0]
+                dm = imgobj.gridm[1,0]-imgobj.gridm[0,0]
+                phase_fix = NP.exp(-1j * NP.pi * (self.cal_pix_loc[0]/dl + self.cal_pix_loc[1]/dm) / 2)
+                self.cal_corr = self.cal_corr * phase_fix
+
+            self.cal_corr = self.cal_corr / self.ant_twt # make it an average
+            if self.exclude_autos:
+                self.auto_corr = self.auto_corr / self.ant_twt
+            
             # Expression depends on type of calibration
             if self.inv_gains:
                 # Inverted gains version
                 if self.exclude_autos:
-                    self.cal_corr = self.cal_corr - NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos * self.cal_pix_loc.reshape(1,1,3),axis=2)) * self.auto_corr * self.curr_gains / self.n_ant
-                temp_gains = self.n_ant * self.cal_corr / NP.sum(self.n_iter * NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos * self.cal_pix_loc.reshape(1,1,3),axis=2)) * self.model_vis * NP.reshape(NP.abs(self.curr_gains)**2,(1,self.n_ant,self.n_chan)), axis=1)
+                    #self.cal_corr = self.cal_corr - NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos * self.cal_pix_loc.reshape(1,1,3),axis=2)) * self.auto_corr * self.curr_gains / self.n_ant
+                    self.cal_corr = self.cal_corr - NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos[:,:,0:2] * self.cal_pix_loc[0:2].reshape(1,1,2),axis=2)) * self.auto_corr * self.curr_gains / self.n_ant
+                #temp_gains = self.cal_corr * (NP.sum(self.ant_twt,axis=0).reshape(1,-1) - self.ant_twt) * self.n_ant / NP.sum((self.n_ant-1) * self.ant_twt.reshape(-1,self.n_ant,self.n_chan) * NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos * self.cal_pix_loc.reshape(1,1,3),axis=2)) * self.model_vis * NP.reshape(NP.abs(self.curr_gains)**2,(1,self.n_ant,self.n_chan)), axis=1)
+                temp_gains = self.cal_corr * (NP.sum(self.ant_twt,axis=0).reshape(1,-1) - self.ant_twt) * self.n_ant / NP.sum((self.n_ant-1) * self.ant_twt.reshape(-1,self.n_ant,self.n_chan) * NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos[:,:,0:2] * self.cal_pix_loc[0:2].reshape(1,1,2),axis=2)) * self.model_vis * NP.reshape(NP.abs(self.curr_gains)**2,(1,self.n_ant,self.n_chan)), axis=1)
             else:
                 # Regular version
                 if self.exclude_autos:
-                    self.cal_corr = self.cal_corr - NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos * self.cal_pix_loc.reshape(1,1,3),axis=2)) * self.auto_corr / (self.n_ant * NP.conj(self.curr_gains))
-                temp_gains = self.n_ant * self.cal_corr / NP.sum(self.n_iter * NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos * self.cal_pix_loc.reshape(1,1,3),axis=2)) * self.model_vis, axis=1)
+                    #self.cal_corr = self.cal_corr - NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos * self.cal_pix_loc.reshape(1,1,3),axis=2)) * self.auto_corr / (self.n_ant * NP.conj(self.curr_gains))
+                    self.cal_corr = self.cal_corr - NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos[:,:,0:2] * self.cal_pix_loc[0:2].reshape(1,1,2),axis=2)) * self.auto_corr / (self.n_ant * NP.conj(self.curr_gains))
+                # Note Nant in numerator is dropped because it's accounted for in summing the time weights.
+                #temp_gains = self.cal_corr * (NP.sum(self.ant_twt,axis=0).reshape(1,-1) - self.ant_twt) * self.n_ant  / NP.sum((self.n_ant-1) * self.ant_twt.reshape(-1,self.n_ant,self.n_chan) * NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos * self.cal_pix_loc.reshape(1,1,3),axis=2)) * self.model_vis, axis=1)
+                temp_gains = self.cal_corr * (NP.sum(self.ant_twt,axis=0).reshape(1,-1) - self.ant_twt) * self.n_ant  / NP.sum((self.n_ant-1) * self.ant_twt.reshape(-1,self.n_ant,self.n_chan) * NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos[:,:,0:2] * self.cal_pix_loc[0:2].reshape(1,1,2),axis=2)) * self.model_vis, axis=1)
                 
             # TODO:
             # Account for beam value at cal source location!
-            
+
             # Average in frequency
             for i in NP.arange(NP.ceil(NP.float(self.n_chan)/self.freq_ave)):
                 mini=i*self.freq_ave
                 maxi=NP.min((self.n_chan,(i+1)*self.freq_ave))
-                temp_gains[:,mini:maxi] = NP.mean(temp_gains[:,mini:maxi],axis=1).reshape(self.n_ant,1)
+                temp_gains[:,mini:maxi] = NP.nanmean(temp_gains[:,mini:maxi],axis=1).reshape(self.n_ant,1)
 
             # Fix ref_ant's phase.
             phasor = temp_gains[self.ref_ant,:]/NP.abs(temp_gains[self.ref_ant,:])
             temp_gains = temp_gains * NP.conj(phasor).reshape(1,self.n_chan)
+
             if self.phase_fit:
                 # Only fit phase
-                temp_gains = temp_gains / NP.abs(temp_gains)
+                temp_gains = temp_gains / NP.abs(curr_gains)
 
-            self.curr_gains = self.curr_gains * self.damping_factor + temp_gains * (1 - self.damping_factor)
+            self.curr_gains = NP.where(NP.isnan(temp_gains),self.curr_gains,self.curr_gains * self.damping_factor + temp_gains * (1 - self.damping_factor))
             if self.phase_fit:
                 # phase correction with damping_factor could result in small amplitude drop. Fix this.
                 self.curr_gains = self.curr_gains / NP.abs(self.curr_gains)
@@ -283,15 +332,19 @@ class cal:
             self.count = 0
             self.cal_corr = NP.zeros((self.n_ant,self.n_chan), dtype=NP.complex64)
             self.auto_corr = NP.zeros((self.n_ant,self.n_chan), dtype=NP.float32)
+            self.ant_twt = NP.zeros((self.n_ant,self.n_chan), dtype=NP.int32)
 
     ######
 
     def calc_corr(self, Edata, imgdata):
         # Perform the correlation of antenna data with image output.
         # Kind of silly to separate this into a function, but conceptually it makes sense.
-        self.cal_corr = self.cal_corr + Edata*NP.reshape(NP.conj(imgdata),(1,self.n_chan))
+        #self.cal_corr = self.cal_corr + Edata*NP.reshape(NP.conj(imgdata),(1,self.n_chan))
+        self.cal_corr += NP.where(NP.isnan(Edata),0,Edata*NP.reshape(NP.conj(imgdata),(1,self.n_chan)))
+        self.ant_twt += NP.where(NP.isnan(Edata),0,1)
         if self.exclude_autos:
-            self.auto_corr = self.auto_corr + NP.abs(Edata)**2
+            #self.auto_corr = self.auto_corr + NP.abs(Edata)**2
+            self.auto_corr += NP.where(NP.isnan(Edata),0,NP.abs(Edata)**2)
         self.count += 1
 
     ######
