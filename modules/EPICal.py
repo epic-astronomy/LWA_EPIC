@@ -79,8 +79,13 @@ class cal:
 
     cal_pix_ind:        Index (x,y) of pixel closest to cal_source. Calculated in loop.
 
-    fix_holographic_phase: Temporary fix to undo a phase offset in the holographic images.
+    fix_holographic_phase: [Boolean] Temporary fix to undo a phase offset in the holographic images.
                         Especially important when using exclude_autos.
+                        Default = True
+
+    flatten_array:      [Boolean] Option to phase model visibilities to zenith to account for non-planarity
+                        of array in 2D gridding.
+                        Default = False
 
     *** Functions ***
 
@@ -102,7 +107,7 @@ class cal:
 
     def __init__(self, freqs, ant_pos, ref_ant=0, freq_ave=1, pol='P1', curr_gains=None, sim_mode=False, 
         n_iter=10, damping_factor=0.0, inv_gains=False, sky_model=NP.ones(1,dtype=NP.float32), cal_source=None, 
-        phase_fit=False, auto_noise_model=0.0, exclude_autos=False, fix_holographic_phase=True):
+        phase_fit=False, auto_noise_model=0.0, exclude_autos=False, fix_holographic_phase=True, flatten_array=False):
 
         # Get derived values and check types, etc.
         n_chan = freqs.shape[0]
@@ -186,6 +191,7 @@ class cal:
         self.cal_pix_ind = None # placeholder until it can be calculated.
         # model_vis, cal_pix_loc, and cal_pix_ind are determined after an imgobj is passed in.
         self.fix_holographic_phase = fix_holographic_phase
+        self.flatten_array = flatten_array
 
     ####################################
 
@@ -259,6 +265,12 @@ class cal:
         if self.exclude_autos:
             for ant in xrange(self.n_ant):
                 model_vis[ant,ant,:] = 0.0
+
+        # Add phase to flatten array
+        if self.flatten_array:
+            for ant in xrange(self.n_ant):
+                # TODO: check conjugation
+                model_vis[ant,:,:] *= NP.exp(1j * 2*NP.pi * (self.ant_pos[:,:,2]-self.ant_pos[ant,:,2].reshape(1,-1)))
 
         self.model_vis = model_vis
         print 'Finished updating model visibilities.'
