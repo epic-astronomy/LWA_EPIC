@@ -87,6 +87,12 @@ class cal:
                         of array in 2D gridding.
                         Default = False
 
+    conv_thresh:        [float] Threshold for median fractional change in gain in calibration minor loop.
+                        Default = 0.01
+
+    conv_max_try:       [integer] Maximum iterations in cal minor loop before quitting due to lack of convergence.
+                        Default = 20
+
     *** Functions ***
 
     simulate_gains:     Create a set of gains for simulation purposes.
@@ -107,7 +113,8 @@ class cal:
 
     def __init__(self, freqs, ant_pos, ref_ant=0, freq_ave=1, pol='P1', curr_gains=None, sim_mode=False, 
         n_iter=10, damping_factor=0.0, inv_gains=False, sky_model=NP.ones(1,dtype=NP.float32), cal_source=None, 
-        phase_fit=False, auto_noise_model=0.0, exclude_autos=False, fix_holographic_phase=True, flatten_array=False):
+        phase_fit=False, auto_noise_model=0.0, exclude_autos=False, fix_holographic_phase=True, flatten_array=False,
+        conv_thresh=0.01, conv_max_try=200):
 
         # Get derived values and check types, etc.
         n_chan = freqs.shape[0]
@@ -192,6 +199,8 @@ class cal:
         # model_vis, cal_pix_loc, and cal_pix_ind are determined after an imgobj is passed in.
         self.fix_holographic_phase = fix_holographic_phase
         self.flatten_array = flatten_array
+        self.conv_thresh = conv_thresh
+        self.conv_max_try = conv_max_try
 
     ####################################
 
@@ -289,47 +298,61 @@ class cal:
         if self.count == self.n_iter:
             # Reached integration level, update the estimated gains
 
+            temp_gains = self.curr_gains
+            tries = 0
+            change = 100.0 # placeholder
+
+            # TODO:
+            # Account for beam value at cal source location!
+
             # Handle temporary "feature" in the imaging
             if self.fix_holographic_phase:
                 # The holographic images have a silly phase running through them due to not centering when padding. Take it out.
                 dl = imgobj.gridl[0,1]-imgobj.gridl[0,0]
                 dm = imgobj.gridm[1,0]-imgobj.gridm[0,0]
                 phase_fix = NP.exp(-1j * NP.pi * (self.cal_pix_loc[0]/dl + self.cal_pix_loc[1]/dm) / 2)
-                self.cal_corr = self.cal_corr * phase_fix
+                self.cal_corr = self.cal_corr * phase_fix            
 
             self.cal_corr = self.cal_corr / self.ant_twt # make it an average
             if self.exclude_autos:
                 self.auto_corr = self.auto_corr / self.ant_twt
-            
-            # Expression depends on type of calibration
+
+                        # Expression depends on type of calibration
             if self.inv_gains:
                 # Inverted gains version
-                if self.exclude_autos:
-                    #self.cal_corr = self.cal_corr - NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos * self.cal_pix_loc.reshape(1,1,3),axis=2)) * self.auto_corr * self.curr_gains / self.n_ant
-                    self.cal_corr = self.cal_corr - NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos[:,:,0:2] * self.cal_pix_loc[0:2].reshape(1,1,2),axis=2)) * self.auto_corr * self.curr_gains / self.n_ant
-                #temp_gains = self.cal_corr * (NP.sum(self.ant_twt,axis=0).reshape(1,-1) - self.ant_twt) * self.n_ant / NP.sum((self.n_ant-1) * self.ant_twt.reshape(-1,self.n_ant,self.n_chan) * NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos * self.cal_pix_loc.reshape(1,1,3),axis=2)) * self.model_vis * NP.reshape(NP.abs(self.curr_gains)**2,(1,self.n_ant,self.n_chan)), axis=1)
-                temp_gains = self.cal_corr * (NP.sum(self.ant_twt,axis=0).reshape(1,-1) - self.ant_twt) * self.n_ant / NP.sum((self.n_ant-1) * self.ant_twt.reshape(-1,self.n_ant,self.n_chan) * NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos[:,:,0:2] * self.cal_pix_loc[0:2].reshape(1,1,2),axis=2)) * self.model_vis * NP.reshape(NP.abs(self.curr_gains)**2,(1,self.n_ant,self.n_chan)), axis=1)
+                applied_cal = NP.conj(self.curr_gains)
             else:
                 # Regular version
-                if self.exclude_autos:
-                    #self.cal_corr = self.cal_corr - NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos * self.cal_pix_loc.reshape(1,1,3),axis=2)) * self.auto_corr / (self.n_ant * NP.conj(self.curr_gains))
-                    self.cal_corr = self.cal_corr - NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos[:,:,0:2] * self.cal_pix_loc[0:2].reshape(1,1,2),axis=2)) * self.auto_corr / (self.n_ant * NP.conj(self.curr_gains))
-                # Note Nant in numerator is dropped because it's accounted for in summing the time weights.
-                #temp_gains = self.cal_corr * (NP.sum(self.ant_twt,axis=0).reshape(1,-1) - self.ant_twt) * self.n_ant  / NP.sum((self.n_ant-1) * self.ant_twt.reshape(-1,self.n_ant,self.n_chan) * NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos * self.cal_pix_loc.reshape(1,1,3),axis=2)) * self.model_vis, axis=1)
-                temp_gains = self.cal_corr * (NP.sum(self.ant_twt,axis=0).reshape(1,-1) - self.ant_twt) * self.n_ant  / NP.sum((self.n_ant-1) * self.ant_twt.reshape(-1,self.n_ant,self.n_chan) * NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos[:,:,0:2] * self.cal_pix_loc[0:2].reshape(1,1,2),axis=2)) * self.model_vis, axis=1)
-                
-            # TODO:
-            # Account for beam value at cal source location!
+                applied_cal = 1/self.curr_gains
 
-            # Average in frequency
-            for i in NP.arange(NP.ceil(NP.float(self.n_chan)/self.freq_ave)):
-                mini=i*self.freq_ave
-                maxi=NP.min((self.n_chan,(i+1)*self.freq_ave))
-                temp_gains[:,mini:maxi] = NP.nanmean(temp_gains[:,mini:maxi],axis=1).reshape(self.n_ant,1)
+            if self.exclude_autos:
+                self.cal_corr = self.cal_corr - NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos[:,:,0:2] * self.cal_pix_loc[0:2].reshape(1,1,2),axis=2)) * self.auto_corr * NP.conj(applied_cal) / self.n_ant
+             
 
-            # Fix ref_ant's phase.
-            phasor = temp_gains[self.ref_ant,:]/NP.abs(temp_gains[self.ref_ant,:])
-            temp_gains = temp_gains * NP.conj(phasor).reshape(1,self.n_chan)
+            while (tries < self.conv_max_try) and (change > self.conv_thresh):
+                # Begin 'minor loop'
+                prev_gains = temp_gains
+
+                temp_gains = self.cal_corr * (NP.sum(self.ant_twt,axis=0).reshape(1,-1) - self.ant_twt) * self.n_ant / NP.sum((self.n_ant-1) * self.ant_twt.reshape(-1,self.n_ant,self.n_chan) * NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos[:,:,0:2] * self.cal_pix_loc[0:2].reshape(1,1,2),axis=2)) * self.model_vis * NP.conj(NP.reshape(applied_cal*prev_gains,(1,self.n_ant,self.n_chan))), axis=1)
+
+                # Average in frequency
+                for i in NP.arange(NP.ceil(NP.float(self.n_chan)/self.freq_ave)):
+                    mini=i*self.freq_ave
+                    maxi=NP.min((self.n_chan,(i+1)*self.freq_ave))
+                    temp_gains[:,mini:maxi] = NP.nanmean(temp_gains[:,mini:maxi],axis=1).reshape(self.n_ant,1)
+
+                # Fix ref_ant's phase.
+                phasor = temp_gains[self.ref_ant,:]/NP.abs(temp_gains[self.ref_ant,:])
+                temp_gains = temp_gains * NP.conj(phasor).reshape(1,self.n_chan)
+
+                temp_gains = prev_gains * self.damping_factor + temp_gains * (1-self.damping_factor)
+
+                change = NP.median(NP.abs(temp_gains-prev_gains)/NP.abs(prev_gains))
+                tries += 1
+
+            print 'Cal minor loop took {} iterations.'.format(tries)
+            if tries == self.conv_max_try:
+                print 'Warning! Gains failed to converge. Continuing.'
 
             if self.phase_fit:
                 # Only fit phase

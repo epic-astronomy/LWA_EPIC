@@ -1,4 +1,8 @@
-From (branch_cal_devel):
+From 2befd8c (branch_cal_devel):
+============
+(*) Added calibration minor loop to iterate over stationary data correlation.
+
+From bbd355d (branch_cal_devel):
 ============
 (*) Added options to calibrate_LWA_data.py to replace data with simulation
 (*) Added option to flatten_array in calibration to account for 2D gridding
