@@ -114,7 +114,7 @@ class cal:
     def __init__(self, freqs, ant_pos, ref_ant=0, freq_ave=1, pol='P1', curr_gains=None, sim_mode=False, 
         n_iter=10, damping_factor=0.0, inv_gains=False, sky_model=NP.ones(1,dtype=NP.float32), cal_source=None, 
         phase_fit=False, auto_noise_model=0.0, exclude_autos=False, fix_holographic_phase=True, flatten_array=False,
-        conv_thresh=0.01, conv_max_try=200):
+        conv_thresh=0.01, conv_max_try=20):
 
         # Get derived values and check types, etc.
         n_chan = freqs.shape[0]

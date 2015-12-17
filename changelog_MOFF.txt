@@ -1,13 +1,17 @@
-From 2befd8c (branch_cal_devel):
+From cb47d88 (branch cal_devel_data):
+============
+(*) Fiddled with progress bars in LWA cal script
+
+From 2befd8c (branch cal_devel_data):
 ============
 (*) Added calibration minor loop to iterate over stationary data correlation.
 
-From bbd355d (branch_cal_devel):
+From bbd355d (branch cal_devel_data):
 ============
 (*) Added options to calibrate_LWA_data.py to replace data with simulation
 (*) Added option to flatten_array in calibration to account for 2D gridding
 
-From fdc18d7 (branch_cal_devel):
+From fdc18d7 (branch cal_devel_data):
 ============
 (*) Fixed bug where calibration expression included z*n term that shouldn't have been there.
 (*) Added ability to give sky model to cal with no freq dependence
@@ -15,18 +19,18 @@ From fdc18d7 (branch_cal_devel):
 (*) Moved frequency average to before fixing phase
 (*) Inserted temporary fix to holographic image phase issue (fix_holographic_phase)
 
-From 7788225 (branch cal_devel):
+From 7788225 (branch cal_devel_data):
 ============
 (*) Fixed gain_factor->damping_gain change
 
-From 7da7acd (branch cal_devel):
+From 7da7acd (branch cal_devel_data):
 ============
 (*) Removed some old code in sim scripts
 (*) Added cal_paper_sim for simulation to be used in cal paper
 (*) Changed gain_factor in cal to damping_factor for ease of reading
 	Inverted behavior (gf of 0.7 == df of 0.3)
 
-From 79df434 (branch cal_devel):
+From 79df434 (branch cal_devel_data):
 ============
 (*) Finished support to exclude autos in cal
 (*) Fixed rxr noise amplitude in cal simulation
