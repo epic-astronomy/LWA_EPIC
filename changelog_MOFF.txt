@@ -1,3 +1,7 @@
+From 66d698a (branch cal_devel_data):
+============
+(*) Adding wrapper cal_noise_analysis.py to look at noise behavior of cal solutions.
+
 From 64d6cbd (branch cal_devel_data):
 ============
 (*) minor tweaks to multi_source_cal
