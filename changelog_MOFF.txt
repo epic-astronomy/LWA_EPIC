@@ -1,3 +1,15 @@
+From 64d6cbd (branch cal_devel_data):
+============
+(*) minor tweaks to multi_source_cal
+
+From efdd4e8 (branch cal_devel_data):
+============
+(*) Lots of tweaks to data calibration wrapper to make it work
+
+From 84827db (branch cal_devel_data):
+============
+(*) Adding ability to calibrate using correlations from multiple pixels
+
 From cb47d88 (branch cal_devel_data):
 ============
 (*) Fiddled with progress bars in LWA cal script
