@@ -32,7 +32,7 @@ class cal:
                         Dimension: n_ant x n_chan
 
     cal_corr:           Complex numpy array, correlation currently being integrated/averaged.
-                        Dimension: n_ant x n_chan
+                        Dimension: n_cal_sources x n_ant x n_chan
 
     sim_mode:           [Boolean] represting whether in simulation mode. Default = False.
 
@@ -71,13 +71,20 @@ class cal:
     model_vis:          Model visibilities. Calculated in cal loop.
                         Dimensions: n_ant x n_ant x n_chan
 
-    cal_source:         [integer] Number pointing to calibration source (indexing the first
-                        dimension of sky_model). Default = brightest in model.
+    cal_sources:        [numpy array] Number pointing to calibration source(s) (indexing 
+                        the first dimension of sky_model). Default = brightest in model.
+                        Dimensions: n_cal_sources (numpy array even if only 1 source)
                         TODO: make default the brightest _beam weighted_ source in model.
 
-    cal_pix_loc:        Location (l,m,n) of pixel closest to cal_source. Calculated in loop.
+    n_cal_sources:      [integer] Number of sources to calibrate with. If cal_sources is supplied,
+                        n_cal_sources will be overwritten by dimension of cal_sources.
+                        Default = 1
 
-    cal_pix_ind:        Index (x,y) of pixel closest to cal_source. Calculated in loop.
+    cal_pix_locs:       Location (l,m,n) of pixels closest to cal_sources. Calculated in loop.
+                        Dimension = n_cal_sources x 3
+
+    cal_pix_inds:       Index (x,y) of pixels closest to cal_sources. Calculated in loop.
+                        Dimension = n_cal_sources x 2
 
     fix_holographic_phase: [Boolean] Temporary fix to undo a phase offset in the holographic images.
                         Especially important when using exclude_autos.
@@ -112,9 +119,9 @@ class cal:
     """
 
     def __init__(self, freqs, ant_pos, ref_ant=0, freq_ave=1, pol='P1', curr_gains=None, sim_mode=False, 
-        n_iter=10, damping_factor=0.0, inv_gains=False, sky_model=NP.ones(1,dtype=NP.float32), cal_source=None, 
-        phase_fit=False, auto_noise_model=0.0, exclude_autos=False, fix_holographic_phase=True, flatten_array=False,
-        conv_thresh=0.01, conv_max_try=20):
+        n_iter=10, damping_factor=0.0, inv_gains=False, sky_model=NP.ones(1,dtype=NP.float32), cal_sources=None, 
+        n_cal_sources=1, phase_fit=False, auto_noise_model=0.0, exclude_autos=False, fix_holographic_phase=True, 
+        flatten_array=False, conv_thresh=0.01, conv_max_try=200):
 
         # Get derived values and check types, etc.
         n_chan = freqs.shape[0]
@@ -173,7 +180,6 @@ class cal:
             self.curr_gains = NP.ones((n_ant,n_chan), dtype=NP.complex64)
         else:
             self.curr_gains = curr_gains
-        self.cal_corr = NP.zeros((n_ant,n_chan), dtype=NP.complex64)
         self.sim_mode = sim_mode
         if sim_mode:
             self.sim_gains = self.simulate_gains()
@@ -187,15 +193,23 @@ class cal:
         self.exclude_autos = exclude_autos
         self.auto_corr = NP.zeros((n_ant,n_chan), dtype=NP.float32)
         self.ant_twt = NP.zeros((n_ant,n_chan), dtype=NP.int32)
-        if cal_source is None:
-            # Use brightest source in model
+        if cal_sources is None:
+            # Use brightest sources in model
             if self.sky_model.shape[1] > 1:
-                self.cal_source = sky_model[:,n_chan/2,3].argmax()
+                arr = sky_model[:,n_chan/2,3]
             else:
-                self.cal_source = sky_model[:,0,3].argmax()
+                arr = sky_model[:,0,3]
+            self.cal_sources = arr.argsort()[-n_cal_sources:][::-1] # returns indices of brightest n_cal_sources sources
+            self.n_cal_sources = n_cal_sources
         else:
-            self.cal_source = cal_source
-        self.cal_pix_ind = None # placeholder until it can be calculated.
+            cal_sources = NP.array([cal_sources]).flatten()
+            self.cal_sources = cal_sources
+            self.n_cal_sources = cal_sources.shape[0]
+
+        self.cal_pix_inds = None # placeholder until it can be calculated.
+
+        self.cal_corr = NP.zeros((self.n_cal_sources,n_ant,n_chan), dtype=NP.complex64)
+        
         # model_vis, cal_pix_loc, and cal_pix_ind are determined after an imgobj is passed in.
         self.fix_holographic_phase = fix_holographic_phase
         self.flatten_array = flatten_array
@@ -228,10 +242,13 @@ class cal:
         # but for testing we'll do it here.
         print 'Updating model visibilities.'
 
-        # First find the appropriate pixel to phase to.
-        xind,yind = NP.unravel_index(NP.argmin((gridl-self.sky_model[self.cal_source,0,0])**2+(gridm-self.sky_model[self.cal_source,0,1])**2),gridl.shape) 
-        self.cal_pix_ind = NP.array([xind,yind])
-        self.cal_pix_loc = NP.array([gridl[xind,yind], gridm[xind,yind], NP.sqrt(1-gridl[xind,yind]**2-gridm[xind,yind]**2)])
+        # First find the appropriate pixels to phase to.
+        self.cal_pix_inds = NP.zeros((self.n_cal_sources,2))
+        self.cal_pix_locs = NP.zeros((self.n_cal_sources,3))
+        for i in NP.arange(self.n_cal_sources):
+            xind,yind = NP.unravel_index(NP.argmin((gridl-self.sky_model[self.cal_sources[i],0,0])**2+(gridm-self.sky_model[self.cal_sources[i],0,1])**2),gridl.shape) 
+            self.cal_pix_inds[i,:] = NP.array([xind,yind])
+            self.cal_pix_locs[i,:] = NP.array([gridl[xind,yind], gridm[xind,yind], NP.sqrt(1-gridl[xind,yind]**2-gridm[xind,yind]**2)])
 
         # Reshape arrays to match: n_src x n_ant x n_chan x 3
         n_src = self.sky_model.shape[0]
@@ -288,17 +305,21 @@ class cal:
 
     def update_cal(self, Edata, imgobj):
         # Check if correlation pixel is known
-        if self.cal_pix_ind is None:
+        if self.cal_pix_inds is None:
             self.update_model_vis(imgobj.gridl, imgobj.gridm)
 
-        imgdata = imgobj.holimg[self.pol][self.cal_pix_ind[0],self.cal_pix_ind[1],:].flatten()
+        #imgdata = imgobj.holimg[self.pol][self.cal_pix_ind[0],self.cal_pix_ind[1],:].flatten()
+        imgdata = NP.zeros((self.n_cal_sources,self.n_chan),dtype=NP.complex64)
+        for i in xrange(self.n_cal_sources):
+            imgdata[i,:] = imgobj.holimg[self.pol][self.cal_pix_inds[i,0],self.cal_pix_inds[i,1],:].flatten()
 
         self.calc_corr(Edata,imgdata)
 
         if self.count == self.n_iter:
             # Reached integration level, update the estimated gains
 
-            temp_gains = self.curr_gains
+            # get a set of gains for each cal source
+            temp_gains = NP.repeat(self.curr_gains.reshape(1,self.n_ant,self.n_chan),self.n_cal_sources,axis=0)
             tries = 0
             change = 100.0 # placeholder
 
@@ -310,40 +331,41 @@ class cal:
                 # The holographic images have a silly phase running through them due to not centering when padding. Take it out.
                 dl = imgobj.gridl[0,1]-imgobj.gridl[0,0]
                 dm = imgobj.gridm[1,0]-imgobj.gridm[0,0]
-                phase_fix = NP.exp(-1j * NP.pi * (self.cal_pix_loc[0]/dl + self.cal_pix_loc[1]/dm) / 2)
+                phase_fix = NP.exp(-1j * NP.pi * (self.cal_pix_locs[:,0]/dl + self.cal_pix_locs[:,1]/dm) / 2).reshape(self.n_cal_sources,1,1)
                 self.cal_corr = self.cal_corr * phase_fix            
 
-            self.cal_corr = self.cal_corr / self.ant_twt # make it an average
+            self.cal_corr = self.cal_corr / self.ant_twt.reshape((1,self.n_ant,self.n_chan)) # make it an average
             if self.exclude_autos:
                 self.auto_corr = self.auto_corr / self.ant_twt
 
                         # Expression depends on type of calibration
             if self.inv_gains:
                 # Inverted gains version
-                applied_cal = NP.conj(self.curr_gains)
+                applied_cal = NP.conj(self.curr_gains).reshape((1,self.n_ant,self.n_chan))
             else:
                 # Regular version
-                applied_cal = 1/self.curr_gains
+                applied_cal = 1/self.curr_gains.reshape((1,self.n_ant,self.n_chan))
 
             if self.exclude_autos:
-                self.cal_corr = self.cal_corr - NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos[:,:,0:2] * self.cal_pix_loc[0:2].reshape(1,1,2),axis=2)) * self.auto_corr * NP.conj(applied_cal) / self.n_ant
+                # HACK to add beam
+                #self.cal_corr[1,:,:] = self.cal_corr[1,:,:]/NP.sqrt(.57)
+                self.cal_corr = self.cal_corr - NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos[:,:,0:2].reshape((1,self.n_ant,self.n_chan,2)) * self.cal_pix_locs[:,0:2].reshape(self.n_cal_sources,1,1,2),axis=3)) * self.auto_corr.reshape((1,self.n_ant,self.n_chan)) * NP.conj(applied_cal) / self.n_ant
              
 
             while (tries < self.conv_max_try) and (change > self.conv_thresh):
                 # Begin 'minor loop'
                 prev_gains = temp_gains
-
-                temp_gains = self.cal_corr * (NP.sum(self.ant_twt,axis=0).reshape(1,-1) - self.ant_twt) * self.n_ant / NP.sum((self.n_ant-1) * self.ant_twt.reshape(-1,self.n_ant,self.n_chan) * NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos[:,:,0:2] * self.cal_pix_loc[0:2].reshape(1,1,2),axis=2)) * self.model_vis * NP.conj(NP.reshape(applied_cal*prev_gains,(1,self.n_ant,self.n_chan))), axis=1)
+                temp_gains = self.cal_corr * (NP.sum(self.ant_twt,axis=0).reshape(1,1,-1) - self.ant_twt.reshape(1,self.n_ant,self.n_chan)) * self.n_ant / NP.sum((self.n_ant-1) * self.ant_twt.reshape(1,1,self.n_ant,self.n_chan) * NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos[:,:,0:2].reshape((1,1,self.n_ant,self.n_chan,2)) * self.cal_pix_locs[:,0:2].reshape(self.n_cal_sources,1,1,1,2),axis=4)) * self.model_vis.reshape((1,self.n_ant,self.n_ant,self.n_chan)) * NP.conj(NP.reshape(applied_cal*prev_gains,(self.n_cal_sources,1,self.n_ant,self.n_chan))), axis=2)
 
                 # Average in frequency
                 for i in NP.arange(NP.ceil(NP.float(self.n_chan)/self.freq_ave)):
                     mini=i*self.freq_ave
                     maxi=NP.min((self.n_chan,(i+1)*self.freq_ave))
-                    temp_gains[:,mini:maxi] = NP.nanmean(temp_gains[:,mini:maxi],axis=1).reshape(self.n_ant,1)
+                    temp_gains[:,:,mini:maxi] = NP.nanmean(temp_gains[:,:,mini:maxi],axis=2).reshape(self.n_cal_sources,self.n_ant,1)
 
                 # Fix ref_ant's phase.
-                phasor = temp_gains[self.ref_ant,:]/NP.abs(temp_gains[self.ref_ant,:])
-                temp_gains = temp_gains * NP.conj(phasor).reshape(1,self.n_chan)
+                phasor = temp_gains[:,self.ref_ant,:]/NP.abs(temp_gains[:,self.ref_ant,:])
+                temp_gains = temp_gains * NP.conj(phasor).reshape(self.n_cal_sources,1,self.n_chan)
 
                 temp_gains = prev_gains * self.damping_factor + temp_gains * (1-self.damping_factor)
 
@@ -353,6 +375,10 @@ class cal:
             print 'Cal minor loop took {} iterations.'.format(tries)
             if tries == self.conv_max_try:
                 print 'Warning! Gains failed to converge. Continuing.'
+
+            # Combine gains found from all pixels.
+            # For now do the simplest thing and just average. Should probably be a weighted average of sorts eventually.
+            temp_gains = NP.mean(temp_gains,axis=0)
 
             if self.phase_fit:
                 # Only fit phase
@@ -365,7 +391,7 @@ class cal:
 
             # Reset integrations
             self.count = 0
-            self.cal_corr = NP.zeros((self.n_ant,self.n_chan), dtype=NP.complex64)
+            self.cal_corr = NP.zeros((self.n_cal_sources,self.n_ant,self.n_chan), dtype=NP.complex64)
             self.auto_corr = NP.zeros((self.n_ant,self.n_chan), dtype=NP.float32)
             self.ant_twt = NP.zeros((self.n_ant,self.n_chan), dtype=NP.int32)
 
@@ -374,8 +400,9 @@ class cal:
     def calc_corr(self, Edata, imgdata):
         # Perform the correlation of antenna data with image output.
         # Kind of silly to separate this into a function, but conceptually it makes sense.
-        #self.cal_corr = self.cal_corr + Edata*NP.reshape(NP.conj(imgdata),(1,self.n_chan))
-        self.cal_corr += NP.where(NP.isnan(Edata),0,Edata*NP.reshape(NP.conj(imgdata),(1,self.n_chan)))
+        #self.cal_corr += NP.where(NP.isnan(Edata),0,Edata*NP.reshape(NP.conj(imgdata),(1,self.n_chan)))
+        self.cal_corr += NP.where(NP.isnan(Edata.reshape((1,self.n_ant,self.n_chan))),0,Edata.reshape((1,self.n_ant,self.n_chan))*NP.reshape(NP.conj(imgdata),(self.n_cal_sources,1,self.n_chan)))
+        
         self.ant_twt += NP.where(NP.isnan(Edata),0,1)
         if self.exclude_autos:
             #self.auto_corr = self.auto_corr + NP.abs(Edata)**2
