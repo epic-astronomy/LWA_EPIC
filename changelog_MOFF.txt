@@ -1,3 +1,7 @@
+From c72c989 (branch cal_devel_data):
+(*) Fine tuning and consolidating cal noise analysis.
+(*) ... should really merge back to cal_devel.
+
 From 66d698a (branch cal_devel_data):
 ============
 (*) Adding wrapper cal_noise_analysis.py to look at noise behavior of cal solutions.
