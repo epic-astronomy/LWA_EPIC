@@ -98,7 +98,7 @@ class cal:
                         Default = 0.01
 
     conv_max_try:       [integer] Maximum iterations in cal minor loop before quitting due to lack of convergence.
-                        Default = 20
+                        Default = 2000
 
     *** Functions ***
 
@@ -121,7 +121,7 @@ class cal:
     def __init__(self, freqs, ant_pos, ref_ant=0, freq_ave=1, pol='P1', curr_gains=None, sim_mode=False, 
         n_iter=10, damping_factor=0.0, inv_gains=False, sky_model=NP.ones(1,dtype=NP.float32), cal_sources=None, 
         n_cal_sources=1, phase_fit=False, auto_noise_model=0.0, exclude_autos=False, fix_holographic_phase=True, 
-        flatten_array=False, conv_thresh=0.01, conv_max_try=200):
+        flatten_array=False, conv_thresh=0.000001, conv_max_try=2000):
 
         # Get derived values and check types, etc.
         n_chan = freqs.shape[0]
@@ -351,10 +351,11 @@ class cal:
                 #self.cal_corr[1,:,:] = self.cal_corr[1,:,:]/NP.sqrt(.57)
                 self.cal_corr = self.cal_corr - NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos[:,:,0:2].reshape((1,self.n_ant,self.n_chan,2)) * self.cal_pix_locs[:,0:2].reshape(self.n_cal_sources,1,1,2),axis=3)) * self.auto_corr.reshape((1,self.n_ant,self.n_chan)) * NP.conj(applied_cal) / self.n_ant
              
-
+            # gain_history=NP.zeros((self.conv_max_try,self.n_ant),dtype=NP.complex64)
             while (tries < self.conv_max_try) and (change > self.conv_thresh):
                 # Begin 'minor loop'
-                prev_gains = temp_gains
+                prev_gains = temp_gains.copy()
+                # gain_history[tries,:] = temp_gains[0,:,self.n_chan/2]
                 temp_gains = self.cal_corr * (NP.sum(self.ant_twt,axis=0).reshape(1,1,-1) - self.ant_twt.reshape(1,self.n_ant,self.n_chan)) * self.n_ant / NP.sum((self.n_ant-1) * self.ant_twt.reshape(1,1,self.n_ant,self.n_chan) * NP.exp(1j * 2*NP.pi * NP.sum(self.ant_pos[:,:,0:2].reshape((1,1,self.n_ant,self.n_chan,2)) * self.cal_pix_locs[:,0:2].reshape(self.n_cal_sources,1,1,1,2),axis=4)) * self.model_vis.reshape((1,self.n_ant,self.n_ant,self.n_chan)) * NP.conj(NP.reshape(applied_cal*prev_gains,(self.n_cal_sources,1,self.n_ant,self.n_chan))), axis=2)
 
                 # Average in frequency
@@ -369,13 +370,13 @@ class cal:
 
                 temp_gains = prev_gains * self.damping_factor + temp_gains * (1-self.damping_factor)
 
-                change = NP.median(NP.abs(temp_gains-prev_gains)/NP.abs(prev_gains))
+                change = NP.max(NP.abs(temp_gains-prev_gains)/NP.abs(prev_gains))
                 tries += 1
 
             print 'Cal minor loop took {} iterations.'.format(tries)
             if tries == self.conv_max_try:
                 print 'Warning! Gains failed to converge. Continuing.'
-
+            # PDB.set_trace()
             # Combine gains found from all pixels.
             # For now do the simplest thing and just average. Should probably be a weighted average of sorts eventually.
             temp_gains = NP.mean(temp_gains,axis=0)
