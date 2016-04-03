@@ -1,3 +1,11 @@
+From ee36176 (master):
+=====================
+
+In antenna_array.py,
+
+(*) Minor correction in docstring of member function grid() of class
+InterferometerArray
+
 From f87ab5b (branch padding):
 =============================
 

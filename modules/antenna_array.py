@@ -3307,12 +3307,12 @@ class InterferometerArray:
                     desirable at the lowest wavelength (max frequency). 
                     Default = 0.5
 
-        xypad       [List] Padding to be applied around the antenna locations 
-                    before forming a grid. List elements should be positive. If 
-                    it is a one-element list, the element is applicable to both 
-                    x and y axes. If list contains three or more elements, only 
-                    the first two elements are considered one for each axis. 
-                    Default = None.
+        xypad       [List] Padding to be applied around the interferometer 
+                    locations before forming a grid. List elements should be 
+                    positive. If it is a one-element list, the element is 
+                    applicable to both x and y axes. If list contains three or 
+                    more elements, only the first two elements are considered 
+                    one for each axis. Default = None.
 
         pow2        [Boolean] If set to True, the grid is forced to have a size 
                     a next power of 2 relative to the actual sie required. If 
