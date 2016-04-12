@@ -1,3 +1,8 @@
+From 2884441 (Adam-master), cc0bbb2 (Adam origin master):
+========================================================
+
+(*) Merge 2884441 (Adam-master), cc0bbb2 (Adam origin master)
+
 From 66d4328 (master):
 =====================
 
@@ -11,6 +16,291 @@ In antenna_array.py,
 (*) Minor correction in docstring of member function grid() of class
 InterferometerArray
 
+From c72c989 (branch cal_devel_data):
+====================================
+
+(*) Fine tuning and consolidating cal noise analysis.
+(*) ... should really merge back to cal_devel.
+
+From 66d698a (branch cal_devel_data):
+============
+(*) Adding wrapper cal_noise_analysis.py to look at noise behavior of cal solutions.
+
+From 64d6cbd (branch cal_devel_data):
+============
+(*) minor tweaks to multi_source_cal
+
+From efdd4e8 (branch cal_devel_data):
+============
+(*) Lots of tweaks to data calibration wrapper to make it work
+
+From 84827db (branch cal_devel_data):
+============
+(*) Adding ability to calibrate using correlations from multiple pixels
+
+From cb47d88 (branch cal_devel_data):
+============
+(*) Fiddled with progress bars in LWA cal script
+
+From 2befd8c (branch cal_devel_data):
+============
+(*) Added calibration minor loop to iterate over stationary data correlation.
+
+From bbd355d (branch cal_devel_data):
+============
+(*) Added options to calibrate_LWA_data.py to replace data with simulation
+(*) Added option to flatten_array in calibration to account for 2D gridding
+
+From fdc18d7 (branch cal_devel_data):
+============
+(*) Fixed bug where calibration expression included z*n term that shouldn't have been there.
+(*) Added ability to give sky model to cal with no freq dependence
+(*) Updated cal class to handle nans
+(*) Moved frequency average to before fixing phase
+(*) Inserted temporary fix to holographic image phase issue (fix_holographic_phase)
+
+From 7788225 (branch cal_devel_data):
+============
+(*) Fixed gain_factor->damping_gain change
+
+From 7da7acd (branch cal_devel_data):
+============
+(*) Removed some old code in sim scripts
+(*) Added cal_paper_sim for simulation to be used in cal paper
+(*) Changed gain_factor in cal to damping_factor for ease of reading
+	Inverted behavior (gf of 0.7 == df of 0.3)
+
+From 79df434 (branch cal_devel_data):
+============
+(*) Finished support to exclude autos in cal
+(*) Fixed rxr noise amplitude in cal simulation
+
+From 4cab0bc (branch cal_devel):
+============
+(*) Cleaned up a ton of cal code
+(*) Removed "phased visibilities"
+(*) Added script to calibrate LWA data
+(*) Added support to average cal solutions in freq
+(*) Added option to model auto noise
+(*) Started support to exclude autos from cal
+
+From 0b58e4e (branch cal_devel):
+============
+(*) Fixed calibration phase of reference antenna.
+(*) Added plotting code to cal wrapper.
+
+From e6c6fc4 (branch cal_devel):
+============
+(*) Mostly added support for cal source off-center.
+(*) Still need to add beam value for this (Nithya's working on it).
+(*) Added cal2 class to rework/clean up code. Will eventually replace cal.
+
+From 474b84e (branch cal_devel):
+============
+(*) Small tweaks to rename cal to EPICal.
+
+From 9da3ea9 (branch cal_devel):
+============
+(*) Fine tuning some parameters to make multi-source work better.
+(*) Took out functional form in multi_source_cal.py.
+
+
+From b5c3ff6 (branch cal_devel):
+============
+(*) merging master into cal_devel branch.
+
+From b48b5b3 (branch cal_devel):
+============
+(*) Updating multi_source_cal wrapper to conform to new gridding.
+(*) Now using square tophat beams for cal script.
+
+From 4a47ed5 (branch cal_devel):
+============
+
+(*) Tweaking some parameters in cal script, cleaning code
+(*) Fixed typo in cal module
+(*) Note somewhere I introduced a bug in the multi-cal which I'm
+    still hunting!
+
+From b867de8 (branch cal_devel):
+============
+
+(*) Revamped the multi-source calibration to incorporate all sources
+    at once.
+(*) Requires model visibilities to be formed before the cal loop.
+(*) Multi-source is now independent of the single source loop, but
+    does conform with it under the single-source limit.
+(*) Added option to add receiver noise (independent for each antenna)
+    at the script level of cal loops. Will eventually want this in
+	antenna class
+
+From d49e4c4 (branch cal_devel):
+============
+
+(*) Added LWA antenna positions for calibration script.
+
+From a6e8d49 (branch cal_devel):
+============
+
+(*) Added a new expression for calibration updates.
+	It is a simpler expression and seems to give more sane solutions.
+(*) Keeping the old expression by setting the cal_ver='old' when initializing
+	cal object.
+
+From b55db4b (branch cal_devel):
+============
+
+(*) Adding structure for first-attempt multi-source calibration.
+	Note: NOT currently working, but conforms to single source just fine.
+
+From 47b54557 (branch cal_devel):
+=============
+
+(*) Fixed bug in the way gains were averaged over time for the non-inverted
+gains case.
+
+
+From e533f496 (branch cal_devel):
+=============
+
+(*) Major upgrade to cal algorithm to include proper frequency dependence.
+(*) Major restructuring of cal class to account for frequency and anticipate
+multi-source calibration.
+(*) Removing simple_cal_script as it is now obsolete.
+(*) Added reference point to cal class for phasing of antennas.
+(*) Fixed bug when averaging gains and gain_inv = False.
+
+From a0c1b87 (branch cal_devel):
+============
+
+(*) Added functionality for off-center calibrator.
+	Required a lot of format changes, so simple_cal_script needs updating.
+(*) Added script off_center_cal.py.
+(*) Still have bugs that need to be worked out. Specifically, there seems to
+be a systematic bias in my off-center calibration solutions.
+(*) More cleaning of code.	
+
+From afcf778 (FX-serial-all-lines-profiling):
+============================================
+
+In antenna_array.py,
+
+(*) Assign NaN values in Ef and Vf to 0.0 in member functions
+applyMappingMatrix() of classes InterferometerArray and AntennaArray
+
+In antenna_array_for_profiler.py,
+
+(*) Assign NaN values in Ef and Vf to 0.0 in member functions
+applyMappingMatrix() of classes InterferometerArray and AntennaArray
+(*) THIS CHANGE WILL CHANGE THE LINES WHERE THE APPROPRIATE LINES IN THE
+PROFILE OUTPUT MUST BE PARSED BUT NOT CORRECTING FOR IT AT THE MOMENT.
+NEEDS TO BE CORRECTED EVENTUALLY
+
+From 70160c7 (FX-serial-all-lines-profiling):
+============================================
+
+(*) Rename antenna_array.py to antenna_array_for_profiler.py
+(*) Create antenna_array.py without @profile decorators
+
+From 7da842f (FX-serial-all-lines-profiling):
+============================================
+
+Add MOFF_FX_performance_profiling_script_with_filling_fraction.sh,
+MOFF_FX_performance_profiling_script_filename_corrections.sh,
+MOFF_FX_performance_comparison_all_lines.py, and MOFF_FX_crossover.py,
+to git repository.
+
+In antenna_layout.py,
+
+(*) Estimate n_total in hexagon_relations() for the case when
+n_center is specified in input
+(*) Add value checking in hexagon_relations() that n_center must be
+odd
+
+From 989fad9 (performance):
+==========================
+
+(*) Reorganize directory structure for profiling outputs
+(*) Add antenna_layout.py to git repo
+
+In antenna_array.py,
+
+(*) Add @profile decorator to all function definition statements
+
+In aperture.py,
+
+(*) Remove usage of rmin in auto_convolved_circular() function
+
+From 7d31bbb (performance):
+==========================
+
+(*) Add new MOFF_FX_performance_comparison.py to git repo which does
+the timing comparison between MOFF and FX runs
+
+From b5eaaaf (performance):
+==========================
+
+(*) Make MOFF_FX_performance_comparison.py modular so it can be
+executed as a main program as well as imported as a module
+(*) Rename MOFF_FX_performance_comparison.py to
+MOFF_FX_performance_profiling.py
+(*) Add files MOFF_FX_performance_profiling_shell_script_generator.py
+and MOFF_FX_performance_profiling_script.sh to git repository
+
+In antenna_array.py,
+
+(*) Add @profile decorators to functions that need to be profiled in
+antenna_array.py
+
+From 28de1e2 (performance) + 716213e (patch1):
+=============================================
+
+Merge branch patch1 from master onto performance branch
+
+From 502ef3f (branch performance):
+=================================
+
+In antenna_array.py,
+
+(*) Add keyword input pad to member function removeAutoCorr() of class
+NewImage. Update docstring accordingly
+(*) Minor modification to docstring of member function
+evalPowerPattern() of class NewImage
+(*) @profile decorators removed for testing
+
+5d80d15 (performance) + f87ab5b (padding-patch):
+===============================================
+
+(*) Merge branches performance and padding-patch
+
+From 5d80d15 (branch performance):
+=================================
+
+In antenna_array.py,
+
+(*) Add @profile decorators for functions that have to be profiled
+
+From 4fa22d8 (branch master):
+============================
+
+In antenna_array.py,
+
+(*) Minor modification to docstring of removeAutoCorr() member
+function of class NewImage
+
+From ee36176 (branch padding):
+=============================
+
+In antenna_array.py,
+
+(*) Add keyword input pad to member function removeAutoCorr() of class
+NewImage. Update docstring accordingly
+(*) Minor modification to docstring of member function
+evalPowerPattern() of class NewImage
+
+>>>>>>> upstream/FX-serial-all-lines-profiling
+####### Ancestor
+======= end
 From f87ab5b (branch padding):
 =============================
 
@@ -51,6 +341,7 @@ accordingly
 (*) Remove few previously commented lines in imagr() member 
 function of class NewImage
 
+>>>>>>> master
 From 99344bf (branch performance):
 =================================
 
@@ -728,10 +1019,19 @@ In aperture.py,
 aperture illumination
 (*) Tidy up and update missing information in docstring of function
 rect()
+>>>>>>> master
 
 From ef4576a:
 ============
 
+<<<<<<< HEAD
+(*) Created new cal_devel branch for development of calibration capabilities
+(*) Changed cal script to actually mix up the data with "unknown" gains
+(*) Added option to calibrate by either dividing by gains, or by multiplying
+by conjugate of gains.
+(*) Moved file beardsley.py -> simple_cal_script.py
+
+=======
 Add new module aperture.py to repository
 
 In aperture.py,
@@ -739,6 +1039,7 @@ In aperture.py,
 (*) Add function inputcheck() (with docstring) to check inputs
 (*) Add function rect() (with docstring) to create a uniform
 rectangular aperture illumination
+>>>>>>> master
 
 From 88f97d5:
 ============
