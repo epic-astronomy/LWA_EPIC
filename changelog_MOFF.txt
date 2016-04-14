@@ -1,3 +1,13 @@
+From dcac707 (ant-beams-in-sim):
+===============================
+
+In sim_observe.py,
+
+(*) Add keyword voltage_pattern in stochastic_E_timeseries() and
+update docstring. Modify stochastic_E_timeseries() to now
+simulate E-fields using voltage pattern that is specified for every
+antenna at every sky location for all frequency channels.
+
 From 4e5d4d3 (master):
 =====================
 

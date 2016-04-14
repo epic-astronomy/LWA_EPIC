@@ -321,7 +321,7 @@ def stochastic_E_spectrum(freq_center, nchan, channel_width, flux_ref=1.0,
 def stochastic_E_timeseries(freq_center, nchan, channel_width, flux_ref=1.0,
                             freq_ref=None, spectral_index=0.0, skypos=None, 
                             ref_point=None, antpos=[0.0,0.0,0.0], spectrum=True,
-                            tshift=True, verbose=True):
+                            tshift=True, voltage_pattern=None, verbose=True):
 
     """
     -----------------------------------------------------------------------------
@@ -389,6 +389,14 @@ def stochastic_E_timeseries(freq_center, nchan, channel_width, flux_ref=1.0,
                      the tiemseries was created. The spectral information 
                      (frequency and electric field spectrum) is returned with 
                      keys 'f' and 'Ef' in the returned dictionary dictout.
+
+    voltage_pattern  [numpy array] Voltage pattern for each frequency channel
+                     at each source location for each antenna. It must be of
+                     shape nsrc x nchan x nant. If any of these dimensions are
+                     1, it is assumed to be identical along that direction. 
+                     If specified as None (default), it is assumed to be unity
+                     and identical across antennas, sky locations and frequency
+                     channels. 
 
     verbose          [boolean] If set to True, prints progress and diagnostic
                      messages. Default = True.
@@ -462,11 +470,13 @@ def stochastic_E_timeseries(freq_center, nchan, channel_width, flux_ref=1.0,
         spectrum_info = stochastic_E_spectrum(freq_center, nchan, channel_width,
                                               flux_ref, freq_ref, spectral_index,
                                               skypos=skypos, antpos=antpos,
+                                              voltage_pattern=voltage_pattern,
                                               verbose=verbose)
     else:
         spectrum_info = stochastic_E_spectrum(freq_center, nchan, channel_width,
                                               flux_ref, freq_ref, spectral_index,
                                               skypos=skypos, antpos=antpos,
+                                              voltage_pattern=voltage_pattern,
                                               ref_point=ref_point, verbose=verbose)
         
     if verbose:
