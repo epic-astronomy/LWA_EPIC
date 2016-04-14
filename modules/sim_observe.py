@@ -514,7 +514,8 @@ def stochastic_E_timeseries(freq_center, nchan, channel_width, flux_ref=1.0,
 
 def monochromatic_E_spectrum(freq, flux_ref=1.0, freq_ref=None, 
                              spectral_index=0.0, skypos=None, ref_point=None,
-                             antpos=[0.0,0.0,0.0], verbose=True):
+                             antpos=[0.0,0.0,0.0], voltage_pattern=None,
+                             verbose=True):
 
     """
     -----------------------------------------------------------------------------
@@ -532,7 +533,7 @@ def monochromatic_E_spectrum(freq, flux_ref=1.0, freq_ref=None,
     Keyword Inputs:
 
     flux_ref         [list or numpy array of float] Flux densities of sources
-                     at the specified frequencies. Units are 
+                     at the specified frequency. Units are 
                      arbitrary. Values have to be positive. Default = 1.0. 
 
     freq_ref         [list or numpy array of float] Reference frequency (Hz). 
@@ -574,6 +575,13 @@ def monochromatic_E_spectrum(freq, flux_ref=1.0, freq_ref=None,
                      numpy array. Each 3-element entity corresponds to an
                      antenna position. If not specified, antpos by default is 
                      assigned the origin (0.0, 0.0, 0.0).
+
+    voltage_pattern  [numpy array] Voltage pattern for given frequency channel
+                     at each source location for each antenna. It must be of
+                     shape nsrc x nant. If any of these dimensions 
+                     are 1, it is assumed to be identical along that direction. 
+                     If specified as None (default), it is assumed to be unity
+                     and identical across antennas, and sky locations
 
     verbose:         [boolean] If set to True, prints progress and diagnostic
                      messages. Default = True.
@@ -741,30 +749,46 @@ def monochromatic_E_spectrum(freq, flux_ref=1.0, freq_ref=None,
         raise TypeError('Antenna position (antpos) must be a three-element list or tuple, list of lists or list of tuples with each of the inner lists or tuples holding three elements, or a three-column numpy array.')
      
     nant = antpos.shape[0]
+    nchan = 1
+
+    if voltage_pattern is None:
+        voltage_pattern = NP.ones(1).reshape(1,1)
+    elif not isinstance(voltage_pattern, NP.ndarray):
+        raise TypeError('Input antenna voltage pattern must be an array')
+
+    if voltage_pattern.ndim == 1:
+        voltage_pattern = voltage_pattern[:,NP.newaxis]
+    elif voltage_pattern.ndim != 2:
+        raise ValueError('Dimensions of voltage pattern incompatible')
+
+    vb_shape = voltage_pattern.shape
+    if (vb_shape[1] != 1) and (vb_shape[1] != nant):
+        raise ValueError('Input voltage pattern must be specified for each antenna or assumed to be identical to all antennas')
+    if (vb_shape[0] != 1) and (vb_shape[0] != nsrc):
+        raise ValueError('Input voltage pattern must be specified at each sky location or assumed to be identical at all locations')
 
     if verbose:
         print '\tArguments verified for compatibility.'
         print '\tSetting up the recipe for producing monochromatic Electric field...'
 
-    nchan = 1
-    alpha = spectral_index.reshape(-1)
-    freq_ratio = freq / freq_ref
-    flux = flux_ref * (freq_ratio ** alpha)
-    sigma = NP.sqrt(flux).reshape(-1,1)
-    Ef_amp = sigma
-    Ef_phase = NP.random.uniform(low=0.0, high=2*NP.pi, size=(nsrc,nchan))
-    Ef_sky =  Ef_amp * NP.exp(1j * Ef_phase)
-    Ef_matrix = NP.repeat(Ef_sky, nant, axis=1)
-    skypos_dot_antpos = NP.dot(skypos-ref_point, antpos.T)
-    k_dot_r_phase = 2.0 * NP.pi * (freq/FCNST.c) * skypos_dot_antpos
-    Ef_2D = Ef_sky * NP.exp(1j * k_dot_r_phase)
-    Ef = NP.sum(Ef_2D, axis=0)
+    alpha = spectral_index.reshape(-1) # size nsrc
+    freq_ratio = freq / freq_ref # size nchan=1
+    flux = flux_ref * (freq_ratio ** alpha) # size nsrc
+    sigma = NP.sqrt(flux).reshape(-1,1) # size nsrc x (nchan=1)
+    Ef_amp = sigma # size nsrc x (nchan=1)
+    Ef_phase = NP.random.uniform(low=0.0, high=2*NP.pi, size=(nsrc,nchan)) # size nsrc x (nchan=1)
+    Ef_sky =  Ef_amp * NP.exp(1j * Ef_phase) # nsrc x (nchan=1)
+    # Ef_matrix = NP.repeat(Ef_sky, nant, axis=1) # nsrc x nant
+    skypos_dot_antpos = NP.dot(skypos-ref_point, antpos.T) # nsrc x nant
+    k_dot_r_phase = 2.0 * NP.pi * (freq/FCNST.c) * skypos_dot_antpos # nsrc x nant
+    Ef_2D = voltage_pattern * Ef_sky * NP.exp(1j * k_dot_r_phase) # nsrc x nant
+    Ef = NP.sum(Ef_2D, axis=0) # nant
     if verbose:
         print '\tPerformed linear superposition of electric fields from source(s).'
     dictout = {}
-    dictout['f'] = freq
-    dictout['Ef'] = Ef
-    dictout['antpos'] = antpos
+    dictout['f'] = freq # nchan=1
+    dictout['Ef'] = Ef # nant
+    dictout['antpos'] = antpos # nant x 3
 
     if verbose:
         print 'monochromatic_E_spectrum() executed successfully.\n'

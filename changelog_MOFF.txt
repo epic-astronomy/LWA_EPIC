@@ -1,3 +1,15 @@
+From 19a37e7 (ant-beams-in-sim):
+===============================
+
+In sim_observe.py,
+
+In sim_observe.py,
+
+(*) Add keyword input voltage_pattern in monochromatic_E_spectrum()
+and update docstring accordingly. Modify monochromatic_E_spectrum()
+to now simulate E-fields using voltage pattern that is specified for 
+every antenna at every sky location for all frequency channels.
+
 From dcac707 (ant-beams-in-sim):
 ===============================
 
