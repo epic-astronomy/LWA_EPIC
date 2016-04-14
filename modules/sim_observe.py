@@ -800,7 +800,8 @@ def monochromatic_E_spectrum(freq, flux_ref=1.0, freq_ref=None,
 def monochromatic_E_timeseries(freq_center, nchan, channel_width, flux_ref=1.0,
                                freq_ref=None, spectral_index=0.0, skypos=None, 
                                ref_point=None, antpos=[0.0,0.0,0.0],
-                               spectrum=True, verbose=True):
+                               spectrum=True, voltage_pattern=None,
+                               verbose=True):
 
     """
     -----------------------------------------------------------------------------
@@ -869,6 +870,13 @@ def monochromatic_E_timeseries(freq_center, nchan, channel_width, flux_ref=1.0,
                      (frequency and electric field spectrum) is returned with 
                      keys 'f' and 'Ef' in the returned dictionary dictout.
 
+    voltage_pattern  [numpy array] Voltage pattern for given frequency channel
+                     at each source location for each antenna. It must be of
+                     shape nsrc x nant. If any of these dimensions 
+                     are 1, it is assumed to be identical along that direction. 
+                     If specified as None (default), it is assumed to be unity
+                     and identical across antennas, and sky locations
+
     verbose          [boolean] If set to True, prints progress and diagnostic
                      messages. Default = True.
     
@@ -906,6 +914,7 @@ def monochromatic_E_timeseries(freq_center, nchan, channel_width, flux_ref=1.0,
     spectrum_info = monochromatic_E_spectrum(freq_center, flux_ref, freq_ref, 
                                              spectral_index, skypos=skypos,
                                              ref_point=ref_point, antpos=antpos,
+                                             voltage_pattern=voltage_pattern,
                                              verbose=verbose)
 
     if verbose:
