@@ -1,3 +1,13 @@
+From 4e5d4d3 (master):
+=====================
+
+In sim_observe.py,
+
+(*) Add keyword input voltage_pattern in stochastic_E_spectrum() and
+update docstring accordingly. Modify stochastic_E_spectrum() to now
+simulate E-fields using voltage pattern that is specified for every
+antenna at every sky location for all frequency channels.
+
 From 2884441 (Adam-master), cc0bbb2 (Adam origin master):
 ========================================================
 

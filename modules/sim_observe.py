@@ -7,7 +7,8 @@ import scipy.constants as FCNST
 
 def stochastic_E_spectrum(freq_center, nchan, channel_width, flux_ref=1.0,
                           freq_ref=None, spectral_index=0.0, skypos=None, 
-                          ref_point=None, antpos=[0.0,0.0,0.0], verbose=True):
+                          ref_point=None, antpos=[0.0,0.0,0.0],
+                          voltage_pattern=None, verbose=True):
 
     """
     ----------------------------------------------------------------------------
@@ -69,6 +70,14 @@ def stochastic_E_spectrum(freq_center, nchan, channel_width, flux_ref=1.0,
                      numpy array. Each 3-element entity corresponds to an
                      antenna position. If not specified, antpos by default is 
                      assigned the origin (0.0, 0.0, 0.0).
+
+    voltage_pattern  [numpy array] Voltage pattern for each frequency channel
+                     at each source location for each antenna. It must be of
+                     shape nsrc x nchan x nant. If any of these dimensions are
+                     1, it is assumed to be identical along that direction. 
+                     If specified as None (default), it is assumed to be unity
+                     and identical across antennas, sky locations and frequency
+                     channels. 
 
     verbose:         [boolean] If set to True, prints progress and diagnostic
                      messages. Default = True.
@@ -252,18 +261,36 @@ def stochastic_E_spectrum(freq_center, nchan, channel_width, flux_ref=1.0,
      
     nant = antpos.shape[0]
 
+    if voltage_pattern is None:
+        voltage_pattern = NP.ones(1).reshape(1,1,1)
+    elif not isinstance(voltage_pattern, NP.ndarray):
+        raise TypeError('Input antenna voltage pattern must be an array')
+
+    if voltage_pattern.ndim == 2:
+        voltage_pattern = voltage_pattern[:,:,NP.newaxis]
+    elif voltage_pattern.ndim != 3:
+        raise ValueError('Dimensions of voltage pattern incompatible')
+
+    vb_shape = voltage_pattern.shape
+    if (vb_shape[2] != 1) and (vb_shape[2] != nant):
+        raise ValueError('Input voltage pattern must be specified for each antenna or assumed to be identical to all antennas')
+    if (vb_shape[0] != 1) and (vb_shape[0] != nsrc):
+        raise ValueError('Input voltage pattern must be specified at each sky location or assumed to be identical at all locations')
+    if (vb_shape[1] != 1) and (vb_shape[1] != nchan):
+        raise ValueError('Input voltage pattern must be specified at each frequency channel or assumed to be identical for all')
+
     if verbose:
         print '\tArguments verified for compatibility.'
         print '\tSetting up the recipe for producing stochastic Electric field spectra...'
 
     center_channel = int(NP.floor(0.5*nchan))
     freqs = freq_center + channel_width * (NP.arange(nchan) - center_channel)
-    alpha = spectral_index.reshape(-1,1)
-    freqs = freqs.reshape(1,-1)
-    freq_ratio = freqs / freq_ref.reshape(-1,1)
-    fluxes = flux_ref.reshape(-1,1) * (freq_ratio ** alpha)
+    alpha = spectral_index.reshape(-1,1,1)
+    freqs = freqs.reshape(1,-1,1)
+    freq_ratio = freqs / freq_ref.reshape(-1,1,1)
+    fluxes = flux_ref.reshape(-1,1,1) * (freq_ratio ** alpha)
     sigmas = NP.sqrt(fluxes)
-    Ef_amp = sigmas/NP.sqrt(2) * (NP.random.normal(loc=0.0, scale=1.0, size=(nsrc,nchan)) + 1j * NP.random.normal(loc=0.0, scale=1.0, size=(nsrc,nchan)))
+    Ef_amp = sigmas/NP.sqrt(2) * (NP.random.normal(loc=0.0, scale=1.0, size=(nsrc,nchan,1)) + 1j * NP.random.normal(loc=0.0, scale=1.0, size=(nsrc,nchan,1)))
     # Ef_amp = sigmas * NP.random.normal(loc=0.0, scale=1.0, size=(nsrc,nchan))
     # print Ef_amp
     # Ef_amp = sigmas * NP.ones((nsrc,nchan))
@@ -274,8 +301,8 @@ def stochastic_E_spectrum(freq_center, nchan, channel_width, flux_ref=1.0,
 
     Ef = Ef[:,:,NP.newaxis]
     skypos_dot_antpos = NP.dot(skypos-ref_point, antpos.T)
-    k_dot_r_phase = 2.0 * NP.pi * freqs[:,:,NP.newaxis] / FCNST.c * skypos_dot_antpos[:,NP.newaxis,:]
-    Ef = Ef * NP.exp(1j * k_dot_r_phase)
+    k_dot_r_phase = 2.0 * NP.pi * freqs / FCNST.c * skypos_dot_antpos[:,NP.newaxis,:]
+    Ef = voltage_pattern * Ef * NP.exp(1j * k_dot_r_phase)
     Ef = NP.sum(Ef, axis=0)
     if verbose:
         print '\tPerformed linear superposition of electric fields from source(s).'
