@@ -10575,7 +10575,7 @@ class AntennaArray:
 
         normalize  [Boolean] Default = False. If set to True, the gridded 
                    weights are divided by the sum of weights so that the gridded 
-                   weights add up to unity. (Need to work on normaliation)
+                   weights add up to unity. (Need to work on normalization)
 
         method     [string] The gridding method to be used in applying the 
                    antenna weights on to the antenna array grid. 

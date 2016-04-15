@@ -1,3 +1,16 @@
+From aa2ed14 (catalog-sim):
+==========================
+
+In sim_observe.py,
+
+(*) Create class AntennaArraySimulator with docstring
+(*) Create __init__() member function along with docstring under
+class AntennaArraySimulator
+
+In antenna_array.py,
+
+(*) Trivial edit of typo in docstring
+
 From ef2f2bb (ant-beams-in-sim):
 ===============================
 
