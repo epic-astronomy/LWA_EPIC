@@ -7912,6 +7912,8 @@ class Antenna:
 
     latitude:   [Scalar] Latitude of the antenna's location.
 
+    longitude:  [Scalar] Longitude of the antenna's location.
+
     location:   [Instance of GEOM.Point class] The location of the antenna in 
                 local East, North, Up coordinate system.
 
@@ -8028,16 +8030,16 @@ class Antenna:
     ----------------------------------------------------------------------------
     """
 
-    def __init__(self, label, latitude, location, center_freq, nsamples=1,
-                 aperture=None):
+    def __init__(self, label, latitude, longitude, location, center_freq,
+                 nsamples=1, aperture=None):
 
         """
         ------------------------------------------------------------------------
         Initialize the Antenna Class which manages an antenna's information 
 
         Class attributes initialized are:
-        label, latitude, location, pol, t, timestamp, f0, f, wts, wtspos, 
-        wtspos_scale, blc, trc, timestamps, antpol, Et_stack, Ef_stack, 
+        label, latitude, longitude, location, pol, t, timestamp, f0, f, wts, 
+        wtspos, wtspos_scale, blc, trc, timestamps, antpol, Et_stack, Ef_stack, 
         flag_stack, aperture
      
         Read docstring of class Antenna for details on these attributes.
@@ -8052,7 +8054,12 @@ class Antenna:
         try:
             latitude
         except NameError:
-            self.latitude = 0.0
+            latitude = 0.0
+
+        try:
+            longitude
+        except NameError:
+            longitude = 0.0
 
         try:
             location
@@ -8066,6 +8073,7 @@ class Antenna:
 
         self.label = label
         self.latitude = latitude
+        self.longitude = longitude
 
         if isinstance(location, GEOM.Point):
             self.location = location
@@ -8651,6 +8659,10 @@ class AntennaArray:
                  of class Antenna. The keys themselves are identical to the
                  label attributes of the antenna instances they hold.
 
+    latitude     [Scalar] Latitude of the antenna array location.
+
+    longitude    [Scalar] Longitude of the antenna array location.
+
     blc          [2-element Numpy array] The coordinates of the bottom left 
                  corner of the array of antennas
 
@@ -8995,7 +9007,7 @@ class AntennaArray:
         Class attributes initialized are:
         antennas, blc, trc, gridu, gridv, grid_ready, timestamp, 
         grid_illumination, grid_Ef, f, f0, t, ordered_labels, grid_mapper, 
-        antennas_center
+        antennas_center, latitude, longitude
      
         Read docstring of class AntennaArray for details on these attributes.
 
@@ -9022,6 +9034,8 @@ class AntennaArray:
         self.grid_illumination = {}
         self.grid_Ef = {}
         self.caldata = {}
+        self.latitude = None
+        self.longitude = None
         self.f = None
         self.f0 = None
         self.t = None
@@ -9065,6 +9079,9 @@ class AntennaArray:
             self.f = NP.copy(self.antennas.itervalues().next().f)
             self.f = NP.copy(self.antennas.itervalues().next().f0)
             self.t = NP.copy(self.antennas.itervalues().next().t)
+            if self.latitude is None:
+                self.latitude = NP.copy(self.antennas.itervalues().next().latitude)
+                self.longitude = NP.copy(self.antennas.itervalues().next().longitude)
             self.timestamp = copy.deepcopy(self.antennas.itervalues().next().timestamp)
             self.timestamps += [copy.deepcopy(self.timestamp)]
         
@@ -9099,6 +9116,9 @@ class AntennaArray:
                 else:
                     retval.antennas[k] = v
                     print 'Antenna "{0}" added to the list of antennas.'.format(k)
+            if retval.latitude is None:
+                retval.latitude = others.latitude
+                retval.longitude = others.longitude
         elif isinstance(others, dict):
             # for item in others.values():
             for item in others.itervalues():
@@ -9109,6 +9129,9 @@ class AntennaArray:
                     else:
                         retval.antennas[item.label] = item
                         print 'Antenna "{0}" added to the list of antennas.'.format(item.label)
+                if retval.latitude is None:
+                    retval.latitude = item.latitude
+                    retval.longitude = item.longitude
         elif isinstance(others, list):
             for i in range(len(others)):
                 if isinstance(others[i], Antenna):
@@ -9120,6 +9143,11 @@ class AntennaArray:
                         print 'Antenna "{0}" added to the list of antennas.'.format(others[i].label)
                 else:
                     print 'Element \# {0} is not an instance of class Antenna.'.format(i)
+
+                if retval.latitude is None:
+                    retval.latitude = others[i].latitude
+                    retval.longitude = others[i].longitude
+
         elif isinstance(others, Antenna):
             if others.label in retval.antennas:
                 print "Antenna {0} already included in the list of antennas.".format(others.label)
@@ -9127,6 +9155,9 @@ class AntennaArray:
             else:
                 retval.antennas[others.label] = others
                 print 'Antenna "{0}" added to the list of antennas.'.format(others.label)
+            if retval.latitude is None:
+                retval.latitude = others.latitude
+                retval.longitude = others.longitude
         else:
             print 'Input(s) is/are not instance(s) of class Antenna.'
 

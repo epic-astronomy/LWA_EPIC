@@ -1,3 +1,24 @@
+From bf1f0c2 (catalog-sim):
+==========================
+
+In sim_observe.py,
+
+(*) Add member function upper_hemisphere() with docstring under
+class AntennaArraySimulator. Update docstring of class accordingly.
+(*) Add attributes latitude and longitude in __init__() member
+function of class AntennaArraySimulator. Update docstrings of
+__init__() member function and class AntennaArraySimulator
+
+In antenna_array.py,
+
+(*) Add attribute longitude in class Antenna and initialize in
+__init__() member function. Update docstrings accordingly
+(*) Add attributes latitude and longitude in class AntennaArray
+and initialize in __init__() member function. Update docstrings
+accordingly
+(*) Update attributes latitude and longitude in member function
+__add__() of class AntennaArray
+
 From aa2ed14 (catalog-sim):
 ==========================
 

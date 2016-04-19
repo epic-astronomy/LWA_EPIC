@@ -1,8 +1,9 @@
 import numpy as NP
 import scipy.constants as FCNST
+import ephem as EP
 import my_DSP_modules as DSP
 import geometry as GEOM
-import catalog as CTLG
+import catalog as SM
 import antenna_array as AA
 
 #############################################################################
@@ -990,10 +991,15 @@ class AntennaArraySimulator(object):
     __init__()      Initialize the AntennaArraySimulator class which manages 
                     information about the simulation of Electrc fields by 
                     the antennas
+
+    upper_hemisphere()
+                    Return the indices of locations in the catalog that are 
+                    in the upper celestial hemisphere for a given LST on a 
+                    given date of observation
     ------------------------------------------------------------------------
     """
 
-    def __init__(self, antenna_array, skymodel=None, identical_antennas=False):
+    def __init__(self, antenna_array, skymodel, identical_antennas=False):
 
         """
         ------------------------------------------------------------------------
@@ -1013,9 +1019,7 @@ class AntennaArraySimulator(object):
                    initialized with
 
         skymodel   [Instance of class SkyModel] An instance of class SkyModel
-                   which the simulator will be initialized with. If None
-                   (default) specified, sky model has to be provided at the
-                   time of generating the Electric fields
+                   which the simulator will be initialized with. 
 
         identical_antennas
                    [boolean] If False (default), antennas will not be assumed 
@@ -1028,12 +1032,16 @@ class AntennaArraySimulator(object):
         except NameError:
             raise NameError('Input antenna_array must be specified')
 
+        try:
+            skymodel
+        except NameError:
+            raise NameError('Input sky model must be specified')
+        
         if not isinstance(antenna_array, AA.AntennaArray):
             raise TypeError('Input antenna_array must be an instance of class AntennaArray')
 
-        if skymodel is not None:
-            if not isinstance(skymodel, CTLG.SkyModel):
-                raise TypeError('Input skymodel must be an instance of class SkyModel')
+        if not isinstance(skymodel, SM.SkyModel):
+            raise TypeError('Input skymodel must be an instance of class SkyModel')
 
         if not isinstance(identical_antennas, bool):
             raise TypeError('Whether antennas are identical or not must be specified as a boolean value')
@@ -1047,6 +1055,55 @@ class AntennaArraySimulator(object):
         self.f = self.antenna_array.f
         self.f0 = self.antenna_array.f0
         self.antinfo = self.antenna_array.antenna_positions(pol=None, flag=False, sort=True, centering=True)
+        self.observer = EP.Observer()
+        self.observer.lat = NP.radians(self.latitude)
+        self.observer.lon = NP.radians(self.longitude)
+        self.observer.date = self.skymodel.epoch.strip('J')
 
     ############################################################################
 
+    def upper_hemisphere(self, lst, obs_date=None):
+
+        """
+        ------------------------------------------------------------------------
+        Return the indices of locations in the catalog that are in the upper
+        celestial hemisphere for a given LST on a given date of observation
+
+        Inputs:
+
+        lst        [scalar] Local Sidereal Time (in hours) in the range 0--24
+
+        obs_date   [string] Date of observation in YYYY/MM/DD format. If set to
+                   None (default), the epoch in the sky model will be assumed
+                   to be the date of observation. 
+
+        Outputs:
+
+        hemind     [numpy array] indices of object locations in the sky model
+                   which lie in the upper celestial hemisphere that will 
+                   contribute to the simulated signal
+        ------------------------------------------------------------------------
+        """
+
+        try:
+            lst
+        except NameError:
+            raise NameError('Input LST must be specified')
+
+        if obs_date is None:
+            obs_date = self.observer.date
+
+        lstobj = EP.FixedBody()
+        lstobj._epoch = obs_date
+        lstobj._ra = NP.radians(lst * 15.0)
+        lstobj._dec = NP.radians(self.latitude)
+        lstobj.compute(self.observer)
+        
+        ha = NP.degrees(lstobj.ra) - self.skymodel.location[:,0]
+        dec = self.skymodel.location[:,1]
+        altaz = GEOM.hadec2altaz(NP.hstack((ha.reshape(-1,1), dec.reshape(-1,1))), self.latitude, units='degrees')
+        hemind, = NP.where(altaz[:,0] >= 0.0)
+        return hemind
+
+    ############################################################################
+    
