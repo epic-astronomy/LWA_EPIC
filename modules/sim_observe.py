@@ -15,6 +15,9 @@ import antenna_array as AA
 def interp_beam_arg_splitter(args, **kwargs):
     return interp_beam(*args, **kwargs)
 
+def stochastic_E_timeseries_arg_splitter(args, **kwargs):
+    return stochastic_E_timeseries(*args, **kwargs)
+
 ###############################################################################
 
 def interp_beam(beamfile, altaz, freqs):
