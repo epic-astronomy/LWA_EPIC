@@ -1,7 +1,10 @@
 import numpy as NP
 import scipy.constants as FCNST
 import ephem as EP
+import multiprocessing as MP
+import itertools as IT
 import my_DSP_modules as DSP
+import my_operations as OPS
 import geometry as GEOM
 import catalog as SM
 import antenna_array as AA
@@ -996,6 +999,12 @@ class AntennaArraySimulator(object):
                     Return the indices of locations in the catalog that are 
                     in the upper celestial hemisphere for a given LST on a 
                     given date of observation
+
+    find_voltage_pattern()
+                    Generates (by interpolating if necessary) voltage 
+                    pattern at the location of catalog sources based on 
+                    external voltage pattern files specified. Parallel 
+                    processing can be performed.
     ------------------------------------------------------------------------
     """
 
@@ -1103,7 +1112,92 @@ class AntennaArraySimulator(object):
         dec = self.skymodel.location[:,1]
         altaz = GEOM.hadec2altaz(NP.hstack((ha.reshape(-1,1), dec.reshape(-1,1))), self.latitude, units='degrees')
         hemind, = NP.where(altaz[:,0] >= 0.0)
-        return hemind
+        return (hemind, altaz[hemind,:])
 
     ############################################################################
     
+    def find_voltage_pattern(self, vbeam_files, parallel=False, nproc=None):
+
+        """
+        ------------------------------------------------------------------------
+        Generates (by interpolating if necessary) voltage pattern at the 
+        location of catalog sources based on external voltage pattern files
+        specified. Parallel processing can be performed.
+
+        Inputs:
+
+        vbeam_files [dictionary] Dictionary containing file locations of 
+                    far-field voltage pattern of individual antennas under 
+                    keys denoted by antenna labels (string). If there is only
+                    one item it will be assumed to be identical for all 
+                    antennas. If multiple voltage beam file locations are
+                    specified, it must be the same as number of antennas
+
+        parallel    [boolean] specifies if parallelization is to be invoked. 
+                    False (default) means only serial processing
+
+        nproc       [integer] specifies number of independent processes to 
+                    spawn. Default = None, means automatically determines the 
+                    number of process cores in the system and use one less 
+                    than that to avoid locking the system for other processes. 
+                    Applies only if input parameter 'parallel' (see above) is 
+                    set to True. If nproc is set to a value more than the 
+                    number of process cores in the system, it will be reset to 
+                    number of process cores in the system minus one to avoid 
+                    locking the system out for other processes
+
+        Outputs:
+
+        Antenna voltage beams at the object locations in the upper hemisphere.
+        It is a numpy array of shape nsrc x nchan x nant in case of 
+        non-indentical antennas or nsrc x nchan x 1 in case of identical 
+        antennas. 
+        ------------------------------------------------------------------------
+        """
+
+        try:
+            vbeam_files
+        except NameError:
+            raise NameError('Input vbeam_files must be specified')
+
+        if not isinstance(vbeam_files, dict):
+            raise TypeError('Input vbeam_files must be a dictionary')
+
+        antkeys = NP.asarray(self.antenna_array.antennas.keys())
+        vbeamkeys = NP.asarray(vbeam_files.keys())
+
+        commonkeys = NP.intersect1d(antkeys, vbeamkeys)
+
+        if (commonkeys.size != 1) and (commonkeys.size != antkeys.size):
+            raise ValueError('Number of voltage pattern files incompatible with number of antennas')
+
+        hemind, upper_altaz = self.upper_hemisphere(lst, obs_date=obs_date)
+
+        if (commonkeys.size == 1) or self.identical_antennas:
+            vbeams = interp_beam(vbeam_files[commonkeys[0]], upper_altaz, self.f)
+            vbeams = vbeams[:,:,NP.newaxis]
+        else:
+            if parallel or (nproc is not None):
+                list_of_keys = commonkeys.tolist()
+                list_of_vbeam_files = [vbfile[akey] for akey in list_of_keys]
+                list_of_altaz = [upper_altaz] * commonkeys.size
+                list_of_obsfreqs = [self.f] * commonkeys.size
+                if nproc is None:
+                    nproc = max(MP.cpu_count()-1, 1) 
+                else:
+                    nproc = min(nproc, max(MP.cpu_count()-1, 1))
+                pool = MP.Pool(processes=nproc)
+                list_of_vbeams = pool.map(interp_beam_arg_splitter, IT.izip(list_of_vbeam_files, list_of_altaz, list_of_obsfreqs))
+                vbeams = NP.asarray(list_of_vbeams)
+            else:
+                vbeams = None
+                for key in commonkeys:
+                    vbeam = interp_beam(vbeam_files[key], upper_altaz, self.f)
+                    if vbeams is None:
+                        vbeams = vbeam[:,:,NP.newaxis]
+                    else:
+                        vbeams = NP.dstack((vbeams, vbeam[:,:,NP.newaxis]))
+
+        return vbeams
+        
+    ############################################################################

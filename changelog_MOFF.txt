@@ -1,3 +1,11 @@
+From fe8e58d (catalog-sim):
+==========================
+
+In sim_observe.py,
+
+(*) Add member function find_voltage_pattern() with docstring under
+class AntennaArraySimulator. Update docstring of class accordingly.
+
 From bf1f0c2 (catalog-sim):
 ==========================
 
