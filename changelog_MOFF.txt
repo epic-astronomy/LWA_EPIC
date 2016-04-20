@@ -1,3 +1,13 @@
+From 85277b5 (catalog-sim):
+==========================
+
+In sim_observe.py,
+
+(*) Replace input altaz with theta_phi in interp_beam(). Update
+docstring accordingly
+(*) Add input altaz in member function find_voltage_pattern() of
+class AntennaArraySimulator. Update docstring accordingly
+
 From 0ce59e0 (catalog-sim):
 ==========================
 

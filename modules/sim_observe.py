@@ -20,7 +20,7 @@ def stochastic_E_timeseries_arg_splitter(args, **kwargs):
 
 ###############################################################################
 
-def interp_beam(beamfile, altaz, freqs):
+def interp_beam(beamfile, theta_phi, freqs):
 
     """
     -----------------------------------------------------------------------------
@@ -32,9 +32,9 @@ def interp_beam(beamfile, altaz, freqs):
     beamfile    [string] Full path to file containing antenna pattern. Must be
                 specified, no default.
 
-    altaz       [numpy array] Altitude and Azimuth as a nsrc x 2 numpy array. It
-                must be specified in degrees. If not specified, no interpolation
-                is performed spatially.
+    theta_phi   [numpy array] Zenith angle and Azimuth as a nsrc x 2 numpy 
+                array. It must be specified in radians. If not specified, no 
+                interpolation is performed spatially.
 
     freqs       [numpy array] Frequencies (in Hz) at which the antenna pattern 
                 is to be interpolated. If not specified, no spectral 
@@ -53,19 +53,16 @@ def interp_beam(beamfile, altaz, freqs):
         raise NameError('Input beamfile must be specified')
 
     try:
-        altaz
+        theta_phi
     except NameError:
         theta_phi = None
 
     if theta_phi is not None:
-        if not isinstance(altaz, NP.ndarray):
-            raise TypeError('Input altaz must be a numpy array')
+        if not isinstance(theta_phi, NP.ndarray):
+            raise TypeError('Input theta_phi must be a numpy array')
 
-        if altaz.ndim != 2:
-            raise ValueError('Input altaz must be a nsrc x 2 numpy array')
-
-        theta_phi = NP.hstack((90.0-altaz[:,0].reshape(-1,1), altaz[:,1].reshape(-1,1)))
-        theta_phi = NP.radians(theta_phi)
+        if theta_phi.ndim != 2:
+            raise ValueError('Input theta_phi must be a nsrc x 2 numpy array')
 
     try:
         freqs
@@ -1216,7 +1213,8 @@ class AntennaArraySimulator(object):
 
     ############################################################################
     
-    def find_voltage_pattern(self, vbeam_files, parallel=False, nproc=None):
+    def find_voltage_pattern(self, vbeam_files, altaz, parallel=False,
+                             nproc=None):
 
         """
         ------------------------------------------------------------------------
@@ -1232,6 +1230,10 @@ class AntennaArraySimulator(object):
                     one item it will be assumed to be identical for all 
                     antennas. If multiple voltage beam file locations are
                     specified, it must be the same as number of antennas
+
+        altaz       [numpy array] The altitudes and azimuths (in degrees) at 
+                    which the voltage pattern is to be estimated. It must be
+                    a nsrc x 2 array. 
 
         parallel    [boolean] specifies if parallelization is to be invoked. 
                     False (default) means only serial processing
@@ -1260,39 +1262,54 @@ class AntennaArraySimulator(object):
         except NameError:
             raise NameError('Input vbeam_files must be specified')
 
+        try:
+            altaz
+        except NameError:
+            raise NameError('Input altitude-azimuth must be specified')
+
         if not isinstance(vbeam_files, dict):
             raise TypeError('Input vbeam_files must be a dictionary')
 
+        if not isinstance(altaz, NP.ndarray):
+            raise TypeError('Input altaz must be a numpy array')
+
+        if altaz.ndim != 2:
+            raise ValueError('Input lataz must be a nsrc x 2 numpy array')
+        if altaz.shape[1] != 2:
+            raise ValueError('Input lataz must be a nsrc x 2 numpy array')
+
+        theta_phi = NP.hstack((altaz[:,0].reshape(-1,1), altaz[:,1].reshape(-1,1)))
+        theta_phi = NP.radians(theta_phi)
+
         antkeys = NP.asarray(self.antenna_array.antennas.keys())
         vbeamkeys = NP.asarray(vbeam_files.keys())
-
         commonkeys = NP.intersect1d(antkeys, vbeamkeys)
 
         if (commonkeys.size != 1) and (commonkeys.size != antkeys.size):
             raise ValueError('Number of voltage pattern files incompatible with number of antennas')
 
-        hemind, upper_altaz = self.upper_hemisphere(lst, obs_date=obs_date)
+        # hemind, upper_altaz = self.upper_hemisphere(lst, obs_date=obs_date)
 
         if (commonkeys.size == 1) or self.identical_antennas:
-            vbeams = interp_beam(vbeam_files[commonkeys[0]], upper_altaz, self.f)
+            vbeams = interp_beam(vbeam_files[commonkeys[0]], theta_phi, self.f)
             vbeams = vbeams[:,:,NP.newaxis]
         else:
             if parallel or (nproc is not None):
                 list_of_keys = commonkeys.tolist()
                 list_of_vbeam_files = [vbfile[akey] for akey in list_of_keys]
-                list_of_altaz = [upper_altaz] * commonkeys.size
+                list_of_zaaz = [theta_phi] * commonkeys.size
                 list_of_obsfreqs = [self.f] * commonkeys.size
                 if nproc is None:
                     nproc = max(MP.cpu_count()-1, 1) 
                 else:
                     nproc = min(nproc, max(MP.cpu_count()-1, 1))
                 pool = MP.Pool(processes=nproc)
-                list_of_vbeams = pool.map(interp_beam_arg_splitter, IT.izip(list_of_vbeam_files, list_of_altaz, list_of_obsfreqs))
+                list_of_vbeams = pool.map(interp_beam_arg_splitter, IT.izip(list_of_vbeam_files, list_of_zaaz, list_of_obsfreqs))
                 vbeams = NP.asarray(list_of_vbeams)
             else:
                 vbeams = None
                 for key in commonkeys:
-                    vbeam = interp_beam(vbeam_files[key], upper_altaz, self.f)
+                    vbeam = interp_beam(vbeam_files[key], theta_phi, self.f)
                     if vbeams is None:
                         vbeams = vbeam[:,:,NP.newaxis]
                     else:
@@ -1301,3 +1318,4 @@ class AntennaArraySimulator(object):
         return vbeams
         
     ############################################################################
+
