@@ -3,13 +3,110 @@ import scipy.constants as FCNST
 import ephem as EP
 import multiprocessing as MP
 import itertools as IT
+from astropy.io import fits, ascii
 import my_DSP_modules as DSP
 import my_operations as OPS
 import geometry as GEOM
 import catalog as SM
 import antenna_array as AA
 
-#############################################################################
+################### Routines essential for parallel processing ################
+
+def interp_beam_arg_splitter(args, **kwargs):
+    return interp_beam(*args, **kwargs)
+
+###############################################################################
+
+def interp_beam(beamfile, altaz, freqs):
+
+    """
+    -----------------------------------------------------------------------------
+    Read and interpolate antenna pattern to the specified frequencies and 
+    angular locations.
+
+    Inputs:
+
+    beamfile    [string] Full path to file containing antenna pattern. Must be
+                specified, no default.
+
+    altaz       [numpy array] Altitude and Azimuth as a nsrc x 2 numpy array. It
+                must be specified in degrees. If not specified, no interpolation
+                is performed spatially.
+
+    freqs       [numpy array] Frequencies (in Hz) at which the antenna pattern 
+                is to be interpolated. If not specified, no spectral 
+                interpolation is performed
+
+    Outputs:
+
+    Antenna pattern interpolated at locations and frequencies specified. It will
+    be a numpy array of size nsrc x nchan
+    -----------------------------------------------------------------------------
+    """
+
+    try:
+        beamfile
+    except NameError:
+        raise NameError('Input beamfile must be specified')
+
+    try:
+        altaz
+    except NameError:
+        theta_phi = None
+
+    if theta_phi is not None:
+        if not isinstance(altaz, NP.ndarray):
+            raise TypeError('Input altaz must be a numpy array')
+
+        if altaz.ndim != 2:
+            raise ValueError('Input altaz must be a nsrc x 2 numpy array')
+
+        theta_phi = NP.hstack((90.0-altaz[:,0].reshape(-1,1), altaz[:,1].reshape(-1,1)))
+        theta_phi = NP.radians(theta_phi)
+
+    try:
+        freqs
+    except NameError:
+        freqs = None
+
+    try:
+        hdulist = fits.open(beamfile)
+    except IOError:
+        raise IOError('Error opening file containing antenna voltage pattern')
+
+    extnames = [hdu.header['EXTNAME'] for hdu in hdulist]
+    if 'BEAM' not in extnames:
+        raise KeyError('Key "BEAM" not found in file containing antenna voltage pattern')
+
+    if 'FREQS' not in extanmes:
+        if freqs is not None:
+            vbfreqs = freqs
+        else:
+            raise ValueError('Frequencies not specified in file containing antenna voltage pattern')
+    else:
+        vbfreqs = hdulist['FREQS']
+        if not isinstance(vbfreqs, NP.ndarray):
+            raise TypeError('Frequencies in antenna voltage pattern must be a numpy array')
+
+    vbeam = hdulist['BEAM']
+    if not isinstance(vbeam, NP.ndarray):
+        raise TypeError('Reference antenna voltage pattern must be a numpy array')
+
+    if vbeam.ndim == 1:
+        vbeam = vbeam[:,NP.newaxis]
+    elif vbeam.ndim == 2:
+        if vbeam.shape[1] != 1:
+            if vbeam.shape[1] != vbfreqs.size:
+                raise ValueError('Shape of antenna voltage pattern not compatible with number of frequency channels')
+    else:
+        raise ValueError('Antenna voltage pattern must be of size nsrc x nchan')
+
+    if vbeam.shape[1] == 1:
+        vbeam = vbeam + NP.zeros(vbfreqs.size).reshape(1,-1)
+
+    return OPS.healpix_interp_along_axis(vbeam, theta_phi=theta_phi, inloc_axis=vbfreqs, outloc_axis=freqs, axis=1, kind='cubic', assume_sorted=True)
+
+###############################################################################
 
 def stochastic_E_spectrum(freq_center, nchan, channel_width, flux_ref=1.0,
                           freq_ref=None, spectral_index=0.0, skypos=None, 

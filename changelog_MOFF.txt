@@ -1,3 +1,13 @@
+From 1144139 (catalog-sim):
+==========================
+
+In sim_observe.py,
+
+(*) Add function interp_beam() to interpolate antenna pattern at
+given locations and frequencies. Add docstring
+(*) Add function interp_beam_arg_splitter() which is a wrapper for
+interp_beam() in case of parallel processing
+
 From fe8e58d (catalog-sim):
 ==========================
 
