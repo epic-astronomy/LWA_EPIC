@@ -18,6 +18,9 @@ def interp_beam_arg_splitter(args, **kwargs):
 def stochastic_E_timeseries_arg_splitter(args, **kwargs):
     return stochastic_E_timeseries(*args, **kwargs)
 
+def generate_E_spectrum_arg_splitter(args, **kwargs):
+    return generate_E_spectrum(*args, **kwargs)
+
 ###############################################################################
 
 def interp_beam(beamfile, theta_phi, freqs):
@@ -105,6 +108,311 @@ def interp_beam(beamfile, theta_phi, freqs):
         vbeam = vbeam + NP.zeros(vbfreqs.size).reshape(1,-1)
 
     return OPS.healpix_interp_along_axis(vbeam, theta_phi=theta_phi, inloc_axis=vbfreqs, outloc_axis=freqs, axis=1, kind='cubic', assume_sorted=True)
+
+###############################################################################
+
+def generate_E_spectrum(freqs, skypos=[0.0,0.0,1.0], flux_ref=1.0,
+                        freq_ref=None, spectral_index=0.0, spectrum=None,
+                        antpos=[0.0,0.0,0.0], voltage_pattern=None,
+                        ref_point=None, verbose=True):
+
+    """
+    ----------------------------------------------------------------------------
+    Compute a stochastic electric field spectrum obtained from sources with 
+    given spectral information of sources, their positions at specified 
+    antenna locations with respective voltage patterns
+
+    Inputs:
+
+    freqs            [numpy array] Frequencies (in Hz) of the frequency channels
+
+    Keyword Inputs:
+
+    skypos           [list, tuple, list of lists, list of tuples, numpy array]
+                     Sky positions of sources provided in direction cosine
+                     coordinates aligned with local ENU axes. It should be a
+                     3-element list, a 3-element tuple, a list of 3-element
+                     lists, list of 3-element tuples, or a 3-column numpy array.
+                     Each 3-element entity corresponds to a source position. 
+                     Number of 3-element entities should equal the number of 
+                     sources as specified by the size of flux_ref. Rules of 
+                     direction cosine quantities should be followed. If only 
+                     one  source is specified by flux_ref and skypos is not
+                     specified, skypos defaults to the zenith (0.0, 0.0, 1.0)
+
+    flux_ref         [list or numpy array of float] Flux densities of sources
+                     at the respective reference frequencies. Units are 
+                     arbitrary. Values have to be positive. Default = 1.0. 
+
+    freq_ref         [list or numpy array of float] Reference frequency (Hz). 
+                     If not provided, default is set to center frequency given
+                     in freq_center for each of the sources. If a single value 
+                     is provided, it will be applicable to all the sources. If a 
+                     list or numpy array is provided, it should be of size equal
+                     to that of flux_ref. 
+
+    spectral_index   [list or numpy array of float] Spectral Index 
+                     (flux ~ freq ** alpha). If not provided, default is set to 
+                     zero, a flat spectrum, for each of the sources. If a single 
+                     value is provided, it will be applicable to all the sources. 
+                     If a list or numpy array is provided, it should be of size 
+                     equal to that of flux_ref. 
+
+    spectrum         [numpy array] Spectrum of catalog objects whose locations 
+                     are specified in skypos and frequencies in freqs. It is of
+                     size nsrc x nchan. Default=None means determine spectral 
+                     information from the spectral index. If not set to None, 
+                     spectral information from this input will be used and info
+                     in spectral index will be ignored. 
+
+    ref_point        [3-element list, tuple, or numpy vector] Point on sky used
+                     as a phase reference. Same units as skypos (which is
+                     direction cosines and must satisfy rules of direction
+                     cosines). If None provided, it defaults to zenith
+                     (0.0, 0.0, 1.0)
+
+    antpos           [list, tuple, list of lists, list of tuples, numpy array]
+                     Antenna positions provided along local ENU axes. 
+                     It should be a 3-element list, a 3-element tuple, a list of 
+                     3-element lists, list of 3-element tuples, or a 3-column 
+                     numpy array. Each 3-element entity corresponds to an
+                     antenna position. If not specified, antpos by default is 
+                     assigned the origin (0.0, 0.0, 0.0).
+
+    voltage_pattern  [numpy array] Voltage pattern for each frequency channel
+                     at each source location for each antenna. It must be of
+                     shape nsrc x nchan x nant. If any of these dimensions are
+                     1, it is assumed to be identical along that direction. 
+                     If specified as None (default), it is assumed to be unity
+                     and identical across antennas, sky locations and frequency
+                     channels. 
+
+    verbose:         [boolean] If set to True, prints progress and diagnostic
+                     messages. Default = True.
+    
+    Output:
+
+    dictout          [dictionary] Consists of the following tags and info:
+                     'f'        [numpy array] frequencies of the channels in the 
+                                spectrum of size nchan
+                     'Ef'       [complex numpy array] nchan x nant numpy array 
+                                consisting of complex stochastic electric field
+                                spectra. nchan is the number of channels in the 
+                                spectrum and nant is the number of antennas.
+
+    ----------------------------------------------------------------------------
+    """
+
+    try:
+        freqs
+    except NameError:
+        raise NameError('Input freqs must be provided')
+
+    if isinstance(freqs, (int, float)):
+        freqs = NP.asarray(freqs).reshape(-1)
+    elif isinstance(freqs, list):
+        freqs = NP.asarray(freqs)
+    elif not isinstance(freqs, NP.ndarray):
+        raise TypeError('Input freqs must be a scalar, list or numpy array')
+
+    freqs = freqs.ravel()
+    if NP.any(freqs <= 0.0):
+        raise ValueError('Frequencies must be positive')
+
+    if isinstance(antpos, (list, tuple)):
+        antpos = NP.asarray(antpos)
+        if antpos.ndim == 1:
+            if antpos.size != 3:
+                raise IndexError('Antenna position must be a three-element vector and aligned with the local ENU coordinate system.')
+            else:
+                antpos = antpos.reshape(1,-1)
+        elif antpos.shape[1] != 3:
+            raise IndexError('Antenna position must be a three-element vector aligned with the local ENU coordinate system in the form of a three-column numpy array.')
+    elif isinstance(antpos, NP.ndarray):
+        if antpos.ndim == 1:
+            if antpos.size != 3:
+                raise IndexError('Antenna position must be a three-element vector aligned with the local ENU coordinate system.')
+            else:
+                antpos = antpos.reshape(1,-1)
+        elif antpos.shape[1] != 3:
+            raise IndexError('Antenna position must be a three-element vector aligned with the local ENU coordinate system in the form of a three-column numpy array.')
+    else:
+        raise TypeError('Antenna position (antpos) must be a three-element list or tuple, list of lists or list of tuples with each of the inner lists or tuples holding three elements, or a three-column numpy array.')
+     
+    if skypos is None:
+        if nsrc > 1:
+            raise ValueError('Sky positions (skypos) must be specified for each of the multiple flux densities.')
+        skypos = NP.asarray([0.0, 0.0, 1.0]).reshape(1,-1)
+    elif isinstance(skypos, (list, tuple)):
+        skypos = NP.asarray(skypos)
+        if len(skypos.shape) == 1:
+            if skypos.size != 3:
+                raise IndexError('Sky position must be a three-element vector of direction cosines for each source, and aligned with the local ENU coordinate system.')
+            else:
+                skypos = skypos.reshape(1,-1)
+        elif skypos.shape[1] != 3:
+            raise IndexError('Sky position must be a three-element vector for each source given as direction cosines aligned with the local ENU coordinate system in the form of a three-column numpy array.')
+    elif isinstance(skypos, NP.ndarray):
+        if len(skypos.shape) == 1:
+            if skypos.size != 3:
+                raise IndexError('Sky position must be a three-element vector for each source given as direction cosines aligned with the local ENU coordinate system.')
+            else:
+                skypos = skypos.reshape(1,-1)
+        elif skypos.shape[1] != 3:
+            raise IndexError('Sky position must be a three-element vector for each source given as direction cosines aligned with the local ENU coordinate system in the form of a three-column numpy array.')
+    else:
+        raise TypeError('Sky position (skypos) must be a three-element list or tuple, list of lists or list of tuples with each of the inner lists or tuples holding three elements, or a three-column numpy array.')
+            
+    eps = 1e-10
+    if NP.any(NP.abs(skypos) >= 1.0+eps):
+        raise ValueError('Components of direction cosines must not exceed unity')
+    if NP.any(NP.abs(NP.sum(skypos**2,axis=1)-1.0) >= eps):
+        raise ValueError('Magnitudes of direction cosines must not exceed unity')
+    
+    if ref_point is None:
+        ref_point = NP.asarray([0.0, 0.0, 1.0]).reshape(1,-1)
+    elif isinstance(ref_point, (list, tuple, NP.ndarray)):
+        ref_point = NP.asarray(ref_point).reshape(1,-1)
+    else:
+        raise TypeError('Reference position must be a list, tuple or numpy array.')
+
+    if ref_point.size != 3:
+        raise ValueError('Reference position must be a 3-element list, tuple or numpy array of direction cosines.')
+
+    eps = 1.0e-10
+    if NP.any(NP.abs(skypos) > 1.0):
+        raise ValueError('Some direction cosine values have absolute values greater than unity.')
+    elif NP.any(NP.abs(1.0-NP.sqrt(NP.sum(skypos**2,axis=1))) > eps):
+        raise ValueError('Some sky positions specified in direction cosines do not have unit magnitude by at least {0:.1e}.'.format(eps))
+
+    if NP.any(NP.abs(ref_point) > 1.0):
+        raise ValueError('Direction cosines in reference position cannot exceed unit magnitude.')
+    elif NP.abs(1.0-NP.sqrt(NP.sum(ref_point**2))) > eps:
+        raise ValueError('Unit vector denoting reference position in direction cosine units must have unit magnitude.')
+
+    freqs = freqs.reshape(1,-1,1) # 1 x nchan x 1
+    nchan = freqs.size
+    nant = antpos.shape[0]
+    nsrc = skypos.shape[0]
+
+    if spectrum is None:
+        if freq_ref is None:
+            if verbose:
+                print '\tNo reference frequency (freq_ref) provided. Setting it equal to center \n\t\tfrequency.'
+            freq_ref = NP.mean(freqs).reshape(-1)
+    
+        if isinstance(freq_ref, (int,float)):
+            freq_ref = NP.asarray(freq_ref).reshape(-1)
+        elif isinstance(freq_ref, (list, tuple)):
+            freq_ref = NP.asarray(freq_ref)
+        elif isinstance(freq_ref, NP.ndarray):
+            freq_ref = freq_ref.ravel()
+        else:
+            raise TypeError('Reference frequency (freq_ref) must be a scalar, list, tuple or numpy array. Aborting stochastic_E_spectrum().')
+    
+        if NP.any(freq_ref <= 0.0):
+            raise ValueError('freq_ref must be a positive value. Aborting stochastic_E_spectrum().')
+
+        if freq_ref.size > 1:
+            if freq_ref.size != nsrc:
+                raise ValueError('Size of freq_ref does not match number of sky positions')
+
+        if isinstance(flux_ref, (int,float)):
+            flux_ref = NP.asarray(flux_ref).reshape(-1)
+        elif isinstance(flux_ref, (list, tuple)):
+            flux_ref = NP.asarray(flux_ref)
+        elif isinstance(flux_ref, NP.ndarray):
+            flux_ref = flux_ref.ravel()
+        else:
+            raise TypeError('Flux density at reference frequency (flux_ref) must be a scalar, list, tuple or numpy array. Aborting stochastic_E_spectrum().')
+    
+        if NP.any(flux_ref <= 0.0):
+            raise ValueError('flux_ref must be a positive value. Aborting stochastic_E_spectrum().')
+    
+        if flux_ref.size > 1:
+            if flux_ref.size != nsrc:
+                raise ValueError('Size of flux_ref does not match number of sky positions')
+
+        if isinstance(spectral_index, (int,float)):
+            spectral_index = NP.asarray(spectral_index).reshape(-1)
+        elif isinstance(spectral_index, (list, tuple)):
+            spectral_index = NP.asarray(spectral_index)
+        elif isinstance(spectral_index, NP.ndarray):
+            spectral_index = spectral_index.ravel()
+        else:
+            raise TypeError('Spectral index (spectral_index) must be a scalar, list, tuple or numpy array. Aborting stochastic_E_spectrum().')
+
+        if spectral_index.size > 1:
+            if spectral_index.size != nsrc:
+                raise ValueError('Size of spectral_index does not match number of sky positions')
+
+        nsi = spectral_index.size 
+
+        alpha = spectral_index.reshape(-1,1,1) # nsrc x 1 x 1
+        freq_ratio = freqs / freq_ref.reshape(-1,1,1) # nsrc x nchan x 1
+        spectrum = flux_ref.reshape(-1,1,1) * (freq_ratio ** alpha) # nsrc x nchan x 1
+    else:
+        if not isinstance(spectrum, NP.ndarray):
+            raise TypeError('Input spectrum must be a numpy array')
+        if spectrum.ndim == 1:
+            spectrum = spectrum.reshape(-1,1) # nsrc x 1
+        elif spectrum.ndim != 2:
+            raise ValueError('Input spectrum has too many dimensions')
+
+        if spectrum.shape[1] > 1:
+            if spectrum.shape[1] != nchan:
+                raise ValueError('Number of frequency channels in spectrum does not match number of frequency channels specified')
+        else:
+            spectrum = spectrum + NP.zeros(nchan).reshape(1,-1) # nsrc x nchan or 1 x nchan
+
+        if spectrum.shape[0] > 1:
+            if spectrum.shape[0] != nsrc:
+                raise ValueError('Number of locations in spectrum does not match number of sources')
+        else:
+            spectrum = spectrum + NP.zeros(nsrc).reshape(-1,1) # nsrc x nchan
+
+        spectrum = spectrum[:,:,NP.newaxis] # nsrc x nchan x 1
+
+    if voltage_pattern is None:
+        voltage_pattern = NP.ones(1).reshape(1,1,1)
+    elif not isinstance(voltage_pattern, NP.ndarray):
+        raise TypeError('Input antenna voltage pattern must be an array')
+
+    if voltage_pattern.ndim == 2:
+        voltage_pattern = voltage_pattern[:,:,NP.newaxis] # nsrc x nchan x 1
+    elif voltage_pattern.ndim != 3:
+        raise ValueError('Dimensions of voltage pattern incompatible')
+
+    vb_shape = voltage_pattern.shape
+    if (vb_shape[2] != 1) and (vb_shape[2] != nant):
+        raise ValueError('Input voltage pattern must be specified for each antenna or assumed to be identical to all antennas')
+    if (vb_shape[0] != 1) and (vb_shape[0] != nsrc):
+        raise ValueError('Input voltage pattern must be specified at each sky location or assumed to be identical at all locations')
+    if (vb_shape[1] != 1) and (vb_shape[1] != nchan):
+        raise ValueError('Input voltage pattern must be specified at each frequency channel or assumed to be identical for all')
+
+    if verbose:
+        print '\tArguments verified for compatibility.'
+        print '\tSetting up the recipe for producing stochastic Electric field spectra...'
+
+    sigmas = NP.sqrt(spectrum) # nsrc x nchan x 1
+    Ef_amp = sigmas/NP.sqrt(2) * (NP.random.normal(loc=0.0, scale=1.0, size=(nsrc,nchan,1)) + 1j * NP.random.normal(loc=0.0, scale=1.0, size=(nsrc,nchan,1))) # nsrc x nchan x 1
+    Ef_phase = 1.0
+    Ef = Ef_amp * Ef_phase # nsrc x nchan x 1
+    skypos_dot_antpos = NP.dot(skypos-ref_point, antpos.T) # nsrc x nant
+    k_dot_r_phase = 2.0 * NP.pi * freqs / FCNST.c * skypos_dot_antpos[:,NP.newaxis,:] # nsrc x nchan x nant
+    Ef = voltage_pattern * Ef * NP.exp(1j * k_dot_r_phase) # nsrc x nchan x nant
+    Ef = NP.sum(Ef, axis=0) # nchan x nant
+    if verbose:
+        print '\tPerformed linear superposition of electric fields from source(s).'
+    
+    dictout = {}
+    dictout['f'] = freqs.ravel()
+    dictout['Ef'] = Ef
+    if verbose:
+        print 'stochastic_E_spectrum() executed successfully.\n'
+
+    return dictout
 
 ###############################################################################
 
@@ -402,7 +710,7 @@ def stochastic_E_spectrum(freq_center, nchan, channel_width, flux_ref=1.0,
     Ef_phase = 1.0
     Ef = Ef_amp * Ef_phase
 
-    Ef = Ef[:,:,NP.newaxis]
+    # Ef = Ef[:,:,NP.newaxis]
     skypos_dot_antpos = NP.dot(skypos-ref_point, antpos.T)
     k_dot_r_phase = 2.0 * NP.pi * freqs / FCNST.c * skypos_dot_antpos[:,NP.newaxis,:]
     Ef = voltage_pattern * Ef * NP.exp(1j * k_dot_r_phase)
@@ -1292,7 +1600,7 @@ class AntennaArraySimulator(object):
 
         if (commonkeys.size == 1) or self.identical_antennas:
             vbeams = interp_beam(vbeam_files[commonkeys[0]], theta_phi, self.f)
-            vbeams = vbeams[:,:,NP.newaxis]
+            vbeams = vbeams[:,:,NP.newaxis] # nsrc x nchan x 1
         else:
             if parallel or (nproc is not None):
                 list_of_keys = commonkeys.tolist()
@@ -1305,17 +1613,204 @@ class AntennaArraySimulator(object):
                     nproc = min(nproc, max(MP.cpu_count()-1, 1))
                 pool = MP.Pool(processes=nproc)
                 list_of_vbeams = pool.map(interp_beam_arg_splitter, IT.izip(list_of_vbeam_files, list_of_zaaz, list_of_obsfreqs))
-                vbeams = NP.asarray(list_of_vbeams)
+                vbeams = NP.asarray(list_of_vbeams) # nsrc x nchan x nant
             else:
                 vbeams = None
                 for key in commonkeys:
                     vbeam = interp_beam(vbeam_files[key], theta_phi, self.f)
                     if vbeams is None:
-                        vbeams = vbeam[:,:,NP.newaxis]
+                        vbeams = vbeam[:,:,NP.newaxis] # nsrc x nchan x 1
                     else:
-                        vbeams = NP.dstack((vbeams, vbeam[:,:,NP.newaxis]))
+                        vbeams = NP.dstack((vbeams, vbeam[:,:,NP.newaxis])) # nsrc x nchan x nant
 
         return vbeams
         
     ############################################################################
 
+    def generate_E_spectrum(self, altaz, vbeams, ctlgind=None, pol=None,
+                            ref_point=None, parallel=False, nproc=None,
+                            verbose=True):
+
+        """
+        ------------------------------------------------------------------------
+        Compute a stochastic electric field spectrum obtained from sources in 
+        the catalog. It can be parallelized.
+    
+        Inputs:
+    
+        altaz     [numpy array] Alt-az sky positions (in degrees) of sources 
+                  It should be a 2-column numpy array. Each 2-column entity 
+                  corresponds to a source position. Number of 2-column 
+                  entities should equal the number of sources as specified 
+                  by the size of flux_ref. It is of size nsrc x 2
+    
+        vbeams    [dictionary] Complex Voltage pattern for each each antenna 
+                  and each polarization at each frequency channel at each 
+                  source location. It must be specified as a dinctionary with 
+                  keys denoting antenna labels. Under each antenna label as key 
+                  it contains a dictionary with keys 'P1' and 'P2' denoting
+                  the two polarizations. Under each of these keys the voltage 
+                  pattern is specified as a numpy array of size nsrc x nchan. 
+                  If only one antenna label is specified as key, it will be 
+                  assumed to be identical for all antennas. Also if nchan 
+                  is 1, it will be assumed to be achromatic and identical 
+                  across frequency. No default.
+
+        Keyword Inputs:
+
+        ctlgind   [numpy array] Indices of sources in the attribute skymodel 
+                  that will be used in generating the E-field spectrum. If
+                  specified as None (default), all objects in the attribute
+                  skymodel will be used. It size must be of size nsrc
+
+        pol       [list] List of polarizations to process. The polarizations
+                  are specified as strings 'P1' and 'P2. If set to None
+                  (default), both polarizations are processed
+    
+        ref_point [3-element list, tuple, or numpy vector] Point on sky used
+                  as a phase reference in direction cosines and must satisfy 
+                  rules of direction cosines. If None provided, it defaults 
+                  to zenith (0.0, 0.0, 1.0)
+    
+        parallel  [boolean] specifies if parallelization is to be invoked. 
+                  False (default) means only serial processing
+
+        nproc     [integer] specifies number of independent processes to spawn.
+                  Default = None, means automatically determines the number of 
+                  process cores in the system and use one less than that to 
+                  avoid locking the system for other processes. Applies only 
+                  if input parameter 'parallel' (see above) is set to True. 
+                  If nproc is set to a value more than the number of process
+                  cores in the system, it will be reset to number of process 
+                  cores in the system minus one to avoid locking the system out 
+                  for other processes
+
+        verbose   [Boolean] Default = False. If set to True, prints some 
+                  diagnotic or progress messages.
+
+        Output:
+    
+        Ef_info   [dictionary] Consits of E-field info under two keys 'P1' and
+                  'P2', one for each polarization. Under each of these keys 
+                  is another dictionary with the following keys and values:
+                  'f'        [numpy array] frequencies of the channels in the 
+                             spectrum of size nchan
+                  'Ef'       [complex numpy array] nchan x nant numpy array 
+                             consisting of complex stochastic electric field
+                             spectra. nchan is the number of channels in the 
+                             spectrum and nant is the number of antennas.
+    
+        ------------------------------------------------------------------------
+        """
+
+        try:
+            altaz
+        except NameError:
+            raise NameError('Input altaz must be specified')
+
+        try:
+            vbeams
+        except NameError:
+            raise NameError('Input vbeams must be specified')
+       
+        if not isinstance(vbeams, dict):
+            raise TypeError('Input vbeams must be a dictionary')
+
+        srcdircos = GEOM.altaz2dircos(altaz, units='degrees')
+
+        if ctlgind is None:
+            ctlgind = NP.arange(self.skymodel.location.shape[0])
+        elif isinstance(ctlgind, list):
+            ctlgind = NP.asarray(ctlgind)
+        elif isinstance(ctlgind, NP.ndarray):
+            ctlgind = ctlgind.ravel()
+        else:
+            raise TypeError('Input ctlgind must be a list, numpy array or set to None')
+        skymodel = self.skymodel.subset(ctlgind, axis='position')
+
+        if pol is None:
+            pol = ['P1', 'P2']
+        elif isinstance(pol, str):
+            if pol in ['P1', 'P2']:
+                pol = [pol]
+            else:
+                raise ValueError('Invalid polarization specified')
+        elif isinstance(pol, list):
+            p = [apol for apol in pol if apol in ['P1', 'P2']]
+            if len(p) == 0:
+                raise ValueError('Invalid polarization specified')
+            pol = p
+        else:
+            raise TypeError('Input keyword pol must be string, list or set to None')
+        pol = sorted(pol)
+
+        antkeys_sortind = NP.argsort(NP.asarray(self.antinfo['labels']))
+        antpos = self.antinfo['positions']
+        antkeys_sorted = NP.asarray(self.antinfo['labels'])[antkeys_sortind]
+        antpos_sorted = antpos[antkeys_sortind,:]
+        vbeamkeys = NP.argsort(NP.asarray(vbeams.keys()))
+        commonkeys = NP.intersect1d(antkeys_sorted, vbeamkeys)
+
+        if (commonkeys.size != 1) and (commonkeys.size != antkeys_sorted.size):
+            raise ValueError('Number of voltage pattern files incompatible with number of antennas')
+        
+        voltage_pattern = {}
+        Ef_info = {}
+        for apol in pol:
+            if commonkeys.size == 1: # Assume identical antenna voltage patterns
+                voltage_pattern[apol] = vbeams[antkeys_sorted[0]][apol]
+                if voltage_pattern[apol].ndim == 2:
+                    voltage_pattern[apol] = voltage_pattern[apol][:,:,NP.newaxis] # nsrc x nchan x 1
+                elif voltage_pattern[apol].ndim == 1:
+                    voltage_pattern[apol] = voltage_pattern[apol][:,NP.newaxis,NP.newaxis] # nsrc x 1 x 1
+                else:
+                    raise ValueError('Input vbeams has incompatbile dimensions')
+            else:
+                voltage_pattern[apol] = None
+                for akey in antkeys_sorted:
+                    if vbeams[akey][apol].ndim == 2:
+                        vbeam = vbeams[akey][apol][:,:,NP.newaxis] # nsrc x nchan x 1
+                    elif voltage_pattern[apol].ndim == 1:
+                        vbeam = vbeams[akey][apol][:,NP.newaxis,NP.newaxis] # nsrc x 1 x 1
+                    else:
+                        raise ValueError('Input vbeams has incompatbile dimensions')
+
+                    if voltage_pattern[apol] is None:
+                        voltage_pattern[apol] = vbeam # nsrc x nchan x 1 or nsrc x 1 x 1
+                    else:
+                        voltage_pattern[apol] = NP.dstack((voltage_pattern[apol], vbeam)) # nsrc x nchan x nant or nsrc x 1 x nant
+ 
+        for apol in pol:
+            if parallel or (nproc is not None):
+                if nproc is None:
+                    nproc = max(MP.cpu_count()-1, 1) 
+                else:
+                    nproc = min(nproc, max(MP.cpu_count()-1, 1))
+                split_ind = NP.arange(0, nchan, nproc)
+                list_split_freqs = NP.split(self.f, split_ind, axis=0)
+                list_split_vbeams = NP.split(voltage_pattern[apol], split_ind, axis=1)
+                list_antpos = [antpos_sorted] * (len(split_ind) + 1)
+                list_skypos = [srcdircos] * (len(split_ind) + 1)
+                list_flux_ref = [skymodel.spec_parms['flux-scale']] * (len(split_ind) + 1)
+                list_freq_ref = [skymodel.spec_parms['freq-ref']] * (len(split_ind) + 1)
+                list_spindex = [skymodel.spec_parms['power-law-index']] * (len(split_ind) + 1)
+                list_spectrum = [None] * (len(split_ind) + 1)
+                list_refpoint = [ref_point] * (len(split_ind) + 1)
+                list_verbose = [verbose] * (len(split_ind) + 1)
+                
+                pool = MP.Pool(processes=nproc)
+                Ef_info_list = pool.map(generate_E_spectrum_arg_splitter, IT.izip(list_split_freqs, list_skypos, list_flux_ref, list_freq_ref, list_spindex, list_spectrum, list_antpos, list_split_vbeams, list_refpoint, list_verbose))
+                Ef_info[apol] = None
+                for chunk,item in enumerate(Ef_info_list):
+                    if Ef_info[apol] is None:
+                        Ef_info[apol] = item
+                    else:
+                        Ef_info[apol] = NP.vstack((Ef_info[apol], item))
+                del Ef_info_list
+            else:
+                Ef_info[apol] = generate_E_spectrum(self.f, skypos=srcdircos, flux_ref=skymodel.spec_parms['flux-scale'], freq_ref=skymodel.spec_parms['freq-ref'], spetral_index=skymodel.spec_parms['power-law-index'], spectrum=None, antpos=antpos_sorted, voltage_pattern=voltage_pattern[apol], ref_point=ref_point, verbose=verbose)
+
+        return Ef_info
+
+    ############################################################################
+    

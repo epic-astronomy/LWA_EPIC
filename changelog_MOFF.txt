@@ -1,3 +1,18 @@
+From 6f3373f (catalog-sim):
+==========================
+
+In sim_observe.py,
+
+(*) Create function generate_E_spectrum() to generate E-field
+spectra using individual antenna patterns. Docstring added.
+(*) Create function generate_E_spectrum_arg_splitter() to wrap the
+function generate_E_spectrum() for unwrapping the arguments and
+perform parallel processing
+(*) Create member function generate_E_spectrum() along with docstring
+under class AntennaArraySimulator that is capable of invoking parallel
+processes for simulating E-fields observed by the antenna array.
+Update docstring of class AntennaArraySimulator accordingly
+
 From 85277b5 (catalog-sim):
 ==========================
 
