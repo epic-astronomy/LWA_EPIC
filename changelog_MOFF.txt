@@ -1,3 +1,14 @@
+From bc1fe11 (catalog-sim):
+==========================
+
+In sim_observe.py,
+
+(*) Add and initialize attribute Ef_info in __init__() member function
+of class AntennaArraySimulator. Update docstring accordingly
+(*) Add member function stack_E_spectrum() along with docstring under
+class AntennaArraySimulator to stack E-field spectra along time axis.
+(*) Update docstring of class AntennaArraySimulator for these changes
+
 From 6f3373f (catalog-sim):
 ==========================
 

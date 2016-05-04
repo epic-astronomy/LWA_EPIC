@@ -1394,6 +1394,16 @@ class AntennaArraySimulator(object):
                     'positions': position vectors of antennas (3-column 
                                  array) in local ENU coordinates
 
+    observer        [instance of class Observer in module ephem] Instance 
+                    class Observer in ephem module to hold information 
+                    about LST, transit time, etc.
+
+    Ef_stack        [dictionary] contains the E-field spectrum under keys
+                    'P1' and 'P2' for each polarization. The value under
+                    each key is a complex numpy array of shape 
+                    nchan x nant x ntimes. Absent data are represented by 
+                    NaN values
+
     Member function:
 
     __init__()      Initialize the AntennaArraySimulator class which manages 
@@ -1410,6 +1420,13 @@ class AntennaArraySimulator(object):
                     pattern at the location of catalog sources based on 
                     external voltage pattern files specified. Parallel 
                     processing can be performed.
+
+    generate_E_spectrum()
+                    Compute a stochastic electric field spectrum obtained 
+                    from sources in the catalog. It can be parallelized.
+
+    stack_E_spectrum()
+                    Stack E-field spectra along time-axis
     ------------------------------------------------------------------------
     """
 
@@ -1421,7 +1438,7 @@ class AntennaArraySimulator(object):
         about the simulation of Electrc fields by the antennas
 
         Class attributes initialized are:
-        antenna_array, skymodel, latitude, f, f0, antinfo
+        antenna_array, skymodel, latitude, f, f0, antinfo, observer, Ef_stack
 
         Read docstring of class AntennaArray for details on these attributes.
 
@@ -1463,6 +1480,7 @@ class AntennaArraySimulator(object):
         self.antenna_array = antenna_array
         self.skymodel = skymodel
         self.identical_antennas = identical_antennas
+        self.Ef_stack = {}
 
         self.latitude = self.antenna_array.latitude
         self.longitude = self.antenna_array.longitude
@@ -1814,3 +1832,57 @@ class AntennaArraySimulator(object):
 
     ############################################################################
     
+    def stack_E_spectrum(self, Ef_info):
+
+        """
+        ------------------------------------------------------------------------
+        Stack E-field spectra along time-axis
+
+        Inputs:
+
+        Ef_info   [dictionary] Consits of E-field info under two keys 'P1' and
+                  'P2', one for each polarization. Under each of these keys 
+                  is another dictionary with the following keys and values:
+                  'f'        [numpy array] frequencies of the channels in the 
+                             spectrum of size nchan
+                  'Ef'       [complex numpy array] nchan x nant numpy array 
+                             consisting of complex stochastic electric field
+                             spectra. nchan is the number of channels in the 
+                             spectrum and nant is the number of antennas.
+    
+        ------------------------------------------------------------------------
+        """
+
+        try:
+            Ef_info
+        except NameError:
+            raise NameError('Input Ef_info must be specified')
+
+        if not isinstance(Ef_info, dict):
+            raise TypeError('Input Ef_info must be a dictionary')
+
+        for pi,pol in enumerate(['P1', 'P2']):
+            if not self.Ef_stack:
+                self.Ef_stack[pol] = NP.empty((self.f.size,self.antinfo.shape[0]), dtype=NP.complex)
+                self.Ef_stack[pol].fill(NP.nan)
+                if pol in Ef_info:
+                    self.Ef_stack[pol] = Ef_info[pol]['Ef']
+                self.Ef_stack[pol] = self.Ef_stack[pol][:,:,NP.newaxis]
+            else:
+                if pol not in self.Ef_stack:
+                    self.Ef_stack[pol] = NP.empty((self.f.size,self.antinfo.shape[0]), dtype=NP.complex)
+                    self.Ef_stack[pol].fill(NP.nan)
+                    if pol in Ef_info:
+                        self.Ef_stack[pol] = Ef_info[pol]['Ef']
+                    self.Ef_stack[pol] = self.Ef_stack[pol][:,:,NP.newaxis]
+                else:
+                    if pol in Ef_info:
+                        self.Ef_stack[pol] = NP.dstack((self.Ef_stack[pol], Ef_info[pol]['Ef'][:,:,NP.newaxis]))
+                    else:
+                        nanvalue = NP.empty((self.f.size,self.antinfo.shape[0]), dtype=NP.complex)
+                        nanvalue.fill(NP.nan)
+                        self.Ef_stack[pol] = NP.dstack((self.Ef_stack[pol], nanvalue[:,:,NP.newaxis]))
+
+    ############################################################################
+    
+
