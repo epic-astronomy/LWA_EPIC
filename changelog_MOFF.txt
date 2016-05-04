@@ -1,3 +1,13 @@
+From 9449a8e (catalog-sim):
+==========================
+
+In sim_observe.py,
+
+(*) Add attribute Ef_info and initialize in __init__() member function
+of class AntennaArraySimulator. Update docstrings accordingly
+(*) Add input keyword action in member function stack_E_spectrum() of
+class AntennaArraySimulator. Update docstring accordingly
+
 From bc1fe11 (catalog-sim):
 ==========================
 

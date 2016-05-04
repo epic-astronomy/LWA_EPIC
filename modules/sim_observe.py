@@ -1398,6 +1398,17 @@ class AntennaArraySimulator(object):
                     class Observer in ephem module to hold information 
                     about LST, transit time, etc.
 
+    Ef_info         [dictionary] Consits of E-field info under two keys 
+                    'P1' and 'P2', one for each polarization. Under each of 
+                    these keys is another dictionary with the following keys 
+                    and values:
+                    'f'        [numpy array] frequencies of the channels in 
+                               the spectrum of size nchan
+                    'Ef'       [complex numpy array] nchan x nant numpy array 
+                               consisting of complex stochastic electric field
+                               spectra. nchan is the number of channels in the 
+                               spectrum and nant is the number of antennas.
+
     Ef_stack        [dictionary] contains the E-field spectrum under keys
                     'P1' and 'P2' for each polarization. The value under
                     each key is a complex numpy array of shape 
@@ -1438,7 +1449,8 @@ class AntennaArraySimulator(object):
         about the simulation of Electrc fields by the antennas
 
         Class attributes initialized are:
-        antenna_array, skymodel, latitude, f, f0, antinfo, observer, Ef_stack
+        antenna_array, skymodel, latitude, f, f0, antinfo, observer, Ef_stack,
+        Ef_info
 
         Read docstring of class AntennaArray for details on these attributes.
 
@@ -1480,6 +1492,7 @@ class AntennaArraySimulator(object):
         self.antenna_array = antenna_array
         self.skymodel = skymodel
         self.identical_antennas = identical_antennas
+        self.Ef_info = {}
         self.Ef_stack = {}
 
         self.latitude = self.antenna_array.latitude
@@ -1647,7 +1660,7 @@ class AntennaArraySimulator(object):
 
     def generate_E_spectrum(self, altaz, vbeams, ctlgind=None, pol=None,
                             ref_point=None, parallel=False, nproc=None,
-                            verbose=True):
+                            action=None, verbose=True):
 
         """
         ------------------------------------------------------------------------
@@ -1702,6 +1715,10 @@ class AntennaArraySimulator(object):
                   cores in the system, it will be reset to number of process 
                   cores in the system minus one to avoid locking the system out 
                   for other processes
+
+        action    [string or None] If set to 'return' the computed E-field
+                  spectrum is returned. If None or anything else, the computed
+                  E-field spectrum is stored as an attribute but not returned
 
         verbose   [Boolean] Default = False. If set to True, prints some 
                   diagnotic or progress messages.
@@ -1828,7 +1845,9 @@ class AntennaArraySimulator(object):
             else:
                 Ef_info[apol] = generate_E_spectrum(self.f, skypos=srcdircos, flux_ref=skymodel.spec_parms['flux-scale'], freq_ref=skymodel.spec_parms['freq-ref'], spetral_index=skymodel.spec_parms['power-law-index'], spectrum=None, antpos=antpos_sorted, voltage_pattern=voltage_pattern[apol], ref_point=ref_point, verbose=verbose)
 
-        return Ef_info
+        self.Ef_info = Ef_info
+        if action == 'return':
+            return Ef_info
 
     ############################################################################
     
@@ -1885,4 +1904,3 @@ class AntennaArraySimulator(object):
 
     ############################################################################
     
-
