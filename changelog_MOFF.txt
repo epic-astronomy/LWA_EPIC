@@ -1,3 +1,13 @@
+From ca708fd (catalog-sim):
+==========================
+
+In sim_observe.py,
+
+(*) Add memner function generate_E_timeseries() along with docstring
+under class AntennaArraySimulator. Update class docstring accordingly
+(*) Add and initialize attribute t in __init__() member function of
+class AntennaArraySimulator. Update docstring accordingly
+
 From 9449a8e (catalog-sim):
 ==========================
 

@@ -1388,6 +1388,9 @@ class AntennaArraySimulator(object):
 
     f0              [Scalar] Center frequency of the observing band (in Hz)
 
+    t               [Numpy array] Time samples in a single Nyquist sampled 
+                    series (in sec)
+
     antinfo         [dictionary] contains the following keys and 
                     information:
                     'labels':    list of strings of antenna labels
@@ -1400,14 +1403,10 @@ class AntennaArraySimulator(object):
 
     Ef_info         [dictionary] Consits of E-field info under two keys 
                     'P1' and 'P2', one for each polarization. Under each of 
-                    these keys is another dictionary with the following keys 
-                    and values:
-                    'f'        [numpy array] frequencies of the channels in 
-                               the spectrum of size nchan
-                    'Ef'       [complex numpy array] nchan x nant numpy array 
-                               consisting of complex stochastic electric field
-                               spectra. nchan is the number of channels in the 
-                               spectrum and nant is the number of antennas.
+                    these keys is a nchan x nant complex numpy array 
+                    consisting of complex stochastic electric field
+                    spectra. nchan is the number of channels in the 
+                    spectrum and nant is the number of antennas.
 
     Ef_stack        [dictionary] contains the E-field spectrum under keys
                     'P1' and 'P2' for each polarization. The value under
@@ -1438,6 +1437,10 @@ class AntennaArraySimulator(object):
 
     stack_E_spectrum()
                     Stack E-field spectra along time-axis
+
+    generate_E_timeseries()
+                    Generate E-field timeseries from their spectra. It can 
+                    be done on current or stacked spectra
     ------------------------------------------------------------------------
     """
 
@@ -1450,7 +1453,7 @@ class AntennaArraySimulator(object):
 
         Class attributes initialized are:
         antenna_array, skymodel, latitude, f, f0, antinfo, observer, Ef_stack,
-        Ef_info
+        Ef_info, t
 
         Read docstring of class AntennaArray for details on these attributes.
 
@@ -1493,12 +1496,16 @@ class AntennaArraySimulator(object):
         self.skymodel = skymodel
         self.identical_antennas = identical_antennas
         self.Ef_info = {}
+        self.Et_info = {}
         self.Ef_stack = {}
 
         self.latitude = self.antenna_array.latitude
         self.longitude = self.antenna_array.longitude
         self.f = self.antenna_array.f
         self.f0 = self.antenna_array.f0
+        t = NP.fft.fftshift(NP.fft.fftfreq(self.f.size, self.f[1]-self.f[0]))
+        self.t = t - NP.amin(t)
+        
         self.antinfo = self.antenna_array.antenna_positions(pol=None, flag=False, sort=True, centering=True)
         self.observer = EP.Observer()
         self.observer.lat = NP.radians(self.latitude)
@@ -1845,9 +1852,9 @@ class AntennaArraySimulator(object):
             else:
                 Ef_info[apol] = generate_E_spectrum(self.f, skypos=srcdircos, flux_ref=skymodel.spec_parms['flux-scale'], freq_ref=skymodel.spec_parms['freq-ref'], spetral_index=skymodel.spec_parms['power-law-index'], spectrum=None, antpos=antpos_sorted, voltage_pattern=voltage_pattern[apol], ref_point=ref_point, verbose=verbose)
 
-        self.Ef_info = Ef_info
+            self.Ef_info[apol] = Ef_info[apol]['Ef']
         if action == 'return':
-            return Ef_info
+            return self.Ef_info
 
     ############################################################################
     
@@ -1859,16 +1866,13 @@ class AntennaArraySimulator(object):
 
         Inputs:
 
-        Ef_info   [dictionary] Consits of E-field info under two keys 'P1' and
-                  'P2', one for each polarization. Under each of these keys 
-                  is another dictionary with the following keys and values:
-                  'f'        [numpy array] frequencies of the channels in the 
-                             spectrum of size nchan
-                  'Ef'       [complex numpy array] nchan x nant numpy array 
-                             consisting of complex stochastic electric field
-                             spectra. nchan is the number of channels in the 
-                             spectrum and nant is the number of antennas.
-    
+        Ef_info         [dictionary] Consits of E-field info under two keys 
+                        'P1' and 'P2', one for each polarization. Under each of 
+                        these keys is a nchan x nant complex numpy array 
+                        consisting of complex stochastic electric field
+                        spectra. nchan is the number of channels in the 
+                        spectrum and nant is the number of antennas.
+
         ------------------------------------------------------------------------
         """
 
@@ -1880,23 +1884,29 @@ class AntennaArraySimulator(object):
         if not isinstance(Ef_info, dict):
             raise TypeError('Input Ef_info must be a dictionary')
 
-        for pi,pol in enumerate(['P1', 'P2']):
+        for pol in ['P1', 'P2']:
+            if Ef_info[pol]:
+                if Ef_info[pol].shape[0] != self.f.size:
+                    raise ValueError('Dimensions of input Ef_info incompatible with number of frequency channels')
+                if Ef_info[pol].shape[1] != self.antinfo.shape[0]:
+                    raise ValueError('Dimensions of input Ef_info incompatible with number of antennas')
+
             if not self.Ef_stack:
                 self.Ef_stack[pol] = NP.empty((self.f.size,self.antinfo.shape[0]), dtype=NP.complex)
                 self.Ef_stack[pol].fill(NP.nan)
                 if pol in Ef_info:
-                    self.Ef_stack[pol] = Ef_info[pol]['Ef']
+                    self.Ef_stack[pol] = Ef_info[pol]
                 self.Ef_stack[pol] = self.Ef_stack[pol][:,:,NP.newaxis]
             else:
                 if pol not in self.Ef_stack:
                     self.Ef_stack[pol] = NP.empty((self.f.size,self.antinfo.shape[0]), dtype=NP.complex)
                     self.Ef_stack[pol].fill(NP.nan)
                     if pol in Ef_info:
-                        self.Ef_stack[pol] = Ef_info[pol]['Ef']
+                        self.Ef_stack[pol] = Ef_info[pol]
                     self.Ef_stack[pol] = self.Ef_stack[pol][:,:,NP.newaxis]
                 else:
                     if pol in Ef_info:
-                        self.Ef_stack[pol] = NP.dstack((self.Ef_stack[pol], Ef_info[pol]['Ef'][:,:,NP.newaxis]))
+                        self.Ef_stack[pol] = NP.dstack((self.Ef_stack[pol], Ef_info[pol][:,:,NP.newaxis]))
                     else:
                         nanvalue = NP.empty((self.f.size,self.antinfo.shape[0]), dtype=NP.complex)
                         nanvalue.fill(NP.nan)
@@ -1904,3 +1914,42 @@ class AntennaArraySimulator(object):
 
     ############################################################################
     
+    def generate_E_timeseries(self, operand='recent'):
+
+        """
+        ------------------------------------------------------------------------
+        Generate E-field timeseries from their spectra. It can be done on 
+        current or stacked spectra
+
+        Inputs:
+
+        operand         [string] Parameter to decide if the timeseries is to
+                        be produced from current E-field spectrum or from the
+                        stacked spectra. If set to 'recent' (default), the most
+                        recent spectra will be used. If set to 'stack' then the
+                        stacked spectra will be used to create the timeseries
+        ------------------------------------------------------------------------
+        """
+
+        if not isinstance(operand, str):
+            raise TypeError('Input keyword operand must be a string')
+
+        if operand not in ['recent', 'stack']:
+            raise ValueError('Input keyword operand must be set to "recent" or "stack"')
+
+        for pol in ['P1', 'P2']:
+            if operand == 'recent':
+                if self.Ef_info:
+                    if self.Ef_info[pol]:
+                        Ef_shifted = NP.fft.ifftshift(self.Ef_info[pol], axes=0)
+                        self.Et_info[pol] = NP.fft.ifft(Ef_shifted, axis=0)
+            else:
+                if self.Ef_stack:
+                    if self.Ef_stack[pol]:
+                        Ef_shifted = NP.fft.ifftshift(self.Ef_stack[pol], axes=0)
+                        self.Et_stack[pol] = NP.fft.ifft(Ef_shifted, axis=0)
+                
+    ############################################################################
+    
+            
+        
