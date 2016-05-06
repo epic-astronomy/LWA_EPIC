@@ -9,6 +9,7 @@ import my_operations as OPS
 import geometry as GEOM
 import catalog as SM
 import antenna_array as AA
+import antenna_beams as AB
 
 ################### Routines essential for parallel processing ################
 
@@ -1425,7 +1426,7 @@ class AntennaArraySimulator(object):
                     in the upper celestial hemisphere for a given LST on a 
                     given date of observation
 
-    find_voltage_pattern()
+    load_voltage_pattern()
                     Generates (by interpolating if necessary) voltage 
                     pattern at the location of catalog sources based on 
                     external voltage pattern files specified. Parallel 
@@ -1441,6 +1442,10 @@ class AntennaArraySimulator(object):
     generate_E_timeseries()
                     Generate E-field timeseries from their spectra. It can 
                     be done on current or stacked spectra
+
+    generate_voltage_pattern()
+                    Generate voltage pattern analytically based on antenna 
+                    shapes. Can be parallelized
     ------------------------------------------------------------------------
     """
 
@@ -1559,7 +1564,7 @@ class AntennaArraySimulator(object):
 
     ############################################################################
     
-    def find_voltage_pattern(self, vbeam_files, altaz, parallel=False,
+    def load_voltage_pattern(self, vbeam_files, altaz, parallel=False,
                              nproc=None):
 
         """
@@ -1642,7 +1647,7 @@ class AntennaArraySimulator(object):
         else:
             if parallel or (nproc is not None):
                 list_of_keys = commonkeys.tolist()
-                list_of_vbeam_files = [vbfile[akey] for akey in list_of_keys]
+                list_of_vbeam_files = [vbeam_files[akey] for akey in list_of_keys]
                 list_of_zaaz = [theta_phi] * commonkeys.size
                 list_of_obsfreqs = [self.f] * commonkeys.size
                 if nproc is None:
@@ -1652,6 +1657,7 @@ class AntennaArraySimulator(object):
                 pool = MP.Pool(processes=nproc)
                 list_of_vbeams = pool.map(interp_beam_arg_splitter, IT.izip(list_of_vbeam_files, list_of_zaaz, list_of_obsfreqs))
                 vbeams = NP.asarray(list_of_vbeams) # nsrc x nchan x nant
+                del list_of_vbeams
             else:
                 vbeams = None
                 for key in commonkeys:
@@ -1663,6 +1669,259 @@ class AntennaArraySimulator(object):
 
         return vbeams
         
+    ############################################################################
+
+    def generate_voltage_pattern(self, telescopes, altaz, pointing_info=None,
+                                 short_dipole_approx=False,
+                                 half_wave_dipole_approx=False, parallel=False,
+                                 nproc=None):
+
+        """
+        ------------------------------------------------------------------------
+        Generate voltage pattern analytically based on antenna shapes. Can be
+        parallelized
+
+        Inputs:
+
+        telescopes  [dictionary] Dictionary containing telescope antenna
+                    information from which far-field voltage pattern can be 
+                    analytically estimated. Individual antenna information is
+                    found under keys denoted by antenna labels (string). If 
+                    there is only one item it will be assumed to be identical 
+                    for all antennas. If multiple antenna keys are specified 
+                    in the input, it must be the same as number of antennas in 
+                    the antenna array attribute of this class. The value under
+                    each antenna key is a dictionary with the following keys
+                    and values that specify the antenna element type, size, 
+                    orientation, etc.:
+                    'id'          [string] If set, will ignore the other keys
+                                  and use telescope details for known 
+                                  telescopes. Accepted 
+                                  values are 'mwa', 'vla', 'gmrt', and 'hera'.
+                    'shape'       [string] Shape of antenna element. Accepted 
+                                  values are 'dipole', 'delta', and 'dish'. 
+                                  Will be ignored if key 'id' is set. 'delta' 
+                                  denotes a delta function for the antenna 
+                                  element which has an isotropic radiation 
+                                  pattern. 'delta' is the default
+                                  when keys 'id' and 'shape' are not set.
+                    'size'        [scalar] Diameter of the telescope dish (in 
+                                  meters) if the key 'shape' is set to 'dish' 
+                                  or length of the dipole if key 'shape' is 
+                                  set to 'dipole'. Will be ignored if key 
+                                  'shape' is set to 'delta'. Will be ignored 
+                                  if key 'id' is set and a preset value used 
+                                  for the diameter or dipole.
+                    'orientation' [list or numpy array] If key 'shape' is set 
+                                  to dipole, it refers to the orientation of 
+                                  the dipole element unit vector whose 
+                                  magnitude is specified by length. If key 
+                                  'shape' is set to 'dish', it refers to the 
+                                  position on the sky to which the dish is 
+                                  pointed. For a dipole, this unit vector must 
+                                  be provided in the local ENU coordinate 
+                                  system aligned with the direction cosines 
+                                  coordinate system or in the Alt-Az coordinate 
+                                  system. This will be used only when key 
+                                  'shape' is set to 'dipole'. This could be a 
+                                  2-element vector (transverse direction 
+                                  cosines) where the third (line-of-sight) 
+                                  component is determined, or a 3-element vector
+                                  specifying all three direction cosines or a 
+                                  two-element coordinate in Alt-Az system. If 
+                                  not provided it defaults to an eastward 
+                                  pointing dipole. If key 'shape' is set to 
+                                  'dish', the orientation refers to the 
+                                  pointing center of the dish on the sky. It 
+                                  can be provided in Alt-Az system as a 
+                                  two-element vector or in the direction 
+                                  cosine coordinate system as a two- or 
+                                  three-element vector. If not set in the 
+                                  case of a dish element, it defaults to 
+                                  zenith. This is not to be confused with 
+                                  the key 'pointing_center' in dictionary 
+                                  'pointing_info' which refers to the 
+                                  beamformed pointing center of the array. 
+                                  The coordinate system is specified by 
+                                  the key 'ocoords'
+                    'ocoords'     [scalar string] specifies the coordinate 
+                                  system for key 'orientation'. Accepted 
+                                  values are 'altaz' and 'dircos'. 
+                    'element_locs'
+                                  [2- or 3-column array] Element locations 
+                                  that constitute the tile. Each row specifies
+                                  location of one element in the tile. The
+                                  locations must be specified in local ENU
+                                  coordinate system. First column specifies 
+                                  along local east, second along local north 
+                                  and the third along local up. If only two 
+                                  columns are specified, the third column is 
+                                  assumed to be zeros. If 'elements_locs' is 
+                                  not provided, it assumed to be a one-element 
+                                  system and not a phased array as far as 
+                                  determination of primary beam is concerned.
+                    'groundplane' [scalar] height of telescope element above 
+                                  the ground plane (in meteres). Default=None 
+                                  will denote no ground plane effects.
+                    
+        altaz       [numpy array] The altitudes and azimuths (in degrees) at 
+                    which the voltage pattern is to be estimated. It must be
+                    a nsrc x 2 array. 
+
+        parallel    [boolean] specifies if parallelization is to be invoked. 
+                    False (default) means only serial processing
+
+        nproc       [integer] specifies number of independent processes to 
+                    spawn. Default = None, means automatically determines the 
+                    number of process cores in the system and use one less 
+                    than that to avoid locking the system for other processes. 
+                    Applies only if input parameter 'parallel' (see above) is 
+                    set to True. If nproc is set to a value more than the 
+                    number of process cores in the system, it will be reset to 
+                    number of process cores in the system minus one to avoid 
+                    locking the system out for other processes
+
+        pointing_info 
+                    [dictionary] A dictionary consisting of information 
+                    relating to pointing center. The pointing center can be 
+                    specified either via element delay compensation or by 
+                    directly specifying the pointing center in a certain 
+                    coordinate system. Default = None (pointing centered at 
+                    zenith). This dictionary consists of the following tags 
+                    and values:
+                    'gains'           [numpy array] Complex element gains. 
+                                      Must be of size equal to the number of 
+                                      elements as specified by the number of 
+                                      rows in antpos. If set to None (default), 
+                                      all element gains are assumed to be unity. 
+                                      Used only in phased array mode.
+                    'gainerr'         [int, float] RMS error in voltage 
+                                      amplitude in dB to be used in the 
+                                      beamformer. Random jitters are drawn from 
+                                      a normal distribution in logarithm units 
+                                      which are then converted to linear units. 
+                                      Must be a non-negative scalar. If not 
+                                      provided, it defaults to 0 (no jitter).
+                                      Used only in phased array mode.
+                    'delays'          [numpy array] Delays (in seconds) to be 
+                                      applied to the tile elements. Size should 
+                                      be equal to number of tile elements 
+                                      (number of rows in antpos). Default=None 
+                                      will set all element delays to zero 
+                                      phasing them to zenith. Used only in 
+                                      phased array mode. 
+                    'pointing_center' [numpy array] This will apply in the 
+                                      absence of key 'delays'. This can be 
+                                      specified as a row vector. Should have 
+                                      two-columns if using Alt-Az coordinates, 
+                                      or two or three columns if using direction 
+                                      cosines. There is no default. The
+                                      coordinate system must be specified in
+                                      'pointing_coords' if 'pointing_center' is 
+                                      to be used.
+                    'pointing_coords' [string scalar] Coordinate system in which 
+                                      the pointing_center is specified. Accepted 
+                                      values are 'altaz' or 'dircos'. Must be 
+                                      provided if 'pointing_center' is to be 
+                                      used. No default.
+                    'delayerr'        [int, float] RMS jitter in delays used in 
+                                      the beamformer. Random jitters are drawn 
+                                      from a normal distribution with this rms. 
+                                      Must be a non-negative scalar. If not 
+                                      provided, it defaults to 0 (no jitter). 
+                                      Used only in phased array mode.
+                    'nrand'           [int] number of random realizations of 
+                                      gainerr and/or delayerr to be averaged. 
+                                      Must be positive. If none provided, it 
+                                      defaults to 1. Used only in phased array 
+                                      mode.
+        
+        short_dipole_approx
+                    [boolean] if True, indicates short dipole approximation
+                    is to be used. Otherwise, a more accurate expression is 
+                    used for the dipole pattern. Default=False. Both
+                    short_dipole_approx and half_wave_dipole_approx cannot be 
+                    set to True at the same time
+        
+        half_wave_dipole_approx
+                    [boolean] if True, indicates half-wave dipole approximation
+                    is to be used. Otherwise, a more accurate expression is 
+                    used for the dipole pattern. Default=False
+
+        Outputs:
+
+        Antenna voltage beams at the object locations in the upper hemisphere.
+        It is a numpy array of shape nsrc x nchan x nant in case of 
+        non-indentical antennas or nsrc x nchan x 1 in case of identical 
+        antennas. 
+        ------------------------------------------------------------------------
+        """
+
+        try:
+            telescopes
+        except NameError:
+            raise NameError('Input telescopes must be specified')
+
+        try:
+            altaz
+        except NameError:
+            raise NameError('Input altitude-azimuth must be specified')
+
+        if not isinstance(telescopes, dict):
+            raise TypeError('Input telescopes must be a dictionary')
+
+        if not isinstance(altaz, NP.ndarray):
+            raise TypeError('Input altaz must be a numpy array')
+
+        if altaz.ndim != 2:
+            raise ValueError('Input lataz must be a nsrc x 2 numpy array')
+        if altaz.shape[1] != 2:
+            raise ValueError('Input lataz must be a nsrc x 2 numpy array')
+
+        antkeys = NP.asarray(self.antenna_array.antennas.keys())
+        telescopekeys = NP.asarray(telescopes.keys())
+        commonkeys = NP.intersect1d(antkeys, telescopekeys)
+
+        if (commonkeys.size != 1) and (commonkeys.size != antkeys.size):
+            raise ValueError('Number of voltage pattern files incompatible with number of antennas')
+
+        # hemind, upper_altaz = self.upper_hemisphere(lst, obs_date=obs_date)
+
+        if (commonkeys.size == 1) or self.identical_antennas:
+            vbeams = AB.primary_beam_generator(altaz, self.f, telescopes[commonkeys[0]], freq_scale='Hz', skyunits='altaz', east2ax1=0.0, pointing_info=pointing_info, pointing_center=None, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx)
+            vbeams = vbeams[:,:,NP.newaxis] # nsrc x nchan x 1
+        else:
+            if parallel or (nproc is not None):
+                list_of_keys = commonkeys.tolist()
+                list_of_telescopes = [telescopes[akey] for akey in list_of_keys]
+                list_of_altaz = [altaz] * commonkeys.size
+                list_of_obsfreqs = [self.f] * commonkeys.size
+                list_of_freqscale = ['Hz'] * commonkeys.size
+                list_of_skyunits = ['altaz'] * commonkeys.size
+                list_of_east2ax1 = [0.0] * commonkeys.size
+                list_of_pointing_info = [pointing_info] * commonkeys.size
+                list_of_pointing_center = [None] * commonkeys.size
+                list_of_short_dipole_approx = [short_dipole_approx] * commonkeys.size
+                list_of_half_wave_dipole_approx = [half_wave_dipole_approx] * commonkeys.size
+                if nproc is None:
+                    nproc = max(MP.cpu_count()-1, 1) 
+                else:
+                    nproc = min(nproc, max(MP.cpu_count()-1, 1))
+                pool = MP.Pool(processes=nproc)
+                list_of_vbeams = pool.map(AB.antenna_beam_arg_splitter, IT.izip(list_of_altaz, list_of_obsfreqs, list_of_telescopes, list_of_freqscale, list_of_skyunits, list_of_east2ax1, list_of_pointing_info, list_of_pointing_center, list_of_short_dipole_approx, list_of_half_wave_dipole_approx))
+                vbeams = NP.asarray(list_of_vbeams) # nsrc x nchan x nant
+                del list_of_vbeams
+            else:
+                vbeams = None
+                for key in commonkeys:
+                    vbeam = AB.primary_beam_generator(altaz, self.f, telescopes[key], freq_scale='Hz', skyunits='altaz', east2ax1=0.0, pointing_info=pointing_info, pointing_center=None, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx)
+                    if vbeams is None:
+                        vbeams = vbeam[:,:,NP.newaxis] # nsrc x nchan x 1
+                    else:
+                        vbeams = NP.dstack((vbeams, vbeam[:,:,NP.newaxis])) # nsrc x nchan x nant
+
+        return vbeams
+
     ############################################################################
 
     def generate_E_spectrum(self, altaz, vbeams, ctlgind=None, pol=None,

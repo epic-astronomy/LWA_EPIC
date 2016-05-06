@@ -1,3 +1,12 @@
+From 22b031a (catalog-sim):
+==========================
+
+In sim_observe.py,
+
+(*) Add member function generate_voltage_pattern() along with
+docstring under class AntennaArraySimulator. Update class docstring
+accordingly
+
 From ca708fd (catalog-sim):
 ==========================
 
