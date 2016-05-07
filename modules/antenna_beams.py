@@ -163,10 +163,6 @@ def primary_beam_generator(skypos, frequency, telescope, freq_scale='GHz',
                                 a non-negative scalar. If not provided, it
                                 defaults to 0 (no jitter). Used only in phased 
                                 array mode.
-              'nrand'           [int] number of random realizations of gainerr 
-                                and/or delayerr to be averaged. Must be 
-                                positive. If none provided, it defaults to 1.
-                                Used only in phased array mode.
 
     pointing_center
                 [list or numpy array] coordinates of pointing center (in the same
@@ -560,7 +556,7 @@ def airy_disk_pattern(diameter, skypos, frequency, skyunits='altaz', peak=1.0,
                 If None specified, pointing_center is assumed to be at zenith.
                 
     pointing_coords
-                [string] Coordiantes of the pointing center. If None specified, 
+                [string] Coordinates of the pointing center. If None specified, 
                 it is assumed to be same as skyunits. Same allowed values as 
                 skyunits. Default = None.
 

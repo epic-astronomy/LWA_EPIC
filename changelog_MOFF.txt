@@ -1,3 +1,17 @@
+from 67a27c1 (catalog-sim):
+==========================
+
+In sim_observe.py,
+
+(*) Remove input argument telescopes to member function
+generate_voltage_pattern() of class AntennaArraySimulator. Construct
+telescope information internally. Update docstrong accordingly
+
+In antenna_beams.py,
+
+(*) Remove usage of nrand in primary_beam_generator(). Update
+docstring accordingly
+
 From 8019158 (catalog-sim):
 ==========================
 

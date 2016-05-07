@@ -1671,7 +1671,7 @@ class AntennaArraySimulator(object):
         
     ############################################################################
 
-    def generate_voltage_pattern(self, telescopes, altaz, pointing_info=None,
+    def generate_voltage_pattern(self, altaz, pointing_info=None,
                                  short_dipole_approx=False,
                                  half_wave_dipole_approx=False, parallel=False,
                                  nproc=None):
@@ -1683,87 +1683,6 @@ class AntennaArraySimulator(object):
 
         Inputs:
 
-        telescopes  [dictionary] Dictionary containing telescope antenna
-                    information from which far-field voltage pattern can be 
-                    analytically estimated. Individual antenna information is
-                    found under keys denoted by antenna labels (string). If 
-                    there is only one item it will be assumed to be identical 
-                    for all antennas. If multiple antenna keys are specified 
-                    in the input, it must be the same as number of antennas in 
-                    the antenna array attribute of this class. The value under
-                    each antenna key is a dictionary with the following keys
-                    and values that specify the antenna element type, size, 
-                    orientation, etc.:
-                    'id'          [string] If set, will ignore the other keys
-                                  and use telescope details for known 
-                                  telescopes. Accepted 
-                                  values are 'mwa', 'vla', 'gmrt', and 'hera'.
-                    'shape'       [string] Shape of antenna element. Accepted 
-                                  values are 'dipole', 'delta', and 'dish'. 
-                                  Will be ignored if key 'id' is set. 'delta' 
-                                  denotes a delta function for the antenna 
-                                  element which has an isotropic radiation 
-                                  pattern. 'delta' is the default
-                                  when keys 'id' and 'shape' are not set.
-                    'size'        [scalar] Diameter of the telescope dish (in 
-                                  meters) if the key 'shape' is set to 'dish' 
-                                  or length of the dipole if key 'shape' is 
-                                  set to 'dipole'. Will be ignored if key 
-                                  'shape' is set to 'delta'. Will be ignored 
-                                  if key 'id' is set and a preset value used 
-                                  for the diameter or dipole.
-                    'orientation' [list or numpy array] If key 'shape' is set 
-                                  to dipole, it refers to the orientation of 
-                                  the dipole element unit vector whose 
-                                  magnitude is specified by length. If key 
-                                  'shape' is set to 'dish', it refers to the 
-                                  position on the sky to which the dish is 
-                                  pointed. For a dipole, this unit vector must 
-                                  be provided in the local ENU coordinate 
-                                  system aligned with the direction cosines 
-                                  coordinate system or in the Alt-Az coordinate 
-                                  system. This will be used only when key 
-                                  'shape' is set to 'dipole'. This could be a 
-                                  2-element vector (transverse direction 
-                                  cosines) where the third (line-of-sight) 
-                                  component is determined, or a 3-element vector
-                                  specifying all three direction cosines or a 
-                                  two-element coordinate in Alt-Az system. If 
-                                  not provided it defaults to an eastward 
-                                  pointing dipole. If key 'shape' is set to 
-                                  'dish', the orientation refers to the 
-                                  pointing center of the dish on the sky. It 
-                                  can be provided in Alt-Az system as a 
-                                  two-element vector or in the direction 
-                                  cosine coordinate system as a two- or 
-                                  three-element vector. If not set in the 
-                                  case of a dish element, it defaults to 
-                                  zenith. This is not to be confused with 
-                                  the key 'pointing_center' in dictionary 
-                                  'pointing_info' which refers to the 
-                                  beamformed pointing center of the array. 
-                                  The coordinate system is specified by 
-                                  the key 'ocoords'
-                    'ocoords'     [scalar string] specifies the coordinate 
-                                  system for key 'orientation'. Accepted 
-                                  values are 'altaz' and 'dircos'. 
-                    'element_locs'
-                                  [2- or 3-column array] Element locations 
-                                  that constitute the tile. Each row specifies
-                                  location of one element in the tile. The
-                                  locations must be specified in local ENU
-                                  coordinate system. First column specifies 
-                                  along local east, second along local north 
-                                  and the third along local up. If only two 
-                                  columns are specified, the third column is 
-                                  assumed to be zeros. If 'elements_locs' is 
-                                  not provided, it assumed to be a one-element 
-                                  system and not a phased array as far as 
-                                  determination of primary beam is concerned.
-                    'groundplane' [scalar] height of telescope element above 
-                                  the ground plane (in meteres). Default=None 
-                                  will denote no ground plane effects.
-                    
         altaz       [numpy array] The altitudes and azimuths (in degrees) at 
                     which the voltage pattern is to be estimated. It must be
                     a nsrc x 2 array. 
@@ -1830,11 +1749,6 @@ class AntennaArraySimulator(object):
                                       Must be a non-negative scalar. If not 
                                       provided, it defaults to 0 (no jitter). 
                                       Used only in phased array mode.
-                    'nrand'           [int] number of random realizations of 
-                                      gainerr and/or delayerr to be averaged. 
-                                      Must be positive. If none provided, it 
-                                      defaults to 1. Used only in phased array 
-                                      mode.
         
         short_dipole_approx
                     [boolean] if True, indicates short dipole approximation
@@ -1858,17 +1772,9 @@ class AntennaArraySimulator(object):
         """
 
         try:
-            telescopes
-        except NameError:
-            raise NameError('Input telescopes must be specified')
-
-        try:
             altaz
         except NameError:
             raise NameError('Input altitude-azimuth must be specified')
-
-        if not isinstance(telescopes, dict):
-            raise TypeError('Input telescopes must be a dictionary')
 
         if not isinstance(altaz, NP.ndarray):
             raise TypeError('Input altaz must be a numpy array')
@@ -1878,47 +1784,75 @@ class AntennaArraySimulator(object):
         if altaz.shape[1] != 2:
             raise ValueError('Input lataz must be a nsrc x 2 numpy array')
 
-        antkeys = NP.asarray(self.antenna_array.antennas.keys())
-        telescopekeys = NP.asarray(telescopes.keys())
-        commonkeys = NP.intersect1d(antkeys, telescopekeys)
-
-        if (commonkeys.size != 1) and (commonkeys.size != antkeys.size):
-            raise ValueError('Number of voltage pattern files incompatible with number of antennas')
-
-        # hemind, upper_altaz = self.upper_hemisphere(lst, obs_date=obs_date)
-
-        if (commonkeys.size == 1) or self.identical_antennas:
-            vbeams = AB.primary_beam_generator(altaz, self.f, telescopes[commonkeys[0]], freq_scale='Hz', skyunits='altaz', east2ax1=0.0, pointing_info=pointing_info, pointing_center=None, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx)
-            vbeams = vbeams[:,:,NP.newaxis] # nsrc x nchan x 1
-        else:
-            if parallel or (nproc is not None):
-                list_of_keys = commonkeys.tolist()
-                list_of_telescopes = [telescopes[akey] for akey in list_of_keys]
-                list_of_altaz = [altaz] * commonkeys.size
-                list_of_obsfreqs = [self.f] * commonkeys.size
-                list_of_freqscale = ['Hz'] * commonkeys.size
-                list_of_skyunits = ['altaz'] * commonkeys.size
-                list_of_east2ax1 = [0.0] * commonkeys.size
-                list_of_pointing_info = [pointing_info] * commonkeys.size
-                list_of_pointing_center = [None] * commonkeys.size
-                list_of_short_dipole_approx = [short_dipole_approx] * commonkeys.size
-                list_of_half_wave_dipole_approx = [half_wave_dipole_approx] * commonkeys.size
-                if nproc is None:
-                    nproc = max(MP.cpu_count()-1, 1) 
+        telescopes = {}
+        for pol in ['P1', 'P2']:
+            telescopes[pol] = {}
+            if self.identical_antennas:
+                telescopes[pol][self.antenna_array.antennas.iteritems().next().label] = {}
+                telescopes[pol][self.antenna_array.antennas.iteritems().next().label]['id'] = 'custom'
+                if self.antenna_array.antennas.iteritems().next().aperture.shape[pol] == 'circular':
+                    telescopes[pol][self.antenna_array.antennas.iteritems().next().label]['shape'] = 'dish'
+                    telescopes[pol][self.antenna_array.antennas.iteritems().next().label]['size'] = 2.0 * self.antenna_array.antennas.iteritems().next().aperture.rmax[pol]
+                    telescopes[pol][self.antenna_array.antennas.iteritems().next().label]['orientation'] = NP.asarray([90.0, 270.0])
+                    telescopes[pol][self.antenna_array.antennas.iteritems().next().label]['ocoords'] = 'altaz'
+                elif (self.antenna_array.antennas.iteritems().next().aperture.shape[pol] == 'rect') or (self.antenna_array.antennas.iteritems().next().aperture.shape[pol] == 'square'):
+                    telescopes[pol][self.antenna_array.antennas.iteritems().next().label]['shape'] = 'rect'
+                    telescopes[pol][self.antenna_array.antennas.iteritems().next().label]['size'] = 2.0 * NP.asarray([self.antenna_array.antennas.iteritems().next().aperture.xmax[pol], self.antenna_array.antennas.iteritems().next().aperture.ymax[pol]])
+                    telescopes[pol][self.antenna_array.antennas.iteritems().next().label]['orientation'] = NP.degrees(self.antenna_array.antennas.iteritems().next().aperture.rotangle[pol])
+                    telescopes[pol][self.antenna_array.antennas.iteritems().next().label]['ocoords'] = 'degrees'
                 else:
-                    nproc = min(nproc, max(MP.cpu_count()-1, 1))
-                pool = MP.Pool(processes=nproc)
-                list_of_vbeams = pool.map(AB.antenna_beam_arg_splitter, IT.izip(list_of_altaz, list_of_obsfreqs, list_of_telescopes, list_of_freqscale, list_of_skyunits, list_of_east2ax1, list_of_pointing_info, list_of_pointing_center, list_of_short_dipole_approx, list_of_half_wave_dipole_approx))
-                vbeams = NP.asarray(list_of_vbeams) # nsrc x nchan x nant
-                del list_of_vbeams
+                    raise ValueError('Antenna aperture shape currently not supported for analytic antenna beam estimation')
             else:
-                vbeams = None
-                for key in commonkeys:
-                    vbeam = AB.primary_beam_generator(altaz, self.f, telescopes[key], freq_scale='Hz', skyunits='altaz', east2ax1=0.0, pointing_info=pointing_info, pointing_center=None, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx)
-                    if vbeams is None:
-                        vbeams = vbeam[:,:,NP.newaxis] # nsrc x nchan x 1
+                for antkey in self.antenna_array.antennas:
+                    telescopes[pol][self.antenna_array.antennas[antkey].label] = {}
+                    telescopes[pol][self.antenna_array.antennas[antkey].label]['id'] = 'custom'
+                    if self.antenna_array.antennas[antkey].aperture.shape[pol] == 'circular':
+                        telescopes[pol][self.antenna_array.antennas[antkey].label]['shape'] = 'dish'
+                        telescopes[pol][self.antenna_array.antennas[antkey].label]['size'] = 2.0 * self.antenna_array.antennas[antkey].aperture.rmax[pol]
+                        telescopes[pol][self.antenna_array.antennas[antkey].label]['orientation'] = NP.asarray([90.0, 270.0])
+                        telescopes[pol][self.antenna_array.antennas[antkey].label]['ocoords'] = 'altaz'
+                    elif (self.antenna_array.antennas[antkey].aperture.shape[pol] == 'rect') or (self.antenna_array.antennas[antkey].aperture.shape[pol] == 'square'):
+                        telescopes[pol][self.antenna_array.antennas[antkey].label]['shape'] = 'rect'
+                        telescopes[pol][self.antenna_array.antennas[antkey].label]['size'] = 2.0 * NP.asarray([self.antenna_array.antennas[antkey].aperture.xmax[pol], self.antenna_array.antennas[antkey].aperture.ymax[pol]])
+                        telescopes[pol][self.antenna_array.antennas[antkey].label]['orientation'] = NP.degrees(self.antenna_array.antennas[antkey].aperture.rotangle[pol])
+                        telescopes[pol][self.antenna_array.antennas[antkey].label]['ocoords'] = 'degrees'
                     else:
-                        vbeams = NP.dstack((vbeams, vbeam[:,:,NP.newaxis])) # nsrc x nchan x nant
+                        raise ValueError('Antenna aperture shape currently not supported for analytic antenna beam estimation')
+                    
+        for pol in ['P1', 'P2']:
+            antkeys = telescopes[pol].keys()
+            if len(antkeys) == 1:
+                vbeams = AB.primary_beam_generator(altaz, self.f, telescopes[pol][antkeys], freq_scale='Hz', skyunits='altaz', east2ax1=0.0, pointing_info=pointing_info, pointing_center=None, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx)
+                vbeams = vbeams[:,:,NP.newaxis] # nsrc x nchan x 1
+            else:
+                if parallel or (nproc is not None):
+                    list_of_keys = antkeys
+                    list_of_telescopes = [telescopes[pol][akey] for akey in list_of_keys]
+                    list_of_altaz = [altaz] * len(antkeys)
+                    list_of_obsfreqs = [self.f] * len(antkeys)
+                    list_of_freqscale = ['Hz'] * len(antkeys)
+                    list_of_skyunits = ['altaz'] * len(antkeys)
+                    list_of_east2ax1 = [0.0] * len(antkeys)
+                    list_of_pointing_info = [pointing_info] * len(antkeys)
+                    list_of_pointing_center = [None] * len(antkeys)
+                    list_of_short_dipole_approx = [short_dipole_approx] * len(antkeys)
+                    list_of_half_wave_dipole_approx = [half_wave_dipole_approx] * len(antkeys)
+                    if nproc is None:
+                        nproc = max(MP.cpu_count()-1, 1) 
+                    else:
+                        nproc = min(nproc, max(MP.cpu_count()-1, 1))
+                    pool = MP.Pool(processes=nproc)
+                    list_of_vbeams = pool.map(AB.antenna_beam_arg_splitter, IT.izip(list_of_altaz, list_of_obsfreqs, list_of_telescopes, list_of_freqscale, list_of_skyunits, list_of_east2ax1, list_of_pointing_info, list_of_pointing_center, list_of_short_dipole_approx, list_of_half_wave_dipole_approx))
+                    vbeams = NP.asarray(list_of_vbeams) # nsrc x nchan x nant
+                    del list_of_vbeams
+                else:
+                    vbeams = None
+                    for key in antkeys:
+                        vbeam = AB.primary_beam_generator(altaz, self.f, telescopes[pol][key], freq_scale='Hz', skyunits='altaz', east2ax1=0.0, pointing_info=pointing_info, pointing_center=None, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx)
+                        if vbeams is None:
+                            vbeams = vbeam[:,:,NP.newaxis] # nsrc x nchan x 1
+                        else:
+                            vbeams = NP.dstack((vbeams, vbeam[:,:,NP.newaxis])) # nsrc x nchan x nant
 
         return vbeams
 
