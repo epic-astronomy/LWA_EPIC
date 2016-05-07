@@ -1,3 +1,8 @@
+From 8019158 (catalog-sim):
+==========================
+
+(*) Add antenna_beams.py to git repo
+
 From 22b031a (catalog-sim):
 ==========================
 
