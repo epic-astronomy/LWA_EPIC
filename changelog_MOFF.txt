@@ -1,9 +1,21 @@
+From 432dace (catalog-sim):
+==========================
+
+In antenna_beams.py,
+
+(*) Change sign of relative rotation by amount east2ax1 in functions
+isotropic_radiators_array_field_pattern() and
+uniform_rectangular_aperture(). This is because azimuths are measured
+clockwise from North while east2ax1 is measured anti-clockwise from
+East
+
 From 1d870d3 (catalog-sim):
 ==========================
 
 In antenna_beams.py,
 
 (*) Add function uniform_square_aperture() with docstring
+(*) Minor changes in docstrings
 
 From bc8df96 (catalog-sim):
 ==========================
