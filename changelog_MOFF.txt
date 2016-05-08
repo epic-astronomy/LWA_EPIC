@@ -1,3 +1,10 @@
+From bc8df96 (catalog-sim):
+==========================
+
+In antenna_beams.py,
+
+(*) Add function uniform_rectangular_aperture() with docstring
+
 from 67a27c1 (catalog-sim):
 ==========================
 
