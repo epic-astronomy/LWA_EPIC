@@ -1,3 +1,12 @@
+From cc866f0 (catalog-sim):
+==========================
+
+In antenna_beams.py,
+
+(*) Compute and return power pattern if input keyword power is set
+in function array_field_pattern()
+(*) Minor changes to docstrings throughout
+
 From a069e86 (catalog-sim):
 ==========================
 

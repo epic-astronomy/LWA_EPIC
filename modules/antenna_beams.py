@@ -12,8 +12,8 @@ def primary_beam_generator(skypos, frequency, telescope, freq_scale='GHz',
 
     """
     -----------------------------------------------------------------------------
-    A wrapper for estimating the power patterns of different telescopes such as
-    the VLA, GMRT, MWA, HERA, etc. For the VLA and GMRT, polynomial power 
+    A wrapper for estimating the field or power patterns of different telescopes 
+    such as the VLA, GMRT, MWA, HERA, etc. For the VLA and GMRT, polynomial power 
     patterns are estimated as specified in AIPS task PBCOR. For MWA, it is based 
     on theoretical expressions for dipole (element) pattern multiplied with the 
     array pattern of isotropic radiators.
@@ -191,7 +191,7 @@ def primary_beam_generator(skypos, frequency, telescope, freq_scale='GHz',
 
     Output:
 
-    [Numpy array] Antenna pattern at the specified sky positions. 
+    [Numpy array] Antenna field or power pattern at the specified sky positions
     -----------------------------------------------------------------------------
     """
 
@@ -528,7 +528,7 @@ def airy_disk_pattern(diameter, skypos, frequency, skyunits='altaz', peak=1.0,
 
     """
     -----------------------------------------------------------------------------
-    Field pattern of a uniformly illuminated dish
+    Field or power pattern of a uniformly illuminated dish
 
     Inputs:
 
@@ -649,7 +649,7 @@ def ground_plane_field_pattern(height, skypos, skycoords=None, wavelength=1.0,
 
     """
     -----------------------------------------------------------------------------
-    Compute the field pattern of ground plane of specified height at the 
+    Compute the field or power pattern of ground plane of specified height at the 
     specified sky positions at the specified wavelength. 
 
     Inputs:
@@ -694,9 +694,9 @@ def ground_plane_field_pattern(height, skypos, skycoords=None, wavelength=1.0,
                      compute field pattern (default=False).
     Output:
 
-    Ground plane electric field pattern, a numpy array with number of rows equal 
-    to the number of sky positions (which is equal to the number of rows in 
-    skypos) and number of columns equal to number of wavelengths specified. 
+    Ground plane electric field or power pattern, a numpy array with number of 
+    rows equal to the number of sky positions (which is equal to the number of 
+    rows in skypos) and number of columns equal to number of wavelengths specified. 
     -----------------------------------------------------------------------------
     """
 
@@ -809,8 +809,8 @@ def dipole_field_pattern(length, skypos, dipole_coords=None, skycoords=None,
 
     """
     -----------------------------------------------------------------------------
-    Compute the dipole field pattern of specified length at the specified sky
-    positions at the specified wavelength. 
+    Compute the dipole field or power pattern of specified length at the 
+    specified sky positions at the specified wavelength. 
 
     Inputs:
 
@@ -876,9 +876,9 @@ def dipole_field_pattern(length, skypos, dipole_coords=None, skycoords=None,
 
     Output:
 
-    Dipole Electric field pattern, a numpy array with number of rows equal to the
-    number of sky positions (which is equal to the number of rows in skypos) and
-    number of columns equal to number of wavelengths specified. 
+    Dipole Electric field or power pattern, a numpy array with number of rows 
+    equal to the number of sky positions (which is equal to the number of rows 
+    in skypos) and number of columns equal to number of wavelengths specified. 
     -----------------------------------------------------------------------------
     """
 
@@ -1073,8 +1073,8 @@ def isotropic_radiators_array_field_pattern(nax1, nax2, sep1, sep2=None,
 
     """
     -----------------------------------------------------------------------------
-    Compute the electric field pattern at the specified sky positions due to a 
-    regularly placed array of antennas.
+    Compute the electric field or power pattern at the specified sky positions 
+    due to a regularly placed array of antennas.
 
     Inputs:
 
@@ -1122,8 +1122,8 @@ def isotropic_radiators_array_field_pattern(nax1, nax2, sep1, sep2=None,
 
     Output:
 
-    Array Electric field pattern, number of rows equal to the number of sky 
-    positions (which is equal to the number of rows in skypos), and number of 
+    Array Electric field or power pattern, number of rows equal to the number of 
+    sky positions (which is equal to the number of rows in skypos), and number of 
     columns equal to the number of wavelengths. The array pattern is the product 
     of the array patterns along each axis.
     -----------------------------------------------------------------------------
@@ -1314,13 +1314,13 @@ def array_field_pattern(antpos, skypos, skycoords='altaz', pointing_info=None,
 
     """
     -----------------------------------------------------------------------------
-    A routine to generate field pattern from an array of generic shape made of
-    isotropic radiator elements. This can supercede the functionality of 
-    isotropic_radiators_array_field_pattern() because the latter can only handle
-    rectangular or square arrays with equally spaced elements. Secondly, this 
-    routine can handle beam pointing through specification of pointing center or
-    beamformer delays. Effect of jitter in the delay settings of the beamformer
-    can also be taken into account.
+    A routine to generate field or power pattern pattern from an array of 
+    generic shape made of isotropic radiator elements. This can supercede the 
+    functionality of isotropic_radiators_array_field_pattern() because the 
+    latter can only handle rectangular or square arrays with equally spaced 
+    elements. Secondly, this routine can handle beam pointing through 
+    specification of pointing center or beamformer delays. Effect of jitter in 
+    the delay settings of the beamformer can also be taken into account.
 
     Inputs:
 
@@ -1579,6 +1579,8 @@ def array_field_pattern(antpos, skypos, skycoords='altaz', pointing_info=None,
 
     # return field_pattern
 
+    if power:
+        retvalue = NP.abs(retvalue)**2
     return retvalue
                 
 #################################################################################
@@ -1589,8 +1591,8 @@ def uniform_rectangular_aperture(sides, skypos, frequency, skyunits='altaz',
 
     """
     -----------------------------------------------------------------------------
-    Compute the electric field pattern at the specified sky positions due to a 
-    uniformly illuminated rectangular aperture
+    Compute the electric field or power pattern at the specified sky positions 
+    due to a uniformly illuminated rectangular aperture
 
     Inputs:
 
@@ -1806,8 +1808,8 @@ def uniform_square_aperture(side, skypos, frequency, skyunits='altaz',
 
     """
     -----------------------------------------------------------------------------
-    Compute the electric field pattern at the specified sky positions due to a 
-    uniformly illuminated square aperture
+    Compute the electric field or power pattern pattern at the specified sky 
+    positions due to a uniformly illuminated square aperture
 
     Inputs:
 
