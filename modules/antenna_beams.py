@@ -645,7 +645,7 @@ def airy_disk_pattern(diameter, skypos, frequency, skyunits='altaz', peak=1.0,
 #################################################################################
 
 def ground_plane_field_pattern(height, skypos, skycoords=None, wavelength=1.0,
-                               angle_units=None, modifier=None):
+                               angle_units=None, modifier=None, power=False):
 
     """
     -----------------------------------------------------------------------------
@@ -690,6 +690,8 @@ def ground_plane_field_pattern(height, skypos, skycoords=None, wavelength=1.0,
                                scaled values to. If not set, there is no upper
                                limit
 
+    power            [boolean] If set to True, compute power pattern, otherwise 
+                     compute field pattern (default=False).
     Output:
 
     Ground plane electric field pattern, a numpy array with number of rows equal 
@@ -802,7 +804,8 @@ def ground_plane_field_pattern(height, skypos, skycoords=None, wavelength=1.0,
 
 def dipole_field_pattern(length, skypos, dipole_coords=None, skycoords=None, 
                          dipole_orientation=None, wavelength=1.0, angle_units=None, 
-                         short_dipole_approx=False, half_wave_dipole_approx=True):
+                         short_dipole_approx=False, half_wave_dipole_approx=True,
+                         power=False):
 
     """
     -----------------------------------------------------------------------------
@@ -867,6 +870,9 @@ def dipole_field_pattern(length, skypos, dipole_coords=None, skycoords=None,
                      for the dipole pattern. Default=True. Both
                      short_dipole_approx and half_wave_dipole_approx cannot be set 
                      to True at the same time
+
+    power            [boolean] If set to True, compute power pattern, otherwise 
+                     compute field pattern (default=False).
 
     Output:
 
@@ -1053,14 +1059,17 @@ def dipole_field_pattern(length, skypos, dipole_coords=None, skycoords=None,
         if n_zero_angles > 0:
             field_pattern[zero_angles_ind.ravel(),:] = k*h * NP.sin(k*h * NP.cos(angles[zero_angles_ind])) * NP.tan(angles[zero_angles_ind]) # Correct expression from L' Hospital rule
     
-    return field_pattern / max_pattern
+    if power:
+        return NP.abs(field_pattern / max_pattern)**2
+    else:
+        return field_pattern / max_pattern
 
 #################################################################################
 
 def isotropic_radiators_array_field_pattern(nax1, nax2, sep1, sep2=None,
                                             skypos=None, wavelength=1.0,
                                             east2ax1=None, skycoords='altaz',
-                                            pointing_center=None):
+                                            pointing_center=None, power=False):
 
     """
     -----------------------------------------------------------------------------
@@ -1107,6 +1116,9 @@ def isotropic_radiators_array_field_pattern(nax1, nax2, sep1, sep2=None,
                   coordinate system as that of sky coordinates specified by
                   skycoords). 2-element vector if skycoords='altaz'. 2- or 
                   3-element vector if skycoords='dircos'. 
+
+    power         [boolean] If set to True, compute power pattern, otherwise 
+                  compute field pattern (default=False).
 
     Output:
 
@@ -1291,12 +1303,14 @@ def isotropic_radiators_array_field_pattern(nax1, nax2, sep1, sep2=None,
     term2[zero_psi] = term2_zero_psi.ravel()
 
     ab =  term1 * term2
+    if power:
+        ab = NP.abs(ab)**2
     return ab
 
 #################################################################################
 
 def array_field_pattern(antpos, skypos, skycoords='altaz', pointing_info=None, 
-                        wavelength=1.0):
+                        wavelength=1.0, power=False):
 
     """
     -----------------------------------------------------------------------------
@@ -1381,6 +1395,9 @@ def array_field_pattern(antpos, skypos, skycoords='altaz', pointing_info=None,
                dipole pattern is to be estimated. Must be in the same units as 
                element positions in antpos.
                                
+    power      [boolean] If set to True, compute power pattern, otherwise 
+               compute field pattern (default=False).
+
     Output:
 
     Returns a complex electric field pattern as a MxN numpy array, M=number of 

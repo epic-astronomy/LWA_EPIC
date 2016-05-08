@@ -1,3 +1,11 @@
+From a069e86 (catalog-sim):
+==========================
+
+In antenna_beams.py,
+
+(*) Add input keyword power to functions to return power patterns.
+Update docstring accordingly
+
 From 432dace (catalog-sim):
 ==========================
 
