@@ -1567,7 +1567,7 @@ def uniform_rectangular_aperture(sides, skypos, frequency, skyunits='altaz',
     """
     -----------------------------------------------------------------------------
     Compute the electric field pattern at the specified sky positions due to a 
-    regularly placed array of antennas.
+    uniformly illuminated rectangular aperture
 
     Inputs:
 
@@ -1609,10 +1609,9 @@ def uniform_rectangular_aperture(sides, skypos, frequency, skyunits='altaz',
 
     Output:
 
-    Array Electric field pattern, number of rows equal to the number of sky 
-    positions (which is equal to the number of rows in skypos), and number of 
-    columns equal to the number of wavelengths. The array pattern is the product 
-    of the array patterns along each axis.
+    Electric field pattern or power pattern, number of rows equal to the number 
+    of sky positions (which is equal to the number of rows in skypos), and 
+    number of columns equal to the number of wavelengths. 
     -----------------------------------------------------------------------------
     """
 
@@ -1768,6 +1767,76 @@ def uniform_rectangular_aperture(sides, skypos, frequency, skyunits='altaz',
     if power:
         ab = NP.abs(ab)**2
 
+    return ab
+    
+################################################################################
+
+def uniform_square_aperture(side, skypos, frequency, skyunits='altaz', 
+                            east2ax1=None, pointing_center=None, 
+                            power=False):
+
+    """
+    -----------------------------------------------------------------------------
+    Compute the electric field pattern at the specified sky positions due to a 
+    uniformly illuminated square aperture
+
+    Inputs:
+
+    side        [scalar] Sides of the square (in m)
+
+    skypos      [list or numpy vector] Sky positions at which the power pattern 
+                is to be estimated. Size is M x N where M is the number of 
+                locations, N = 2 (if skyunits = altaz denoting Alt-Az 
+                coordinates), or N = 3 (if skyunits = dircos denoting direction 
+                cosine coordinates). If skyunits = altaz, then altitude and 
+                azimuth must be in degrees
+
+    frequency   [list or numpy vector] frequencies (in GHz) at which the power 
+                pattern is to be estimated. Frequencies differing by too much
+                and extending over the usual bands cannot be given. 
+
+    Keyword Inputs:
+
+    skyunits    [string] string specifying the coordinate system of the sky 
+                positions. Accepted values are 'altaz', and 'dircos'.
+                Default = 'altaz'. If 'dircos', the direction cosines are 
+                aligned with the local East, North, and Up. If 'altaz', then 
+                altitude and azimuth must be in degrees.
+
+    east2ax1    [scalar] Angle (in degrees) the primary axis of the array makes 
+                with the local East (positive anti-clockwise). 
+                  
+    pointing_center  
+                [list or numpy array] coordinates of pointing center (in the same
+                coordinate system as that of sky coordinates specified by
+                skycoords). 2-element vector if skycoords='altaz'. 2- or 
+                3-element vector if skycoords='dircos'. 
+
+    power       [boolean] If set to True, compute power pattern, otherwise 
+                compute field pattern (default=False).
+
+    Output:
+
+    Electric field pattern or power pattern, number of rows equal to the number 
+    of sky positions (which is equal to the number of rows in skypos), and number 
+    of columns equal to the number of wavelengths. 
+    -----------------------------------------------------------------------------
+    """
+
+    try:
+        side, skypos, frequency
+    except NameError:
+        raise NameError('Square antenna side, skypos, frequency must be specified')
+
+    if not isinstance(sides, (int,float)):
+        raise TypeError('Antenna sides must be a scalar')
+    sides = NP.asarray([side]*2, dtype=NP.float)
+
+    ab = uniform_rectangular_aperture(sides, skypos, frequency,
+                                      skyunits=skyunits, 
+                                      east2ax1=east2ax1,
+                                      pointing_center=pointing_center, 
+                                      power=power)
     return ab
     
 ################################################################################
