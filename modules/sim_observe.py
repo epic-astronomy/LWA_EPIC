@@ -1788,24 +1788,24 @@ class AntennaArraySimulator(object):
         for pol in ['P1', 'P2']:
             telescopes[pol] = {}
             if self.identical_antennas:
-                telescopes[pol][self.antenna_array.antennas.iteritems().next().label] = {}
-                telescopes[pol][self.antenna_array.antennas.iteritems().next().label]['id'] = 'custom'
-                if self.antenna_array.antennas.iteritems().next().aperture.shape[pol] == 'circular':
-                    telescopes[pol][self.antenna_array.antennas.iteritems().next().label]['shape'] = 'dish'
-                    telescopes[pol][self.antenna_array.antennas.iteritems().next().label]['size'] = 2.0 * self.antenna_array.antennas.iteritems().next().aperture.rmax[pol]
-                    telescopes[pol][self.antenna_array.antennas.iteritems().next().label]['orientation'] = NP.asarray([90.0, 270.0])
-                    telescopes[pol][self.antenna_array.antennas.iteritems().next().label]['ocoords'] = 'altaz'
-                elif (self.antenna_array.antennas.iteritems().next().aperture.shape[pol] == 'rect') or (self.antenna_array.antennas.iteritems().next().aperture.shape[pol] == 'square'):
-                    telescopes[pol][self.antenna_array.antennas.iteritems().next().label]['shape'] = 'rect'
-                    telescopes[pol][self.antenna_array.antennas.iteritems().next().label]['size'] = 2.0 * NP.asarray([self.antenna_array.antennas.iteritems().next().aperture.xmax[pol], self.antenna_array.antennas.iteritems().next().aperture.ymax[pol]])
-                    telescopes[pol][self.antenna_array.antennas.iteritems().next().label]['orientation'] = NP.degrees(self.antenna_array.antennas.iteritems().next().aperture.rotangle[pol])
-                    telescopes[pol][self.antenna_array.antennas.iteritems().next().label]['ocoords'] = 'degrees'
+                telescopes[pol][self.antenna_array.antennas.itervalues().next().label] = {}
+                # telescopes[pol][self.antenna_array.antennas.itervalues().next().label]['id'] = 'custom'
+                if self.antenna_array.antennas.itervalues().next().aperture.shape[pol] == 'circular':
+                    telescopes[pol][self.antenna_array.antennas.itervalues().next().label]['shape'] = 'dish'
+                    telescopes[pol][self.antenna_array.antennas.itervalues().next().label]['size'] = 2.0 * self.antenna_array.antennas.itervalues().next().aperture.rmax[pol]
+                    telescopes[pol][self.antenna_array.antennas.itervalues().next().label]['orientation'] = NP.asarray([90.0, 270.0])
+                    telescopes[pol][self.antenna_array.antennas.itervalues().next().label]['ocoords'] = 'altaz'
+                elif (self.antenna_array.antennas.itervalues().next().aperture.shape[pol] == 'rect') or (self.antenna_array.antennas.itervalues().next().aperture.shape[pol] == 'square'):
+                    telescopes[pol][self.antenna_array.antennas.itervalues().next().label]['shape'] = 'rect'
+                    telescopes[pol][self.antenna_array.antennas.itervalues().next().label]['size'] = 2.0 * NP.asarray([self.antenna_array.antennas.itervalues().next().aperture.xmax[pol], self.antenna_array.antennas.itervalues().next().aperture.ymax[pol]])
+                    telescopes[pol][self.antenna_array.antennas.itervalues().next().label]['orientation'] = NP.degrees(self.antenna_array.antennas.itervalues().next().aperture.rotangle[pol])
+                    telescopes[pol][self.antenna_array.antennas.itervalues().next().label]['ocoords'] = 'degrees'
                 else:
                     raise ValueError('Antenna aperture shape currently not supported for analytic antenna beam estimation')
             else:
                 for antkey in self.antenna_array.antennas:
                     telescopes[pol][self.antenna_array.antennas[antkey].label] = {}
-                    telescopes[pol][self.antenna_array.antennas[antkey].label]['id'] = 'custom'
+                    # telescopes[pol][self.antenna_array.antennas[antkey].label]['id'] = 'custom'
                     if self.antenna_array.antennas[antkey].aperture.shape[pol] == 'circular':
                         telescopes[pol][self.antenna_array.antennas[antkey].label]['shape'] = 'dish'
                         telescopes[pol][self.antenna_array.antennas[antkey].label]['size'] = 2.0 * self.antenna_array.antennas[antkey].aperture.rmax[pol]
@@ -1822,7 +1822,7 @@ class AntennaArraySimulator(object):
         for pol in ['P1', 'P2']:
             antkeys = telescopes[pol].keys()
             if len(antkeys) == 1:
-                vbeams = AB.primary_beam_generator(altaz, self.f, telescopes[pol][antkeys], freq_scale='Hz', skyunits='altaz', east2ax1=0.0, pointing_info=pointing_info, pointing_center=None, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx)
+                vbeams = AB.primary_beam_generator(altaz, self.f, telescopes[pol][antkeys[0]], freq_scale='Hz', skyunits='altaz', east2ax1=0.0, pointing_info=pointing_info, pointing_center=None, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx)
                 vbeams = vbeams[:,:,NP.newaxis] # nsrc x nchan x 1
             else:
                 if parallel or (nproc is not None):

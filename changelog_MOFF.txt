@@ -1,3 +1,13 @@
+From e781fef (catalog-sim):
+==========================
+
+In sim_observe.py,
+
+(*) Change iteritems() to itervalues() in member function
+generate_voltage_pattern() of class AntennaArraySimulator.
+(*) Comment setting telescope id in member function
+generate_voltage_pattern() of class AntennaArraySimulator
+
 From cc866f0 (catalog-sim):
 ==========================
 
