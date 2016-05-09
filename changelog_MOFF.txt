@@ -1,3 +1,22 @@
+From 257b7b0 (catalog-sim):
+==========================
+
+In sim_observe.py,
+
+(*) Compute antenna beams under both polarizations in member function
+generate_voltage_pattern() under class AntennaArraySimulator. Update
+docstring accordingly
+(*) Add input keyword pointing_ceter in member function
+generate_voltage_pattern() under class AntennaArraySimulator. Update
+docstring accordingly
+
+In antenna_beams.py,
+
+(*) Include uniform_rectangular_aperture() and
+uniform_square_aperture() computations inside wrapper
+primary_beam_generator(). Update docstring accordingly
+
+
 From e781fef (catalog-sim):
 ==========================
 

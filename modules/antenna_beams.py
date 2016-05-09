@@ -38,17 +38,20 @@ def primary_beam_generator(skypos, frequency, telescope, freq_scale='GHz',
                               telescope details for known telescopes. Accepted 
                               values are 'mwa', 'vla', 'gmrt', and 'hera'.
                 'shape'       [string] Shape of antenna element. Accepted values
-                              are 'dipole', 'delta', and 'dish'. Will be ignored 
-                              if key 'id' is set. 'delta' denotes a delta
-                              function for the antenna element which has an
-                              isotropic radiation pattern. 'delta' is the default
-                              when keys 'id' and 'shape' are not set.
-                'size'        [scalar] Diameter of the telescope dish (in meters) 
-                              if the key 'shape' is set to 'dish' or length of 
-                              the dipole if key 'shape' is set to 'dipole'. Will 
-                              be ignored if key 'shape' is set to 'delta'. Will 
-                              be ignored if key 'id' is set and a preset value 
-                              used for the diameter or dipole.
+                              are 'dipole', 'delta', 'dish', 'rect' and 'square'. 
+                              Will be ignored if key 'id' is set. 'delta' denotes 
+                              a delta function for the antenna element which has 
+                              an isotropic radiation pattern. 'delta' is the 
+                              default when keys 'id' and 'shape' are not set.
+                'size'        [scalar or 2-element list/numpy array] Diameter of 
+                              the telescope dish (in meters) if the key 'shape' 
+                              is set to 'dish', side of the square aperture (in 
+                              meters) if the key 'shape' is set to 'square', 
+                              2-element sides if key 'shape' is set to 'rect', 
+                              or length of the dipole if key 'shape' is set to 
+                              'dipole'. Will be ignored if key 'shape' is set to 
+                              'delta'. Will be ignored if key 'id' is set and a 
+                              preset value used for the diameter or dipole.
                 'orientation' [list or numpy array] If key 'shape' is set to 
                               dipole, it refers to the orientation of the dipole 
                               element unit vector whose magnitude is specified by 
@@ -116,16 +119,16 @@ def primary_beam_generator(skypos, frequency, telescope, freq_scale='GHz',
                 Default = 'degrees'. If 'dircos', the direction cosines are 
                 aligned with the local East, North, and Up
 
-    east2ax1    [scalar] Angle (in degrees) the primary axis of the array makes 
-                with the local East (positive anti-clockwise). 
+    east2ax1    [scalar] Angle (in degrees) the primary axis of the aperture 
+                makes with the local East (positive anti-clockwise). 
 
     pointing_info 
               [dictionary] A dictionary consisting of information relating to 
-              pointing center. The pointing center can be specified either via
-              element delay compensation or by directly specifying the pointing
-              center in a certain coordinate system. Default = None (pointing 
-              centered at zenith). This dictionary consists of the following tags 
-              and values:
+              pointing center in case of a phased array. The pointing center 
+              can be specified either via element delay compensation or by 
+              directly specifying the pointing center in a certain coordinate 
+              system. Default = None (pointing centered at zenith). This 
+              dictionary consists of the following tags and values:
               'gains'           [numpy array] Complex element gains. Must be of 
                                 size equal to the number of elements as 
                                 specified by the number of rows in antpos. If 
@@ -169,9 +172,10 @@ def primary_beam_generator(skypos, frequency, telescope, freq_scale='GHz',
                 coordinate system as that of sky coordinates specified by
                 skyunits). 2-element vector if skyunits='altaz'. 2- or 3-element
                 vector if skyunits='dircos'. Only used with phased array primary
-                beams or dishes excluding VLA and GMRT. For all telescopes except
-                MWA, pointing_center is used in place of pointing_info. For MWA,
-                this is used if pointing_info is not provided.
+                beams, dishes excluding VLA and GMRT, or uniform rectangular or 
+                square apertures. For all telescopes except MWA, pointing_center 
+                is used in place of pointing_info. For MWA, this is used if 
+                pointing_info is not provided.
 
     short_dipole_approx
                 [boolean] if True, indicates short dipole approximation
@@ -217,7 +221,7 @@ def primary_beam_generator(skypos, frequency, telescope, freq_scale='GHz',
             ab = airy_disk_pattern(14.0, skypos, frequency, skyunits=skyunits,
                                    peak=1.0, pointing_center=telescope['orientation'], 
                                    pointing_coords=telescope['ocoords'],
-                                   gaussian=False, power=power, small_angle_tol=1e-10)
+                                   gaussian=False, power=False, small_angle_tol=1e-10)
         elif telescope['id'] == 'mwa':
             if (skyunits == 'altaz') or (skyunits == 'dircos'):
                 if ('orientation' in telescope) and ('ocoords' in telescope):
@@ -241,7 +245,8 @@ def primary_beam_generator(skypos, frequency, telescope, freq_scale='GHz',
                                           dipole_orientation=orientation,
                                           skycoords=skyunits, wavelength=FCNST.c/frequency, 
                                           short_dipole_approx=short_dipole_approx,
-                                          half_wave_dipole_approx=half_wave_dipole_approx)
+                                          half_wave_dipole_approx=half_wave_dipole_approx,
+                                          power=False)
                 ep = ep[:,:,NP.newaxis]  # add an axis to be compatible with random ralizations
                 if pointing_info is None: # Use analytical formula
                     if skyunits == 'altaz':
@@ -254,7 +259,8 @@ def primary_beam_generator(skypos, frequency, telescope, freq_scale='GHz',
                     irap = isotropic_radiators_array_field_pattern(4, 4, 1.1, 1.1, skypos,
                                                                    FCNST.c/frequency, east2ax1=east2ax1,
                                                                    pointing_center=pointing_center,
-                                                                   skycoords=skyunits)
+                                                                   skycoords=skyunits,
+                                                                   power=False)
                 else: # Call the beamformer
                     if 'element_locs' not in telescope:
                         xlocs, ylocs = NP.meshgrid(1.1*NP.linspace(-1.5,1.5,4), 1.1*NP.linspace(1.5,-1.5,4))
@@ -276,10 +282,9 @@ def primary_beam_generator(skypos, frequency, telescope, freq_scale='GHz',
                     if 'gainerr' in pointing_info:
                         pinfo['gainerr'] = pointing_info['gainerr']
                     irap = array_field_pattern(element_locs, skypos, skycoords=skyunits,
-                                               pointing_info=pinfo, wavelength=FCNST.c/frequency)
+                                               pointing_info=pinfo, wavelength=FCNST.c/frequency,
+                                               power=False)
                 ab = ep * irap # Voltage pattern is the product of element and array patterns
-                if power:
-                    ab = NP.abs(ab)**2 # Power pattern is square of the field pattern
             else:
                 raise ValueError('skyunits must be in Alt-Az or direction cosine coordinates for MWA.')
         elif telescope['id'] == 'mwa_dipole':
@@ -305,10 +310,9 @@ def primary_beam_generator(skypos, frequency, telescope, freq_scale='GHz',
                                           dipole_orientation=orientation,
                                           skycoords=skyunits, wavelength=FCNST.c/frequency, 
                                           short_dipole_approx=short_dipole_approx,
-                                          half_wave_dipole_approx=half_wave_dipole_approx)
+                                          half_wave_dipole_approx=half_wave_dipole_approx,
+                                          power=False)
                 ab = ep
-                if power:
-                    pb = NP.abs(ep)**2 # Power pattern is square of the field pattern
             else:
                 raise ValueError('skyunits must be in Alt-Az or direction cosine coordinates for MWA dipole.')
         else:
@@ -325,11 +329,16 @@ def primary_beam_generator(skypos, frequency, telescope, freq_scale='GHz',
                                       dipole_orientation=telescope['orientation'],
                                       skycoords=skyunits, wavelength=FCNST.c/frequency, 
                                       short_dipole_approx=short_dipole_approx,
-                                      half_wave_dipole_approx=half_wave_dipole_approx)
+                                      half_wave_dipole_approx=half_wave_dipole_approx,
+                                      power=False)
         elif telescope['shape'] == 'dish':
             ep = airy_disk_pattern(telescope['size'], skypos, frequency, skyunits=skyunits,
                                    peak=1.0, pointing_center=pointing_center, 
-                                   gaussian=False, power=power, small_angle_tol=1e-10)
+                                   gaussian=False, power=False, small_angle_tol=1e-10)
+        elif telescope['shape'] == 'rect':
+            ep = uniform_rectangular_aperture(telescope['size'], skypos, frequency, skyunits=skyunits, east2ax1=east2ax1, pointing_center=pointing_center, power=False)
+        elif telescope['shape'] == 'square':
+            ep = uniform_square_aperture(telescope['size'], skypos, frequency, skyunits=skyunits, east2ax1=east2ax1, pointing_center=pointing_center, power=False)
         else:
             raise ValueError('Value in key "shape" of telescope dictionary invalid.')
 
@@ -356,12 +365,11 @@ def primary_beam_generator(skypos, frequency, telescope, freq_scale='GHz',
                     pinfo['gainerr'] = pointing_info['gainerr']
                 irap = array_field_pattern(element_locs, skypos, skycoords=skyunits,
                                            pointing_info=pinfo,
-                                           wavelength=FCNST.c/frequency)
+                                           wavelength=FCNST.c/frequency,
+                                           power=False)
         else:
             irap = NP.ones(skypos.shape[0]*frequency.size).reshape(skypos.shape[0],frequency.size)
         ab = ep * irap # Antenna pattern is the product of element and array patterns
-        if power:
-            ab = NP.abs(ab)**2 # Power pattern is square of the field pattern
        
     if 'groundplane' in telescope:
         gp = 1.0
@@ -374,7 +382,7 @@ def primary_beam_generator(skypos, frequency, telescope, freq_scale='GHz',
         
                     gp = ground_plane_field_pattern(telescope['groundplane'], skypos, skycoords=skyunits,
                                                     wavelength=FCNST.c/frequency, angle_units='degrees', 
-                                                    modifier=modifier)
+                                                    modifier=modifier, power=False)
             else:
                 modifier = None
                 if 'ground_modify' in telescope:
@@ -382,11 +390,11 @@ def primary_beam_generator(skypos, frequency, telescope, freq_scale='GHz',
         
                 gp = ground_plane_field_pattern(telescope['groundplane'], skypos, skycoords=skyunits,
                                                 wavelength=FCNST.c/frequency, angle_units='degrees', 
-                                                modifier=modifier)
-                
+                                                modifier=modifier, power=False)
         ab *= gp
-        if power:
-            ab = NP.abs(ab)**2
+
+    if power:
+        ab = NP.abs(ab)**2
 
     return ab
     
@@ -1626,8 +1634,8 @@ def uniform_rectangular_aperture(sides, skypos, frequency, skyunits='altaz',
     pointing_center  
                 [list or numpy array] coordinates of pointing center (in the same
                 coordinate system as that of sky coordinates specified by
-                skycoords). 2-element vector if skycoords='altaz'. 2- or 
-                3-element vector if skycoords='dircos'. 
+                skyunits). 2-element vector if skycoords='altaz'. 2- or 
+                3-element vector if skyunits='dircos'. 
 
     power       [boolean] If set to True, compute power pattern, otherwise 
                 compute field pattern (default=False).
@@ -1683,10 +1691,10 @@ def uniform_rectangular_aperture(sides, skypos, frequency, skyunits='altaz',
     frequency = NP.asarray(frequency).ravel()
     wavelength = FCNST.c / frequency
 
-    if skycoords is not None:
-        if (skycoords != 'altaz') and (skycoords != 'dircos'):
-            raise ValueError('skycoords must be "altaz" or "dircos" or None (default).')
-        elif skycoords == 'altaz':
+    if skyunits is not None:
+        if (skyunits != 'altaz') and (skyunits != 'dircos'):
+            raise ValueError('skyunits must be "altaz" or "dircos" or None (default).')
+        elif skyunits == 'altaz':
             if skypos.ndim < 2:
                 if skypos.size == 2:
                     skypos = NP.asarray(skypos).reshape(1,2)
@@ -1722,10 +1730,10 @@ def uniform_rectangular_aperture(sides, skypos, frequency, skyunits='altaz',
                             print '\tWarning: skypos in direction cosine coordinates along line of sight found to be negative or some direction cosines are not unit vectors. Resetting to correct values.'
                         skypos[:,2] = NP.sqrt(1.0 - NP.sum(skypos[:2]**2, axis=1))
     else:
-        raise ValueError('skycoords has not been set.')
+        raise ValueError('skyunits has not been set.')
     
     if pointing_center is None:
-        if skycoords == 'altaz':
+        if skyunits == 'altaz':
             pointing_center = NP.asarray([90.0, 0.0]) # Zenith in Alt-Az coordinates
         else:
             pointing_center = NP.asarray([0.0, 0.0, 1.0]) # Zenith in direction-cosine coordinates
@@ -1734,9 +1742,9 @@ def uniform_rectangular_aperture(sides, skypos, frequency, skyunits='altaz',
             raise TypeError('pointing_center must be a list or numpy array')
         
         pointing_center = NP.asarray(pointing_center)
-        if (skycoords != 'altaz') and (skycoords != 'dircos'):
-            raise ValueError('skycoords must be "altaz" or "dircos" or None (default).')
-        elif skycoords == 'altaz':
+        if (skyunits != 'altaz') and (skyunits != 'dircos'):
+            raise ValueError('skyunits must be "altaz" or "dircos" or None (default).')
+        elif skyunits == 'altaz':
             if pointing_center.size != 2:
                 raise ValueError('pointing_center must be a 2-element vector in Alt-Az coordinates.')
             else:
@@ -1766,7 +1774,7 @@ def uniform_rectangular_aperture(sides, skypos, frequency, skyunits='altaz',
         if not isinstance(east2ax1, (int, float)):
             raise TypeError('east2ax1 must be a scalar value.')
         else:
-            if skycoords == 'altaz':
+            if skyunits == 'altaz':
                 # skypos_dircos_rotated = GEOM.altaz2dircos(NP.hstack((skypos[:,0].reshape(-1,1),NP.asarray(skypos[:,1]-east2ax1).reshape(-1,1))), units='degrees')
                 # pointing_center_dircos_rotated = GEOM.altaz2dircos([pointing_center[0], pointing_center[1]-east2ax1], units='degrees')
 
@@ -1785,7 +1793,7 @@ def uniform_rectangular_aperture(sides, skypos, frequency, skyunits='altaz',
 
             skypos_dircos_relative = skypos_dircos_rotated - NP.repeat(pointing_center_dircos_rotated.reshape(1,-1), skypos.shape[0], axis=0)
     else:
-        if skycoords == 'altaz':
+        if skyunits == 'altaz':
             skypos_dircos = GEOM.altaz2dircos(skypos, units='degrees')
             pointing_center_dircos = GEOM.altaz2dircos([pointing_center[0], pointing_center[1]-east2ax1], units='degrees')
         else:
@@ -1840,8 +1848,8 @@ def uniform_square_aperture(side, skypos, frequency, skyunits='altaz',
     pointing_center  
                 [list or numpy array] coordinates of pointing center (in the same
                 coordinate system as that of sky coordinates specified by
-                skycoords). 2-element vector if skycoords='altaz'. 2- or 
-                3-element vector if skycoords='dircos'. 
+                skyunits). 2-element vector if skyunits='altaz'. 2- or 
+                3-element vector if skyunits='dircos'. 
 
     power       [boolean] If set to True, compute power pattern, otherwise 
                 compute field pattern (default=False).

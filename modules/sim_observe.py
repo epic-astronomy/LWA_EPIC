@@ -1671,8 +1671,8 @@ class AntennaArraySimulator(object):
         
     ############################################################################
 
-    def generate_voltage_pattern(self, altaz, pointing_info=None,
-                                 short_dipole_approx=False,
+    def generate_voltage_pattern(self, altaz, pointing_center=None,
+                                 pointing_info=None, short_dipole_approx=False,
                                  half_wave_dipole_approx=False, parallel=False,
                                  nproc=None):
 
@@ -1687,27 +1687,25 @@ class AntennaArraySimulator(object):
                     which the voltage pattern is to be estimated. It must be
                     a nsrc x 2 array. 
 
-        parallel    [boolean] specifies if parallelization is to be invoked. 
-                    False (default) means only serial processing
-
-        nproc       [integer] specifies number of independent processes to 
-                    spawn. Default = None, means automatically determines the 
-                    number of process cores in the system and use one less 
-                    than that to avoid locking the system for other processes. 
-                    Applies only if input parameter 'parallel' (see above) is 
-                    set to True. If nproc is set to a value more than the 
-                    number of process cores in the system, it will be reset to 
-                    number of process cores in the system minus one to avoid 
-                    locking the system out for other processes
+        pointing_center
+                    [list or numpy array] coordinates of pointing center (in 
+                    the same coordinate system as that of sky coordinates 
+                    specified by skyunits). 2-element vector if 
+                    skyunits='altaz'. 2- or 3-element vector if 
+                    skyunits='dircos'. Only used with phased array primary 
+                    beams, dishes excluding VLA and GMRT, or uniform rectangular 
+                    or square apertures. For all telescopes except MWA, 
+                    pointing_center is used in place of pointing_info. For MWA, 
+                    this is used if pointing_info is not provided.
 
         pointing_info 
                     [dictionary] A dictionary consisting of information 
-                    relating to pointing center. The pointing center can be 
-                    specified either via element delay compensation or by 
-                    directly specifying the pointing center in a certain 
-                    coordinate system. Default = None (pointing centered at 
-                    zenith). This dictionary consists of the following tags 
-                    and values:
+                    relating to pointing center in case of a phased array. 
+                    The pointing center can be specified either via element 
+                    delay compensation or by directly specifying the pointing 
+                    center in a certain coordinate system. Default = None 
+                    (pointing centered at zenith). This dictionary consists of 
+                    the following tags and values:
                     'gains'           [numpy array] Complex element gains. 
                                       Must be of size equal to the number of 
                                       elements as specified by the number of 
@@ -1762,12 +1760,26 @@ class AntennaArraySimulator(object):
                     is to be used. Otherwise, a more accurate expression is 
                     used for the dipole pattern. Default=False
 
+        parallel    [boolean] specifies if parallelization is to be invoked. 
+                    False (default) means only serial processing
+
+        nproc       [integer] specifies number of independent processes to 
+                    spawn. Default = None, means automatically determines the 
+                    number of process cores in the system and use one less 
+                    than that to avoid locking the system for other processes. 
+                    Applies only if input parameter 'parallel' (see above) is 
+                    set to True. If nproc is set to a value more than the 
+                    number of process cores in the system, it will be reset to 
+                    number of process cores in the system minus one to avoid 
+                    locking the system out for other processes
+
         Outputs:
 
-        Antenna voltage beams at the object locations in the upper hemisphere.
-        It is a numpy array of shape nsrc x nchan x nant in case of 
-        non-indentical antennas or nsrc x nchan x 1 in case of identical 
-        antennas. 
+        Dictionary containing antenna voltage beams under each polarization key
+        'P1' and 'P2' at the object locations in the upper hemisphere.
+        The voltage beams under each polarization key are a numpy array of 
+        shape nsrc x nchan x nant in case of non-indentical antennas or 
+        nsrc x nchan x 1 in case of identical antennas. 
         ------------------------------------------------------------------------
         """
 
@@ -1819,11 +1831,13 @@ class AntennaArraySimulator(object):
                     else:
                         raise ValueError('Antenna aperture shape currently not supported for analytic antenna beam estimation')
                     
+        vbeams = {}
         for pol in ['P1', 'P2']:
+            vbeams[pol] = None
             antkeys = telescopes[pol].keys()
             if len(antkeys) == 1:
-                vbeams = AB.primary_beam_generator(altaz, self.f, telescopes[pol][antkeys[0]], freq_scale='Hz', skyunits='altaz', east2ax1=0.0, pointing_info=pointing_info, pointing_center=None, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx)
-                vbeams = vbeams[:,:,NP.newaxis] # nsrc x nchan x 1
+                vbeams[pol] = AB.primary_beam_generator(altaz, self.f, telescopes[pol][antkeys[0]], freq_scale='Hz', skyunits='altaz', east2ax1=telescopes[pol][antkeys[0]]['orientation'], pointing_info=pointing_info, pointing_center=pointing_center, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, power=False)
+                vbeams[pol] = vbeams[pol][:,:,NP.newaxis] # nsrc x nchan x 1
             else:
                 if parallel or (nproc is not None):
                     list_of_keys = antkeys
@@ -1832,27 +1846,27 @@ class AntennaArraySimulator(object):
                     list_of_obsfreqs = [self.f] * len(antkeys)
                     list_of_freqscale = ['Hz'] * len(antkeys)
                     list_of_skyunits = ['altaz'] * len(antkeys)
-                    list_of_east2ax1 = [0.0] * len(antkeys)
+                    list_of_east2ax1 = [telescopes[pol][antkey]['orientation'] for antkey in antkeys]
                     list_of_pointing_info = [pointing_info] * len(antkeys)
-                    list_of_pointing_center = [None] * len(antkeys)
+                    list_of_pointing_center = [pointing_center] * len(antkeys)
                     list_of_short_dipole_approx = [short_dipole_approx] * len(antkeys)
                     list_of_half_wave_dipole_approx = [half_wave_dipole_approx] * len(antkeys)
+                    list_of_powertrue = [False] * len(antkeys)
                     if nproc is None:
                         nproc = max(MP.cpu_count()-1, 1) 
                     else:
                         nproc = min(nproc, max(MP.cpu_count()-1, 1))
                     pool = MP.Pool(processes=nproc)
-                    list_of_vbeams = pool.map(AB.antenna_beam_arg_splitter, IT.izip(list_of_altaz, list_of_obsfreqs, list_of_telescopes, list_of_freqscale, list_of_skyunits, list_of_east2ax1, list_of_pointing_info, list_of_pointing_center, list_of_short_dipole_approx, list_of_half_wave_dipole_approx))
-                    vbeams = NP.asarray(list_of_vbeams) # nsrc x nchan x nant
+                    list_of_vbeams = pool.map(AB.antenna_beam_arg_splitter, IT.izip(list_of_altaz, list_of_obsfreqs, list_of_telescopes, list_of_freqscale, list_of_skyunits, list_of_east2ax1, list_of_pointing_info, list_of_pointing_center, list_of_short_dipole_approx, list_of_half_wave_dipole_approx, list_of_powertrue))
+                    vbeams[pol] = NP.asarray(list_of_vbeams) # nsrc x nchan x nant
                     del list_of_vbeams
                 else:
-                    vbeams = None
                     for key in antkeys:
-                        vbeam = AB.primary_beam_generator(altaz, self.f, telescopes[pol][key], freq_scale='Hz', skyunits='altaz', east2ax1=0.0, pointing_info=pointing_info, pointing_center=None, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx)
-                        if vbeams is None:
-                            vbeams = vbeam[:,:,NP.newaxis] # nsrc x nchan x 1
+                        vbeam = AB.primary_beam_generator(altaz, self.f, telescopes[pol][key], freq_scale='Hz', skyunits='altaz', east2ax1=telescopes[pol][key]['orientation'], pointing_info=pointing_info, pointing_center=pointing_center, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, power=False)
+                        if vbeams[pol] is None:
+                            vbeams[pol] = vbeam[:,:,NP.newaxis] # nsrc x nchan x 1
                         else:
-                            vbeams = NP.dstack((vbeams, vbeam[:,:,NP.newaxis])) # nsrc x nchan x nant
+                            vbeams[pol] = NP.dstack((vbeams[pol], vbeam[:,:,NP.newaxis])) # nsrc x nchan x nant
 
         return vbeams
 
