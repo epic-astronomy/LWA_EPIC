@@ -1639,8 +1639,6 @@ class AntennaArraySimulator(object):
         if (commonkeys.size != 1) and (commonkeys.size != antkeys.size):
             raise ValueError('Number of voltage pattern files incompatible with number of antennas')
 
-        # hemind, upper_altaz = self.upper_hemisphere(lst, obs_date=obs_date)
-
         if (commonkeys.size == 1) or self.identical_antennas:
             vbeams = interp_beam(vbeam_files[commonkeys[0]], theta_phi, self.f)
             vbeams = vbeams[:,:,NP.newaxis] # nsrc x nchan x 1
@@ -1836,7 +1834,7 @@ class AntennaArraySimulator(object):
             vbeams[pol] = None
             antkeys = telescopes[pol].keys()
             if len(antkeys) == 1:
-                vbeams[pol] = AB.primary_beam_generator(altaz, self.f, telescopes[pol][antkeys[0]], freq_scale='Hz', skyunits='altaz', east2ax1=telescopes[pol][antkeys[0]]['orientation'], pointing_info=pointing_info, pointing_center=pointing_center, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, power=False)
+                vbeams[pol] = AB.antenna_beam_generator(altaz, self.f, telescopes[pol][antkeys[0]], freq_scale='Hz', skyunits='altaz', east2ax1=telescopes[pol][antkeys[0]]['orientation'], pointing_info=pointing_info, pointing_center=pointing_center, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, power=False)
                 vbeams[pol] = vbeams[pol][:,:,NP.newaxis] # nsrc x nchan x 1
             else:
                 if parallel or (nproc is not None):
@@ -1862,7 +1860,7 @@ class AntennaArraySimulator(object):
                     del list_of_vbeams
                 else:
                     for key in antkeys:
-                        vbeam = AB.primary_beam_generator(altaz, self.f, telescopes[pol][key], freq_scale='Hz', skyunits='altaz', east2ax1=telescopes[pol][key]['orientation'], pointing_info=pointing_info, pointing_center=pointing_center, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, power=False)
+                        vbeam = AB.antenna_beam_generator(altaz, self.f, telescopes[pol][key], freq_scale='Hz', skyunits='altaz', east2ax1=telescopes[pol][key]['orientation'], pointing_info=pointing_info, pointing_center=pointing_center, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, power=False)
                         if vbeams[pol] is None:
                             vbeams[pol] = vbeam[:,:,NP.newaxis] # nsrc x nchan x 1
                         else:

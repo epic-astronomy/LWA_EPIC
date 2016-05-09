@@ -1,3 +1,15 @@
+From ef828f0 (catalog-sim):
+==========================
+
+In antenna_beams.py,
+
+(*) Rename primary_beam_generator() to antenna_beam_generator()
+
+In sim_observe.py,
+
+(*) Change all calls from primary_beam_generator() to
+antenna_beam_generator()
+
 From 257b7b0 (catalog-sim):
 ==========================
 

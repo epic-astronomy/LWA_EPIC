@@ -5,7 +5,7 @@ import geometry as GEOM
 
 #################################################################################
 
-def primary_beam_generator(skypos, frequency, telescope, freq_scale='GHz',
+def antenna_beam_generator(skypos, frequency, telescope, freq_scale='GHz',
                            skyunits='degrees', east2ax1=0.0, pointing_info=None,
                            pointing_center=None, short_dipole_approx=False,
                            half_wave_dipole_approx=False, power=False):
