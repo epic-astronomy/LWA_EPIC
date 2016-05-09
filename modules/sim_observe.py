@@ -1576,11 +1576,14 @@ class AntennaArraySimulator(object):
         Inputs:
 
         vbeam_files [dictionary] Dictionary containing file locations of 
-                    far-field voltage pattern of individual antennas under 
-                    keys denoted by antenna labels (string). If there is only
-                    one item it will be assumed to be identical for all 
-                    antennas. If multiple voltage beam file locations are
-                    specified, it must be the same as number of antennas
+                    far-field voltage patterns. It is specified under keys
+                    'P1' and 'P2' denoting the two polarizations. Under each
+                    polarization key is another dictionary with keys for 
+                    individual antennas denoted by antenna labels (string). 
+                    If there is only one antenna key it will be assumed to be 
+                    identical for all antennas. If multiple voltage beam file 
+                    locations are specified, it must be the same as number of 
+                    antennas 
 
         altaz       [numpy array] The altitudes and azimuths (in degrees) at 
                     which the voltage pattern is to be estimated. It must be
@@ -1601,10 +1604,11 @@ class AntennaArraySimulator(object):
 
         Outputs:
 
-        Antenna voltage beams at the object locations in the upper hemisphere.
-        It is a numpy array of shape nsrc x nchan x nant in case of 
-        non-indentical antennas or nsrc x nchan x 1 in case of identical 
-        antennas. 
+        Dictionary containing antenna voltage beams under each polarization key
+        'P1' and 'P2' at the object locations in the upper hemisphere.
+        The voltage beams under each polarization key are a numpy array of 
+        shape nsrc x nchan x nant in case of non-indentical antennas or 
+        nsrc x nchan x 1 in case of identical antennas. 
         ------------------------------------------------------------------------
         """
 
@@ -1633,37 +1637,40 @@ class AntennaArraySimulator(object):
         theta_phi = NP.radians(theta_phi)
 
         antkeys = NP.asarray(self.antenna_array.antennas.keys())
-        vbeamkeys = NP.asarray(vbeam_files.keys())
-        commonkeys = NP.intersect1d(antkeys, vbeamkeys)
-
-        if (commonkeys.size != 1) and (commonkeys.size != antkeys.size):
-            raise ValueError('Number of voltage pattern files incompatible with number of antennas')
-
-        if (commonkeys.size == 1) or self.identical_antennas:
-            vbeams = interp_beam(vbeam_files[commonkeys[0]], theta_phi, self.f)
-            vbeams = vbeams[:,:,NP.newaxis] # nsrc x nchan x 1
-        else:
-            if parallel or (nproc is not None):
-                list_of_keys = commonkeys.tolist()
-                list_of_vbeam_files = [vbeam_files[akey] for akey in list_of_keys]
-                list_of_zaaz = [theta_phi] * commonkeys.size
-                list_of_obsfreqs = [self.f] * commonkeys.size
-                if nproc is None:
-                    nproc = max(MP.cpu_count()-1, 1) 
+        vbeams = {}
+        for pol in ['P1', 'P2']:
+            vbeams[pol] = None
+            if pol in vbeam_files:
+                vbeamkeys = NP.asarray(vbeam_files[pol].keys())
+                commonkeys = NP.intersect1d(antkeys, vbeamkeys)
+        
+                if (commonkeys.size != 1) and (commonkeys.size != antkeys.size):
+                    raise ValueError('Number of voltage pattern files incompatible with number of antennas')
+        
+                if (commonkeys.size == 1) or self.identical_antennas:
+                    vbeams[pol] = interp_beam(vbeam_files[pol][commonkeys[0]], theta_phi, self.f)
+                    vbeams[pol] = vbeams[pol][:,:,NP.newaxis] # nsrc x nchan x 1
                 else:
-                    nproc = min(nproc, max(MP.cpu_count()-1, 1))
-                pool = MP.Pool(processes=nproc)
-                list_of_vbeams = pool.map(interp_beam_arg_splitter, IT.izip(list_of_vbeam_files, list_of_zaaz, list_of_obsfreqs))
-                vbeams = NP.asarray(list_of_vbeams) # nsrc x nchan x nant
-                del list_of_vbeams
-            else:
-                vbeams = None
-                for key in commonkeys:
-                    vbeam = interp_beam(vbeam_files[key], theta_phi, self.f)
-                    if vbeams is None:
-                        vbeams = vbeam[:,:,NP.newaxis] # nsrc x nchan x 1
+                    if parallel or (nproc is not None):
+                        list_of_keys = commonkeys.tolist()
+                        list_of_vbeam_files = [vbeam_files[pol][akey] for akey in list_of_keys]
+                        list_of_zaaz = [theta_phi] * commonkeys.size
+                        list_of_obsfreqs = [self.f] * commonkeys.size
+                        if nproc is None:
+                            nproc = max(MP.cpu_count()-1, 1) 
+                        else:
+                            nproc = min(nproc, max(MP.cpu_count()-1, 1))
+                        pool = MP.Pool(processes=nproc)
+                        list_of_vbeams = pool.map(interp_beam_arg_splitter, IT.izip(list_of_vbeam_files, list_of_zaaz, list_of_obsfreqs))
+                        vbeams[pol] = NP.asarray(list_of_vbeams) # nsrc x nchan x nant
+                        del list_of_vbeams
                     else:
-                        vbeams = NP.dstack((vbeams, vbeam[:,:,NP.newaxis])) # nsrc x nchan x nant
+                        for key in commonkeys:
+                            vbeam = interp_beam(vbeam_files[pol][key], theta_phi, self.f)
+                            if vbeams[pol] is None:
+                                vbeams[pol] = vbeam[:,:,NP.newaxis] # nsrc x nchan x 1
+                            else:
+                                vbeams[pol] = NP.dstack((vbeams[pol], vbeam[:,:,NP.newaxis])) # nsrc x nchan x nant
 
         return vbeams
         

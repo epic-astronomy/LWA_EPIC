@@ -1,3 +1,12 @@
+From 439b229 (catalog-sim):
+==========================
+
+In sim_observe.py,
+
+(*) Make member function load_voltage_pattern() of class
+AntennaArraySimulator handle polarization. Update docstring
+accordingly
+
 From ef828f0 (catalog-sim):
 ==========================
 
