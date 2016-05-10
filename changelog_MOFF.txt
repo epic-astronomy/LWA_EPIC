@@ -1,3 +1,12 @@
+From 3e89059 (catalog-sim):
+==========================
+
+In sim_observe.py,
+
+(*) Add default to input Ef_info in member function stack_E_spectrum()
+of class AntennaArraySimulator. Modify body and docstring of member
+function accordingly
+
 From 94ec489 (catalog-sim):
 ==========================
 

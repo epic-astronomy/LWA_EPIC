@@ -2082,7 +2082,7 @@ class AntennaArraySimulator(object):
 
     ############################################################################
     
-    def stack_E_spectrum(self, Ef_info):
+    def stack_E_spectrum(self, Ef_info=None):
 
         """
         ------------------------------------------------------------------------
@@ -2095,15 +2095,15 @@ class AntennaArraySimulator(object):
                         these keys is a nchan x nant complex numpy array 
                         consisting of complex stochastic electric field
                         spectra. nchan is the number of channels in the 
-                        spectrum and nant is the number of antennas.
-
+                        spectrum and nant is the number of antennas. If set to
+                        None (default), the existing and the most recent 
+                        attribute Ef_info will be used in its place and will 
+                        get stacked
         ------------------------------------------------------------------------
         """
 
-        try:
-            Ef_info
-        except NameError:
-            raise NameError('Input Ef_info must be specified')
+        if Ef_info is None:
+            Ef_info = self.Ef_info
 
         if not isinstance(Ef_info, dict):
             raise TypeError('Input Ef_info must be a dictionary')
