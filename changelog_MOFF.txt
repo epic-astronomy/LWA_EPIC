@@ -1,3 +1,18 @@
+From 94ec489 (catalog-sim):
+==========================
+
+In sim_observe.py,
+
+(*) Add member function observe() of class AntennaArraySimulator
+along with docstring. Update docstring of class AntennaArraySimulator
+accordingly
+(*) In member functions generate_voltage_pattern(),
+load_voltage_pattern(), and generate_E_spectrum() of class
+AntennaArraySimulator, sort by antenna keys for processing
+(*) Fix bugs in member function generate_E_spectrum() of class
+AntennaArraySimulator
+(*) Fix bug in global function generate_E_spectrum()
+
 From 439b229 (catalog-sim):
 ==========================
 

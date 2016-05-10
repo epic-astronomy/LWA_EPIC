@@ -397,12 +397,12 @@ def generate_E_spectrum(freqs, skypos=[0.0,0.0,1.0], flux_ref=1.0,
         print '\tSetting up the recipe for producing stochastic Electric field spectra...'
 
     sigmas = NP.sqrt(spectrum) # nsrc x nchan x 1
-    Ef_amp = sigmas/NP.sqrt(2) * (NP.random.normal(loc=0.0, scale=1.0, size=(nsrc,nchan,1)) + 1j * NP.random.normal(loc=0.0, scale=1.0, size=(nsrc,nchan,1))) # nsrc x nchan x 1
+    Ef_amp = sigmas/NP.sqrt(2) * (NP.random.normal(loc=0.0, scale=1.0, size=(nsrc,nchan,nant)) + 1j * NP.random.normal(loc=0.0, scale=1.0, size=(nsrc,nchan,nant))) # nsrc x nchan x 1
     Ef_phase = 1.0
     Ef = Ef_amp * Ef_phase # nsrc x nchan x 1
     skypos_dot_antpos = NP.dot(skypos-ref_point, antpos.T) # nsrc x nant
     k_dot_r_phase = 2.0 * NP.pi * freqs / FCNST.c * skypos_dot_antpos[:,NP.newaxis,:] # nsrc x nchan x nant
-    Ef = voltage_pattern * Ef * NP.exp(1j * k_dot_r_phase) # nsrc x nchan x nant
+    Ef *= voltage_pattern * NP.exp(1j * k_dot_r_phase) # nsrc x nchan x nant
     Ef = NP.sum(Ef, axis=0) # nchan x nant
     if verbose:
         print '\tPerformed linear superposition of electric fields from source(s).'
@@ -1446,6 +1446,11 @@ class AntennaArraySimulator(object):
     generate_voltage_pattern()
                     Generate voltage pattern analytically based on antenna 
                     shapes. Can be parallelized
+
+    observe()       Simulate a single observation and record antenna 
+                    electric fields as a function of polarization, 
+                    frequencies and antennas.
+
     ------------------------------------------------------------------------
     """
 
@@ -1529,6 +1534,7 @@ class AntennaArraySimulator(object):
         Inputs:
 
         lst        [scalar] Local Sidereal Time (in hours) in the range 0--24
+                   on the date specified by obs_date.
 
         obs_date   [string] Date of observation in YYYY/MM/DD format. If set to
                    None (default), the epoch in the sky model will be assumed
@@ -1643,6 +1649,7 @@ class AntennaArraySimulator(object):
             if pol in vbeam_files:
                 vbeamkeys = NP.asarray(vbeam_files[pol].keys())
                 commonkeys = NP.intersect1d(antkeys, vbeamkeys)
+                commonkeys = NP.sort(commonkeys)
         
                 if (commonkeys.size != 1) and (commonkeys.size != antkeys.size):
                     raise ValueError('Number of voltage pattern files incompatible with number of antennas')
@@ -1820,7 +1827,7 @@ class AntennaArraySimulator(object):
                 else:
                     raise ValueError('Antenna aperture shape currently not supported for analytic antenna beam estimation')
             else:
-                for antkey in self.antenna_array.antennas:
+                for antkey in sorted(self.antenna_array.antennas.keys()):
                     telescopes[pol][self.antenna_array.antennas[antkey].label] = {}
                     # telescopes[pol][self.antenna_array.antennas[antkey].label]['id'] = 'custom'
                     if self.antenna_array.antennas[antkey].aperture.shape[pol] == 'circular':
@@ -1839,7 +1846,7 @@ class AntennaArraySimulator(object):
         vbeams = {}
         for pol in ['P1', 'P2']:
             vbeams[pol] = None
-            antkeys = telescopes[pol].keys()
+            antkeys = sorted(telescopes[pol].keys())
             if len(antkeys) == 1:
                 vbeams[pol] = AB.antenna_beam_generator(altaz, self.f, telescopes[pol][antkeys[0]], freq_scale='Hz', skyunits='altaz', east2ax1=telescopes[pol][antkeys[0]]['orientation'], pointing_info=pointing_info, pointing_center=pointing_center, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, power=False)
                 vbeams[pol] = vbeams[pol][:,:,NP.newaxis] # nsrc x nchan x 1
@@ -1877,9 +1884,9 @@ class AntennaArraySimulator(object):
 
     ############################################################################
 
-    def generate_E_spectrum(self, altaz, vbeams, ctlgind=None, pol=None,
-                            ref_point=None, parallel=False, nproc=None,
-                            action=None, verbose=True):
+    def generate_E_spectrum(self, altaz, vbeams, vbeamkeys=None, ctlgind=None,
+                            pol=None, ref_point=None, parallel=False, 
+                            nproc=None, action=None, verbose=True):
 
         """
         ------------------------------------------------------------------------
@@ -1896,7 +1903,7 @@ class AntennaArraySimulator(object):
     
         vbeams    [dictionary] Complex Voltage pattern for each each antenna 
                   and each polarization at each frequency channel at each 
-                  source location. It must be specified as a dinctionary with 
+                  source location. It must be specified as a dictionary with 
                   keys denoting antenna labels. Under each antenna label as key 
                   it contains a dictionary with keys 'P1' and 'P2' denoting
                   the two polarizations. Under each of these keys the voltage 
@@ -1970,6 +1977,36 @@ class AntennaArraySimulator(object):
         if not isinstance(vbeams, dict):
             raise TypeError('Input vbeams must be a dictionary')
 
+        if vbeamkeys is not None:
+            if not isinstance(vbeamkeys, dict):
+                raise TypeError('Input vbeamkeys must be a dictionary')
+            for apol in ['P1', 'P2']:
+                if apol not in vbeamkeys:
+                    vbeamkeys[apol] = []
+                if not isinstance(vbeamkeys[apol], list):
+                    raise TypeError('vbeamkeys under each polarization must be a list of antenna keys')
+        else:
+            vbeamkeys = {}
+            for apol in ['P1', 'P2']:
+                vbeamkeys[apol] = []
+
+        for apol in ['P1', 'P2']:
+            nant = vbeams[apol].shape[2]
+            if vbeams[apol].shape[2] > 1:
+                if vbeams[apol].shape[2] != len(self.antenna_array.antennas):
+                    raise ValueError('Number of antennas in vbeams incompatible with that in attribute antenna_array')
+
+            if len(vbeamkeys[apol]) == 0:
+                if nant == 1:
+                    vbeamkeys[apol] = [self.antenna_array.antennas.iterkeys().next()]
+                else:
+                    vbeamkeys[apol] = [sorted(self.antenna_array.antennas.keys())]
+            elif len(vbeamkeys[apol] != nant):
+                raise ValueError('Number of antennas in vbeams and vbeamkeys mismatch')
+            vbkeys_sortind = NP.argsort(NP.asarray(vbeamkeys[apol]))
+            vbeams[apol] = vbeams[apol][:,:,vbkeys_sortind]
+            vbeamkeys[apol] = NP.asarray(vbeamkeys[apol])[vbkeys_sortind]
+
         srcdircos = GEOM.altaz2dircos(altaz, units='degrees')
 
         if ctlgind is None:
@@ -1998,43 +2035,18 @@ class AntennaArraySimulator(object):
             raise TypeError('Input keyword pol must be string, list or set to None')
         pol = sorted(pol)
 
-        antkeys_sortind = NP.argsort(NP.asarray(self.antinfo['labels']))
+        antkeys_sortind = NP.argsort(NP.asarray(self.antinfo['labels'], dtype='|S0'))
         antpos = self.antinfo['positions']
-        antkeys_sorted = NP.asarray(self.antinfo['labels'])[antkeys_sortind]
+        antkeys_sorted = NP.asarray(self.antinfo['labels'], dtype='|S0')[antkeys_sortind]
         antpos_sorted = antpos[antkeys_sortind,:]
-        vbeamkeys = NP.argsort(NP.asarray(vbeams.keys()))
-        commonkeys = NP.intersect1d(antkeys_sorted, vbeamkeys)
-
-        if (commonkeys.size != 1) and (commonkeys.size != antkeys_sorted.size):
-            raise ValueError('Number of voltage pattern files incompatible with number of antennas')
-        
-        voltage_pattern = {}
         Ef_info = {}
-        for apol in pol:
-            if commonkeys.size == 1: # Assume identical antenna voltage patterns
-                voltage_pattern[apol] = vbeams[antkeys_sorted[0]][apol]
-                if voltage_pattern[apol].ndim == 2:
-                    voltage_pattern[apol] = voltage_pattern[apol][:,:,NP.newaxis] # nsrc x nchan x 1
-                elif voltage_pattern[apol].ndim == 1:
-                    voltage_pattern[apol] = voltage_pattern[apol][:,NP.newaxis,NP.newaxis] # nsrc x 1 x 1
-                else:
-                    raise ValueError('Input vbeams has incompatbile dimensions')
-            else:
-                voltage_pattern[apol] = None
-                for akey in antkeys_sorted:
-                    if vbeams[akey][apol].ndim == 2:
-                        vbeam = vbeams[akey][apol][:,:,NP.newaxis] # nsrc x nchan x 1
-                    elif voltage_pattern[apol].ndim == 1:
-                        vbeam = vbeams[akey][apol][:,NP.newaxis,NP.newaxis] # nsrc x 1 x 1
-                    else:
-                        raise ValueError('Input vbeams has incompatbile dimensions')
+        for apol in ['P1', 'P2']:
+            commonkeys = NP.intersect1d(antkeys_sorted, vbeamkeys[apol])
+            commonkeys = NP.sort(commonkeys)
 
-                    if voltage_pattern[apol] is None:
-                        voltage_pattern[apol] = vbeam # nsrc x nchan x 1 or nsrc x 1 x 1
-                    else:
-                        voltage_pattern[apol] = NP.dstack((voltage_pattern[apol], vbeam)) # nsrc x nchan x nant or nsrc x 1 x nant
- 
-        for apol in pol:
+            if (commonkeys.size != 1) and (commonkeys.size != antkeys_sorted.size):
+                raise ValueError('Number of voltage pattern files incompatible with number of antennas')
+        
             if parallel or (nproc is not None):
                 if nproc is None:
                     nproc = max(MP.cpu_count()-1, 1) 
@@ -2042,7 +2054,7 @@ class AntennaArraySimulator(object):
                     nproc = min(nproc, max(MP.cpu_count()-1, 1))
                 split_ind = NP.arange(0, nchan, nproc)
                 list_split_freqs = NP.split(self.f, split_ind, axis=0)
-                list_split_vbeams = NP.split(voltage_pattern[apol], split_ind, axis=1)
+                list_split_vbeams = NP.split(vbeams[apol], split_ind, axis=1)
                 list_antpos = [antpos_sorted] * (len(split_ind) + 1)
                 list_skypos = [srcdircos] * (len(split_ind) + 1)
                 list_flux_ref = [skymodel.spec_parms['flux-scale']] * (len(split_ind) + 1)
@@ -2062,7 +2074,7 @@ class AntennaArraySimulator(object):
                         Ef_info[apol] = NP.vstack((Ef_info[apol], item))
                 del Ef_info_list
             else:
-                Ef_info[apol] = generate_E_spectrum(self.f, skypos=srcdircos, flux_ref=skymodel.spec_parms['flux-scale'], freq_ref=skymodel.spec_parms['freq-ref'], spetral_index=skymodel.spec_parms['power-law-index'], spectrum=None, antpos=antpos_sorted, voltage_pattern=voltage_pattern[apol], ref_point=ref_point, verbose=verbose)
+                Ef_info[apol] = generate_E_spectrum(self.f, skypos=srcdircos, flux_ref=skymodel.spec_parms['flux-scale'], freq_ref=skymodel.spec_parms['freq-ref'], spectral_index=skymodel.spec_parms['power-law-index'], spectrum=None, antpos=antpos_sorted, voltage_pattern=vbeams[apol], ref_point=ref_point, verbose=verbose)
 
             self.Ef_info[apol] = Ef_info[apol]['Ef']
         if action == 'return':
@@ -2078,7 +2090,7 @@ class AntennaArraySimulator(object):
 
         Inputs:
 
-        Ef_info         [dictionary] Consits of E-field info under two keys 
+        Ef_info         [dictionary] Consists of E-field info under two keys 
                         'P1' and 'P2', one for each polarization. Under each of 
                         these keys is a nchan x nant complex numpy array 
                         consisting of complex stochastic electric field
@@ -2163,5 +2175,214 @@ class AntennaArraySimulator(object):
                 
     ############################################################################
     
-            
+    def observe(self, lst, phase_center_coords, pointing_center_coords,
+                obs_date=None, phase_center=None, pointing_center=None,
+                pointing_info=None, vbeam_files=None, short_dipole_approx=False,
+                half_wave_dipole_approx=False, parallel=False, nproc=None):
+
+        """
+        ------------------------------------------------------------------------
+        Simulate a single observation and record antenna electric fields as a
+        function of polarization, frequencies and antennas.
+
+        Inputs:
+
+        lst        [scalar] Local Sidereal Time (in hours) in the range 0--24
+                   on the date specified by obs_date.
+
+        phase_center_coords
+                   [string] Coordinate system describing the phase center. 
+                   Accepted values are 'altaz', 'radec', 'hadec' and 'dircos'
+                   for Alt-Az, RA-dec, HA-dec and direction cosines 
+                   respectively. If set to 'altaz', 'radec' or 'hadec', the
+                   coordinates must be specified in degrees. 
+
+        pointing_center_coords
+                   [string] Coordinate system describing the pointing center. 
+                   Accepted values are 'altaz', 'radec', 'hadec' and 'dircos'
+                   for Alt-Az, RA-dec, HA-dec and direction cosines 
+                   respectively. If set to 'altaz', 'radec' or 'hadec', the
+                   coordinates must be specified in degrees. 
+
+        Keyword Inputs:
+
+        obs_date   [string] Date of observation in YYYY/MM/DD format. If set to
+                   None (default), the epoch in the sky model will be assumed
+                   to be the date of observation. 
+
+        phase_center
+                   [numpy array] Phase center of the observation in the 
+                   coordinate system specified by phase_center_coords. If 
+                   phase_center_coords is set to 'altaz', 'radec' or 'hadec'
+                   the phase center must be a 2-element numpy array with values
+                   in degrees. If phase_center_coords is set to 'dircos' it 
+                   must be a 3-element direction cosine vector
+
+        pointing_center
+                   [numpy array] Pointing center of the observation in the
+                   coordinate system specified by pointing_center_coords. If 
+                   pointing_center_coords is set to 'altaz', 'radec' or 'hadec'
+                   the pointing center must be a 2-element numpy array with 
+                   values in degrees. If pointing_center_coords is set to 
+                   'dircos' it must be a 3-element direction cosine vector
+
+        pointing_info 
+                   [dictionary] A dictionary consisting of information 
+                   relating to pointing center in case of a phased array. 
+                   The pointing center can be specified either via element 
+                   delay compensation or by directly specifying the pointing 
+                   center in a certain coordinate system. Default = None 
+                   (pointing centered at zenith). This dictionary consists of 
+                   the following tags and values:
+                   'gains'           [numpy array] Complex element gains. 
+                                     Must be of size equal to the number of 
+                                     elements as specified by the number of 
+                                     rows in antpos. If set to None (default), 
+                                     all element gains are assumed to be unity. 
+                                     Used only in phased array mode.
+                   'gainerr'         [int, float] RMS error in voltage 
+                                     amplitude in dB to be used in the 
+                                     beamformer. Random jitters are drawn from 
+                                     a normal distribution in logarithm units 
+                                     which are then converted to linear units. 
+                                     Must be a non-negative scalar. If not 
+                                     provided, it defaults to 0 (no jitter).
+                                     Used only in phased array mode.
+                   'delays'          [numpy array] Delays (in seconds) to be 
+                                     applied to the tile elements. Size should 
+                                     be equal to number of tile elements 
+                                     (number of rows in antpos). Default=None 
+                                     will set all element delays to zero 
+                                     phasing them to zenith. Used only in 
+                                     phased array mode. 
+                   'pointing_center' [numpy array] This will apply in the 
+                                     absence of key 'delays'. This can be 
+                                     specified as a row vector. Should have 
+                                     two-columns if using Alt-Az coordinates, 
+                                     or two or three columns if using direction 
+                                     cosines. There is no default. The
+                                     coordinate system must be specified in
+                                     'pointing_coords' if 'pointing_center' is 
+                                     to be used.
+                   'pointing_coords' [string scalar] Coordinate system in which 
+                                     the pointing_center is specified. Accepted 
+                                     values are 'altaz' or 'dircos'. Must be 
+                                     provided if 'pointing_center' is to be 
+                                     used. No default.
+                   'delayerr'        [int, float] RMS jitter in delays used in 
+                                     the beamformer. Random jitters are drawn 
+                                     from a normal distribution with this rms. 
+                                     Must be a non-negative scalar. If not 
+                                     provided, it defaults to 0 (no jitter). 
+                                     Used only in phased array mode.
         
+        vbeam_files 
+                   [dictionary] Dictionary containing file locations of 
+                   far-field voltage patterns. It is specified under keys
+                   'P1' and 'P2' denoting the two polarizations. Under each
+                   polarization key is another dictionary with keys for 
+                   individual antennas denoted by antenna labels (string). 
+                   If there is only one antenna key it will be assumed to be 
+                   identical for all antennas. If multiple voltage beam file 
+                   locations are specified, it must be the same as number of 
+                   antennas 
+
+        short_dipol_approx
+                   [boolean] if True, indicates short dipole approximation
+                   is to be used. Otherwise, a more accurate expression is 
+                   used for the dipole pattern. Default=False. Both
+                   short_dipole_approx and half_wave_dipole_approx cannot be 
+                   set to True at the same time
+        
+        half_wave_dpole_approx
+                   [boolean] if True, indicates half-wave dipole approximation
+                   is to be used. Otherwise, a more accurate expression is 
+                   used for the dipole pattern. Default=False
+
+        parallel   [boolean] specifies if parallelization is to be invoked. 
+                   False (default) means only serial processing
+
+        nproc      [integer] specifies number of independent processes to 
+                   spawn. Default = None, means automatically determines the 
+                   number of process cores in the system and use one less 
+                   than that to avoid locking the system for other processes. 
+                   Applies only if input parameter 'parallel' (see above) is 
+                   set to True. If nproc is set to a value more than the 
+                   number of process cores in the system, it will be reset to 
+                   number of process cores in the system minus one to avoid 
+                   locking the system out for other processes
+
+        ------------------------------------------------------------------------
+        """
+
+        try:
+            lst, phase_center_coords, pointing_center_coords
+        except NameError:
+            raise NameError('Input LST must be specified')
+
+        if not isinstance(lst, (int,float)):
+            raise TypeError('Input LST must be a scalar')
+        lst = float(lst)
+
+        if phase_center_coords not in ['hadec', 'radec', 'altaz', 'dircos']:
+            raise ValueError('Input phase_center_coords must be set tp "radec", "hadec", "altaz" or "dircos"')
+
+        if pointing_center_coords not in ['hadec', 'radec', 'altaz', 'dircos']:
+            raise ValueError('Input pointing_center_coords must be set tp "radec", "hadec", "altaz" or "dircos"')
+        
+        if obs_date is None:
+            obs_date = self.observer.date
+
+        lstobj = EP.FixedBody()
+        lstobj._epoch = obs_date
+        lstobj._ra = NP.radians(lst * 15.0)
+        lstobj._dec = NP.radians(self.latitude)
+        lstobj.compute(self.observer)
+        lst_temp = NP.degrees(lstobj.ra) # in degrees
+        dec_temp = NP.degrees(lstobj.dec) # in degrees
+
+        if phase_center is None:
+            phase_center_dircos = NP.asarray([0.0, 0.0, 1.0])
+        else:
+            if phase_center_coords == 'dircos':
+                phase_center_dircos = phase_center
+            elif phase_center_coords == 'altaz':
+                phase_center_dircos = GEOM.altaz2dircos(phase_center, units='degrees')
+            elif phase_center_coords == 'hadec':
+                phase_center_altaz = GEOM.hadec2altaz(phase_center, self.latitude, units='degrees')
+                phase_center_dircos = GEOM.altaz2dircos(phase_center_altaz, units='degrees')
+            elif phase_center_coords == 'radec':
+                phase_center_hadec = NP.asarray([lst_temp - phase_center[0], phase_center[1]])
+                phase_center_altaz = GEOM.hadec2altaz(phase_center_hadec, self.latitude, units='degrees')
+                phase_center_dircos = GEOM.altaz2dircos(phase_center_altaz, units='degrees')
+            else:
+                raise ValueError('Invalid value specified in phase_center_coords')
+
+        if pointing_center is None:
+            pointing_center_altaz = NP.asarray([90.0, 270.0])
+        else:
+            if pointing_center_coords == 'altaz':
+                pointing_center_altaz = pointing_center
+            elif pointing_center_coords == 'dircos':
+                pointing_center_altaz = GEOM.dircos2altaz(pointing_center, units='degrees')
+            elif pointing_center_coords == 'hadec':
+                pointing_center_altaz = GEOM.hadec2altaz(pointing_center, self.latitude, units='degrees')
+            elif pointing_center_coords == 'radec':
+                pointing_center_hadec = NP.asarray([lst_temp - pointing_center[0], pointing_center[1]])
+                pointing_center_altaz = GEOM.hadec2altaz(pointing_center_hadec, self.latitude, units='degrees')
+            else:
+                raise ValueError('Invalid value specified in pointing_center_coords')
+            
+        hemind, altaz = self.upper_hemisphere(lst, obs_date=obs_date)
+        if vbeam_files is not None:
+            vbeams = self.load_voltage_patterns(vbeam_files, altaz, parallel=parallel, nproc=nproc)
+        else:
+            vbeams = self.generate_voltage_pattern(altaz, pointing_center=pointing_center_altaz, pointing_info=pointing_info, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, parallel=parallel, nproc=nproc)
+
+        self.generate_E_spectrum(altaz, vbeams, ctlgind=hemind, pol=['P1','P2'], ref_point=phase_center_dircos, parallel=parallel, nproc=nproc, action='store')
+
+        # self.stack_E_spectrum(self.Ef_info)
+        # self.generate_E_timeseries(operand='recent')
+        # self.generate_E_timeseries(operand='stack')
+
+    ############################################################################
