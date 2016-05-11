@@ -1,3 +1,14 @@
+From d198c69 (catalog-sim):
+==========================
+
+In sim_observe.py,
+
+(*) Add keyword input stack to member function observe() of class
+AntennaArraySimulator. Update docstring of member function
+accordingly
+(*) Update docstring of class AntennaArraySimulator with description
+of member function observing_run()
+
 From 55963e4 (catalog-sim):
 ==========================
 

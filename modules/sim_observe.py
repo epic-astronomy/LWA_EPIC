@@ -1456,6 +1456,10 @@ class AntennaArraySimulator(object):
                     electric fields as a function of polarization, 
                     frequencies and antennas.
 
+    observing_run() Simulate a observing run made of multiple contiguous 
+                    observations and record antenna electric fields as a 
+                    function of polarization, frequencies, antennas, and 
+                    time.
     ------------------------------------------------------------------------
     """
 
@@ -2177,8 +2181,9 @@ class AntennaArraySimulator(object):
     
     def observe(self, lst, phase_center_coords, pointing_center_coords,
                 obs_date=None, phase_center=None, pointing_center=None,
-                pointing_info=None, vbeam_files=None, short_dipole_approx=False,
-                half_wave_dipole_approx=False, parallel=False, nproc=None):
+                pointing_info=None, vbeam_files=None, stack=False,
+                short_dipole_approx=False, half_wave_dipole_approx=False,
+                parallel=False, nproc=None):
 
         """
         ------------------------------------------------------------------------
@@ -2287,6 +2292,10 @@ class AntennaArraySimulator(object):
                    locations are specified, it must be the same as number of 
                    antennas 
 
+        stack      [boolean] If set to True, stack the generated E-field
+                   spectrum to the attribute Ef_stack. If set to False 
+                   (default), no such action is performed.
+
         short_dipol_approx
                    [boolean] if True, indicates short dipole approximation
                    is to be used. Otherwise, a more accurate expression is 
@@ -2385,9 +2394,8 @@ class AntennaArraySimulator(object):
                 vbeams = self.generate_voltage_pattern(altaz, pointing_center=pointing_center_altaz, pointing_info=pointing_info, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, parallel=parallel, nproc=nproc)
             self.generate_E_spectrum(altaz, vbeams, ctlgind=hemind, pol=['P1','P2'], ref_point=phase_center_dircos, parallel=parallel, nproc=nproc, action='store')
 
-        # self.stack_E_spectrum(self.Ef_info)
-        # self.generate_E_timeseries(operand='recent')
-        # self.generate_E_timeseries(operand='stack')
+        if stack:
+            self.stack_E_spectrum()
 
     ############################################################################
 
@@ -2671,7 +2679,7 @@ class AntennaArraySimulator(object):
                 pointing_center_coords = init_parms['pointing_center_coords']
                 
         for i in range(n_nyqseries):
-            self.observe(updated_sdrltime, phase_center_coords, pointing_center_coords, obs_date=updated_obsdate, phase_center=phase_center, pointing_center=pointing_center, pointing_info=pointing_info, vbeam_files=vbeam_files, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, parallel=parallel, nproc=nproc)
+            self.observe(updated_sdrltime, phase_center_coords, pointing_center_coords, obs_date=updated_obsdate, phase_center=phase_center, pointing_center=pointing_center, pointing_info=pointing_info, vbeam_files=vbeam_files, stack=True, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, parallel=parallel, nproc=nproc)
             obsrvr.date = obsrvr.date + EP.second * self.t.max()
             updated_sdrltime = NP.degrees(obsrvr.sidereal_time()) / 15.0
             updated_slrtime = copy.copy(obsrvr.date)
