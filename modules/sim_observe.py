@@ -1,3 +1,4 @@
+import copy
 import numpy as NP
 import scipy.constants as FCNST
 import ephem as EP
@@ -7,9 +8,13 @@ from astropy.io import fits, ascii
 import my_DSP_modules as DSP
 import my_operations as OPS
 import geometry as GEOM
+import constants as CNST
 import catalog as SM
 import antenna_array as AA
 import antenna_beams as AB
+
+sday = CNST.sday
+sday_correction = 1 / sday
 
 ################### Routines essential for parallel processing ################
 
@@ -1952,15 +1957,10 @@ class AntennaArraySimulator(object):
         Output:
     
         Ef_info   [dictionary] Consits of E-field info under two keys 'P1' and
-                  'P2', one for each polarization. Under each of these keys 
-                  is another dictionary with the following keys and values:
-                  'f'        [numpy array] frequencies of the channels in the 
-                             spectrum of size nchan
-                  'Ef'       [complex numpy array] nchan x nant numpy array 
-                             consisting of complex stochastic electric field
-                             spectra. nchan is the number of channels in the 
-                             spectrum and nant is the number of antennas.
-    
+                  'P2', one for each polarization. Under each of these keys
+                  the complex electric fields spectra of shape nchan x nant are 
+                  stored. nchan is the number of channels in the spectrum and 
+                  nant is the number of antennas.
         ------------------------------------------------------------------------
         """
 
@@ -2342,7 +2342,7 @@ class AntennaArraySimulator(object):
         dec_temp = NP.degrees(lstobj.dec) # in degrees
 
         if phase_center is None:
-            phase_center_dircos = NP.asarray([0.0, 0.0, 1.0])
+            phase_center_dircos = NP.asarray([0.0, 0.0, 1.0]).reshape(1,-1)
         else:
             if phase_center_coords == 'dircos':
                 phase_center_dircos = phase_center
@@ -2352,14 +2352,14 @@ class AntennaArraySimulator(object):
                 phase_center_altaz = GEOM.hadec2altaz(phase_center, self.latitude, units='degrees')
                 phase_center_dircos = GEOM.altaz2dircos(phase_center_altaz, units='degrees')
             elif phase_center_coords == 'radec':
-                phase_center_hadec = NP.asarray([lst_temp - phase_center[0], phase_center[1]])
+                phase_center_hadec = NP.asarray([lst_temp - phase_center[0,0], phase_center[0,1]]).reshape(1,-1)
                 phase_center_altaz = GEOM.hadec2altaz(phase_center_hadec, self.latitude, units='degrees')
                 phase_center_dircos = GEOM.altaz2dircos(phase_center_altaz, units='degrees')
             else:
                 raise ValueError('Invalid value specified in phase_center_coords')
 
         if pointing_center is None:
-            pointing_center_altaz = NP.asarray([90.0, 270.0])
+            pointing_center_altaz = NP.asarray([90.0, 270.0]).reshape(1,-1)
         else:
             if pointing_center_coords == 'altaz':
                 pointing_center_altaz = pointing_center
@@ -2368,21 +2368,313 @@ class AntennaArraySimulator(object):
             elif pointing_center_coords == 'hadec':
                 pointing_center_altaz = GEOM.hadec2altaz(pointing_center, self.latitude, units='degrees')
             elif pointing_center_coords == 'radec':
-                pointing_center_hadec = NP.asarray([lst_temp - pointing_center[0], pointing_center[1]])
+                pointing_center_hadec = NP.asarray([lst_temp - pointing_center[0,0], pointing_center[0,1]]).reshape(1,-1)
                 pointing_center_altaz = GEOM.hadec2altaz(pointing_center_hadec, self.latitude, units='degrees')
             else:
                 raise ValueError('Invalid value specified in pointing_center_coords')
             
         hemind, altaz = self.upper_hemisphere(lst, obs_date=obs_date)
-        if vbeam_files is not None:
-            vbeams = self.load_voltage_patterns(vbeam_files, altaz, parallel=parallel, nproc=nproc)
+        if hemind.size == 0:
+            self.Ef_info = {}
+            for apol in ['P1', 'P2']:
+                self.Ef_info[apol] = NP.zeros((self.f.size, len(self.antenna_array.antennas)), dtype=NP.complex)
         else:
-            vbeams = self.generate_voltage_pattern(altaz, pointing_center=pointing_center_altaz, pointing_info=pointing_info, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, parallel=parallel, nproc=nproc)
-
-        self.generate_E_spectrum(altaz, vbeams, ctlgind=hemind, pol=['P1','P2'], ref_point=phase_center_dircos, parallel=parallel, nproc=nproc, action='store')
+            if vbeam_files is not None:
+                vbeams = self.load_voltage_patterns(vbeam_files, altaz, parallel=parallel, nproc=nproc)
+            else:
+                vbeams = self.generate_voltage_pattern(altaz, pointing_center=pointing_center_altaz, pointing_info=pointing_info, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, parallel=parallel, nproc=nproc)
+            self.generate_E_spectrum(altaz, vbeams, ctlgind=hemind, pol=['P1','P2'], ref_point=phase_center_dircos, parallel=parallel, nproc=nproc, action='store')
 
         # self.stack_E_spectrum(self.Ef_info)
         # self.generate_E_timeseries(operand='recent')
         # self.generate_E_timeseries(operand='stack')
+
+    ############################################################################
+
+    def observing_run(self, init_parms, obsmode='track', duration=None,
+                      pointing_info=None, vbeam_files=None,
+                      short_dipole_approx=False, half_wave_dipole_approx=False,
+                      parallel=False, nproc=None):
+
+        """
+        ------------------------------------------------------------------------
+        Simulate a observing run made of multiple contiguous observations and 
+        record antenna electric fields as a function of polarization, 
+        frequencies, antennas, and time.
+
+        Inputs:
+
+        init_parms [dictionary] Contains the parameters to initialize an
+                   observing run. It consists of the following keys and values:
+                   'obs_date'   [string] Date string in 'YYYY/MM/DD HH:MM:SS.SS' 
+                                format. If not provided, will default to using 
+                                the epoch of the sky model attribute. If key
+                                'sidereal_time' is absent, this parameter will 
+                                be used as the solar time and a sidereal time
+                                will be estimated for the instant specified in
+                                this parameter
+                   'sidereal_time' 
+                                [float] Local sidereal time (in hours) on the 
+                                date of observation specified in the YYYY/MM/DD 
+                                part of the value in key 'obs_date'. If not 
+                                specified, a sidereal time will be estimated 
+                                from the 'obs_date' parameter
+                   'phase_center_coords'
+                                [string] Coordinate system describing the phase 
+                                center. Accepted values are 'altaz', 'radec', 
+                                'hadec' and 'dircos' for Alt-Az, RA-dec, HA-dec 
+                                and direction cosines respectively. If set to 
+                                'altaz', 'radec' or 'hadec', the coordinates 
+                                must be specified in degrees. 
+                   'pointing_center_coords'
+                                [string] Coordinate system describing the 
+                                pointing center. Accepted values are 'altaz', 
+                                'radec', 'hadec' and 'dircos' for Alt-Az, 
+                                RA-dec, HA-dec and direction cosines 
+                                respectively. If set to 'altaz', 'radec' or 
+                                'hadec', the coordinates must be specified in 
+                                degrees. 
+                   'phase_center'
+                                [numpy array] Phase center of the observation 
+                                in the coordinate system specified by 
+                                phase_center_coords. If phase_center_coords is 
+                                set to 'altaz', 'radec' or 'hadec' the phase 
+                                center must be a 2-element numpy array with 
+                                values in degrees. If phase_center_coords is 
+                                set to 'dircos' it must be a 3-element 
+                                direction cosine vector
+                   'pointing_center'
+                                [numpy array] Pointing center of the 
+                                observation in the coordinate system specified 
+                                by pointing_center_coords. If 
+                                pointing_center_coords is set to 'altaz', 
+                                'radec' or 'hadec' the pointing center must be 
+                                a 2-element numpy array with values in degrees. 
+                                If pointing_center_coords is set to 'dircos' it 
+                                must be a 3-element direction cosine vector
+
+        Keyword Inputs:
+
+        obsmode    [string] Mode of observation. Accepted values are 'drift' 
+                   and 'track' (default)
+
+        duration   [float] Total duration of the observing run (in seconds). If
+                   set to None (default), one timeseries is generated
+
+        pointing_info 
+                   [dictionary] A dictionary consisting of information 
+                   relating to pointing center in case of a phased array. 
+                   The pointing center can be specified either via element 
+                   delay compensation or by directly specifying the pointing 
+                   center in a certain coordinate system. Default = None 
+                   (pointing centered at zenith). This dictionary consists of 
+                   the following tags and values:
+                   'gains'           [numpy array] Complex element gains. 
+                                     Must be of size equal to the number of 
+                                     elements as specified by the number of 
+                                     rows in antpos. If set to None (default), 
+                                     all element gains are assumed to be unity. 
+                                     Used only in phased array mode.
+                   'gainerr'         [int, float] RMS error in voltage 
+                                     amplitude in dB to be used in the 
+                                     beamformer. Random jitters are drawn from 
+                                     a normal distribution in logarithm units 
+                                     which are then converted to linear units. 
+                                     Must be a non-negative scalar. If not 
+                                     provided, it defaults to 0 (no jitter).
+                                     Used only in phased array mode.
+                   'delays'          [numpy array] Delays (in seconds) to be 
+                                     applied to the tile elements. Size should 
+                                     be equal to number of tile elements 
+                                     (number of rows in antpos). Default=None 
+                                     will set all element delays to zero 
+                                     phasing them to zenith. Used only in 
+                                     phased array mode. 
+                   'pointing_center' [numpy array] This will apply in the 
+                                     absence of key 'delays'. This can be 
+                                     specified as a row vector. Should have 
+                                     two-columns if using Alt-Az coordinates, 
+                                     or two or three columns if using direction 
+                                     cosines. There is no default. The
+                                     coordinate system must be specified in
+                                     'pointing_coords' if 'pointing_center' is 
+                                     to be used.
+                   'pointing_coords' [string scalar] Coordinate system in which 
+                                     the pointing_center is specified. Accepted 
+                                     values are 'altaz' or 'dircos'. Must be 
+                                     provided if 'pointing_center' is to be 
+                                     used. No default.
+                   'delayerr'        [int, float] RMS jitter in delays used in 
+                                     the beamformer. Random jitters are drawn 
+                                     from a normal distribution with this rms. 
+                                     Must be a non-negative scalar. If not 
+                                     provided, it defaults to 0 (no jitter). 
+                                     Used only in phased array mode.
+        
+        vbeam_files 
+                   [dictionary] Dictionary containing file locations of 
+                   far-field voltage patterns. It is specified under keys
+                   'P1' and 'P2' denoting the two polarizations. Under each
+                   polarization key is another dictionary with keys for 
+                   individual antennas denoted by antenna labels (string). 
+                   If there is only one antenna key it will be assumed to be 
+                   identical for all antennas. If multiple voltage beam file 
+                   locations are specified, it must be the same as number of 
+                   antennas 
+
+        short_dipol_approx
+                   [boolean] if True, indicates short dipole approximation
+                   is to be used. Otherwise, a more accurate expression is 
+                   used for the dipole pattern. Default=False. Both
+                   short_dipole_approx and half_wave_dipole_approx cannot be 
+                   set to True at the same time
+        
+        half_wave_dpole_approx
+                   [boolean] if True, indicates half-wave dipole approximation
+                   is to be used. Otherwise, a more accurate expression is 
+                   used for the dipole pattern. Default=False
+
+        parallel   [boolean] specifies if parallelization is to be invoked. 
+                   False (default) means only serial processing
+
+        nproc      [integer] specifies number of independent processes to 
+                   spawn. Default = None, means automatically determines the 
+                   number of process cores in the system and use one less 
+                   than that to avoid locking the system for other processes. 
+                   Applies only if input parameter 'parallel' (see above) is 
+                   set to True. If nproc is set to a value more than the 
+                   number of process cores in the system, it will be reset to 
+                   number of process cores in the system minus one to avoid 
+                   locking the system out for other processes
+        ------------------------------------------------------------------------
+        """
+
+        try:
+            init_parms
+        except NameError:
+            raise NameError('Input init_parms must be specified')
+
+        if not isinstance(init_parms, dict):
+            raise TypeError('Input init_parms must be a dictionary')
+
+        if not isinstance(obsmode, str):
+            raise TypeError('Input osbmode must be a string')
+
+        if obsmode not in ['track', 'drift']:
+            raise ValueError('Input obsmode must be set to "track" or "drift"')
+
+        if 'obs_date' not in init_parms:
+            init_parms['obs_date'] = self.skymodel.epoch.strip('J')
+
+        if 'phase_center' not in init_parms:
+            init_parms['phase_center'] = NP.asarray([90.0, 270.0]).reshape(1,-1)
+            init_parms['phase_center_coords'] = 'altaz'
+        else:
+            init_parms['phase_center'] = NP.asarray(init_parms['phase_center']).reshape(1,-1)
+
+        if 'pointing_center' not in init_parms:
+            init_parms['pointing_center'] = NP.asarray([90.0, 270.0]).reshape(1,-1)
+            init_parms['pointing_center_coords'] = 'altaz'
+        else:
+            init_parms['pointing_center'] = NP.asarray(init_parms['pointing_center']).reshape(1,-1)
+
+        if duration is None:
+            duration = self.t.max()
+
+        duration = float(duration)
+        if duration <= 0.0:
+            raise ValueError('Observation duration must be positive')
+        n_nyqseries = NP.round(duration/self.t.max()).astype(int)
+        if n_nyqseries < 1:
+            raise ValueError('Observation duration is too short to make a single Nyquist observation sample')
+
+        if 'sidereal_time' in init_parms:
+            if not isinstance(init_parms['sidereal_time'], (int,float)):
+                raise TypeError('sidereal time must be a scalar')
+            init_parms['sidereal_time'] = float(init_parms['sidereal_time'])
+            if (init_parms['sidereal_time'] >= 0.0) and (init_parms['sidereal_time'] < 24.0):
+                sdrltime = init_parms['sidereal_time']
+            else:
+                raise ValueError('sidereal time must be in the range 0--24 hours')
+        else:
+            if not isinstance(init_parms['obs_date'], str):
+                raise TypeError('obs_date value must be a date string in YYYY/MM/DD HH:MM:SS.SSS format')
+            slrtime = init_parms['obs_date']
+
+        obsrvr = EP.Observer()
+        obsrvr.lat = NP.radians(self.latitude)
+        obsrvr.lon = NP.radians(self.longitude)
+        # obsrvr.date = init_parms['obs_date']
+
+        lstobj = EP.FixedBody()
+        lstobj._epoch = init_parms['obs_date']
+        lstobj._epoch = EP.Date(NP.floor(lstobj._epoch - 0.5) + 0.5) # Round it down to beginning of the day
+        if 'sidereal_time' not in init_parms:
+            obsrvr.date = slrtime
+            sdrltime = NP.degrees(obsrvr.sidereal_time()) / 15.0
+        lstobj._ra = NP.radians(sdrltime * 15.0)
+        if 'sidereal_time' in init_parms:
+            lstobj.compute(obsrvr)
+            slrtime = lstobj.transit_time
+            obsrvr.date = slrtime
+
+        updated_sdrltime = copy.copy(sdrltime)
+        updated_slrtime = copy.copy(slrtime)
+        updated_obsdate = EP.Date(NP.floor(obsrvr.date - 0.5) + 0.5) # Round it down to beginning of the day
+        if obsmode == 'track':
+            if init_parms['phase_center_coords'] == 'dircos':
+                phase_center_altaz = GEOM.dircos2altaz(init_parms['phase_center'], units='degrees')
+                phase_center_hadec = GEOM.altaz2hadec(phase_center_altaz, self.latitude, units='degrees')
+                phase_center_radec = NP.asarray([15.0*sdrltime - phase_center_hadec[0,0], phase_center_hadec[0,1]]).reshape(1,-1)
+                phase_center_coords = 'radec'
+            elif init_parms['phase_center_coords'] == 'altaz':
+                phase_center_hadec = GEOM.altaz2hadec(init_parms['phase_center'], self.latitude, units='degrees')
+                phase_center_radec = NP.asarray([15.0*sdrltime - phase_center_hadec[0,0], phase_center_hadec[0,1]]).reshape(1,-1)
+                phase_center_coords = 'radec'
+            elif init_parms['phase_center_coords'] == 'hadec':
+                phase_center_radec = NP.asarray([15.0*sdrltime - init_parms['phase_center'][0,0], init_parms['phase_center'][0,1]]).reshape(1,-1)
+                phase_center_coords = 'radec'
+            else:
+                phase_center_radec = init_parms['phase_center']
+                phase_center_coords = 'radec'
+
+            if init_parms['pointing_center_coords'] == 'dircos':
+                pointing_center_altaz = GEOM.dircos2altaz(init_parms['pointing_center'], units='degrees')
+                pointing_center_hadec = GEOM.altaz2hadec(pointing_center_altaz, self.latitude, units='degrees')
+                pointing_center_radec = NP.asarray([15.0*sdrltime - pointing_center_hadec[0,0], pointing_center_hadec[0,1]]).reshape(1,-1)
+                pointing_center_coords = 'radec'
+            elif init_parms['pointing_center_coords'] == 'altaz':
+                pointing_center_hadec = GEOM.altaz2hadec(init_parms['pointing_center'], self.latitude, units='degrees')
+                pointing_center_radec = NP.asarray([15.0*sdrltime - pointing_center_hadec[0,0], pointing_center_hadec[0,1]]).reshape(1,-1)
+                pointing_center_coords = 'radec'
+            elif init_parms['pointing_center_coords'] == 'hadec':
+                pointing_center_radec = NP.asarray([15.0*sdrltime - init_parms['pointing_center'][0,0], init_parms['pointing_center'][0,1]]).reshape(1,-1)
+                pointing_center_coords = 'radec'
+            else:
+                pointing_center_radec = init_parms['pointing_center']
+                pointing_center_coords = 'radec'
+            phase_center = phase_center_radec
+            pointing_center = pointing_center_radec
+        else:
+            if init_parms['phase_center_coords'] == 'radec':
+                phase_center = NP.asarray([15.0*sdrltime - init_parms['phase_center'][0,0], init_parms['phase_center'][0,1]]).reshape(1,-1)
+                phase_center_coords = 'hadec'
+            else:
+                phase_center = init_parms['phase_center']
+                phase_center_coords = init_parms['phase_center_coords']
+
+            if init_parms['pointing_center_coords'] == 'radec':
+                pointing_center = NP.asarray([15.0*sdrltime - init_parms['pointing_center'][0,0], init_parms['pointing_center'][0,1]]).reshape(1,-1)
+                pointing_center_coords = 'hadec'
+            else:
+                pointing_center = init_parms['pointing_center']
+                pointing_center_coords = init_parms['pointing_center_coords']
+                
+        for i in range(n_nyqseries):
+            self.observe(updated_sdrltime, phase_center_coords, pointing_center_coords, obs_date=updated_obsdate, phase_center=phase_center, pointing_center=pointing_center, pointing_info=pointing_info, vbeam_files=vbeam_files, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, parallel=parallel, nproc=nproc)
+            obsrvr.date = obsrvr.date + EP.second * self.t.max()
+            updated_sdrltime = NP.degrees(obsrvr.sidereal_time()) / 15.0
+            updated_slrtime = copy.copy(obsrvr.date)
+            updated_obsdate = EP.Date(NP.floor(obsrvr.date - 0.5) + 0.5) # Round it down to beginning of the day
 
     ############################################################################

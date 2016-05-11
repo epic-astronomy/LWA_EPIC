@@ -1,3 +1,19 @@
+From 55963e4 (catalog-sim):
+==========================
+
+In sim_observe.py,
+
+(*) Add member function observing_run() along with docstring under
+class AntennaArraySimulator. Update docstring of class accordingly
+(*) In member funciton observe() of class ANtennaArraySimulator,
+handle the case properly when there are no objects in the sky model
+visibile in the upper hemisphere
+(*) Update docstring describing correctly the output of member 
+function generate_E_spectrum() of class AntennaArraySimulator
+(*) Minor changes in observe() member function of class
+AntennaArraySimulator to keep the shapes correct for phase_center
+and pointing_center
+
 From 3e89059 (catalog-sim):
 ==========================
 
