@@ -1,3 +1,16 @@
+From b3ccac1 (catalog-sim):
+==========================
+
+In sim_observe.py,
+
+(*) Add attributes timestamp and timestamps to class
+AntennaArraySimulator and initialize them in __init__() member
+function. Update class and member function docstrings accordingly.
+(*) Update attributes timestamp and timestamps in member function
+observe() of class AntennaArraySimulator.
+(*) Fix timing bug in member function observing_run() of class
+AntennaArraySimulator
+
 From a8d4a55 (catalog-sim):
 ==========================
 

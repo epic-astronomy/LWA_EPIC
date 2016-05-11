@@ -1397,6 +1397,12 @@ class AntennaArraySimulator(object):
     t               [Numpy array] Time samples in a single Nyquist sampled 
                     series (in sec)
 
+    timestamp       [float] Dublin Julian Date will be used as the timestamp
+                    of the observation
+
+    timestamps      [list] List of Dublian Julian Dates one for each nyquist
+                    timeseries in the contiguous observation
+
     antinfo         [dictionary] contains the following keys and 
                     information:
                     'labels':    list of strings of antenna labels
@@ -1472,7 +1478,7 @@ class AntennaArraySimulator(object):
 
         Class attributes initialized are:
         antenna_array, skymodel, latitude, f, f0, antinfo, observer, Ef_stack,
-        Ef_info, t
+        Ef_info, t, timestamp, timestamps
 
         Read docstring of class AntennaArray for details on these attributes.
 
@@ -1517,6 +1523,8 @@ class AntennaArraySimulator(object):
         self.Ef_info = {}
         self.Et_info = {}
         self.Ef_stack = {}
+        self.timestamp = None
+        self.timestamps = []
 
         self.latitude = self.antenna_array.latitude
         self.longitude = self.antenna_array.longitude
@@ -2351,6 +2359,12 @@ class AntennaArraySimulator(object):
         lst_temp = NP.degrees(lstobj.ra) # in degrees
         dec_temp = NP.degrees(lstobj.dec) # in degrees
 
+        obsrvr = EP.Observer()
+        obsrvr.lat = self.observer.lat
+        obsrvr.lon = self.observer.lon
+        obsrvr.date = obs_date
+        self.timestamp = obsrvr.next_transit(lstobj)
+
         if phase_center is None:
             phase_center_dircos = NP.asarray([0.0, 0.0, 1.0]).reshape(1,-1)
         else:
@@ -2397,6 +2411,7 @@ class AntennaArraySimulator(object):
 
         if stack:
             self.stack_E_spectrum()
+            self.timestamps += [self.timestamp]
 
     ############################################################################
 
@@ -2613,7 +2628,7 @@ class AntennaArraySimulator(object):
         obsrvr = EP.Observer()
         obsrvr.lat = NP.radians(self.latitude)
         obsrvr.lon = NP.radians(self.longitude)
-        # obsrvr.date = init_parms['obs_date']
+        obsrvr.date = init_parms['obs_date']
 
         lstobj = EP.FixedBody()
         lstobj._epoch = init_parms['obs_date']
