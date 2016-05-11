@@ -2112,33 +2112,34 @@ class AntennaArraySimulator(object):
         if not isinstance(Ef_info, dict):
             raise TypeError('Input Ef_info must be a dictionary')
 
-        for pol in ['P1', 'P2']:
-            if Ef_info[pol]:
-                if Ef_info[pol].shape[0] != self.f.size:
-                    raise ValueError('Dimensions of input Ef_info incompatible with number of frequency channels')
-                if Ef_info[pol].shape[1] != self.antinfo.shape[0]:
-                    raise ValueError('Dimensions of input Ef_info incompatible with number of antennas')
-
-            if not self.Ef_stack:
-                self.Ef_stack[pol] = NP.empty((self.f.size,self.antinfo.shape[0]), dtype=NP.complex)
-                self.Ef_stack[pol].fill(NP.nan)
+        if Ef_info:
+            for pol in ['P1', 'P2']:
                 if pol in Ef_info:
-                    self.Ef_stack[pol] = Ef_info[pol]
-                self.Ef_stack[pol] = self.Ef_stack[pol][:,:,NP.newaxis]
-            else:
-                if pol not in self.Ef_stack:
-                    self.Ef_stack[pol] = NP.empty((self.f.size,self.antinfo.shape[0]), dtype=NP.complex)
+                    if Ef_info[pol].shape[0] != self.f.size:
+                        raise ValueError('Dimensions of input Ef_info incompatible with number of frequency channels')
+                    if Ef_info[pol].shape[1] != len(self.antinfo['labels']):
+                        raise ValueError('Dimensions of input Ef_info incompatible with number of antennas')
+    
+                if not self.Ef_stack:
+                    self.Ef_stack[pol] = NP.empty((self.f.size,len(self.antinfo['labels'])), dtype=NP.complex)
                     self.Ef_stack[pol].fill(NP.nan)
                     if pol in Ef_info:
                         self.Ef_stack[pol] = Ef_info[pol]
                     self.Ef_stack[pol] = self.Ef_stack[pol][:,:,NP.newaxis]
                 else:
-                    if pol in Ef_info:
-                        self.Ef_stack[pol] = NP.dstack((self.Ef_stack[pol], Ef_info[pol][:,:,NP.newaxis]))
+                    if pol not in self.Ef_stack:
+                        self.Ef_stack[pol] = NP.empty((self.f.size,len(self.antinfo['labels'])), dtype=NP.complex)
+                        self.Ef_stack[pol].fill(NP.nan)
+                        if pol in Ef_info:
+                            self.Ef_stack[pol] = Ef_info[pol]
+                        self.Ef_stack[pol] = self.Ef_stack[pol][:,:,NP.newaxis]
                     else:
-                        nanvalue = NP.empty((self.f.size,self.antinfo.shape[0]), dtype=NP.complex)
-                        nanvalue.fill(NP.nan)
-                        self.Ef_stack[pol] = NP.dstack((self.Ef_stack[pol], nanvalue[:,:,NP.newaxis]))
+                        if pol in Ef_info:
+                            self.Ef_stack[pol] = NP.dstack((self.Ef_stack[pol], Ef_info[pol][:,:,NP.newaxis]))
+                        else:
+                            nanvalue = NP.empty((self.f.size,len(self.antinfo['labels'])), dtype=NP.complex)
+                            nanvalue.fill(NP.nan)
+                            self.Ef_stack[pol] = NP.dstack((self.Ef_stack[pol], nanvalue[:,:,NP.newaxis]))
 
     ############################################################################
     
