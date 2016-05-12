@@ -5,6 +5,7 @@ import ephem as EP
 import multiprocessing as MP
 import itertools as IT
 from astropy.io import fits, ascii
+import h5py
 import my_DSP_modules as DSP
 import my_operations as OPS
 import geometry as GEOM
@@ -1403,6 +1404,9 @@ class AntennaArraySimulator(object):
     timestamps      [list] List of Dublian Julian Dates one for each nyquist
                     timeseries in the contiguous observation
 
+    obsmode         [string] Specifies observing mode. Accepted values are
+                    'drift', 'track' and 'custom' (default)
+
     antinfo         [dictionary] contains the following keys and 
                     information:
                     'labels':    list of strings of antenna labels
@@ -1413,14 +1417,27 @@ class AntennaArraySimulator(object):
                     class Observer in ephem module to hold information 
                     about LST, transit time, etc.
 
-    Ef_info         [dictionary] Consits of E-field info under two keys 
-                    'P1' and 'P2', one for each polarization. Under each of 
-                    these keys is a nchan x nant complex numpy array 
+    Ef_info         [dictionary] Consists of E-field spectral info under two 
+                    keys 'P1' and 'P2', one for each polarization. Under each 
+                    of these keys is a nchan x nant complex numpy array 
                     consisting of complex stochastic electric field
                     spectra. nchan is the number of channels in the 
                     spectrum and nant is the number of antennas.
 
     Ef_stack        [dictionary] contains the E-field spectrum under keys
+                    'P1' and 'P2' for each polarization. The value under
+                    each key is a complex numpy array of shape 
+                    nchan x nant x ntimes. Absent data are represented by 
+                    NaN values
+
+    Et_info         [dictionary] Consists of E-field timeseries info under 
+                    two keys 'P1' and 'P2', one for each polarization. Under 
+                    each of these keys is a nchan x nant complex numpy array 
+                    consisting of complex stochastic electric field
+                    timeseries. nchan is the number of channels in the 
+                    spectrum and nant is the number of antennas.
+
+    Et_stack        [dictionary] contains the E-field timeseries under keys
                     'P1' and 'P2' for each polarization. The value under
                     each key is a complex numpy array of shape 
                     nchan x nant x ntimes. Absent data are represented by 
@@ -1466,6 +1483,9 @@ class AntennaArraySimulator(object):
                     observations and record antenna electric fields as a 
                     function of polarization, frequencies, antennas, and 
                     time.
+
+    save()          Save information instance of class 
+                    AntennaArraySimulator to external file in HDF5 format
     ------------------------------------------------------------------------
     """
 
@@ -1523,8 +1543,10 @@ class AntennaArraySimulator(object):
         self.Ef_info = {}
         self.Et_info = {}
         self.Ef_stack = {}
+        self.Et_stack = {}
         self.timestamp = None
         self.timestamps = []
+        self.obsmode = 'custom'
 
         self.latitude = self.antenna_array.latitude
         self.longitude = self.antenna_array.longitude
@@ -2190,9 +2212,9 @@ class AntennaArraySimulator(object):
     
     def observe(self, lst, phase_center_coords, pointing_center_coords,
                 obs_date=None, phase_center=None, pointing_center=None,
-                pointing_info=None, vbeam_files=None, stack=False,
-                short_dipole_approx=False, half_wave_dipole_approx=False,
-                parallel=False, nproc=None):
+                pointing_info=None, vbeam_files=None, obsmode=None, 
+                stack=False, short_dipole_approx=False,
+                half_wave_dipole_approx=False, parallel=False, nproc=None):
 
         """
         ------------------------------------------------------------------------
@@ -2301,6 +2323,9 @@ class AntennaArraySimulator(object):
                    locations are specified, it must be the same as number of 
                    antennas 
 
+        obsmode    [string] Specifies observing mode. Accepted values are
+                   'drift', 'track' or None (default)
+
         stack      [boolean] If set to True, stack the generated E-field
                    spectrum to the attribute Ef_stack. If set to False 
                    (default), no such action is performed.
@@ -2408,6 +2433,12 @@ class AntennaArraySimulator(object):
             else:
                 vbeams = self.generate_voltage_pattern(altaz, pointing_center=pointing_center_altaz, pointing_info=pointing_info, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, parallel=parallel, nproc=nproc)
             self.generate_E_spectrum(altaz, vbeams, ctlgind=hemind, pol=['P1','P2'], ref_point=phase_center_dircos, parallel=parallel, nproc=nproc, action='store')
+
+        if obsmode is not None:
+            if obsmode in ['drift', 'track']:
+                self.obsmode = obsmode
+            else:
+                raise ValueError('Invalid value specified for input obsmode')
 
         if stack:
             self.stack_E_spectrum()
@@ -2586,6 +2617,7 @@ class AntennaArraySimulator(object):
 
         if obsmode not in ['track', 'drift']:
             raise ValueError('Input obsmode must be set to "track" or "drift"')
+        self.obsmode = obsmode
 
         if 'obs_date' not in init_parms:
             init_parms['obs_date'] = self.skymodel.epoch.strip('J')
@@ -2701,4 +2733,85 @@ class AntennaArraySimulator(object):
             updated_slrtime = copy.copy(obsrvr.date)
             updated_obsdate = EP.Date(NP.floor(obsrvr.date - 0.5) + 0.5) # Round it down to beginning of the day
 
+    ############################################################################
+
+    def save(self, filename, compress=True):
+        
+        """
+        ------------------------------------------------------------------------
+        Save information instance of class AntennaArraySimulator to external 
+        file in HDF5 format
+
+        Input:
+
+        filename    [string] Full path to the external file where data in the
+                    instance of class AntennaArraySimulator is to be saved. 
+                    The filename extension should be avoided as it will be 
+                    appended automatically
+
+        Keyword Inputs:
+
+        compress    [boolean] If set to True (default), will compress the data
+                    arrays in GZIP format
+        ------------------------------------------------------------------------
+        """
+
+        with h5py.File(filename+'.hdf5', 'w') as fileobj:
+            obsparm_group = fileobj.create_group('obsparm')
+            obsparm_group['f0'] = self.f0
+            obsparm_group['f0'].attrs['units'] = 'Hz'
+            obsparm_group['frequencies'] = self.f
+            obsparm_group['frequencies'].attrs['units'] = 'Hz'
+            obsparm_group['tsamples'] = self.t
+            obsparm_group['tsamples'].attrs['units'] = 'seconds'
+            obsparm_group['timestamps'] = self.timestamps
+            obsparm_group['timestamps'].attrs['units'] = 'Dublin Julian Date'
+            obsparm_group['timestamp'] = self.timestamp
+            obsparm_group['timestamp'].attrs['units'] = 'Dublin Julian Date'
+            obsparm_group['mode'] = self.obsmode
+
+            observatory_group = fileobj.create_group('observatory')
+            observatory_group['latitude'] = self.latitude
+            observatory_group['latitude'].attrs['units'] = 'degrees'
+            observatory_group['longitude'] = self.longitude
+            observatory_group['longitude'].attrs['units'] = 'degrees'
+            observatory_group['antennas'] = self.antinfo['labels']
+            observatory_group['antennas'].attrs['identical'] = self.identical_antennas
+            observatory_group['antenna_positions'] = self.antinfo['positions']
+            observatory_group['antenna_positions'].attrs['units'] = 'metres'
+
+            spec_group = fileobj.create_group('spectrum')
+            if self.Ef_info:
+                for pol in ['P1', 'P2']:
+                    if pol in self.Ef_info:
+                        if compress:
+                            dset = spec_group.create_dataset('current/'+pol, data=self.Ef_info[pol], compression="gzip", compression_opts=9)
+                        else:
+                            spec_group['current/'+pol] = self.Ef_info[pol]
+                spec_group['current'].attrs['timestamp'] = self.timestamp
+            if self.Ef_stack:
+                for pol in ['P1', 'P2']:
+                    if pol in self.Ef_stack:
+                        if compress:
+                            dset = spec_group.create_dataset('tstack/'+pol, data=self.Ef_stack[pol], compression="gzip", compression_opts=9)
+                        else:
+                            spec_group['tstack/'+pol] = self.Ef_stack[pol]
+
+            time_group = fileobj.create_group('timeseries')
+            if self.Et_info:
+                for pol in ['P1', 'P2']:
+                    if pol in self.Et_info:
+                        if compress:
+                            dset = time_group.create_dataset('current/'+pol, data=self.Et_info[pol], compression="gzip", compression_opts=9)
+                        else:
+                            time_group['current/'+pol] = self.Et_info[pol]
+                time_group['current'].attrs['timestamp'] = self.timestamp
+            if self.Et_stack:
+                for pol in ['P1', 'P2']:
+                    if pol in self.Et_stack:
+                        if compress:
+                            dset = time_group.create_dataset('tstack/'+pol, data=self.Et_stack[pol], compression="gzip", compression_opts=9)
+                        else:
+                            time_group['tstack/'+pol] = self.Et_stack[pol]
+                        
     ############################################################################

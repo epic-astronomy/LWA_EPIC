@@ -1,3 +1,23 @@
+From c064e82 (catalog-sim):
+==========================
+
+In sim_observe.py,
+
+(*) Import package h5py for handling data in HDF5 format
+(*) Add member function save() along with docstring under class
+AntennaArraySimulator to save data to an external file in HDF5 format.
+Update docstring of class AntennaArraySimulator accordingly
+(*) Add, initialize attribute Et_stack in __init__() member function
+of class AntennaArraySimulator. Update description in class docstring
+accordingly
+(*) Add, initialize attribute obsmode in __init__() member function
+of class AntennaArraySimulator. Update description in class docstring
+accordingly
+(*) Add keyword input obsmode in member function observe() of class
+AntennaArraySimulator. Update docstring accordingly
+(*) Update attribute obsmode in member functions observing_run() and
+observe() of class AntennaArraySimulator
+
 From b3ccac1 (catalog-sim):
 ==========================
 
