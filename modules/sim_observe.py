@@ -2780,6 +2780,10 @@ class AntennaArraySimulator(object):
             observatory_group['antenna_positions'] = self.antinfo['positions']
             observatory_group['antenna_positions'].attrs['units'] = 'metres'
 
+            self.skymodel.save(filename+'.skymodel', fileformat='hdf5')
+            skymodel_group = fileobj.create_group('skymodel')
+            skymodel_group['filename'] = filename+'.skymodel.hdf5'
+
             spec_group = fileobj.create_group('spectrum')
             if self.Ef_info:
                 for pol in ['P1', 'P2']:

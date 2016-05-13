@@ -1,3 +1,11 @@
+From 0304ba7 (catalog-sim):
+==========================
+
+In sim_observe.py,
+
+(*) Save sky model in save() member function of class
+AntennaArraySimulator
+
 From c064e82 (catalog-sim):
 ==========================
 
