@@ -1,3 +1,10 @@
+From da19ecc (catalog-sim):
+==========================
+
+In sim_observe.py,
+
+(*) Minor modifications in docstrings in class AntennaArraySimulator
+
 From 0304ba7 (catalog-sim):
 ==========================
 

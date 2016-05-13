@@ -2577,14 +2577,14 @@ class AntennaArraySimulator(object):
                    locations are specified, it must be the same as number of 
                    antennas 
 
-        short_dipol_approx
+        short_dipole_approx
                    [boolean] if True, indicates short dipole approximation
                    is to be used. Otherwise, a more accurate expression is 
                    used for the dipole pattern. Default=False. Both
                    short_dipole_approx and half_wave_dipole_approx cannot be 
                    set to True at the same time
         
-        half_wave_dpole_approx
+        half_wave_dipole_approx
                    [boolean] if True, indicates half-wave dipole approximation
                    is to be used. Otherwise, a more accurate expression is 
                    used for the dipole pattern. Default=False
