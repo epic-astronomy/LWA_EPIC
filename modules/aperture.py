@@ -1,5 +1,5 @@
 import numpy as NP
-import lookup_operations as LKP
+from astroutils import lookup_operations as LKP
 
 ################################################################################
 

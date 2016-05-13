@@ -1,3 +1,10 @@
+From 3a7daa0 (master):
+=====================
+
+(*) Adjust import of modules from astroutils package (previously
+general package) in sim_observe.py, antenna_array.py, aperture.py,
+antenna_beams.py, antenna_array_for_profiler.py
+
 From da19ecc (catalog-sim):
 ==========================
 

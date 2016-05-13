@@ -7,11 +7,11 @@ import scipy.sparse as SM
 from astropy.io import fits
 import matplotlib.pyplot as PLT
 import progressbar as PGB
-import my_DSP_modules as DSP
-import geometry as GEOM
-import my_gridding_modules as GRD
-import my_operations as OPS
-import lookup_operations as LKP
+from astroutils import DSP_modules as DSP
+from astroutils import geometry as GEOM
+from astroutils import gridding_modules as GRD
+from astroutils import mathops as OPS
+from astroutils import lookup_operations as LKP
 import aperture as APR
 
 ################### Routines essential for parallel processing ################

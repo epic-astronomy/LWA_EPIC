@@ -6,11 +6,11 @@ import multiprocessing as MP
 import itertools as IT
 from astropy.io import fits, ascii
 import h5py
-import my_DSP_modules as DSP
-import my_operations as OPS
-import geometry as GEOM
-import constants as CNST
-import catalog as SM
+from astroutils import DSP_modules as DSP
+from astroutils import mathops as OPS
+from astroutils import geometry as GEOM
+from astroutils import constants as CNST
+from astroutils import catalog as SM
 import antenna_array as AA
 import antenna_beams as AB
 
