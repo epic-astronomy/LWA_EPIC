@@ -1,3 +1,11 @@
+From 22f8c54 (versatility):
+==========================
+
+In sim_observe.py,
+
+(*) Minor bug fix in member function generate_E_timeseries() of class
+AntennaArraySimulator.
+
 From 0a663d5 (versatility):
 ==========================
 

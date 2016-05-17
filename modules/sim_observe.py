@@ -2199,12 +2199,12 @@ class AntennaArraySimulator(object):
         for pol in ['P1', 'P2']:
             if operand == 'recent':
                 if self.Ef_info:
-                    if self.Ef_info[pol]:
+                    if pol in self.Ef_info:
                         Ef_shifted = NP.fft.ifftshift(self.Ef_info[pol], axes=0)
                         self.Et_info[pol] = NP.fft.ifft(Ef_shifted, axis=0)
             else:
                 if self.Ef_stack:
-                    if self.Ef_stack[pol]:
+                    if pol in self.Ef_stack:
                         Ef_shifted = NP.fft.ifftshift(self.Ef_stack[pol], axes=0)
                         self.Et_stack[pol] = NP.fft.ifft(Ef_shifted, axis=0)
                 
