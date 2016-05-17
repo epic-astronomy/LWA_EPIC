@@ -2034,7 +2034,7 @@ class AntennaArraySimulator(object):
                 if nant == 1:
                     vbeamkeys[apol] = [self.antenna_array.antennas.iterkeys().next()]
                 else:
-                    vbeamkeys[apol] = [sorted(self.antenna_array.antennas.keys())]
+                    vbeamkeys[apol] = sorted(self.antenna_array.antennas.keys())
             elif len(vbeamkeys[apol] != nant):
                 raise ValueError('Number of antennas in vbeams and vbeamkeys mismatch')
             vbkeys_sortind = NP.argsort(NP.asarray(vbeamkeys[apol]))

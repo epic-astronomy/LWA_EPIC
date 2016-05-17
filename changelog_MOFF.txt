@@ -1,3 +1,12 @@
+From 0a663d5 (versatility):
+==========================
+
+In sim_observe.py,
+
+(*) Bug fix in determining antenna keys in member function
+generate_E_spectrum() when attribute identical_antennas is set to
+False in member function AntennaArraySimulator
+
 From 3a7daa0 (master):
 =====================
 
