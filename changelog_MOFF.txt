@@ -1,3 +1,18 @@
+From f0043b1 (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Minor bug fix in initializing attribute f0 in __init__() member
+function of class AntennaArray when input parameter antenna_array is
+provided
+
+In sim_observe.py,
+
+(*) Minor bug fix in initializing attribute f in __init__() member
+function of class AntennaArraySimulator by taking every second sample
+in the frequency vector
+
 From 22f8c54 (versatility):
 ==========================
 

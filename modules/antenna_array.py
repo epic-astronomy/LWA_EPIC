@@ -9077,7 +9077,7 @@ class AntennaArray:
         if antenna_array is not None:
             self += antenna_array
             self.f = NP.copy(self.antennas.itervalues().next().f)
-            self.f = NP.copy(self.antennas.itervalues().next().f0)
+            self.f0 = NP.copy(self.antennas.itervalues().next().f0)
             self.t = NP.copy(self.antennas.itervalues().next().t)
             if self.latitude is None:
                 self.latitude = NP.copy(self.antennas.itervalues().next().latitude)

@@ -1550,7 +1550,7 @@ class AntennaArraySimulator(object):
 
         self.latitude = self.antenna_array.latitude
         self.longitude = self.antenna_array.longitude
-        self.f = self.antenna_array.f
+        self.f = self.antenna_array.f[::2]
         self.f0 = self.antenna_array.f0
         t = NP.fft.fftshift(NP.fft.fftfreq(self.f.size, self.f[1]-self.f[0]))
         self.t = t - NP.amin(t)
