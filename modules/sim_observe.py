@@ -403,12 +403,12 @@ def generate_E_spectrum(freqs, skypos=[0.0,0.0,1.0], flux_ref=1.0,
         print '\tSetting up the recipe for producing stochastic Electric field spectra...'
 
     sigmas = NP.sqrt(spectrum) # nsrc x nchan x 1
-    Ef_amp = sigmas/NP.sqrt(2) * (NP.random.normal(loc=0.0, scale=1.0, size=(nsrc,nchan,nant)) + 1j * NP.random.normal(loc=0.0, scale=1.0, size=(nsrc,nchan,nant))) # nsrc x nchan x 1
+    Ef_amp = sigmas/NP.sqrt(2) * (NP.random.normal(loc=0.0, scale=1.0, size=(nsrc,nchan,1)) + 1j * NP.random.normal(loc=0.0, scale=1.0, size=(nsrc,nchan,1))) # nsrc x nchan x 1
     Ef_phase = 1.0
     Ef = Ef_amp * Ef_phase # nsrc x nchan x 1
     skypos_dot_antpos = NP.dot(skypos-ref_point, antpos.T) # nsrc x nant
     k_dot_r_phase = 2.0 * NP.pi * freqs / FCNST.c * skypos_dot_antpos[:,NP.newaxis,:] # nsrc x nchan x nant
-    Ef *= voltage_pattern * NP.exp(1j * k_dot_r_phase) # nsrc x nchan x nant
+    Ef = Ef * voltage_pattern * NP.exp(1j * k_dot_r_phase) # nsrc x nchan x nant
     Ef = NP.sum(Ef, axis=0) # nchan x nant
     if verbose:
         print '\tPerformed linear superposition of electric fields from source(s).'

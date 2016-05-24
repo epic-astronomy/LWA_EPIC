@@ -1,3 +1,14 @@
+From 42e8f57 (versatility):
+==========================
+
+In sim_observe.py,
+
+(*) Fix bug in generate_E_spectrum() member function of class
+AntennaArraySimulator in producing random electric fields where the
+randomization is to be over only frequency and the sky objects but
+not over antennas. Antennas differ only by their geometric phases and
+voltage patterns
+
 From f0043b1 (versatility):
 ==========================
 
