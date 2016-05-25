@@ -121,7 +121,8 @@ def interp_beam(beamfile, theta_phi, freqs):
 def generate_E_spectrum(freqs, skypos=[0.0,0.0,1.0], flux_ref=1.0,
                         freq_ref=None, spectral_index=0.0, spectrum=None,
                         antpos=[0.0,0.0,0.0], voltage_pattern=None,
-                        ref_point=None, verbose=True):
+                        ref_point=None, randomseed=None, randvals=None,
+                        verbose=True):
 
     """
     ----------------------------------------------------------------------------
@@ -193,6 +194,22 @@ def generate_E_spectrum(freqs, skypos=[0.0,0.0,1.0], flux_ref=1.0,
                      If specified as None (default), it is assumed to be unity
                      and identical across antennas, sky locations and frequency
                      channels. 
+
+    randomseed       [integer] Seed to initialize the randon generator. If set
+                     to None (default), the random sequences generated are not
+                     reproducible. Set to an integer to generate reproducible
+                     random sequences. Will be used only if the other input 
+                     randvals is set to None
+
+    randvals         [numpy array] Externally generated complex random numbers.
+                     Both real and imaginary parts must be drawn from a normal
+                     distribution (mean=0, var=1). Always must have size equal 
+                     to nsrc x nchan. If specified as a vector, it must be of 
+                     size nsrc x nchan. If specified as a 2D or higher 
+                     dimensional array its first two dimensions must be of 
+                     shape nsrc x nchan and total size equal to nsrc x nchan. 
+                     If randvals is specified, no fresh random numbers will be
+                     generated and the input randomseed will be ignored.
 
     verbose:         [boolean] If set to True, prints progress and diagnostic
                      messages. Default = True.
@@ -398,12 +415,26 @@ def generate_E_spectrum(freqs, skypos=[0.0,0.0,1.0], flux_ref=1.0,
     if (vb_shape[1] != 1) and (vb_shape[1] != nchan):
         raise ValueError('Input voltage pattern must be specified at each frequency channel or assumed to be identical for all')
 
+    if randvals is not None:
+        if not isinstance(randvals, NP.ndarray):
+            raise TypeError('Input randvals must be a numpy array')
+        if randvals.size != nsrc * nchan:
+            raise ValueError('Input randvals found to be of invalid size')
+        if randvals.ndim >= 2:
+            if (randvals.shape[0] != nsrc) or (randvals.shape[1] != nchan):
+                raise ValueError('Input randvals found to be invalid dimensions')
+        randvals = randvals.reshape(nsrc,nchan,1)
+    else:
+        randstate = NP.random.RandomState(randomseed)
+        randvals = randstate.normal(loc=0.0, scale=1.0, size=(nsrc,nchan,1)) + 1j * randstate.normal(loc=0.0, scale=1.0, size=(nsrc,nchan,1)) # nsrc x nchan x 1
+
     if verbose:
         print '\tArguments verified for compatibility.'
         print '\tSetting up the recipe for producing stochastic Electric field spectra...'
 
     sigmas = NP.sqrt(spectrum) # nsrc x nchan x 1
-    Ef_amp = sigmas/NP.sqrt(2) * (NP.random.normal(loc=0.0, scale=1.0, size=(nsrc,nchan,1)) + 1j * NP.random.normal(loc=0.0, scale=1.0, size=(nsrc,nchan,1))) # nsrc x nchan x 1
+    Ef_amp = sigmas/NP.sqrt(2) * randvals
+    # Ef_amp = sigmas/NP.sqrt(2) * (NP.random.normal(loc=0.0, scale=1.0, size=(nsrc,nchan,1)) + 1j * NP.random.normal(loc=0.0, scale=1.0, size=(nsrc,nchan,1))) # nsrc x nchan x 1
     Ef_phase = 1.0
     Ef = Ef_amp * Ef_phase # nsrc x nchan x 1
     skypos_dot_antpos = NP.dot(skypos-ref_point, antpos.T) # nsrc x nant
@@ -1924,8 +1955,9 @@ class AntennaArraySimulator(object):
     ############################################################################
 
     def generate_E_spectrum(self, altaz, vbeams, vbeamkeys=None, ctlgind=None,
-                            pol=None, ref_point=None, parallel=False, 
-                            nproc=None, action=None, verbose=True):
+                            pol=None, ref_point=None, randomseed=None,
+                            parallel=False, nproc=None, action=None,
+                            verbose=True):
 
         """
         ------------------------------------------------------------------------
@@ -1957,7 +1989,8 @@ class AntennaArraySimulator(object):
         ctlgind   [numpy array] Indices of sources in the attribute skymodel 
                   that will be used in generating the E-field spectrum. If
                   specified as None (default), all objects in the attribute
-                  skymodel will be used. It size must be of size nsrc
+                  skymodel will be used. It size must be of size nsrc as 
+                  described in input altaz
 
         pol       [list] List of polarizations to process. The polarizations
                   are specified as strings 'P1' and 'P2. If set to None
@@ -1968,6 +2001,12 @@ class AntennaArraySimulator(object):
                   rules of direction cosines. If None provided, it defaults 
                   to zenith (0.0, 0.0, 1.0)
     
+        randomseed
+                  [integer] Seed to initialize the randon generator. If set
+                  to None (default), the random sequences generated are not
+                  reproducible. Set to an integer to generate reproducible
+                  random sequences
+
         parallel  [boolean] specifies if parallelization is to be invoked. 
                   False (default) means only serial processing
 
@@ -2051,7 +2090,11 @@ class AntennaArraySimulator(object):
             ctlgind = ctlgind.ravel()
         else:
             raise TypeError('Input ctlgind must be a list, numpy array or set to None')
+        if ctlgind.size != altaz.shape[0]:
+            raise ValueError('Input ctlgind must contain same number of elements as number of objects in input altaz.')
         skymodel = self.skymodel.subset(ctlgind, axis='position')
+        nsrc = ctlgind.size
+        nchan = self.f.size
 
         if pol is None:
             pol = ['P1', 'P2']
@@ -2069,6 +2112,11 @@ class AntennaArraySimulator(object):
             raise TypeError('Input keyword pol must be string, list or set to None')
         pol = sorted(pol)
 
+        if randomseed is None:
+            randomseed = NP.random.randint(1000000)
+        elif not isinstance(randomseed, int):
+            raise TypeError('If input randomseed is not None, it must be an integer')
+
         antkeys_sortind = NP.argsort(NP.asarray(self.antinfo['labels'], dtype='|S0'))
         antpos = self.antinfo['positions']
         antkeys_sorted = NP.asarray(self.antinfo['labels'], dtype='|S0')[antkeys_sortind]
@@ -2081,6 +2129,12 @@ class AntennaArraySimulator(object):
             if (commonkeys.size != 1) and (commonkeys.size != antkeys_sorted.size):
                 raise ValueError('Number of voltage pattern files incompatible with number of antennas')
         
+            if apol == 'P2':
+                randomseed = randomseed + 1000000
+
+            randstate = NP.random.RandomState(randomseed)
+            randvals = randstate.normal(loc=0.0, scale=1.0, size=(nsrc,nchan)) + 1j * randstate.normal(loc=0.0, scale=1.0, size=(nsrc,nchan)) # nsrc x nchan
+
             if parallel or (nproc is not None):
                 if nproc is None:
                     nproc = max(MP.cpu_count()-1, 1) 
@@ -2096,10 +2150,12 @@ class AntennaArraySimulator(object):
                 list_spindex = [skymodel.spec_parms['power-law-index']] * (len(split_ind) + 1)
                 list_spectrum = [None] * (len(split_ind) + 1)
                 list_refpoint = [ref_point] * (len(split_ind) + 1)
+                list_randomseed = [None] * (len(split_ind) + 1)
+                list_randvals = NP.split(randvals, split_ind, axis=1)
                 list_verbose = [verbose] * (len(split_ind) + 1)
                 
                 pool = MP.Pool(processes=nproc)
-                Ef_info_list = pool.map(generate_E_spectrum_arg_splitter, IT.izip(list_split_freqs, list_skypos, list_flux_ref, list_freq_ref, list_spindex, list_spectrum, list_antpos, list_split_vbeams, list_refpoint, list_verbose))
+                Ef_info_list = pool.map(generate_E_spectrum_arg_splitter, IT.izip(list_split_freqs, list_skypos, list_flux_ref, list_freq_ref, list_spindex, list_spectrum, list_antpos, list_split_vbeams, list_refpoint, list_randomseed, list_randvals, list_verbose))
                 Ef_info[apol] = None
                 for chunk,item in enumerate(Ef_info_list):
                     if Ef_info[apol] is None:
@@ -2108,7 +2164,7 @@ class AntennaArraySimulator(object):
                         Ef_info[apol] = NP.vstack((Ef_info[apol], item))
                 del Ef_info_list
             else:
-                Ef_info[apol] = generate_E_spectrum(self.f, skypos=srcdircos, flux_ref=skymodel.spec_parms['flux-scale'], freq_ref=skymodel.spec_parms['freq-ref'], spectral_index=skymodel.spec_parms['power-law-index'], spectrum=None, antpos=antpos_sorted, voltage_pattern=vbeams[apol], ref_point=ref_point, verbose=verbose)
+                Ef_info[apol] = generate_E_spectrum(self.f, skypos=srcdircos, flux_ref=skymodel.spec_parms['flux-scale'], freq_ref=skymodel.spec_parms['freq-ref'], spectral_index=skymodel.spec_parms['power-law-index'], spectrum=None, antpos=antpos_sorted, voltage_pattern=vbeams[apol], ref_point=ref_point, randomseed=randomseed, randvals=randvals, verbose=verbose)
 
             self.Ef_info[apol] = Ef_info[apol]['Ef']
         if action == 'return':
@@ -2213,7 +2269,7 @@ class AntennaArraySimulator(object):
     def observe(self, lst, phase_center_coords, pointing_center_coords,
                 obs_date=None, phase_center=None, pointing_center=None,
                 pointing_info=None, vbeam_files=None, obsmode=None, 
-                stack=False, short_dipole_approx=False,
+                randomseed=None, stack=False, short_dipole_approx=False,
                 half_wave_dipole_approx=False, parallel=False, nproc=None):
 
         """
@@ -2326,6 +2382,12 @@ class AntennaArraySimulator(object):
         obsmode    [string] Specifies observing mode. Accepted values are
                    'drift', 'track' or None (default)
 
+        randomseed
+                   [integer] Seed to initialize the randon generator. If set
+                   to None (default), the random sequences generated are not
+                   reproducible. Set to an integer to generate reproducible
+                   random sequences
+
         stack      [boolean] If set to True, stack the generated E-field
                    spectrum to the attribute Ef_stack. If set to False 
                    (default), no such action is performed.
@@ -2432,7 +2494,7 @@ class AntennaArraySimulator(object):
                 vbeams = self.load_voltage_patterns(vbeam_files, altaz, parallel=parallel, nproc=nproc)
             else:
                 vbeams = self.generate_voltage_pattern(altaz, pointing_center=pointing_center_altaz, pointing_info=pointing_info, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, parallel=parallel, nproc=nproc)
-            self.generate_E_spectrum(altaz, vbeams, ctlgind=hemind, pol=['P1','P2'], ref_point=phase_center_dircos, parallel=parallel, nproc=nproc, action='store')
+            self.generate_E_spectrum(altaz, vbeams, ctlgind=hemind, pol=['P1','P2'], ref_point=phase_center_dircos, randomseed=randomseed, parallel=parallel, nproc=nproc, action='store')
 
         if obsmode is not None:
             if obsmode in ['drift', 'track']:
@@ -2447,7 +2509,7 @@ class AntennaArraySimulator(object):
     ############################################################################
 
     def observing_run(self, init_parms, obsmode='track', duration=None,
-                      pointing_info=None, vbeam_files=None,
+                      pointing_info=None, vbeam_files=None, randomseed=None,
                       short_dipole_approx=False, half_wave_dipole_approx=False,
                       parallel=False, nproc=None):
 
@@ -2576,6 +2638,12 @@ class AntennaArraySimulator(object):
                    identical for all antennas. If multiple voltage beam file 
                    locations are specified, it must be the same as number of 
                    antennas 
+
+        randomseed
+                   [integer] Seed to initialize the randon generator. If set
+                   to None (default), the random sequences generated are not
+                   reproducible. Set to an integer to generate reproducible
+                   random sequences
 
         short_dipole_approx
                    [boolean] if True, indicates short dipole approximation
@@ -2726,8 +2794,13 @@ class AntennaArraySimulator(object):
                 pointing_center = init_parms['pointing_center']
                 pointing_center_coords = init_parms['pointing_center_coords']
                 
+        if randomseed is None:
+            randomseed = NP.random.randint(1000000)
+        elif not isinstance(randomseed, int):
+            raise TypeError('If input randomseed is not None, it must be an integer')
+
         for i in range(n_nyqseries):
-            self.observe(updated_sdrltime, phase_center_coords, pointing_center_coords, obs_date=updated_obsdate, phase_center=phase_center, pointing_center=pointing_center, pointing_info=pointing_info, vbeam_files=vbeam_files, stack=True, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, parallel=parallel, nproc=nproc)
+            self.observe(updated_sdrltime, phase_center_coords, pointing_center_coords, obs_date=updated_obsdate, phase_center=phase_center, pointing_center=pointing_center, pointing_info=pointing_info, vbeam_files=vbeam_files, randomseed=randomseed+i, stack=True, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, parallel=parallel, nproc=nproc)
             obsrvr.date = obsrvr.date + EP.second * self.t.max()
             updated_sdrltime = NP.degrees(obsrvr.sidereal_time()) / 15.0
             updated_slrtime = copy.copy(obsrvr.date)

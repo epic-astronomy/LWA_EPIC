@@ -1,3 +1,33 @@
+From ee6ab99 (versatility):
+==========================
+
+In sim_observe.py,
+
+(*) Add input randvals in function generate_E_spectrum() to accept
+externally generated random numbers that will be used in generating
+electric fields. Update docstring accordingly
+(*) Add input randomseed in function generate_E_spectrum() to accept
+a user-defined seed for random number generator. This will be used if
+the other input randvals is set to None. Update docstring accordingly
+(*) Add input randomseed in member function generate_E_spectrum() of
+class AntennaArraySimulator. Update docstring accordingly
+(*) Modify member function generate_E_spectrum() of
+class AntennaArraySimulator to generate random values and pass them
+to function generate_E_spectrum() as externally generated random
+normal values through the input randvals. This ensures the same
+random values are generated whether parallelization is invoked or not
+member function generate_E_spectrum() of class AntennaArraySimulator
+(*) Add input randomseed in member function observe() of class
+AntennaArraySimulator. Update docstring accordingly
+(*) Modify member function observe() of class AntennaArraySimulator
+to pass randomseed parameter to member function generate_E_spectrum()
+of the same class
+(*) Add input randomseed in member function observing_run() of class
+AntennaArraySimulator. Update docstring accordingly
+(*) Modify member function observing_run() of class 
+AntennaArraySimulator to pass randomseed parameter to member function
+observe() of the same class
+
 From 42e8f57 (versatility):
 ==========================
 
