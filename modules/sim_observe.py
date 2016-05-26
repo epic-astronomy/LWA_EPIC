@@ -2141,7 +2141,7 @@ class AntennaArraySimulator(object):
                     nproc = max(MP.cpu_count()-1, 1) 
                 else:
                     nproc = min(nproc, max(MP.cpu_count()-1, 1))
-                split_ind = NP.arange(0, nchan, nproc)
+                split_ind = NP.arange(nproc, nchan, nproc)
                 list_split_freqs = NP.split(self.f, split_ind, axis=0)
                 list_split_vbeams = NP.split(vbeams[apol], split_ind, axis=1)
                 list_antpos = [antpos_sorted] * (len(split_ind) + 1)
@@ -2160,14 +2160,14 @@ class AntennaArraySimulator(object):
                 Ef_info[apol] = None
                 for chunk,item in enumerate(Ef_info_list):
                     if Ef_info[apol] is None:
-                        Ef_info[apol] = item
+                        Ef_info[apol] = item['Ef']
                     else:
-                        Ef_info[apol] = NP.vstack((Ef_info[apol], item))
+                        Ef_info[apol] = NP.vstack((Ef_info[apol], item['Ef']))
                 del Ef_info_list
+                self.Ef_info[apol] = Ef_info[apol]
             else:
                 Ef_info[apol] = generate_E_spectrum(self.f, skypos=srcdircos, flux_ref=skymodel.spec_parms['flux-scale'], freq_ref=skymodel.spec_parms['freq-ref'], spectral_index=skymodel.spec_parms['power-law-index'], spectrum=None, antpos=antpos_sorted, voltage_pattern=vbeams[apol], ref_point=ref_point, randomseed=randomseed, randvals=randvals, verbose=verbose)
-
-            self.Ef_info[apol] = Ef_info[apol]['Ef']
+                self.Ef_info[apol] = Ef_info[apol]['Ef']
         if action == 'return':
             return self.Ef_info
 
@@ -2271,7 +2271,8 @@ class AntennaArraySimulator(object):
                 obs_date=None, phase_center=None, pointing_center=None,
                 pointing_info=None, vbeam_files=None, obsmode=None, 
                 randomseed=None, stack=False, short_dipole_approx=False,
-                half_wave_dipole_approx=False, parallel=False, nproc=None):
+                half_wave_dipole_approx=False, parallel_genvb=False,
+                parallel_genEf=False, nproc=None):
 
         """
         ------------------------------------------------------------------------
@@ -2405,8 +2406,15 @@ class AntennaArraySimulator(object):
                    is to be used. Otherwise, a more accurate expression is 
                    used for the dipole pattern. Default=False
 
-        parallel   [boolean] specifies if parallelization is to be invoked. 
-                   False (default) means only serial processing
+        parallel_genvb
+                   [boolean] specifies if parallelization is to be invoked in
+                   generating voltage beams. If False (default) means only 
+                   serial processing
+
+        parallel_genEf  
+                   [boolean] specifies if parallelization is to be invoked in
+                   generating E-field spectra. If False (default) means only 
+                   serial processing
 
         nproc      [integer] specifies number of independent processes to 
                    spawn. Default = None, means automatically determines the 
@@ -2494,8 +2502,8 @@ class AntennaArraySimulator(object):
             if vbeam_files is not None:
                 vbeams = self.load_voltage_patterns(vbeam_files, altaz, parallel=parallel, nproc=nproc)
             else:
-                vbeams = self.generate_voltage_pattern(altaz, pointing_center=pointing_center_altaz, pointing_info=pointing_info, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, parallel=parallel, nproc=nproc)
-            self.generate_E_spectrum(altaz, vbeams, ctlgind=hemind, pol=['P1','P2'], ref_point=phase_center_dircos, randomseed=randomseed, parallel=parallel, nproc=nproc, action='store')
+                vbeams = self.generate_voltage_pattern(altaz, pointing_center=pointing_center_altaz, pointing_info=pointing_info, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, parallel=parallel_genvb, nproc=nproc)
+            self.generate_E_spectrum(altaz, vbeams, ctlgind=hemind, pol=['P1','P2'], ref_point=phase_center_dircos, randomseed=randomseed, parallel=parallel_genEf, nproc=nproc, action='store')
 
         if obsmode is not None:
             if obsmode in ['drift', 'track']:
@@ -2512,7 +2520,7 @@ class AntennaArraySimulator(object):
     def observing_run(self, init_parms, obsmode='track', duration=None,
                       pointing_info=None, vbeam_files=None, randomseed=None,
                       short_dipole_approx=False, half_wave_dipole_approx=False,
-                      parallel=False, nproc=None):
+                      parallel_genvb=False, parallel_genEf=False, nproc=None):
 
         """
         ------------------------------------------------------------------------
@@ -2658,8 +2666,15 @@ class AntennaArraySimulator(object):
                    is to be used. Otherwise, a more accurate expression is 
                    used for the dipole pattern. Default=False
 
-        parallel   [boolean] specifies if parallelization is to be invoked. 
-                   False (default) means only serial processing
+        parallel_genvb
+                   [boolean] specifies if parallelization is to be invoked in
+                   generating voltage beams. If False (default) means only 
+                   serial processing
+
+        parallel_genEf  
+                   [boolean] specifies if parallelization is to be invoked in
+                   generating E-field spectra. If False (default) means only 
+                   serial processing
 
         nproc      [integer] specifies number of independent processes to 
                    spawn. Default = None, means automatically determines the 
@@ -2801,7 +2816,7 @@ class AntennaArraySimulator(object):
             raise TypeError('If input randomseed is not None, it must be an integer')
 
         for i in range(n_nyqseries):
-            self.observe(updated_sdrltime, phase_center_coords, pointing_center_coords, obs_date=updated_obsdate, phase_center=phase_center, pointing_center=pointing_center, pointing_info=pointing_info, vbeam_files=vbeam_files, randomseed=randomseed+i, stack=True, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, parallel=parallel, nproc=nproc)
+            self.observe(updated_sdrltime, phase_center_coords, pointing_center_coords, obs_date=updated_obsdate, phase_center=phase_center, pointing_center=pointing_center, pointing_info=pointing_info, vbeam_files=vbeam_files, randomseed=randomseed+i, stack=True, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, parallel_genvb=parallel_genvb, parallel_genEf=parallel_genEf, nproc=nproc)
             obsrvr.date = obsrvr.date + EP.second * self.t.max()
             updated_sdrltime = NP.degrees(obsrvr.sidereal_time()) / 15.0
             updated_slrtime = copy.copy(obsrvr.date)
