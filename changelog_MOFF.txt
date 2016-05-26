@@ -1,3 +1,13 @@
+From 60a71aa (versatility):
+==========================
+
+In sim_observe.py,
+
+(*) Update docstrings of member functions generate_E_spectrum(),
+observe() and observing_run() of class AntennaArraySimulator to
+preferably not invoke parallelization since it appears to be slower
+due to overheads
+
 From 652deaf (versatility):
 ==========================
 

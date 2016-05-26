@@ -2009,7 +2009,9 @@ class AntennaArraySimulator(object):
                   random sequences
 
         parallel  [boolean] specifies if parallelization is to be invoked. 
-                  False (default) means only serial processing
+                  False (default) means only serial processing. Highly 
+                  recommended to set to False as overheads in parallelization
+                  slow it down.
 
         nproc     [integer] specifies number of independent processes to spawn.
                   Default = None, means automatically determines the number of 
@@ -2409,12 +2411,14 @@ class AntennaArraySimulator(object):
         parallel_genvb
                    [boolean] specifies if parallelization is to be invoked in
                    generating voltage beams. If False (default) means only 
-                   serial processing
+                   serial processing. Highly recommended to set to False as 
+                   overheads in parallelization slow it down.
 
         parallel_genEf  
                    [boolean] specifies if parallelization is to be invoked in
                    generating E-field spectra. If False (default) means only 
-                   serial processing
+                   serial processing. Highly recommended to set to False as 
+                   overheads in parallelization slow it down.
 
         nproc      [integer] specifies number of independent processes to 
                    spawn. Default = None, means automatically determines the 
@@ -2669,12 +2673,14 @@ class AntennaArraySimulator(object):
         parallel_genvb
                    [boolean] specifies if parallelization is to be invoked in
                    generating voltage beams. If False (default) means only 
-                   serial processing
+                   serial processing. Highly recommended to set to False as 
+                   overheads in parallelization slow it down.
 
         parallel_genEf  
                    [boolean] specifies if parallelization is to be invoked in
                    generating E-field spectra. If False (default) means only 
-                   serial processing
+                   serial processing. Highly recommended to set to False as 
+                   overheads in parallelization slow it down.
 
         nproc      [integer] specifies number of independent processes to 
                    spawn. Default = None, means automatically determines the 
