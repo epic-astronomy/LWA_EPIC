@@ -1940,7 +1940,8 @@ class AntennaArraySimulator(object):
                         nproc = min(nproc, max(MP.cpu_count()-1, 1))
                     pool = MP.Pool(processes=nproc)
                     list_of_vbeams = pool.map(AB.antenna_beam_arg_splitter, IT.izip(list_of_altaz, list_of_obsfreqs, list_of_telescopes, list_of_freqscale, list_of_skyunits, list_of_east2ax1, list_of_pointing_info, list_of_pointing_center, list_of_short_dipole_approx, list_of_half_wave_dipole_approx, list_of_powertrue))
-                    vbeams[pol] = NP.asarray(list_of_vbeams) # nsrc x nchan x nant
+                    vbeams[pol] = NP.asarray(list_of_vbeams) # nant x nsrc x nchan
+                    vbeams[pol] = NP.rollaxis(vbeams[pol], 0, start=3) # nsrc x nchan x nant
                     del list_of_vbeams
                 else:
                     for key in antkeys:

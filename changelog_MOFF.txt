@@ -1,3 +1,18 @@
+From 613a8bc (versatility):
+==========================
+
+In sim_observe.py,
+
+(*) Roll axis on voltage patterns determined in parallel processing to
+get the right dimensions in member function generate_voltage_pattern()
+of class AntennaArraySimulator
+
+in antenna_beams.py,
+
+(*) Add function antenna_beam_arg_splitter() which is a wrapper for
+function antenna_beam_generator() and will be used in cases of
+parallel processing
+
 From ee6ab99 (versatility):
 ==========================
 

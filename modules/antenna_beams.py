@@ -5,6 +5,11 @@ from astroutils import geometry as GEOM
 
 #################################################################################
 
+def antenna_beam_arg_splitter(args, **kwargs):
+    return antenna_beam_generator(*args, **kwargs)
+
+#################################################################################
+
 def antenna_beam_generator(skypos, frequency, telescope, freq_scale='GHz',
                            skyunits='degrees', east2ax1=0.0, pointing_info=None,
                            pointing_center=None, short_dipole_approx=False,
