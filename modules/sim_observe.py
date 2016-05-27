@@ -2146,8 +2146,8 @@ class AntennaArraySimulator(object):
                 else:
                     nproc = min(nproc, max(MP.cpu_count()-1, 1))
                 split_ind = NP.arange(nproc, nchan, nproc)
-                list_split_freqs = NP.split(self.f, split_ind, axis=0)
-                list_split_vbeams = NP.split(vbeams[apol], split_ind, axis=1)
+                list_split_freqs = NP.array_split(self.f, split_ind, axis=0)
+                list_split_vbeams = NP.array_split(vbeams[apol], split_ind, axis=1)
                 list_antpos = [antpos_sorted] * (len(split_ind) + 1)
                 list_skypos = [srcdircos] * (len(split_ind) + 1)
                 list_flux_ref = [skymodel.spec_parms['flux-scale']] * (len(split_ind) + 1)
@@ -2156,7 +2156,7 @@ class AntennaArraySimulator(object):
                 list_spectrum = [None] * (len(split_ind) + 1)
                 list_refpoint = [ref_point] * (len(split_ind) + 1)
                 list_randomseed = [None] * (len(split_ind) + 1)
-                list_randvals = NP.split(randvals, split_ind, axis=1)
+                list_randvals = NP.array_split(randvals, split_ind, axis=1)
                 list_verbose = [verbose] * (len(split_ind) + 1)
                 
                 pool = MP.Pool(processes=nproc)

@@ -1,3 +1,11 @@
+From e100ea7 (versatility):
+==========================
+
+In sim_observe.py,
+
+(*) Replace use of numpy.split() with numpy.array_split() in
+member function generate_E_spectrum() of class AntennaArraySimulator
+
 From 0c71912 (versatility):
 ==========================
 
