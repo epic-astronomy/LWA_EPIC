@@ -1,3 +1,12 @@
+From 0c71912 (versatility):
+==========================
+
+In sim_observe.py,
+
+(*) Import progressbar and writer_module
+(*) Add progressbar in member function observing_run() of class
+AntennaArraySimulator
+
 From 60a71aa (versatility):
 ==========================
 

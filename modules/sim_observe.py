@@ -6,6 +6,8 @@ import multiprocessing as MP
 import itertools as IT
 from astropy.io import fits, ascii
 import h5py
+import progressbar as PGB
+from astroutils import writer_module as WM
 from astroutils import DSP_modules as DSP
 from astroutils import mathops as OPS
 from astroutils import geometry as GEOM
@@ -33,7 +35,7 @@ def generate_E_spectrum_arg_splitter(args, **kwargs):
 def interp_beam(beamfile, theta_phi, freqs):
 
     """
-    -----------------------------------------------------------------------------
+    ---------------------------------------------------------------------------
     Read and interpolate antenna pattern to the specified frequencies and 
     angular locations.
 
@@ -54,7 +56,7 @@ def interp_beam(beamfile, theta_phi, freqs):
 
     Antenna pattern interpolated at locations and frequencies specified. It will
     be a numpy array of size nsrc x nchan
-    -----------------------------------------------------------------------------
+    ----------------------------------------------------------------------------
     """
 
     try:
@@ -2821,12 +2823,18 @@ class AntennaArraySimulator(object):
         elif not isinstance(randomseed, int):
             raise TypeError('If input randomseed is not None, it must be an integer')
 
+        progressbar_loc = (0, WM.term.height)
+        writer = WM.Writer(progressbar_loc)
+        progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} Iterations '.format(n_nyqseries), PGB.ETA()], maxval=n_nyqseries, fd=writer).start()
         for i in range(n_nyqseries):
             self.observe(updated_sdrltime, phase_center_coords, pointing_center_coords, obs_date=updated_obsdate, phase_center=phase_center, pointing_center=pointing_center, pointing_info=pointing_info, vbeam_files=vbeam_files, randomseed=randomseed+i, stack=True, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, parallel_genvb=parallel_genvb, parallel_genEf=parallel_genEf, nproc=nproc)
             obsrvr.date = obsrvr.date + EP.second * self.t.max()
             updated_sdrltime = NP.degrees(obsrvr.sidereal_time()) / 15.0
             updated_slrtime = copy.copy(obsrvr.date)
             updated_obsdate = EP.Date(NP.floor(obsrvr.date - 0.5) + 0.5) # Round it down to beginning of the day
+
+            progress.update(i+1)
+        progress.finish()
 
     ############################################################################
 
