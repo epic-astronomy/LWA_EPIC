@@ -6341,6 +6341,8 @@ class NewImage:
                  appropriate electric field quantities associated with the 
                  antenna array.
 
+    getStats()   Get statistics from images from inside specified boxes
+
     save()       Saves the image information to disk
 
     Read the member function docstrings for more details
@@ -7447,6 +7449,183 @@ class NewImage:
             else:
                 print 'Antenna auto-correlations have been removed already'
             
+    ############################################################################
+
+    def getStats(self, box_type='square', box_center=None, box_size=None,
+                 rms_box_scale_factor=10.0, coords='physical', datapool='avg'):
+
+        """
+        ------------------------------------------------------------------------
+        Get statistics from images from inside specified boxes
+        NEEDS FURTHER DEVELOPMENT !!!
+
+        Inputs:
+
+        box_type    [string] Shape of box. Accepted values are 'square' 
+                    (default) and 'circle' on the celestial plane. In 3D the
+                    the box will be a cube or cylinder.
+
+        box_center  [list] Center locations of boxes specified as a list one for
+                    each box. The centers will have units as specified in input 
+                    coords. Each element must be another list, tuple or numpy 
+                    array of two or three elements. The first element refers to 
+                    the x-coordinate of the box center, the second refers to 
+                    y-coordinate of the box center. The third element (optional)
+                    refers to the center of frequency around which the 3D box 
+                    must be placed. If third element is not specified, it will 
+                    be assumed to be center of the band. If coords is set to 
+                    'physical', these three elements will have units of dircos,
+                    dircos and frequency (Hz). If coords is set to 'index', 
+                    these three elements must be indices of the three axes.
+
+        box_size    [list] Sizes of boxes specified as a list one for each box.
+                    Number of elements in this list will be equal to that in 
+                    input box_center. They will have 'physical' (dircos, 
+                    frequency in Hz) or 'index' units as specified in the input 
+                    coords. Each element in the list is a one- or two-element 
+                    list, tuple or numpy array. The first element is size of the 
+                    box in the celestial plane (size of square if box_type is set 
+                    to 'square', diameter of circle if box_type is set to 
+                    'circle'). The second element (optional) is size along 
+                    frequency axis. If second element is not specified, it will 
+                    be assumed to be the entire band.
+                    
+        rms_box_scale_factor
+                    [scalar] Size scale on celestial plane used to determine 
+                    the box to determine the rms statistic. Must be positive. 
+                    For instance, the box size used to find the rms will use a 
+                    box that is rms_box_scale_factor times the box size on each
+                    side used for determining the peak. Default = 10.0
+
+        coords      [string] String specifying coordinates of box_center and
+                    box_size. If set to 'physical' (default) the box_center 
+                    will have units of [dircos, dircos, frequency in Hz 
+                    (optional)] and box_size will have units of [dircos, 
+                    frequency in Hz (optional)]. If set to 'index', box_center 
+                    will have units of [index, index, index (optional)] and
+                    box_size will have units of [number of pixels, number of 
+                    frequency channels].
+
+        datapool    [string] String specifying type of image on which the 
+                    statistics will be estimated. Accepted values are 'avg'
+                    (default), 'stack' and 'recent'. These represent 
+                    time-averaged, stacked and recent images respectively
+
+        Outputs:
+
+        outstats    [list] List of dictionaries one for each element in input
+                    box_center. Each dictionary consists of the following keys
+                    'P1' and 'P2'  for the two polarizations. Under each of 
+                    these keys is another dictionary with the fillowing keys and
+                    values:
+                    'peak'  [scalar or list] Peak value(s) in the box. If 
+                            input datapool is set to 'recent', it will be a 
+                            scalar, but if set to 'avg' or 'stack', it will be
+                            a list one for each timestamp in the image.
+                    'mad'   [scalar or list] Median Absolute Deviation(s) in
+                            the box determined by input rms_box_scale_factor. 
+                            If input datapool is set to 'recent', it will be a 
+                            scalar, but if set to 'avg' or 'stack', it will be
+                            a list one for each timestamp in the image.
+        ------------------------------------------------------------------------
+        """
+
+        if box_type not in ['square', 'circle']:
+            raise ValueError('Input box_type must be specified as "square" or "circle"')
+        if box_center is None:
+            raise ValueError('Input box_center must be specified')
+        if box_size is None:
+            raise ValueError('Input box_size must be specified')
+
+        if coords not in ['physical', 'index']:
+            raise ValueError('Input coords must be specified as "physical" or "index"')
+        if datapool not in ['avg', 'recent', 'stack']:
+            raise ValueError('Input datappol must be specified as "avg", "recent" or "stack"')
+        
+        if not isinstance(box_center, list):
+            raise TypeError('Input box_center must be a list')
+        if not isinstance(box_size, list):
+            raise TypeError('Input box_size must be a list')
+
+        if len(box_center) != len(box_size):
+            raise ValueError('Lengths of box_center and box_size must be equal')
+
+        if isinstance(rms_box_scale_factor, (int,float)):
+            rms_box_scale_factor = float(rms_box_scale_factor)
+            if rms_box_scale_factor <= 0.0:
+                raise ValueError('Input rms_box_scale_factor must be positive')
+        else:
+            raise TypeError('Input rms_box_scale_factor must be a scalar')
+
+        bandwidth = (self.f[1] - self.f[0]) * self.f.size
+        lfgrid = self.gridl[:,:,NP.newaxis] * NP.ones(self.f.size).reshape(1,1,-1)
+        mfgrid = self.gridm[:,:,NP.newaxis] * NP.ones(self.f.size).reshape(1,1,-1)
+        fgrid = NP.ones_like(self.gridl)[:,:,NP.newaxis] * self.f.reshape(1,1,-1)
+        outstats = []
+        for i in xrange(len(box_center)):
+            stats = {}
+            bc = NP.asarray(box_center[i]).reshape(-1)
+            bs = NP.asarray(box_size[i]).reshape(-1)
+            if (bc.size < 2) or (bc.size > 3):
+                raise ValueError('Each box center must have two or three elements')
+            if (bs.size < 1) or (bs.size > 2):
+                raise ValueError('Each box size must have one or two elements')
+            if bc.size == 2:
+                if coords == 'physical':
+                    bc = NP.hstack((bc, NP.mean(self.f)))
+                else:
+                    bc = NP.hstack((bc, self.f.size/2))
+            if bs.size == 1:
+                if coords == 'physical':
+                    bs = NP.hstack((bs, bandwidth))
+                else:
+                    bs = NP.hstack((bs, self.f.size))
+            if coords == 'physical':
+                if NP.sum(bc[:2]**2) > 1.0:
+                    raise ValueError('Invalid dirction cosines specified')
+                if (bc[2] < self.f.min()) or (bc[2] > self.f.max()):
+                    raise ValueError('Invalid frequency specified in input box_center')
+            else:
+                if (bc[0] < 0) or (bc[1] < 0) or (bc[0] > self.gridl.shape[1]) or (bc[1] > self.gridl.shape[0]):
+                    raise ValueError('Invalid box center specified')
+                if bc[2] > self.f.size:
+                    bc[2] = self.f.size
+            if coords == 'physical':
+                if box_type == 'square':
+                    ind3d = NP.where((NP.abs(lfgrid - bc[0]) <= 0.5*bs[0]) & (NP.abs(mfgrid - bc[1]) <= 0.5*bs[0]) & (NP.abs(fgrid - bc[2]) <= 0.5*bs[1]))
+                    ind3d_rmsbox = NP.where((NP.abs(lfgrid - bc[0]) <= 0.5*rms_box_scale_factor*bs[0]) & (NP.abs(mfgrid - bc[1]) <= 0.5*rms_box_scale_factor*bs[0]) & (NP.abs(fgrid - bc[2]) <= 0.5*bs[1]))
+                else:
+                    ind3d = NP.where((NP.sqrt(NP.abs(lfgrid - bc[0])**2 + NP.abs(mfgrid - bc[0])**2) <= 0.5*bs[0]) & (NP.abs(fgrid - bc[2]) <= 0.5*bs[1])) 
+                    ind3d_rmsbox = NP.where((NP.sqrt(NP.abs(lfgrid - bc[0])**2 + NP.abs(mfgrid - bc[0])**2) <= 0.5*rms_box_scale_factor*bs[0]) & (NP.abs(fgrid - bc[2]) <= 0.5*bs[1]))
+    
+                for apol in ['P1', 'P2']:
+                    stats[apol] = {}
+                    if datapool == 'recent':
+                        if self.nzsp_img[apol] is not None:
+                            stats[apol]['peak'] = NP.nanmax(NP.abs(self.nzsp_img[apol][ind3d]))
+                            mdn = NP.median(NP.abs(self.nzsp_img[apol][ind3d_rmsbox]))
+                            stats[apol]['mad'] = NP.median(NP.abs(NP.abs(self.nzsp_img[apol][ind3d_rmsbox]) - mdn))
+                    else:
+                        stats[apol]['peak'] = []
+                        stats[apol]['mad'] = []
+                        if datapool == 'avg':
+                            if self.nzsp_img_avg[apol] is not None:
+                                for ti in range(self.nzsp_img_avg[apol].shape[0]):
+                                    stats[apol]['peak'] += [NP.nanmax(NP.abs(self.nzsp_img_avg[apol][ti,...][ind3d]))]
+                                    mdn = NP.median(NP.abs(self.nzsp_img_avg[apol][ti,...][ind3d_rmsbox]))
+                                    stats[apol]['mad'] += [NP.median(NP.abs(NP.abs(self.nzsp_img_avg[apol][ti,...][ind3d_rmsbox]) - mdn))]
+                        else:
+                            if self.img_stack[apol] is not None:
+                                for ti in range(self.img_stack[apol].shape[0]):
+                                    stats[apol]['peak'] += [NP.nanmax(NP.abs(self.img_stack[apol][ti,...][ind3d]))]
+                                    mdn = NP.median(NP.abs(self.img_stack[apol][ti,...][ind3d_rmsbox]))
+                                    stats[apol]['mad'] += [NP.median(NP.abs(NP.abs(self.img_stack[apol][ti,...][ind3d_rmsbox]) - mdn))]
+                outstats += [stats]
+            else:
+                pass
+
+        return outstats
+
     ############################################################################
 
     def save(self, imgfile, pol=None, overwrite=False, verbose=True):

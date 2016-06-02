@@ -1,3 +1,12 @@
+From ff4e134 (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Add member function getStats() including docstring under class
+NewImage. Update class docstring accordingly. Need further
+development
+
 From e100ea7 (versatility):
 ==========================
 
