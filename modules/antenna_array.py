@@ -7274,7 +7274,7 @@ class NewImage:
                 gridxy = NP.hstack((gridx.reshape(-1,1), gridy.reshape(-1,1)))
                 wl = NP.ones(gridu.shape)[:,:,NP.newaxis] * wavelength.reshape(1,1,-1)
                 wl = wl.reshape(-1)
-                distNN = 2.0 * max([NP.sqrt(aprtr.xmax['P1']**2 + NP.sqrt(aprtr.ymax['P1']**2)), NP.sqrt(aprtr.xmax['P1']**2 + NP.sqrt(aprtr.ymax['P1']**2)), aprtr.rmax['P1'], aprtr.rmax['P2']]) # factor in the front is to safely estimate kernel around some extra grid pixels
+                distNN = 2.0 * max([NP.sqrt(aprtr.xmax['P1']**2 + NP.sqrt(aprtr.ymax['P1']**2)), NP.sqrt(aprtr.xmax['P2']**2 + NP.sqrt(aprtr.ymax['P2']**2)), aprtr.rmax['P1'], aprtr.rmax['P2']]) # factor in the front is to safely estimate kernel around some extra grid pixels
                 indNN_list, blind, vuf_gridind = LKP.find_NN(NP.zeros((1,2)), gridxy, distance_ULIM=distNN, flatten=True, parallel=False)
                 dxy = gridxy[vuf_gridind,:]
                 unraveled_vuf_ind = NP.unravel_index(vuf_gridind, gridu.shape+(self.f.size,))
@@ -8868,6 +8868,18 @@ class AntennaArray:
                  array. It is the same for all frequencies and hence no third 
                  dimension for the spectral axis.
 
+    antenna_autocorr_set
+                 [boolean] Indicates if auto-correlation of antenna-wise weights
+                 have been determined (True) or not (False).
+
+    antenna_autocorr_wts_vuf
+                 [dictionary] Contains auto-correlation weights of each
+                 antenna. Each dictionary items is another dictionary with keys
+                 'P1' and 'P2' for the two polarizations. Under each of these
+                 polarization key is a CSR-format sparse matrix array of size 
+                 nv x nu x nchan that holds the complex weights from 
+                 auto-correlation of antenna aperture illumination weights.
+
     antennas_center
                  [Numpy array] geometrical center of the antenna array locations
                  as a 2-element array of x- and y-values of the center. This is
@@ -9160,6 +9172,10 @@ class AntennaArray:
                       electric fields using the gridding information determined 
                       for every antenna. Flags are taken into account while 
                       constructing this grid.
+
+    evalAntennaAutoCorrWts()
+                      Evaluate auto-correlation of aperture illumination of 
+                      each antenna on the UVF-plane
 
     quick_beam_synthesis()  
                       A quick generator of synthesized beam using antenna array 
@@ -11208,6 +11224,93 @@ class AntennaArray:
                 print 'Gridded aperture illumination and electric fields for polarization {0} from {1:0d} unflagged contributing antennas'.format(apol, num_unflagged)
 
     ############################################################################ 
+
+    def evalAntennaAutoCorrWts(self, lkpinfo=None, forceeval=False):
+
+        """
+        ------------------------------------------------------------------------
+        Evaluate auto-correlation of aperture illumination of each antenna on
+        the UVF-plane
+
+        Inputs:
+
+        lkpinfo   [dictionary] consists of weights information for each of 
+                  the polarizations under polarization keys. Each of 
+                  the values under the keys is a string containing the full
+                  path to a filename that contains the positions and 
+                  weights for the aperture illumination in the form of 
+                  a lookup table as columns (x-loc [float], y-loc 
+                  [float], wts[real], wts[imag if any]). In this case, the 
+                  lookup is for auto-corrlation of antenna weights. It only 
+                  applies when the antenna aperture class is set to 
+                  lookup-based kernel estimation instead of a functional form
+
+        forceeval [boolean] When set to False (default) the auto-correlation in
+                  the UV plane is not evaluated if it was already evaluated 
+                  earlier. If set to True, it will be forcibly evaluated 
+                  independent of whether they were already evaluated or not
+        ------------------------------------------------------------------------
+        """
+
+        if forceeval or (not self.antenna_autocorr_set):
+            pol = ['P1', 'P2']
+
+            du = self.gridu[0,1] - self.gridu[0,0]
+            dv = self.gridv[1,0] - self.gridv[0,0]
+            gridu, gridv = NP.meshgrid(du*(NP.arange(2*self.gridu.shape[1])-self.gridu.shape[1]), dv*(NP.arange(2*self.gridu.shape[0])-self.gridu.shape[0]))
+
+            wavelength = FCNST.c / self.f
+            min_lambda = NP.abs(wavelength).min()
+            rmaxNN = 0.5 * NP.sqrt(du**2 + dv**2) * min_lambda 
+
+            gridx = gridu[:,:,NP.newaxis] * wavelength.reshape(1,1,-1)
+            gridy = gridv[:,:,NP.newaxis] * wavelength.reshape(1,1,-1)
+            gridxy = NP.hstack((gridx.reshape(-1,1), gridy.reshape(-1,1)))
+            wl = NP.ones(gridu.shape)[:,:,NP.newaxis] * wavelength.reshape(1,1,-1)
+            wl = wl.reshape(-1)
+            aprtrs = {}
+            max_aprtr = 0.0
+            self.antenna_autocorr_wts_vuf = {}
+            for antenna in self.antennas.itervalues():
+                self.antenna_autocorr_wts_vuf[antenna.label] = {}
+                ant_aprtr = copy.deepcopy(antenna.aperture)
+                pol_type = 'dual'
+                kerntype = ant_aprtr.kernel_type
+                shape = ant_aprtr.shape
+                kernshapeparms = {p: {'xmax': ant_aprtr.xmax[p], 'ymax': ant_aprtr.ymax[p], 'rmax': ant_aprtr.rmax[p], 'rmin': ant_aprtr.rmin[p], 'rotangle': ant_aprtr.rotangle[p]} for p in pol}
+                for p in pol:
+                    if kerntype[p] == 'func':
+                        # self.antenna_autocorr_wts_vuf[antenna.label][p] = NP.zeros(gridu.shape+(self.f.size,), dtype=NP.complex64)
+                        if shape[p] == 'rect':
+                            shape[p] = 'auto_convolved_rect'
+                        elif shape[p] == 'square':
+                            shape[p] = 'auto_convolved_square'
+                        elif shape[p] == 'circular':
+                            shape[p] = 'auto_convolved_circular'
+                        else:
+                            raise ValueError('Aperture kernel footprint shape - {0} - currently unsupported'.format(shape[p]))
+                        
+                aprtr = APR.Aperture(pol_type=pol_type, kernel_type=kerntype,
+                                     shape=shape, parms=kernshapeparms,
+                                     lkpinfo=lkpinfo, load_lookup=True)
+                aprtrs[antenna.label] = aprtr
+                max_aprtr = max([max_aprtr, NP.sqrt(aprtr.xmax['P1']**2 + NP.sqrt(aprtr.ymax['P1']**2)), NP.sqrt(aprtr.xmax['P2']**2 + NP.sqrt(aprtr.ymax['P2']**2)), aprtr.rmax['P1'], aprtr.rmax['P2']])
+            distNN = 2.0 * max_aprtr
+            indNN_list, blind, vuf_gridind = LKP.find_NN(NP.zeros((1,2)), gridxy, distance_ULIM=distNN, flatten=True, parallel=False)
+            dxy = gridxy[vuf_gridind,:]
+            unraveled_vuf_ind = NP.unravel_index(vuf_gridind, gridu.shape+(self.f.size,))
+            for antenna in self.antennas.itervalues():
+                aprtr = aprtrs[antenna.label]
+                for p in pol:
+                    krn = aprtr.compute(dxy, wavelength=wl[vuf_gridind], pol=p, rmaxNN=rmaxNN, load_lookup=False)
+                    # self.antenna_autocorr_wts_vuf[antenna.label][p][unraveled_vuf_ind] = krn[p]
+                    # self.antenna_autocorr_wts_vuf[antenna.label][p] = self.antenna_autocorr_wts_vuf[antenna.label][p] / NP.sum(self.antenna_autocorr_wts_vuf[antenna.label][p], axis=(0,1), keepdims=True)
+
+                    krn3d_sparse = SM.csr_matrix((krn[p], unraveled_vuf_ind), shape=gridu.shape+(self.f.size,), dtype=NP.complex64)
+                    self.antenna_autocorr_wts_vuf[antenna.label][p] = SM.csr_matrix((krn3d_sparse/krn3d_sparse.sum(axis=0).sum(axis=1), unraveled_vuf_ind), shape=gridu.shape+(self.f.size,), dtype=NP.complex64)
+            self.antenna_autocorr_set = True    
+
+    ############################################################################
 
     def quick_beam_synthesis(self, pol=None, keep_zero_spacing=True):
         

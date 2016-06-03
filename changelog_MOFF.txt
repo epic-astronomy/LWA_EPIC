@@ -1,3 +1,15 @@
+From cb259a5 (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Add and initialize attribute antenna_autocorr_set in __init__()
+member function of class AntennaArray
+(*) Add member function evalAntennaAutoCorrWts() along with docstring
+under class AntennaArray. Update docstring of class accordingly
+(*) Replace 'P1' to correct key 'P2' in member function evalAutoCorr()
+of class NewImage
+
 From ff4e134 (versatility):
 ==========================
 
