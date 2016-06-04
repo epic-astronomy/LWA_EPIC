@@ -1,3 +1,28 @@
+From ce49978 (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Create member function makeAutoCorrCube() along with docstring
+under class AntennaArray. Update class docstring accordingly
+
+From ce49978 (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Add and initialize attributes antenna_autocorr_wts_vuf and
+antenna_autocorr_set in __init__() member function of class
+AntennaArray. Update class docstring accordingly
+(*) Add and initialize attribute antenna_autocorr_vuf_ind in
+__init__() member function of class AntennaArray. Update class
+docstring accordingly
+(*) Add and initialize attribute antenna_autocorr_vuf_ind in
+__init__() member function of class AntennaArray. Update class
+docstring accordingly
+(*) Minor update in docstring of class get_E_fields() of class
+Antenna
+
 From cb259a5 (versatility):
 ==========================
 

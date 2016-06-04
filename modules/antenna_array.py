@@ -8736,7 +8736,7 @@ class Antenna:
 
                  'label'        [string] antenna label 
                  'pol'          [string] polarization string, one of 'P1' or 
-                                'P22'
+                                'P2'
                  'E-fields'     [numpy array] selected electric fields spectra
                                 with dimensions n_ts x nchan which
                                 are in time-frequency order. If no electric 
@@ -8871,6 +8871,12 @@ class AntennaArray:
     antenna_autocorr_set
                  [boolean] Indicates if auto-correlation of antenna-wise weights
                  have been determined (True) or not (False).
+
+    antenna_autocorr_vuf_ind
+                 [dictionary] Indices to the UV-plane grid at which antenna
+                 footprints exist and using which a sparse matrix is created
+                 in the form of attribute antenna_autocorr_wts_vuf. It is a 
+                 tuple of 3-numpy arrays indexing into v-, u-, and f-locations
 
     antenna_autocorr_wts_vuf
                  [dictionary] Contains auto-correlation weights of each
@@ -9177,6 +9183,12 @@ class AntennaArray:
                       Evaluate auto-correlation of aperture illumination of 
                       each antenna on the UVF-plane
 
+    makeAutoCorrCube()
+                      Constructs the grid of antenna aperture illumination 
+                      auto-correlation using the gridding information 
+                      determined for every antenna. Flags are taken into 
+                      account while constructing this grid
+
     quick_beam_synthesis()  
                       A quick generator of synthesized beam using antenna array 
                       field illumination pattern using the center frequency. Not 
@@ -9236,6 +9248,10 @@ class AntennaArray:
         self.t = None
         self.timestamp = None
         self.timestamps = []
+
+        self.antenna_autocorr_wts_vuf = {}
+        self.antenna_autocorr_vuf_ind = {}
+        self.antenna_autocorr_set = False
 
         self._ant_contribution = {}
 
@@ -9622,7 +9638,7 @@ class AntennaArray:
                  keys and information:
                  'labels':    Contains a numpy array of strings of antenna 
                               labels
-                 'E-fields':    measured electric fields (n_ant x nchan array)
+                 'E-fields':  measured electric fields (n_ant x nchan array)
         ------------------------------------------------------------------------
         """
 
@@ -11271,6 +11287,7 @@ class AntennaArray:
             aprtrs = {}
             max_aprtr = 0.0
             self.antenna_autocorr_wts_vuf = {}
+            self.antenna_autocorr_set = False
             for antenna in self.antennas.itervalues():
                 self.antenna_autocorr_wts_vuf[antenna.label] = {}
                 ant_aprtr = copy.deepcopy(antenna.aperture)
@@ -11299,6 +11316,7 @@ class AntennaArray:
             indNN_list, blind, vuf_gridind = LKP.find_NN(NP.zeros((1,2)), gridxy, distance_ULIM=distNN, flatten=True, parallel=False)
             dxy = gridxy[vuf_gridind,:]
             unraveled_vuf_ind = NP.unravel_index(vuf_gridind, gridu.shape+(self.f.size,))
+            self.antenna_autocorr_vuf_ind = unraveled_vuf_ind
             for antenna in self.antennas.itervalues():
                 aprtr = aprtrs[antenna.label]
                 for p in pol:
@@ -11309,6 +11327,109 @@ class AntennaArray:
                     krn3d_sparse = SM.csr_matrix((krn[p], unraveled_vuf_ind), shape=gridu.shape+(self.f.size,), dtype=NP.complex64)
                     self.antenna_autocorr_wts_vuf[antenna.label][p] = SM.csr_matrix((krn3d_sparse/krn3d_sparse.sum(axis=0).sum(axis=1), unraveled_vuf_ind), shape=gridu.shape+(self.f.size,), dtype=NP.complex64)
             self.antenna_autocorr_set = True    
+
+    ############################################################################
+
+    def makeAutoCorrCube(self, pol=None, data=None, datapool='stack',
+                         verbose=True):
+
+        """
+        ------------------------------------------------------------------------
+        Constructs the grid of antenna aperture illumination auto-correlation 
+        using the gridding information determined for every antenna. Flags are 
+        taken into account while constructing this grid
+
+        Inputs:
+
+        pol     [String] The polarization to be gridded. Can be set to 'P1' or 
+                'P2'. If set to None, gridding for all the polarizations is 
+                performed. Default=None
+        
+        data    [dictionary] dictionary containing data that will be used to
+                determine the auto-correlations of antennas. This will be used 
+                only if input datapool is set to 'custom'. It consists of the 
+                following keys and information:
+                'labels'    Contains a numpy array of strings of antenna 
+                            labels
+                'data'      auto-correlated electric fields 
+                            (n_ant x nchan array)
+
+        datapool 
+                [string] Specifies whether data to be used in determining the
+                auto-correlation the E-fields to be used come from
+                'stack' (default), 'recent', 'avg' or 'custom'. If set to
+                'custom', the data provided in input data will be used. 
+                Otherwise squared electric fields will be used if set to 
+                'recent' or 'stack', and averaged squared electric fields if
+                set to 'avg'
+
+        verbose [boolean] If True, prints diagnostic and progress messages. 
+                If False (default), suppress printing such messages.
+
+        Outputs:
+
+        Tuple (autocorr_wts_cube, autocorr_data_cube). autocorr_wts_cube is a
+        dictionary with polarization keys 'P1' and 'P2. Under each key is a 
+        sparse matrix of size nv x nu x nchan. autocorr_data_cube is also a 
+        dictionary with polarization keys 'P1' and 'P2. Under each key is a 
+        matrix of size n_ts x nv x nu x nchan. 
+        ------------------------------------------------------------------------
+        """
+        
+        if pol is None:
+            pol = ['P1', 'P2']
+
+        pol = NP.unique(NP.asarray(pol))
+        
+        if datapool not in ['stack', 'recent', 'avg', 'custom']:
+            raise ValueError('Input datapool must be set to "stack" or "recent"')
+
+        if not self.antenna_autocorr_set:
+            self.evalAntennaAutoCorrWts()
+
+        data_info = {}
+        if datapool == 'recent':
+            for apol in pol:
+                _Ef_info = self.get_E_fields(apol, flag=False, tselect=-1, fselect=None, aselect=None, datapool='current', sort=True)
+                data_info[apol] = {'labels': _Ef_info['labels'], 'data': _Ef_info['E-fields']}
+        elif datapool == 'stack':
+            for apol in pol:
+                _Ef_info = self.get_E_fields(apol, flag=False, tselect=NP.arange(len(self.timestamps)), fselect=None, aselect=None, datapool='stack', sort=True)
+                data_info[apol] = {'labels': _Ef_info['labels'], 'data': _Ef_info['E-fields']}
+        elif datapool == 'avg':
+            pass
+        else:
+            if not isinstance(data, dict):
+                raise TypeError('Input data must be a dictionary')
+            for apol in pol:
+                if apol not in data:
+                    raise KeyError('Key {)} not found in input data'.format(apol))
+                if not isinstance(data[apol], dict):
+                    raise TypeError('Value under polarization key "{0}" under input data must be a dictionary'.format(apol))
+                if ('labels' not in data[apol]) or (''data' not in data'):
+                    raise KeyError('Keys "labels" and "data" not found under input data[{0}]'.format(apol))
+
+        autocorr_wts_cube = {p: None for p in ['P1', 'P2']}
+        autocorr_data_cube = {p: None for p in ['P1', 'P2']}
+        for apol in pol:
+            if verbose:
+                print 'Gridding auto-correlation of aperture illumination and electric fields for polarization {0} ...'.format(apol)
+
+            if apol not in ['P1', 'P2']:
+                raise ValueError('Invalid specification for input parameter pol')
+
+            for antkey in self.antenna_autocorr_wts_vuf:
+                if antkey in data_info[apol]['labels'].values():
+                    if apol in self.antenna_autocorr_wts_vuf[antkey]:
+                        antind, = NP.where(data_info['labels'] == antkey)
+                        if antind.size > 0:
+                            if autocorr_wts_cube[apol] is None:
+                                autocorr_wts_cube[apol] = self.antenna_autocorr_wts_vuf[antkey][apol] # sparse matrix nv x nu x nchan
+                                autocorr_data_cube[apol] = self.antenna_autocorr_wts_vuf[antkey][apol].toarray()[NP.newaxis,:,:,:] * data_info[apol][antind,:][:,NP.newaxis,NP.newaxis,:] # n_ts x nv x nu x nchan
+                            else:
+                                autocorr_wts_cube[apol] += self.antenna_autocorr_wts_vuf[antkey][apol] # sparse matrix nv x nu x nchan
+                                autocorr_data_cube[apol] += self.antenna_autocorr_wts_vuf[antkey][apol].toarray()[NP.newaxis,:,:,:] * data_info[apol][antind,:][:,NP.newaxis,NP.newaxis,:] # n_ts x nv x nu x nchan
+        return (autocorr_wts_cube, autocorr_data_cube)
 
     ############################################################################
 
