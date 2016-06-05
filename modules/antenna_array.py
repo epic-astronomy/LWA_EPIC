@@ -8886,6 +8886,20 @@ class AntennaArray:
                  nv x nu x nchan that holds the complex weights from 
                  auto-correlation of antenna aperture illumination weights.
 
+    auto_corr_avg
+                 [dictionary] holds average of antenna auto-correlation of 
+                 complex electric field spectra stacked at various time stamps
+                 under 2 polarizations which are stored under keys 'P1' and 
+                 'P2'. Under each key is a dictionary with the following keys
+                 and values:
+                 'E-fields' [numpy array] Contains time-averaged 
+                            auto-correlation of antenna electric fields. It is
+                            of size n_tavg x nant x nchan
+                 'twts'     [numpy array] Contains number of unflagged electric
+                            field spectra used in the averaging of antenna
+                            auto-correlation spectra. It is of size 
+                            n_tavg x nant x 1
+
     antennas_center
                  [Numpy array] geometrical center of the antenna array locations
                  as a 2-element array of x- and y-values of the center. This is
@@ -8916,6 +8930,15 @@ class AntennaArray:
                 current attributes
 
     timestamps  [list] list of all timestamps to be held in the stack 
+
+    tbinsize     [scalar or dictionary] Contains bin size of timestamps while
+                 averaging after stacking. Default = None means all antenna 
+                 E-field auto-correlation spectra over all timestamps are 
+                 averaged. If scalar, the same (positive) value applies to all 
+                 polarizations. If dictionary, timestamp bin size (positive) in 
+                 seconds is provided under each key 'P1' and 'P2'. If any of 
+                 the keys is missing the auto-correlated antenna E-field spectra 
+                 for that polarization are averaged over all timestamps.
 
     grid_mapper [dictionary] antenna-to-grid mapping information for each of
                 four polarizations under keys 'P1' and 'P2'. Under each
@@ -9179,6 +9202,9 @@ class AntennaArray:
                       for every antenna. Flags are taken into account while 
                       constructing this grid.
 
+    avgAutoCorr()     Accumulates and averages auto-correlation of electric 
+                      fields of individual antennas under each polarization
+
     evalAntennaAutoCorrWts()
                       Evaluate auto-correlation of aperture illumination of 
                       each antenna on the UVF-plane
@@ -9214,7 +9240,9 @@ class AntennaArray:
         Class attributes initialized are:
         antennas, blc, trc, gridu, gridv, grid_ready, timestamp, 
         grid_illumination, grid_Ef, f, f0, t, ordered_labels, grid_mapper, 
-        antennas_center, latitude, longitude
+        antennas_center, latitude, longitude, tbinsize, auto_corr_avg, 
+        antenna_autocorr_wts_vuf, antenna_autocorr_vuf_ind, 
+        antenna_autocorr_set
      
         Read docstring of class AntennaArray for details on these attributes.
 
@@ -9249,6 +9277,7 @@ class AntennaArray:
         self.timestamp = None
         self.timestamps = []
 
+        self.auto_corr_avg = {}
         self.antenna_autocorr_wts_vuf = {}
         self.antenna_autocorr_vuf_ind = {}
         self.antenna_autocorr_set = False
@@ -9788,6 +9817,82 @@ class AntennaArray:
             outdict['twts'] = outdict['twts'][:,:,NP.newaxis]
 
         return outdict
+
+    ############################################################################
+
+    def avgAutoCorr(self, tbinsize=None):
+
+        """
+        ------------------------------------------------------------------------
+        Accumulates and averages auto-correlation of electric fields of 
+        individual antennas under each polarization
+
+        Inputs:
+
+        tbinsize [scalar or dictionary] Contains bin size of timestamps while
+                 stacking. Default = None means all antenna E-field 
+                 auto-correlation spectra over all timestamps are averaged. If 
+                 scalar, the same (positive) value applies to all polarizations. 
+                 If dictionary, timestamp bin size (positive) in seconds is 
+                 provided under each key 'P1' and 'P2'. If any of the keys is 
+                 missing the auto-correlated antenna E-field spectra for that 
+                 polarization are averaged over all timestamps.
+        ------------------------------------------------------------------------
+        """
+
+        timestamps = NP.asarray(self.timestamps).astype(NP.float)
+        twts = {}
+        auto_corr_data = {}
+        for p in pol:
+            Ef_info = self.get_E_fields(p, flag=None, tselect=NP.arange(len(self.timestamps)), fselect=None, aselect=None, datapool='stack', sort=True)
+            twts[p] = []
+            auto_corr_data[p] = {}
+            if tbinsize is None: # Average across all timestamps
+                auto_corr_data[p]['E-fields'] = NP.nansum(NP.abs(Ef_info['E-fields'])**2, axis=0, keepdims=True)
+                auto_corr_data[p]['twts'] = NP.sum(NP.logical_not(Ef_info['twts']), axis=0, keepdims=True).astype(NP.float)
+                self.tbinsize = tbinsize
+            elif isinstance(tbinsize, (int,float)): # Apply same time bin size to all polarizations
+                split_ind = NP.arange(timestamps.min()+tbinsize, timstamps.max(), tbinsize)
+                twts_split = NP.array_split(Ef_info['twts'], split_ind, axis=0)
+                Ef_split = NP.array_split(Ef_info['E-fields'], split_ind, axis=0)
+                for i in xrange(split_ind.size):
+                    if 'E-fields' not in auto_corr_data[p]:
+                        auto_corr_data[p]['E-fields'] = NP.nansum(NP.abs(Ef_info['E-fields'])**2, axis=0, keepdims=True)
+                        auto_corr_data[p]['twts'] = NP.sum(NP.logical_not(Ef_info['twts']), axis=0, keepdims=True).astype(NP.float)
+                    else:
+                        auto_corr_data[p]['E-fields'] = NP.vstack((auto_corr_data[p]['E-fields'], NP.nansum(NP.abs(Ef_info['E-fields'])**2, axis=0, keepdims=True)))
+                        auto_corr_data[p]['twts'] = NP.vstack((auto_corr_data[p]['twts'], NP.sum(NP.logical_not(Ef_info['twts']), axis=0, keepdims=True))).astype(NP.float)
+                self.tbinsize = tbinsize
+            elif isinstance(tbinsize, dict):
+                tbsize = {}
+                if p not in tbinsize:
+                    auto_corr_data[p]['E-fields'] = NP.nansum(NP.abs(Ef_info['E-fields'])**2, axis=0, keepdims=True)
+                    auto_corr_data[p]['twts'] = NP.sum(NP.logical_not(Ef_info['twts']), axis=0, keepdims=True).astype(NP.float)
+                    tbsize[p] = None
+                elif tbinsize[p] is None:
+                    auto_corr_data[p]['E-fields'] = NP.nansum(NP.abs(Ef_info['E-fields'])**2, axis=0, keepdims=True)
+                    auto_corr_data[p]['twts'] = NP.sum(NP.logical_not(Ef_info['twts']), axis=0, keepdims=True).astype(NP.float)
+                    tbsize[p] = None
+                elif isinstance(tbinsize[p], (int,float)):
+                    split_ind = NP.arange(timestamps.min()+tbinsize, timstamps.max(), tbinsize)
+                    twts_split = NP.array_split(Ef_info['twts'], split_ind, axis=0)
+                    Ef_split = NP.array_split(Ef_info['E-fields'], split_ind, axis=0)
+                    for i in xrange(split_ind.size):
+                        if 'E-fields' not in auto_corr_data[p]:
+                            auto_corr_data[p]['E-fields'] = NP.nansum(NP.abs(Ef_info['E-fields'])**2, axis=0, keepdims=True)
+                            auto_corr_data[p]['twts'] = NP.sum(NP.logical_not(Ef_info['twts']), axis=0, keepdims=True).astype(NP.float)
+                        else:
+                            auto_corr_data[p]['E-fields'] = NP.vstack((auto_corr_data[p]['E-fields'], NP.nansum(NP.abs(Ef_info['E-fields'])**2, axis=0, keepdims=True)))
+                            auto_corr_data[p]['twts'] = NP.vstack((auto_corr_data[p]['twts'], NP.sum(NP.logical_not(Ef_info['twts']), axis=0, keepdims=True))).astype(NP.float)
+                    tbsize[pol] = tbinsize[pol]                 
+                else:
+                    raise ValueError('Input tbinsize is invalid')
+                self.tbinsize = tbsize
+            else:
+                raise ValueError('Input tbinsize is invalid')
+
+            auto_corr_data[p]['E-fields'] = auto_corr_data[p]['E-fields'] / auto_corr_data[p]['twts']
+        self.auto_corr_avg = auto_corr_data
 
     ############################################################################
 

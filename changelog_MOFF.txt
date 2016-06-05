@@ -1,3 +1,14 @@
+From 53417fc (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Create member function avgAutoCorr() along with docstring under
+class AntennaArray. Update docstring of class accordingly
+(*) Add and initialize attributes tbinsize, auto_corr_avg in
+__init__() member function of class AntennaArray. Update docstring
+of class and member function accordingly
+
 From ce49978 (versatility):
 ==========================
 
