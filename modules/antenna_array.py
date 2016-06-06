@@ -9271,6 +9271,9 @@ class AntennaArray:
                       
     __sub__()         Operator overloading for removing antenna(s)
                       
+    pairTypetags()    Combine antenna typetags to create pairwise typetags for 
+                      antenna pairs and update attribute pairwise_typetags
+
     add_antennas()    Routine to add antenna(s) to the antenna array instance. 
                       A wrapper for operator overloading __add__() and 
                       __radd__()
@@ -9692,6 +9695,31 @@ class AntennaArray:
             print 'No antenna specified for removal.'
         else:
             self = self.__sub__(A)
+
+    ############################################################################
+
+    def pairTypetags(self):
+
+        """
+        ------------------------------------------------------------------------
+        Combine antenna typetags to create pairwise typetags for antenna pairs
+        and update attribute pairwise_typetags
+        ------------------------------------------------------------------------
+        """
+
+        typekeys = self.typetags.keys()
+        pairwise_typetags = {}
+        for i in range(len(typekeys)):
+            labels1 = list(self.typetags[typekeys[i]])
+            for j in range(i,len(typekeys)):
+                labels2 = list(self.typetags[typekeys[j]])
+                pairwise_typetags[(i,j)] = {}
+                if i == j:
+                    pairwise_typetags[(i,j)]['auto'] = set([(l1,l1) for l1 in labels1])
+                    pairwise_typetags[(i,j)]['cross'] = set([(l1,l2) for i1,l1 in enumerate(labels1) for i2,l2 in enumerate(labels2) if i1 < i2])
+                else:
+                    pairwise_typetags[(i,j)]['cross'] = set([(l1,l2) for l1 in labels1 for l2 in labels2])
+        self.pairwise_typetags = pairwise_typetags
 
     ############################################################################
 
