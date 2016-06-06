@@ -9042,6 +9042,13 @@ class AntennaArray:
                  antenna type tags. Under each of these type tag keys is a 
                  set of antenna labels denoting antennas that are of that type
 
+    pairwise_typetags     
+                 [dictionary] Dictionary containing keys which are unique 
+                 pairwise combination (tuples) of antenna type tags. Under each 
+                 of these pairwise type tag keys is a set of pairwise (tuple) 
+                 antenna labels denoting the antenna pairs that are of that 
+                 type
+
     timestamp:   [Scalar] String or float representing the timestamp for the 
                  current attributes
 
@@ -9362,7 +9369,7 @@ class AntennaArray:
         grid_illumination, grid_Ef, f, f0, t, ordered_labels, grid_mapper, 
         antennas_center, latitude, longitude, tbinsize, auto_corr_data, 
         antenna_autocorr_wts_vuf, antenna_autocorr_vuf_ind, 
-        antenna_autocorr_set, typetags
+        antenna_autocorr_set, typetags, pairwise_typetags
      
         Read docstring of class AntennaArray for details on these attributes.
 
@@ -9397,6 +9404,7 @@ class AntennaArray:
         self.timestamp = None
         self.timestamps = []
         self.typetags = {}
+        self.pairwise_typetags = {}
 
         self.auto_corr_data = {}
         self.antenna_autocorr_wts_vuf = {}

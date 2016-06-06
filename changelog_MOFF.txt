@@ -1,3 +1,12 @@
+From ce9ec92 (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Add and initialize attribute pairwise_typetags in __init__()
+member function of class AntennaArray. Update class docstring
+accordingly
+
 From fb7a1b7 (versatility):
 ==========================
 
