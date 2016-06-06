@@ -8453,6 +8453,10 @@ class Antenna:
             label      [Scalar] A unique identifier (preferably a string) for 
                        the antenna. Default=None means no update to apply
     
+            typetag    [scalar or string] Antenna type identifier (integer or
+                       preferably string) which will be used in determining if
+                       all antennas in the antenna array are identical
+
             latitude   [Scalar] Latitude of the antenna's location. Default=None 
                        means no update to apply
     
@@ -8547,6 +8551,7 @@ class Antenna:
         """
 
         label = None
+        typetag = None
         location = None
         timestamp = None
         t = None
@@ -8565,6 +8570,7 @@ class Antenna:
                 raise TypeError('Input parameter containing updates must be a dictionary')
 
             if 'label' in update_dict: label = update_dict['label']
+            if 'typetag' in update_dict: typetag = update_dict['typetag']
             if 'location' in update_dict: location = update_dict['location']
             if 'timestamp' in update_dict: timestamp = update_dict['timestamp']
             if 't' in update_dict: t = update_dict['t']
@@ -8579,6 +8585,7 @@ class Antenna:
             if 'aperture' in update_dict: aperture = update_dict['aperture']
 
         if label is not None: self.label = label
+        if typetag is not None: self.typetag = typetag
         if location is not None: self.location = location
         if timestamp is not None:
             self.timestamp = timestamp

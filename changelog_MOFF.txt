@@ -1,3 +1,11 @@
+From d2a7bc1 (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Add option to update attribute typetag in member function update()
+of class Antenna. Update docstring of member function accordingly
+
 From 0557337 (versatility):
 ==========================
 
