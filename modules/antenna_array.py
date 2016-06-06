@@ -8206,6 +8206,9 @@ class Antenna:
                  timestamp flags, timestamps and frequency channel indices and 
                  the type of data (most recent or stacked electric fields)
 
+    evalGridIllumination()
+                 Evaluate antenna illumination function on a specified grid
+
     save():      Saves the antenna information to disk. Needs serious 
                  development. 
 
@@ -8843,6 +8846,91 @@ class Antenna:
                 raise ValueError('Attribute Ef_stack has not been initialized to obtain electric fields from. Consider running method stack()')
 
         return outdict
+
+    ############################################################################
+
+    def evalGridIllumination(self, uvlocs=None, xy_center=None):
+
+        """
+        ------------------------------------------------------------------------
+        Evaluate antenna illumination function on a specified grid
+
+        Inputs:
+
+        uvlocs      [tuple] 2-element tuple where first and second elements
+                    are numpy arrays that contain u- and v-locations 
+                    respectively. Default=None means determine u- and v-
+                    locations from attributes blc and trc
+
+        xy_center   [tuple, list or numpy array] 2-element list, tuple or numpy
+                    array denoting x- and y-locations of center of antenna.
+                    Default=None means use the x- and y- locations of the 
+                    antenna
+
+        Outputs:
+
+        antenna_grid_wts_vuf
+                    [scipy sparse array] Complex antenna illumination weights 
+                    placed on the specified grid. When expanded it will be of 
+                    size nv x nu x nchan
+        ------------------------------------------------------------------------
+        """
+
+        if xy_center is None:
+            xy_center = NP.asarray([self.location.x, self.location.y])
+        elif isinstance(xy_center, (list,tuple,NP.ndarray)):
+            xy_center = NP.asarray(xy_center)
+            if xy_center.size != 2:
+                raise ValueError('Input xy_center must be a two-element numpy array')
+            xy_center = xy_center.ravel()
+        else:
+             raise TypeError('Input xy_center must be a numpy array')
+
+        wavelength = FCNST.c / self.f
+        min_wl = NP.abs(wavelength).min()
+        uvspacing = 0.5
+        if uvlocs is None:
+            blc = self.blc - xy_center
+            trc = self.trc - xy_center
+            trc = NP.amax(NP.abs(NP.vstack((blc, trc))), axis=0).ravel() / min_wl
+            blc = -1 * trc
+            gridu, gridv = GRD.grid_2d([(blc[0], trc[0]), (blc[1], trc[1])], pad=0.0, spacing=uvspacing, pow2=True)
+            du = gridu[0,1] - gridu[0,0]
+            dv = gridv[1,0] - gridv[0,0]
+        elif isinstance(uvlocs, tuple):
+            if len(uvlocs) != 2:
+                raise ValueError('Input uvlocs must be a two-element tuple')
+            ulocs, vlocs = uvlocs
+            if not isinstance(ulocs, NP.ndarray):
+                raise TypeError('Elements in input tuple uvlocs must be a numpy array')
+            if not isinstance(vlocs, NP.ndarray):
+                raise TypeError('Elements in input tuple uvlocs must be a numpy array')
+            ulocs = ulocs.ravel()
+            vlocs = vlocs.ravel()
+            du = ulocs[1] - ulocs[0]
+            dv = vlocs[1] - vlocs[0]
+            gridu, gridv = NP.meshgrid(ulocs, vlocs)
+        else:
+            raise TypeError('Input uvlocs must be a two-element tuple')
+
+        rmaxNN = 0.5 * NP.sqrt(du**2 + dv**2) * min_wl
+        gridx = gridu[:,:,NP.newaxis] * wavelength.reshape(1,1,-1)
+        gridy = gridv[:,:,NP.newaxis] * wavelength.reshape(1,1,-1)
+        gridxy = NP.hstack((gridx.reshape(-1,1), gridy.reshape(-1,1)))
+        wl = NP.ones(gridu.shape)[:,:,NP.newaxis] * wavelength.reshape(1,1,-1)
+        max_aprtr_size = max([NP.sqrt(self.aperture.xmax['P1']**2 + NP.sqrt(self.aperture.ymax['P1']**2)), NP.sqrt(self.aperture.xmax['P2']**2 + NP.sqrt(self.aperture.ymax['P2']**2)), self.aperture.rmax['P1'], self.aperture.rmax['P2']])
+        distNN = 2.0 * max_aprtr_size
+        indNN_list, blind, vuf_gridind = LKP.find_NN(xy_center.reshape(1,-1), gridxy, distance_ULIM=distNN, flatten=True, parallel=False)
+        dxy = gridxy[vuf_gridind,:]
+        unraveled_vuf_ind = NP.unravel_index(vuf_gridind, gridu.shape+(self.f.size,))
+
+        antenna_grid_wts_vuf = {}
+        for p in pol:
+            krn = self.aperture.compute(dxy, wavelength=wl[vuf_gridind], pol=p, rmaxNN=rmaxNN, load_lookup=False)
+            krn3d_sparse = SpM.csr_matrix((krn[p], unraveled_vuf_ind), shape=gridu.shape+(self.f.size,), dtype=NP.complex64)
+            antenna_grid_wts_vuf[p] = SpM.csr_matrix((krn3d_sparse/krn3d_sparse.sum(axis=0).sum(axis=1), unraveled_vuf_ind), shape=gridu.shape+(self.f.size,), dtype=NP.complex64)
+    
+        return antenna_grid_wts_vuf
 
 ################################################################################
 
@@ -11470,7 +11558,7 @@ class AntennaArray:
             gridy = gridv[:,:,NP.newaxis] * wavelength.reshape(1,1,-1)
             gridxy = NP.hstack((gridx.reshape(-1,1), gridy.reshape(-1,1)))
             wl = NP.ones(gridu.shape)[:,:,NP.newaxis] * wavelength.reshape(1,1,-1)
-            wl = wl.reshape(-1)
+            # wl = wl.reshape(-1)
             aprtrs = {}
             max_aprtr = 0.0
             self.antenna_autocorr_wts_vuf = {}

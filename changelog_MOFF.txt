@@ -1,3 +1,11 @@
+From b6340c0 (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Create member function evalGridIllumination() along with docstring
+under class Antenna. Update class docstring accordingly
+
 From d2a7bc1 (versatility):
 ==========================
 
