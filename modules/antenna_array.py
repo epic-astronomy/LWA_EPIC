@@ -11539,7 +11539,9 @@ class AntennaArray:
         dictionary with polarization keys 'P1' and 'P2. Under each key is a 
         sparse matrix of size nv x nu x nchan. autocorr_data_cube is also a 
         dictionary with polarization keys 'P1' and 'P2. Under each key is a 
-        matrix of size n_ts x nv x nu x nchan. 
+        matrix of size n_ts x nv x nu x nchan where n_ts=1, n_ts=n_timestamps,
+        or n_ts=n_tavg if datapool is set to 'current', 'stack' or 'avg'
+        respectively
         ------------------------------------------------------------------------
         """
         
@@ -11555,16 +11557,9 @@ class AntennaArray:
             self.evalAntennaAutoCorrWts()
 
         data_info = {}
-        if datapool == 'current':
+        if datapool in ['current', 'stack', 'avg']:
             for apol in pol:
-                _Ef_info = self.get_E_fields(apol, flag=False, tselect=-1, fselect=None, aselect=None, datapool='current', sort=True)
-                data_info[apol] = {'labels': _Ef_info['labels'], 'data': _Ef_info['E-fields']}
-        elif datapool == 'stack':
-            for apol in pol:
-                _Ef_info = self.get_E_fields(apol, flag=False, tselect=NP.arange(len(self.timestamps)), fselect=None, aselect=None, datapool='stack', sort=True)
-                data_info[apol] = {'labels': _Ef_info['labels'], 'data': _Ef_info['E-fields']}
-        elif datapool == 'avg':
-            pass
+                data_info[apol] = {'labels': self.auto_corr_data[datapool][apol]['labels'], 'data': self.auto_corr_data[datapool][apol]['E-fields']}
         else:
             if not isinstance(data, dict):
                 raise TypeError('Input data must be a dictionary')
@@ -11573,7 +11568,7 @@ class AntennaArray:
                     raise KeyError('Key {)} not found in input data'.format(apol))
                 if not isinstance(data[apol], dict):
                     raise TypeError('Value under polarization key "{0}" under input data must be a dictionary'.format(apol))
-                if ('labels' not in data[apol]) or (''data' not in data'):
+                if ('labels' not in data[apol]) or ('data' not in data[apol]):
                     raise KeyError('Keys "labels" and "data" not found under input data[{0}]'.format(apol))
 
         autocorr_wts_cube = {p: None for p in ['P1', 'P2']}

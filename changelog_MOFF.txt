@@ -1,3 +1,14 @@
+From a56c1c2 (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Modify member function makeAutoCorrCube() under class
+AntennaArray to use recently created attribute auto_corr_data to
+estimate data cube from auto-correlations
+(*) Minor update in docstring of member function makeAutoCorrCube()
+of class AntennaArray
+
 From 74dc26a (versatility):
 ==========================
 
