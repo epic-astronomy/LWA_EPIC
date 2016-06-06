@@ -7508,7 +7508,7 @@ class NewImage:
 
         datapool    [string] String specifying type of image on which the 
                     statistics will be estimated. Accepted values are 'avg'
-                    (default), 'stack' and 'recent'. These represent 
+                    (default), 'stack' and 'current'. These represent 
                     time-averaged, stacked and recent images respectively
 
         Outputs:
@@ -7519,12 +7519,12 @@ class NewImage:
                     these keys is another dictionary with the fillowing keys and
                     values:
                     'peak'  [scalar or list] Peak value(s) in the box. If 
-                            input datapool is set to 'recent', it will be a 
+                            input datapool is set to 'current', it will be a 
                             scalar, but if set to 'avg' or 'stack', it will be
                             a list one for each timestamp in the image.
                     'mad'   [scalar or list] Median Absolute Deviation(s) in
                             the box determined by input rms_box_scale_factor. 
-                            If input datapool is set to 'recent', it will be a 
+                            If input datapool is set to 'current', it will be a 
                             scalar, but if set to 'avg' or 'stack', it will be
                             a list one for each timestamp in the image.
         ------------------------------------------------------------------------
@@ -7539,8 +7539,8 @@ class NewImage:
 
         if coords not in ['physical', 'index']:
             raise ValueError('Input coords must be specified as "physical" or "index"')
-        if datapool not in ['avg', 'recent', 'stack']:
-            raise ValueError('Input datappol must be specified as "avg", "recent" or "stack"')
+        if datapool not in ['avg', 'current', 'stack']:
+            raise ValueError('Input datappol must be specified as "avg", "current" or "stack"')
         
         if not isinstance(box_center, list):
             raise TypeError('Input box_center must be a list')
@@ -7600,7 +7600,7 @@ class NewImage:
     
                 for apol in ['P1', 'P2']:
                     stats[apol] = {}
-                    if datapool == 'recent':
+                    if datapool == 'current':
                         if self.nzsp_img[apol] is not None:
                             stats[apol]['peak'] = NP.nanmax(NP.abs(self.nzsp_img[apol][ind3d]))
                             mdn = NP.median(NP.abs(self.nzsp_img[apol][ind3d_rmsbox]))
@@ -8886,12 +8886,16 @@ class AntennaArray:
                  nv x nu x nchan that holds the complex weights from 
                  auto-correlation of antenna aperture illumination weights.
 
-    auto_corr_avg
-                 [dictionary] holds average of antenna auto-correlation of 
-                 complex electric field spectra stacked at various time stamps
-                 under 2 polarizations which are stored under keys 'P1' and 
-                 'P2'. Under each key is a dictionary with the following keys
+    auto_corr_data
+                 [dictionary] holds antenna auto-correlation of complex electric 
+                 field spectra. It is under keys 'current', 'stack' and 'avg' 
+                 for the current, stacked and time-averaged auto-correlations. 
+                 Under eack of these keys is another dictionary with two keys
+                 'P1' and 'P2' for the two polarizations. Under each of these
+                 polarization keys is a dictionary with the following keys
                  and values:
+                 'labels'   [list of strings] Contains a list of antenna 
+                            labels
                  'E-fields' [numpy array] Contains time-averaged 
                             auto-correlation of antenna electric fields. It is
                             of size n_tavg x nant x nchan
@@ -9205,6 +9209,10 @@ class AntennaArray:
     avgAutoCorr()     Accumulates and averages auto-correlation of electric 
                       fields of individual antennas under each polarization
 
+    evalAutoCorr()    Estimates antenna-wise E-field auto-correlations under 
+                      both polarizations. It can be for the msot recent 
+                      timestamp, stacked or averaged along timestamps.
+
     evalAntennaAutoCorrWts()
                       Evaluate auto-correlation of aperture illumination of 
                       each antenna on the UVF-plane
@@ -9240,7 +9248,7 @@ class AntennaArray:
         Class attributes initialized are:
         antennas, blc, trc, gridu, gridv, grid_ready, timestamp, 
         grid_illumination, grid_Ef, f, f0, t, ordered_labels, grid_mapper, 
-        antennas_center, latitude, longitude, tbinsize, auto_corr_avg, 
+        antennas_center, latitude, longitude, tbinsize, auto_corr_data, 
         antenna_autocorr_wts_vuf, antenna_autocorr_vuf_ind, 
         antenna_autocorr_set
      
@@ -9277,7 +9285,7 @@ class AntennaArray:
         self.timestamp = None
         self.timestamps = []
 
-        self.auto_corr_avg = {}
+        self.auto_corr_data = {}
         self.antenna_autocorr_wts_vuf = {}
         self.antenna_autocorr_vuf_ind = {}
         self.antenna_autocorr_set = False
@@ -9830,7 +9838,7 @@ class AntennaArray:
         Inputs:
 
         tbinsize [scalar or dictionary] Contains bin size of timestamps while
-                 stacking. Default = None means all antenna E-field 
+                 averaging. Default = None means all antenna E-field 
                  auto-correlation spectra over all timestamps are averaged. If 
                  scalar, the same (positive) value applies to all polarizations. 
                  If dictionary, timestamp bin size (positive) in seconds is 
@@ -9850,6 +9858,7 @@ class AntennaArray:
             if tbinsize is None: # Average across all timestamps
                 auto_corr_data[p]['E-fields'] = NP.nansum(NP.abs(Ef_info['E-fields'])**2, axis=0, keepdims=True)
                 auto_corr_data[p]['twts'] = NP.sum(NP.logical_not(Ef_info['twts']), axis=0, keepdims=True).astype(NP.float)
+                auto_corr_data[p]['labels'] = Ef_info['labels']
                 self.tbinsize = tbinsize
             elif isinstance(tbinsize, (int,float)): # Apply same time bin size to all polarizations
                 split_ind = NP.arange(timestamps.min()+tbinsize, timstamps.max(), tbinsize)
@@ -9862,6 +9871,7 @@ class AntennaArray:
                     else:
                         auto_corr_data[p]['E-fields'] = NP.vstack((auto_corr_data[p]['E-fields'], NP.nansum(NP.abs(Ef_info['E-fields'])**2, axis=0, keepdims=True)))
                         auto_corr_data[p]['twts'] = NP.vstack((auto_corr_data[p]['twts'], NP.sum(NP.logical_not(Ef_info['twts']), axis=0, keepdims=True))).astype(NP.float)
+                auto_corr_data[p]['labels'] = Ef_info['labels']
                 self.tbinsize = tbinsize
             elif isinstance(tbinsize, dict):
                 tbsize = {}
@@ -9887,12 +9897,64 @@ class AntennaArray:
                     tbsize[pol] = tbinsize[pol]                 
                 else:
                     raise ValueError('Input tbinsize is invalid')
+                auto_corr_data[p]['labels'] = Ef_info['labels']
                 self.tbinsize = tbsize
             else:
                 raise ValueError('Input tbinsize is invalid')
 
             auto_corr_data[p]['E-fields'] = auto_corr_data[p]['E-fields'] / auto_corr_data[p]['twts']
-        self.auto_corr_avg = auto_corr_data
+        self.auto_corr_data['avg'] = auto_corr_data
+
+    ############################################################################
+
+    def evalAutoCorr(self, datapool=None, tbinsize=None):
+
+        """
+        ------------------------------------------------------------------------
+        Estimates antenna-wise E-field auto-correlations under both
+        polarizations. It can be for the msot recent timestamp, stacked or
+        averaged along timestamps.
+
+        Inputs:
+
+        datapool [string] denotes the data pool from which electric fields are 
+                 to be selected. Accepted values are 'current', 'stack', avg' or
+                 None (default, same as 'current'). If set to None or 
+                 'current', the value in tselect is ignored and only 
+                 electric fields of the most recent timestamp are selected. If
+                 set to 'avg', the auto-correlations from the stack are 
+                 averaged along the timestamps using time bin size specified
+                 in tbinsize
+
+        tbinsize [scalar or dictionary] Contains bin size of timestamps while
+                 averaging. Will be used only if datapool is set to 'avg'. 
+                 Default = None means all antenna E-field 
+                 auto-correlation spectra over all timestamps are averaged. If 
+                 scalar, the same (positive) value applies to all polarizations. 
+                 If dictionary, timestamp bin size (positive) in seconds is 
+                 provided under each key 'P1' and 'P2'. If any of the keys is 
+                 missing the auto-correlated antenna E-field spectra for that 
+                 polarization are averaged over all timestamps.
+        ------------------------------------------------------------------------
+        """
+
+        if datapool not in [None, 'current', 'stack', 'avg']:
+            raise ValueError('Input datapool must be set to None, "current", "stack" or "avg"')
+
+        if datapool in [None, 'current']:
+            self.auto_corr_data['current'] = {}
+            for p in pol:
+                Ef_info = self.get_E_fields(p, flag=None, tselect=-1, fselect=None, aselect=None, datapool='', sort=True)
+                self.auto_corr_data['current'][p] = Ef_info
+                
+        if datapool in [None, 'stack']:
+            self.auto_corr_data['stack'] = {}
+            for p in pol:
+                Ef_info = self.get_E_fields(p, flag=None, tselect=NP.arange(len(self.timestamps)), fselect=None, aselect=None, datapool='', sort=True)
+                self.auto_corr_data['current'][p] = Ef_info
+
+        if datapool in [None, 'avg']:
+            self.avgAutoCorr(tbinsize=tbinsize)
 
     ############################################################################
 
@@ -11462,10 +11524,10 @@ class AntennaArray:
         datapool 
                 [string] Specifies whether data to be used in determining the
                 auto-correlation the E-fields to be used come from
-                'stack' (default), 'recent', 'avg' or 'custom'. If set to
+                'stack' (default), 'current', 'avg' or 'custom'. If set to
                 'custom', the data provided in input data will be used. 
                 Otherwise squared electric fields will be used if set to 
-                'recent' or 'stack', and averaged squared electric fields if
+                'current' or 'stack', and averaged squared electric fields if
                 set to 'avg'
 
         verbose [boolean] If True, prints diagnostic and progress messages. 
@@ -11486,14 +11548,14 @@ class AntennaArray:
 
         pol = NP.unique(NP.asarray(pol))
         
-        if datapool not in ['stack', 'recent', 'avg', 'custom']:
-            raise ValueError('Input datapool must be set to "stack" or "recent"')
+        if datapool not in ['stack', 'current', 'avg', 'custom']:
+            raise ValueError('Input datapool must be set to "stack" or "current"')
 
         if not self.antenna_autocorr_set:
             self.evalAntennaAutoCorrWts()
 
         data_info = {}
-        if datapool == 'recent':
+        if datapool == 'current':
             for apol in pol:
                 _Ef_info = self.get_E_fields(apol, flag=False, tselect=-1, fselect=None, aselect=None, datapool='current', sort=True)
                 data_info[apol] = {'labels': _Ef_info['labels'], 'data': _Ef_info['E-fields']}

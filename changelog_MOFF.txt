@@ -1,3 +1,18 @@
+From 74dc26a (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Add member function evalAutoCorr() along with docstring under
+class AntennaArray. Update class docstring accordingly
+(*) Add and initialize attribute auto_corr_data in __init__()
+member function of class AntennaArray. Add its description to
+class docstring
+(*) Replace all occurrences of 'recent' with 'current' for datapool
+variable
+(*) Remove attribute auto_corr_avg and references to it from class
+AntennaArray
+
 From 53417fc (versatility):
 ==========================
 
