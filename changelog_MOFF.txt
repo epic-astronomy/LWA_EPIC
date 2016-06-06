@@ -1,3 +1,11 @@
+From 95123a5 (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Import scipy.sparse module as SpM instead of SM. Replace all
+occurrences of SM with SpM
+
 From a56c1c2 (versatility):
 ==========================
 

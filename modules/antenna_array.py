@@ -3,7 +3,7 @@ import multiprocessing as MP
 import itertools as IT
 import copy
 import scipy.constants as FCNST
-import scipy.sparse as SM
+import scipy.sparse as SpM
 from astropy.io import fits
 import matplotlib.pyplot as PLT
 import progressbar as PGB
@@ -110,7 +110,7 @@ def genMatrixMapper(val, ind, shape):
         for i in range(len(ind)-1):
             if ind[i+1].size != ind[i].size:
                 raise ValueError('All index groups must have same size')
-    return SM.csr_matrix((val, ind), shape=shape)
+    return SpM.csr_matrix((val, ind), shape=shape)
 
 ################################################################################
 
@@ -4489,11 +4489,11 @@ class InterferometerArray:
                             nproc = min(nproc, max(MP.cpu_count()-1, 1))
                         pool = MP.Pool(processes=nproc)
                         list_of_spmat = pool.map(genMatrixMapper_arg_splitter, IT.izip(list_of_val, list_of_rowcol_tuple, list_of_shapes))
-                        self.bl2grid_mapper[cpol] = SM.hstack(list_of_spmat, format='csr')
+                        self.bl2grid_mapper[cpol] = SpM.hstack(list_of_spmat, format='csr')
                     else:
                         spval = NP.asarray(spval)
                         sprowcol = (NP.asarray(sprow), NP.asarray(spcol))
-                        self.bl2grid_mapper[cpol] = SM.csr_matrix((spval, sprowcol), shape=(self.gridu.size*self.f.size, n_bl*self.f.size))
+                        self.bl2grid_mapper[cpol] = SpM.csr_matrix((spval, sprowcol), shape=(self.gridu.size*self.f.size, n_bl*self.f.size))
                     
                     self.grid_mapper[cpol]['all_bl2grid']['per_bl_per_freq_norm_wts'] = NP.copy(per_bl_per_freq_norm_wts)
 
@@ -4549,8 +4549,8 @@ class InterferometerArray:
             Vf = Vf.ravel()
             wts = wts.ravel()
 
-            sparse_Vf = SM.csr_matrix(Vf)
-            sparse_wts = SM.csr_matrix(wts)
+            sparse_Vf = SpM.csr_matrix(Vf)
+            sparse_wts = SpM.csr_matrix(wts)
 
             # Store as sparse matrices
             self.grid_illumination[cpol] = self.bl2grid_mapper[cpol].dot(sparse_wts.T)
@@ -6895,7 +6895,7 @@ class NewImage:
 
                     self.grid_wts[apol] = NP.zeros(self.gridu.shape+(self.f.size,))
                     if apol in self.antenna_array.grid_illumination:
-                        if SM.issparse(self.antenna_array.grid_illumination[apol]):
+                        if SpM.issparse(self.antenna_array.grid_illumination[apol]):
                             self.grid_illumination[apol] = self.antenna_array.grid_illumination[apol].A.reshape(self.gridu.shape+(self.f.size,))
                             self.grid_Ef[apol] = self.antenna_array.grid_Ef[apol].A.reshape(self.gridu.shape+(self.f.size,))
                         else:
@@ -6952,7 +6952,7 @@ class NewImage:
 
                     self.grid_wts[cpol] = NP.zeros(self.gridu.shape+(self.f.size,))
                     if cpol in self.interferometer_array.grid_illumination:
-                        if SM.issparse(self.interferometer_array.grid_illumination[cpol]):
+                        if SpM.issparse(self.interferometer_array.grid_illumination[cpol]):
                             self.grid_illumination[cpol] = self.interferometer_array.grid_illumination[cpol].A.reshape(self.gridu.shape+(self.f.size,))
                             self.grid_Vf[cpol] = self.interferometer_array.grid_Vf[cpol].A.reshape(self.gridu.shape+(self.f.size,))
                         else:
@@ -11196,11 +11196,11 @@ class AntennaArray:
                             nproc = min(nproc, max(MP.cpu_count()-1, 1))
                         pool = MP.Pool(processes=nproc)
                         list_of_spmat = pool.map(genMatrixMapper_arg_splitter, IT.izip(list_of_val, list_of_rowcol_tuple, list_of_shapes))
-                        self.ant2grid_mapper[apol] = SM.hstack(list_of_spmat, format='csr')
+                        self.ant2grid_mapper[apol] = SpM.hstack(list_of_spmat, format='csr')
                     else:
                         spval = NP.asarray(spval)
                         sprowcol = (NP.asarray(sprow), NP.asarray(spcol))
-                        self.ant2grid_mapper[apol] = SM.csr_matrix((spval, sprowcol), shape=(self.gridu.size*self.f.size, n_ant*self.f.size))
+                        self.ant2grid_mapper[apol] = SpM.csr_matrix((spval, sprowcol), shape=(self.gridu.size*self.f.size, n_ant*self.f.size))
 
                     self.grid_mapper[apol]['all_ant2grid']['per_ant_per_freq_norm_wts'] = NP.copy(per_ant_per_freq_norm_wts)
 
@@ -11267,8 +11267,8 @@ class AntennaArray:
             Ef = Ef.ravel()
             wts = wts.ravel()
 
-            sparse_Ef = SM.csr_matrix(Ef)
-            sparse_wts = SM.csr_matrix(wts)
+            sparse_Ef = SpM.csr_matrix(Ef)
+            sparse_wts = SpM.csr_matrix(wts)
 
             # Store as sparse matrices
             self.grid_illumination[apol] = self.ant2grid_mapper[apol].dot(sparse_wts.T)
@@ -11491,8 +11491,8 @@ class AntennaArray:
                     # self.antenna_autocorr_wts_vuf[antenna.label][p][unraveled_vuf_ind] = krn[p]
                     # self.antenna_autocorr_wts_vuf[antenna.label][p] = self.antenna_autocorr_wts_vuf[antenna.label][p] / NP.sum(self.antenna_autocorr_wts_vuf[antenna.label][p], axis=(0,1), keepdims=True)
 
-                    krn3d_sparse = SM.csr_matrix((krn[p], unraveled_vuf_ind), shape=gridu.shape+(self.f.size,), dtype=NP.complex64)
-                    self.antenna_autocorr_wts_vuf[antenna.label][p] = SM.csr_matrix((krn3d_sparse/krn3d_sparse.sum(axis=0).sum(axis=1), unraveled_vuf_ind), shape=gridu.shape+(self.f.size,), dtype=NP.complex64)
+                    krn3d_sparse = SpM.csr_matrix((krn[p], unraveled_vuf_ind), shape=gridu.shape+(self.f.size,), dtype=NP.complex64)
+                    self.antenna_autocorr_wts_vuf[antenna.label][p] = SpM.csr_matrix((krn3d_sparse/krn3d_sparse.sum(axis=0).sum(axis=1), unraveled_vuf_ind), shape=gridu.shape+(self.f.size,), dtype=NP.complex64)
             self.antenna_autocorr_set = True    
 
     ############################################################################
