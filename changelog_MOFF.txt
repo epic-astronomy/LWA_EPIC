@@ -1,3 +1,11 @@
+From 30ba9c1 (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Add and initialize attribute timetags in member function
+__init__() of class AntennaArray. Update class docstring accordingly
+
 From b6340c0 (versatility):
 ==========================
 

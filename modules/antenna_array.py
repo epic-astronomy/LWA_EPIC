@@ -9038,10 +9038,14 @@ class AntennaArray:
 
     f0           [Scalar] Center frequency of the observing band (in Hz)
 
-    timestamp:  [Scalar] String or float representing the timestamp for the 
-                current attributes
+    typetags     [dictionary] Dictionary containing keys which are unique 
+                 antenna type tags. Under each of these type tag keys is a 
+                 set of antenna labels denoting antennas that are of that type
 
-    timestamps  [list] list of all timestamps to be held in the stack 
+    timestamp:   [Scalar] String or float representing the timestamp for the 
+                 current attributes
+
+    timestamps   [list] list of all timestamps to be held in the stack 
 
     tbinsize     [scalar or dictionary] Contains bin size of timestamps while
                  averaging after stacking. Default = None means all antenna 
@@ -9358,7 +9362,7 @@ class AntennaArray:
         grid_illumination, grid_Ef, f, f0, t, ordered_labels, grid_mapper, 
         antennas_center, latitude, longitude, tbinsize, auto_corr_data, 
         antenna_autocorr_wts_vuf, antenna_autocorr_vuf_ind, 
-        antenna_autocorr_set
+        antenna_autocorr_set, typetags
      
         Read docstring of class AntennaArray for details on these attributes.
 
@@ -9392,6 +9396,7 @@ class AntennaArray:
         self.t = None
         self.timestamp = None
         self.timestamps = []
+        self.typetags = {}
 
         self.auto_corr_data = {}
         self.antenna_autocorr_wts_vuf = {}
