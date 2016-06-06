@@ -9012,6 +9012,17 @@ class AntennaArray:
                             auto-correlation spectra. It is of size 
                             n_tavg x nant x 1
 
+    pairwise_antenna_crosswts_vuf
+                 [dictionary] holds grid illumination wts (centered on grid 
+                 origin) obtained from cross-correlation of antenna pairs that
+                 belong to their respective typetags. Tuples of typetag pairs
+                 form the keys. Under each key is another dictionary with two
+                 keys 'P1' and 'P2' for each polarization. Under each of these
+                 polarization keys is a complex numpy array of size 
+                 nv x nu x nchan. It is obtained by correlating the aperture
+                 illumination weights of one antenna type with the complex
+                 conjugate of another.
+
     antennas_center
                  [Numpy array] geometrical center of the antenna array locations
                  as a 2-element array of x- and y-values of the center. This is
@@ -9048,6 +9059,10 @@ class AntennaArray:
                  of these pairwise type tag keys is a set of pairwise (tuple) 
                  antenna labels denoting the antenna pairs that are of that 
                  type
+
+    antenna_pair_to_typetag
+                 [dictionary] Dictionary containing antenna pair keys and the
+                 corresponding values are typetag pairs.
 
     timestamp:   [Scalar] String or float representing the timestamp for the 
                  current attributes
@@ -9372,7 +9387,8 @@ class AntennaArray:
         grid_illumination, grid_Ef, f, f0, t, ordered_labels, grid_mapper, 
         antennas_center, latitude, longitude, tbinsize, auto_corr_data, 
         antenna_autocorr_wts_vuf, antenna_autocorr_vuf_ind, 
-        antenna_autocorr_set, typetags, pairwise_typetags
+        antenna_autocorr_set, typetags, pairwise_typetags, 
+        pairwise_antenna_crosswts_vuf, antenna_pair_to_typetag
      
         Read docstring of class AntennaArray for details on these attributes.
 
@@ -9408,8 +9424,10 @@ class AntennaArray:
         self.timestamps = []
         self.typetags = {}
         self.pairwise_typetags = {}
+        self.antenna_pair_to_typetag = {}
 
         self.auto_corr_data = {}
+        self.pairwise_antenna_crosswts_vuf = {}
         self.antenna_autocorr_wts_vuf = {}
         self.antenna_autocorr_vuf_ind = {}
         self.antenna_autocorr_set = False

@@ -1,3 +1,12 @@
+From 9e75e7d (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Add and initialize attributes antenna_pair_to_typetag and
+pairwise_antenna_crosswts_vuf in __init__() member function of class
+AntennaArray. Update class docstring accordingly
+
 From 87c31fc (versatility):
 ==========================
 
