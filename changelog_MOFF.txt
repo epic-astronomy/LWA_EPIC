@@ -1,3 +1,14 @@
+From fb7a1b7 (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Update __add__() member function of class AntennaArray to update
+attribute typetags with addition of each antenna instance
+(*) Update __sub__() member function of class AntennaArray to remove
+label of the removed antenna from the appropriate set under attribute
+typetags
+
 From 30ba9c1 (versatility):
 ==========================
 

@@ -9476,6 +9476,10 @@ class AntennaArray:
                     print "For updating, use the update() method. Ignoring antenna {0}".format(k)
                 else:
                     retval.antennas[k] = v
+                    if v.typetag not in retval.typetags:
+                        retval.typetags[v.typetag] = {v.label}
+                    else:
+                        retval.typetags[v.typetag].add(v.label)
                     print 'Antenna "{0}" added to the list of antennas.'.format(k)
             if retval.latitude is None:
                 retval.latitude = others.latitude
@@ -9489,6 +9493,10 @@ class AntennaArray:
                         print "For updating, use the update() method. Ignoring antenna {0}".format(item.label)
                     else:
                         retval.antennas[item.label] = item
+                        if item.typetag not in retval.typetags:
+                            retval.typetags[item.typetag] = {item.label}
+                        else:
+                            retval.typetags[item.typetag].add(item.label)
                         print 'Antenna "{0}" added to the list of antennas.'.format(item.label)
                 if retval.latitude is None:
                     retval.latitude = item.latitude
@@ -9501,6 +9509,10 @@ class AntennaArray:
                         print "For updating, use the update() method. Ignoring antenna {0}".format(others[i].label)
                     else:
                         retval.antennas[others[i].label] = others[i]
+                        if others[i].typetag not in retval.typetags:
+                            retval.typetags[others[i].typetag] = {others[i].label}
+                        else:
+                            retval.typetags[others[i].typetag].add(others[i].label)
                         print 'Antenna "{0}" added to the list of antennas.'.format(others[i].label)
                 else:
                     print 'Element \# {0} is not an instance of class Antenna.'.format(i)
@@ -9515,6 +9527,10 @@ class AntennaArray:
                 print "For updating, use the update() method. Ignoring antenna {0}".format(others.label)
             else:
                 retval.antennas[others.label] = others
+                if others.typetag not in retval.typetags:
+                    retval.typetags[others.typetag] = {others.label}
+                else:
+                    retval.typetags[others.typetag].add(others.label)
                 print 'Antenna "{0}" added to the list of antennas.'.format(others.label)
             if retval.latitude is None:
                 retval.latitude = others.latitude
@@ -9577,15 +9593,18 @@ class AntennaArray:
                         print "Antenna {0} does not exist in the list of antennas.".format(item.label)
                     else:
                         del retval.antennas[item.label]
+                        retval.typetags[item.typetag].remove(item.label)
                         print 'Antenna "{0}" removed from the list of antennas.'.format(item.label)
         elif isinstance(others, list):
             for i in range(0,len(others)):
                 if isinstance(others[i], str):
                     if others[i] in retval.antennas:
+                        retval.typetags[retval.antennas[others[i]].typetag].remove(others[i])
                         del retval.antennas[others[i]]
                         print 'Antenna {0} removed from the list of antennas.'.format(others[i])
                 elif isinstance(others[i], Antenna):
                     if others[i].label in retval.antennas:
+                        retval.typetags[others[i].typetag].remove(others[i].label)
                         del retval.antennas[others[i].label]
                         print 'Antenna {0} removed from the list of antennas.'.format(others[i].label)
                     else:
@@ -9593,10 +9612,12 @@ class AntennaArray:
                 else:
                     print 'Element \# {0} has no matches in the list of antennas.'.format(i)                        
         elif others in retval.antennas:
+            retval.typetags[retval.antennas[others].typetag].remove(others)
             del retval.antennas[others]
             print 'Antenna "{0}" removed from the list of antennas.'.format(others)
         elif isinstance(others, Antenna):
             if others.label in retval.antennas:
+                retval.typetags[others.typetag].remove(others.label)
                 del retval.antennas[others.label]
                 print 'Antenna "{0}" removed from the list of antennas.'.format(others.label)
             else:
