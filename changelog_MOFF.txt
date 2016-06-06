@@ -1,3 +1,13 @@
+From 0557337 (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Add and initialize attribute typetag in __init__() member function
+of class Antenna. Update class docstring accordingly
+(*) Modify __str__() member function of class Antenna to print
+attribute typetag 
+
 From 95123a5 (versatility):
 ==========================
 

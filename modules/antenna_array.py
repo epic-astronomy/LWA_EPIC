@@ -8089,6 +8089,10 @@ class Antenna:
     label:      [Scalar] A unique identifier (preferably a string) for the 
                 antenna. 
 
+    typetag     [scalar or string] Tag (integer or string) to identify antenna
+                type. Will be used in determining if the antenna array is made
+                of identical antennas or not
+
     latitude:   [Scalar] Latitude of the antenna's location.
 
     longitude:  [Scalar] Longitude of the antenna's location.
@@ -8209,8 +8213,8 @@ class Antenna:
     ----------------------------------------------------------------------------
     """
 
-    def __init__(self, label, latitude, longitude, location, center_freq,
-                 nsamples=1, aperture=None):
+    def __init__(self, label, typetag, latitude, longitude, location, 
+                 center_freq, nsamples=1, aperture=None):
 
         """
         ------------------------------------------------------------------------
@@ -8219,7 +8223,7 @@ class Antenna:
         Class attributes initialized are:
         label, latitude, longitude, location, pol, t, timestamp, f0, f, wts, 
         wtspos, wtspos_scale, blc, trc, timestamps, antpol, Et_stack, Ef_stack, 
-        flag_stack, aperture
+        flag_stack, aperture, typetag
      
         Read docstring of class Antenna for details on these attributes.
         ------------------------------------------------------------------------
@@ -8229,6 +8233,14 @@ class Antenna:
             label
         except NameError:
             raise NameError('Antenna label must be provided.')
+
+        try:
+            typetag
+        except NameError:
+            raise NameError('Antenna type tag must be provided.')
+
+        if not isinstance(typetag, (int,str)):
+            raise TypeError('Antenna type tag must be an integer or string')
 
         try:
             latitude
@@ -8251,6 +8263,7 @@ class Antenna:
             raise NameError('Center frequency must be provided.')
 
         self.label = label
+        self.typetag = typetag
         self.latitude = latitude
         self.longitude = longitude
 
@@ -8303,7 +8316,7 @@ class Antenna:
     ############################################################################
 
     def __str__(self):
-        return ' Instance of class "{0}" in module "{1}" \n label: ({2[0]}, {2[1]}) \n location: {3}'.format(self.__class__.__name__, self.__module__, self.label, self.location.__str__())
+        return ' Instance of class "{0}" in module "{1}" \n label: {2} \n typetag: {3} \n location: {4}'.format(self.__class__.__name__, self.__module__, self.label, self.typetag, self.location.__str__())
 
     ############################################################################
 
