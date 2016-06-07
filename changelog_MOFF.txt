@@ -1,3 +1,15 @@
+From 71bfddd (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Add input keyword forceeval to member function
+evalAntennaPairCorrWts() of class AntennaArray. Update its docstring
+accordingly
+(*) Pass keyword forceeval in member function
+evalAntennaAutoCorrWts() when calling evalAntennaPairCorrWts() of
+class AntennaArray
+
 From effb5e9 (versatility):
 ==========================
 
