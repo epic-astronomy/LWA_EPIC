@@ -11892,7 +11892,7 @@ class AntennaArray:
         data_info = {}
         if datapool in ['current', 'stack', 'avg']:
             for apol in pol:
-                data_info[apol] = {'labels': self.auto_corr_data[datapool][apol]['labels'], 'data': self.auto_corr_data[datapool][apol]['E-fields']}
+                data_info[apol] = {'labels': self.auto_corr_data[datapool][apol]['labels'], 'twts': self.auto_corr_data[datapool][apol]['twts'], 'data': self.auto_corr_data[datapool][apol]['E-fields']}
         else:
             if not isinstance(data, dict):
                 raise TypeError('Input data must be a dictionary')
@@ -11913,18 +11913,39 @@ class AntennaArray:
             if apol not in ['P1', 'P2']:
                 raise ValueError('Invalid specification for input parameter pol')
 
-            for antkey in self.antenna_autocorr_wts_vuf:
-                if antkey in data_info[apol]['labels'].values():
-                    if apol in self.antenna_autocorr_wts_vuf[antkey]:
-                        antind, = NP.where(data_info['labels'] == antkey)
-                        if antind.size > 0:
-                            if autocorr_wts_cube[apol] is None:
-                                autocorr_wts_cube[apol] = self.antenna_autocorr_wts_vuf[antkey][apol] # sparse matrix nv x nu x nchan
-                                autocorr_data_cube[apol] = self.antenna_autocorr_wts_vuf[antkey][apol].toarray()[NP.newaxis,:,:,:] * data_info[apol][antind,:][:,NP.newaxis,NP.newaxis,:] # n_ts x nv x nu x nchan
-                            else:
-                                autocorr_wts_cube[apol] += self.antenna_autocorr_wts_vuf[antkey][apol] # sparse matrix nv x nu x nchan
-                                autocorr_data_cube[apol] += self.antenna_autocorr_wts_vuf[antkey][apol].toarray()[NP.newaxis,:,:,:] * data_info[apol][antind,:][:,NP.newaxis,NP.newaxis,:] # n_ts x nv x nu x nchan
+            for antind, antkey in enumerate(data_info[apol]['labels']):
+                typetag_pair = self.antenna_pair_to_typetag[(antkey,antkey)]
+                if autocorr_wts_cube[apol] is None:
+                    autocorr_wts_cube[apol] = self.pairwise_typetag_crosswts_vuf[typetag_pair][apol].toarray()[NP.newaxis,:,:,:] * data_info[apol]['twts'][:,antind,:][:,NP.newaxis,NP.newaxis,:] # nt x nv x nu x nchan
+                    autocorr_data_cube[apol] = self.pairwise_typetag_crosswts_vuf[typetag_pair][apol].toarray()[NP.newaxis,:,:,:] * data_info[apol]['twts'][:,antind,:][:,NP.newaxis,NP.newaxis,:] * data_info[apol]['E-fields'][:,antind,:][:,NP.newaxis,NP.newaxis,:] # nt x nv x nu x nchan
+                else:
+                    autocorr_wts_cube[apol] += self.pairwise_typetag_crosswts_vuf[typetag_pair][apol].toarray()[NP.newaxis,:,:,:] * data_info[apol]['twts'][:,antind,:][:,NP.newaxis,NP.newaxis,:] # nt x nv x nu x nchan
+                    autocorr_data_cube[apol] += self.pairwise_typetag_crosswts_vuf[typetag_pair][apol].toarray()[NP.newaxis,:,:,:] * data_info[apol]['twts'][:,antind,:][:,NP.newaxis,NP.newaxis,:] * data_info[apol]['E-fields'][:,antind,:][:,NP.newaxis,NP.newaxis,:] # nt x nv x nu x nchan
+            sum_wts = NP.sum(data_info[apol]['twts'], axis=1) # nt x 1
+            autocorr_wts_cube[apol] = autocorr_wts_cube[apol] / sum_wts[:,NP.newaxis,NP.newaxis,:] # nt x nv x nu x nchan
+            autocorr_data_cube[apol] = autocorr_data_cube[apol] / sum_wts[:,NP.newaxis,NP.newaxis,:] # nt x nv x nu x nchan
+
+                # if autocorr_wts_cube[apol] is None:
+                #     autocorr_wts_cube[apol] = self.pairwise_typetag_crosswts_vuf[typetag_pair][apol] # sparse matrix nv x nu x nchan
+                #     autocorr_data_cube[apol] = self.pairwise_typetag_crosswts_vuf[typetag_pair][apol].toarray()[NP.newaxis,:,:,:] * data_info[apol][antind,:][:,NP.newaxis,NP.newaxis,:] # n_ts x nv x nu x nchan
+                # else:
+                #     autocorr_wts_cube[apol] += self.pairwise_typetag_crosswts_vuf[typetag_pair][apol] # sparse matrix nv x nu x nchan
+                #     autocorr_data_cube[apol] += self.pairwise_typetag_crosswts_vuf[typetag_pair][apol].toarray()[NP.newaxis,:,:,:] * data_info[apol][antind,:][:,NP.newaxis,NP.newaxis,:] # n_ts x nv x nu x nchan
+                    
         return (autocorr_wts_cube, autocorr_data_cube)
+                    
+        #     for antkey in self.antenna_autocorr_wts_vuf:
+        #         if antkey in data_info[apol]['labels'].values():
+        #             if apol in self.antenna_autocorr_wts_vuf[antkey]:
+        #                 antind, = NP.where(data_info['labels'] == antkey)
+        #                 if antind.size != 0:
+        #                     if autocorr_wts_cube[apol] is None:
+        #                         autocorr_wts_cube[apol] = self.antenna_autocorr_wts_vuf[antkey][apol] # sparse matrix nv x nu x nchan
+        #                         autocorr_data_cube[apol] = self.antenna_autocorr_wts_vuf[antkey][apol].toarray()[NP.newaxis,:,:,:] * data_info[apol][antind,:][:,NP.newaxis,NP.newaxis,:] # n_ts x nv x nu x nchan
+        #                     else:
+        #                         autocorr_wts_cube[apol] += self.antenna_autocorr_wts_vuf[antkey][apol] # sparse matrix nv x nu x nchan
+        #                         autocorr_data_cube[apol] += self.antenna_autocorr_wts_vuf[antkey][apol].toarray()[NP.newaxis,:,:,:] * data_info[apol][antind,:][:,NP.newaxis,NP.newaxis,:] # n_ts x nv x nu x nchan
+        # return (autocorr_wts_cube, autocorr_data_cube)
 
     ############################################################################
 

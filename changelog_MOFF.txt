@@ -1,3 +1,13 @@
+From 06f22b0 (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) In member function makeAutoCorrCube() of class AntennaArray,
+make use of attribute pairwise_typetag_crosswts_vuf instead of
+antenna_autocorr_wts_vuf to determine autocorr_wts_cube and
+autcorr_data_cube
+
 From 71bfddd (versatility):
 ==========================
 
