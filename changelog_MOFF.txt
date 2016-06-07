@@ -1,3 +1,16 @@
+From 4bb6ec1 (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Add member function evalAntennaPairCorrWts() along with docstring
+under class AntennaArray. Update class docstring accordingly
+(*) Update attribute antenna_pair_to_typetag in member function
+pairTypetags() of class AntennaArray
+(*) Rename attribute pairwise_antenna_crosswts_vuf to
+pairwise_typetag_crosswts_vuf in class AntennaArray. Update class
+docstring accordingly
+
 From 9e75e7d (versatility):
 ==========================
 

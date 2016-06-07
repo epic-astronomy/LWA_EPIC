@@ -8864,7 +8864,7 @@ class Antenna:
 
         xy_center   [tuple, list or numpy array] 2-element list, tuple or numpy
                     array denoting x- and y-locations of center of antenna.
-                    Default=None means use the x- and y- locations of the 
+                    Default=None means use the x- and y-locations of the 
                     antenna
 
         Outputs:
@@ -9012,7 +9012,7 @@ class AntennaArray:
                             auto-correlation spectra. It is of size 
                             n_tavg x nant x 1
 
-    pairwise_antenna_crosswts_vuf
+    pairwise_typetag_crosswts_vuf
                  [dictionary] holds grid illumination wts (centered on grid 
                  origin) obtained from cross-correlation of antenna pairs that
                  belong to their respective typetags. Tuples of typetag pairs
@@ -9343,6 +9343,12 @@ class AntennaArray:
                       for every antenna. Flags are taken into account while 
                       constructing this grid.
 
+    evalAntennaPairCorrWts()
+                      Evaluate correlation of pair of antenna illumination 
+                      weights on grid. It will be computed only if it was not 
+                      computed or stored in attribute 
+                      pairwise_typetag_crosswts_vuf earlier
+
     avgAutoCorr()     Accumulates and averages auto-correlation of electric 
                       fields of individual antennas under each polarization
 
@@ -9388,7 +9394,7 @@ class AntennaArray:
         antennas_center, latitude, longitude, tbinsize, auto_corr_data, 
         antenna_autocorr_wts_vuf, antenna_autocorr_vuf_ind, 
         antenna_autocorr_set, typetags, pairwise_typetags, 
-        pairwise_antenna_crosswts_vuf, antenna_pair_to_typetag
+        pairwise_typetag_crosswts_vuf, antenna_pair_to_typetag
      
         Read docstring of class AntennaArray for details on these attributes.
 
@@ -9427,7 +9433,7 @@ class AntennaArray:
         self.antenna_pair_to_typetag = {}
 
         self.auto_corr_data = {}
-        self.pairwise_antenna_crosswts_vuf = {}
+        self.pairwise_typetag_crosswts_vuf = {}
         self.antenna_autocorr_wts_vuf = {}
         self.antenna_autocorr_vuf_ind = {}
         self.antenna_autocorr_set = False
@@ -9738,6 +9744,7 @@ class AntennaArray:
                 else:
                     pairwise_typetags[(i,j)]['cross'] = set([(l1,l2) for l1 in labels1 for l2 in labels2])
         self.pairwise_typetags = pairwise_typetags
+        self.antenna_pair_to_typetag = {v: k  for v in list(val) for k,val in pairwise_typetags}
 
     ############################################################################
 
@@ -11593,6 +11600,114 @@ class AntennaArray:
                 
             if verbose:
                 print 'Gridded aperture illumination and electric fields for polarization {0} from {1:0d} unflagged contributing antennas'.format(apol, num_unflagged)
+
+    ############################################################################ 
+
+    def evalAntennaPairCorrWts(self, label1, label2=None):
+
+        """
+        ------------------------------------------------------------------------
+        Evaluate correlation of pair of antenna illumination weights on grid. 
+        It will be computed only if it was not computed or stored in attribute 
+        pairwise_typetag_crosswts_vuf earlier
+
+        Inputs:
+
+        label1  [string] Label of first antenna. Must be specified (no default)
+
+        label2  [string] Label of second antenna. If specified as None 
+                (default), it will be set equal to label1 in which case the
+                auto-correlation of antenna weights is evaluated
+        ------------------------------------------------------------------------
+        """
+
+        try:
+            label1
+        except NameError:
+            raise NameError('Input label1 must be specified')
+
+        if label1 not in self.antennas:
+            raise KeyError('Input label1 not found in current instance of class AntennaArray')
+
+        if label2 is None:
+            label2 = label1
+
+        if label2 not in self.antennas:
+            raise KeyError('Input label2 not found in current instance of class AntennaArray')
+
+        if (label1, label2) in self.antenna_pair_to_typetag:
+            typetag_pair = self.antenna_pair_to_typetag[(label1,label2)]
+        elif (label2, label1) in self.antenna_pair_to_typetag:
+            typetag_pair = self.antenna_pair_to_typetag[(label2,label1)]
+        else:
+            raise KeyError('Antenna pair not found in attribute antenna_pair_to_type. Needs debugging')
+
+        typetag1, typetag2 = typetag_pair
+        if typetag_pair not in self.pairwise_typetag_crosswts_vuf:
+            self.pairwise_typetag_crosswts_vuf[typetag_pair] = {}
+            if (typetag1 == typetag2) and (self.antennas[label1].aperture.kernel_type == 'func'):
+                du = self.gridu[0,1] - self.gridu[0,0]
+                dv = self.gridv[1,0] - self.gridv[0,0]
+                gridu, gridv = NP.meshgrid(du*(NP.arange(2*self.gridu.shape[1])-self.gridu.shape[1]), dv*(NP.arange(2*self.gridu.shape[0])-self.gridu.shape[0]))
+                wavelength = FCNST.c / self.f
+                min_lambda = NP.abs(wavelength).min()
+                rmaxNN = 0.5 * NP.sqrt(du**2 + dv**2) * min_lambda 
+                gridx = gridu[:,:,NP.newaxis] * wavelength.reshape(1,1,-1)
+                gridy = gridv[:,:,NP.newaxis] * wavelength.reshape(1,1,-1)
+                gridxy = NP.hstack((gridx.reshape(-1,1), gridy.reshape(-1,1)))
+                wl = NP.ones(gridu.shape)[:,:,NP.newaxis] * wavelength.reshape(1,1,-1)
+                ant_aprtr = copy.deepcopy(self.antennas[label1].aperture)
+                pol_type = 'dual'
+                kerntype = ant_aprtr.kernel_type
+                shape = ant_aprtr.shape
+                kernshapeparms = {p: {'xmax': ant_aprtr.xmax[p], 'ymax': ant_aprtr.ymax[p], 'rmax': ant_aprtr.rmax[p], 'rmin': ant_aprtr.rmin[p], 'rotangle': ant_aprtr.rotangle[p]} for p in pol}
+                for p in pol:
+                    if shape[p] == 'rect':
+                        shape[p] = 'auto_convolved_rect'
+                    elif shape[p] == 'square':
+                        shape[p] = 'auto_convolved_square'
+                    elif shape[p] == 'circular':
+                        shape[p] = 'auto_convolved_circular'
+                    else:
+                        raise ValueError('Aperture kernel footprint shape - {0} - currently unsupported'.format(shape[p]))
+                        
+                aprtr = APR.Aperture(pol_type=pol_type, kernel_type=kerntype,
+                                     shape=shape, parms=kernshapeparms,
+                                     lkpinfo=lkpinfo, load_lookup=True)
+                
+                max_aprtr_size = max([NP.sqrt(aprtr.xmax['P1']**2 + NP.sqrt(aprtr.ymax['P1']**2)), NP.sqrt(aprtr.xmax['P2']**2 + NP.sqrt(aprtr.ymax['P2']**2)), aprtr.rmax['P1'], aprtr.rmax['P2']])
+                distNN = 2.0 * max_aprtr_size
+                indNN_list, blind, vuf_gridind = LKP.find_NN(NP.zeros(2).reshape(1,-1), gridxy, distance_ULIM=distNN, flatten=True, parallel=False)
+                dxy = gridxy[vuf_gridind,:]
+                unraveled_vuf_ind = NP.unravel_index(vuf_gridind, gridu.shape+(self.f.size,))
+                for p in pol:
+                    krn = aprtr.compute(dxy, wavelength=wl[vuf_gridind], pol=p, rmaxNN=rmaxNN, load_lookup=False)
+                    krn3d_sparse = SpM.csr_matrix((krn[p], unraveled_vuf_ind), shape=gridu.shape+(self.f.size,), dtype=NP.complex64)
+                    self.pairwise_typetag_crosswts_vuf[typetag_pair][p] = SpM.csr_matrix((krn3d_sparse/krn3d_sparse.sum(axis=0).sum(axis=1), unraveled_vuf_ind), shape=gridu.shape+(self.f.size,), dtype=NP.complex64)
+            else:
+                ulocs = du*(NP.arange(2*self.gridu.shape[1])-self.gridu.shape[1])
+                vlocs = dv*(NP.arange(2*self.gridu.shape[0])-self.gridu.shape[0])
+                antenna_grid_wts_vuf_1 = self.antennas[label1].evalGridIllumination(uvlocs=(ulocs, vlocs), xy_center=NP.zeroes(2))
+                if label1 == label2:
+                    for p in pol:
+                        sum_wts1 = NP.sum(NP.abs(antenna_grid_wts_vuf_1[p].toarray()), axis=(0,1), keepdims=True)
+                        sum_wts = sum_wts1**2
+                        antpair_beam = NP.abs(NP.fft.fft2(antenna_grid_wts_vuf_1[p].toarray(), axes=(0,1)))**2
+                        antpair_grid_wts_vuf = NP.fft.ifft2(antpair_beam/sum_wts, axes=(0,1)) # Inverse FFT
+                        antpair_grid_wts_vuf = NP.fft.ifftshift(antpair_grid_wts_vuf, axes=(0,1))
+                        self.pairwise_typetag_crosswts_vuf[typetag_pair][p] = SpM.csr_matrix(antpair_grid_wts_vuf)
+                else:
+                    antenna_grid_wts_vuf_2 = self.antennas[label2].evalGridIllumination(uvlocs=(ulocs, vlocs), xy_center=NP.zeroes(2))
+                    for p in pol:
+                        sum_wts1 = NP.sum(NP.abs(antenna_grid_wts_vuf_1[p].toarray()), axis=(0,1), keepdims=True)
+                        sum_wts2 = NP.sum(NP.abs(antenna_grid_wts_vuf_2[p].toarray().conj()), axis=(0,1), keepdims=True)
+                        sum_wts = sum_wts1 * sum_wts2
+                        antpair_beam = NP.fft.fft2(antenna_grid_wts_vuf_1[p].toarray(), axes=(0,1)) * NP.fft.fft2(antenna_grid_wts_vuf_1[p].toarray().conj(), axes=(0,1))
+                        antpair_grid_wts_vuf = NP.fft.ifft2(antpair_beam/sum_wts, axes=(0,1)) # Inverse FFT
+                        antpair_grid_wts_vuf = NP.fft.ifftshift(antpair_grid_wts_vuf, axes=(0,1))
+                        self.pairwise_typetag_crosswts_vuf[typetag_pair][p] = SpM.csr_matrix(antpair_grid_wts_vuf)
+        else:
+            print 'Specified antenna pair correlation weights have already been evaluated'
 
     ############################################################################ 
 
