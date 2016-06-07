@@ -7315,7 +7315,7 @@ class NewImage:
 
     ############################################################################
 
-    def evalAutoCorr(self, datapool='stack', forceeval=False):
+    def evalAutoCorr(self, datapool='avg', forceeval=False):
 
         """
         ------------------------------------------------------------------------
@@ -7326,7 +7326,7 @@ class NewImage:
 
         datapool  [string] Specifies whether data to be used in determining the
                   auto-correlation the E-fields to be used come from
-                  'stack' (default), 'current', or 'avg'. Squared electric 
+                  'stack', 'current', or 'avg' (default). Squared electric 
                   fields will be used if set to 'current' or 'stack', and 
                   averaged squared electric fields if set to 'avg'
 
@@ -7343,7 +7343,7 @@ class NewImage:
             
     ############################################################################
     
-    def evalPowerPattern(self, pad=0):
+    def evalPowerPattern(self, pad=0, datapool='avg'):
 
         """
         ------------------------------------------------------------------------
@@ -7351,6 +7351,11 @@ class NewImage:
         footprint
 
         Input:
+
+        datapool
+                [string] Specifies whether weights to be used in determining 
+                the power pattern come from 'stack', 'current', or 'avg' 
+                (default). 
 
         pad     [integer] indicates the amount of padding before estimating
                 power pattern image. Applicable only when attribute 
@@ -7366,21 +7371,61 @@ class NewImage:
         if not isinstance(pad, int):
             raise TypeError('Input keyword pad must be an integer')
         
-        if not self.autocorr_set:
-            self.evalAutoCorr()
+        if datapool not in ['recent', 'stack', 'avg']:
+            raise ValueError('Invalid value specified for input datapool')
 
+        self.antenna_array.evalAllAntennaPairCorrWts()
+        self.antenna_array.makeCrossCorrWtsCube()
         pol = ['P1', 'P2']
         if self.measured_type == 'E-field':
             self.pbeam = {p: None for p in pol}                
             for p in pol:
-                sum_wts = NP.sum(self.autocorr_wts_vuf[p], axis=(0,1), keepdims=True)
-                padded_wts_vuf = NP.pad(self.autocorr_wts_vuf[p], (((2**pad-1)*self.gridv.shape[0],(2**pad-1)*self.gridv.shape[0]),((2**pad-1)*self.gridu.shape[1],(2**pad-1)*self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
-                padded_wts_vuf = NP.fft.ifftshift(padded_wts_vuf, axes=(0,1))
-                wts_lmf = NP.fft.fft2(padded_wts_vuf, axes=(0,1)) / sum_wts
-                if NP.abs(wts_lmf.imag).max() < 1e-10:
-                    self.pbeam[p] = NP.fft.fftshift(wts_lmf.real, axes=(0,1))
-                else:
-                    raise ValueError('Significant imaginary component found in the power pattern')
+                sum_wts = NP.sum(self.antenna_array.centered_crosscorr_wts_vuf[p], axis=(1,2), keepdims=True)
+                padded_wts_vuf = NP.pad(self.antenna_array.centered_crosscorr_wts_vuf[p], (((2**pad-1)*self.gridv.shape[0],(2**pad-1)*self.gridv.shape[0]),((2**pad-1)*self.gridu.shape[1],(2**pad-1)*self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
+                padded_wts_vuf = NP.fft.ifftshift(padded_wts_vuf, axes=(1,2))
+                wts_lmf = NP.fft.fft2(padded_wts_vuf, axes=(1,2)) / sum_wts
+                self.pbeam[p] = NP.fft.fftshift(wts_lmf.real, axes=(1,2))
+
+    ############################################################################
+    
+    # def evalPowerPattern(self, pad=0):
+
+    #     """
+    #     ------------------------------------------------------------------------
+    #     Evaluate power pattern for the antenna from its auto-correlated 
+    #     footprint
+
+    #     Input:
+
+    #     pad     [integer] indicates the amount of padding before estimating
+    #             power pattern image. Applicable only when attribute 
+    #             measured_type is set to 'E-field' (MOFF imaging). The output 
+    #             image of the pwoer pattern will be of size 2**pad-1 times the 
+    #             size of the antenna array grid along u- and v-axes. Value must 
+    #             not be negative. Default=0 (implies no padding of the 
+    #             auto-correlated footprint). pad=1 implies padding by factor 2 
+    #             along u- and v-axes for MOFF
+    #     ------------------------------------------------------------------------
+    #     """
+
+    #     if not isinstance(pad, int):
+    #         raise TypeError('Input keyword pad must be an integer')
+        
+    #     if not self.autocorr_set:
+    #         self.evalAutoCorr()
+
+    #     pol = ['P1', 'P2']
+    #     if self.measured_type == 'E-field':
+    #         self.pbeam = {p: None for p in pol}                
+    #         for p in pol:
+    #             sum_wts = NP.sum(self.autocorr_wts_vuf[p], axis=(0,1), keepdims=True)
+    #             padded_wts_vuf = NP.pad(self.autocorr_wts_vuf[p], (((2**pad-1)*self.gridv.shape[0],(2**pad-1)*self.gridv.shape[0]),((2**pad-1)*self.gridu.shape[1],(2**pad-1)*self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
+    #             padded_wts_vuf = NP.fft.ifftshift(padded_wts_vuf, axes=(0,1))
+    #             wts_lmf = NP.fft.fft2(padded_wts_vuf, axes=(0,1)) / sum_wts
+    #             if NP.abs(wts_lmf.imag).max() < 1e-10:
+    #                 self.pbeam[p] = NP.fft.fftshift(wts_lmf.real, axes=(0,1))
+    #             else:
+    #                 raise ValueError('Significant imaginary component found in the power pattern')
 
     ############################################################################
 

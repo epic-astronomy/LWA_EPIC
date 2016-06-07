@@ -1,3 +1,12 @@
+From f76414e (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Modify evalPowerPattern() member function of class NewImage.
+Update class docstring accordingly. Comment out the earlier version
+of the same member function
+
 From 87c7d0b (versatility):
 ==========================
 
