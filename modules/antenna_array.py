@@ -6255,6 +6255,16 @@ class NewImage:
                  
     f0:          [Scalar] Positive value for the center frequency in Hz.
 
+    autocorr_wts_vuf
+                 [dictionary] dictionary with polarization keys 'P1' and 'P2. 
+                 Under each key is a matrix of size nt x nv x nu x nchan
+
+    autocorr_data_vuf 
+                 [dictionary] dictionary with polarization keys 'P1' and 'P2. 
+                 Under each key is a matrix of size nt x nv x nu x nchan 
+                 where nt=1, nt=n_timestamps, or nt=n_tavg if datapool is set 
+                 to 'current', 'stack' or 'avg' respectively
+
     gridx_P1     [Numpy array] x-locations of the grid lattice for P1 
                  polarization
 
@@ -6341,6 +6351,10 @@ class NewImage:
                  appropriate electric field quantities associated with the 
                  antenna array.
 
+    evalAutoCorr()
+                 Evaluate sum of auto-correlations of all antenna weights on 
+                 the UV-plane. 
+
     getStats()   Get statistics from images from inside specified boxes
 
     save()       Saves the image information to disk
@@ -6366,7 +6380,8 @@ class NewImage:
         timestamp, f, f0, gridx_P1, gridy_P1, grid_illumination_P1, grid_Ef_P1, 
         holograph_P1, holograph_PB_P1, img_P1, PB_P1, lf_P1, mf_P1, gridx_P1,
         gridy_P1, grid_illumination_P1, grid_Ef_P1, holograph_P1,
-        holograph_PB_P1, img_P1, PB_P1, lf_P1, and mf_P1
+        holograph_PB_P1, img_P1, PB_P1, lf_P1, mf_P1, autocorr_wts_vuf, 
+        autocorr_data_vuf
 
         Read docstring of class Image for details on these attributes.
         ------------------------------------------------------------------------
@@ -6548,6 +6563,7 @@ class NewImage:
         self.vis_vuf = {}
         self.twts = {}
         self.autocorr_wts_vuf = {}
+        self.autocorr_data_vuf = {}
         self.nzsp_grid_vis_avg = {}
         self.nzsp_grid_illumination_avg = {}
         self.nzsp_wts_vuf = {}
@@ -6601,6 +6617,7 @@ class NewImage:
                     self.wts_vuf[apol] = None
                     self.vis_vuf[apol] = None
                     self.autocorr_wts_vuf[apol] = None
+                    self.autocorr_data_vuf[apol] = None
                     self.nzsp_grid_vis_avg[apol] = None
                     self.nzsp_grid_illumination_avg[apol] = None
                     self.nzsp_wts_vuf[apol] = None
@@ -7200,25 +7217,118 @@ class NewImage:
 
     ############################################################################
 
-    def evalAutoCorr(self, lkpinfo=None, forceeval=False):
+    # def evalAutoCorr(self, lkpinfo=None, forceeval=False):
+
+    #     """
+    #     ------------------------------------------------------------------------
+    #     Evaluate auto-correlation of single antenna weights with itself on the
+    #     UV-plane. 
+
+    #     Inputs:
+
+    #     lkpinfo   [dictionary] consists of weights information for each of 
+    #               the polarizations under polarization keys. Each of 
+    #               the values under the keys is a string containing the full
+    #               path to a filename that contains the positions and 
+    #               weights for the aperture illumination in the form of 
+    #               a lookup table as columns (x-loc [float], y-loc 
+    #               [float], wts[real], wts[imag if any]). In this case, the 
+    #               lookup is for auto-corrlation of antenna weights. It only 
+    #               applies when the antenna aperture class is set to 
+    #               lookup-based kernel estimation instead of a functional form
+
+    #     forceeval [boolean] When set to False (default) the auto-correlation in
+    #               the UV plane is not evaluated if it was already evaluated 
+    #               earlier. If set to True, it will be forcibly evaluated 
+    #               independent of whether they were already evaluated or not
+    #     ------------------------------------------------------------------------
+    #     """
+
+    #     if forceeval or (not self.autocorr_set):
+    #         if self.measured_type == 'E-field':
+    
+    #             pol = ['P1', 'P2']
+    
+    #             # Assume all antenna apertures are identical and make a copy of the
+    #             # antenna aperture
+    #             # Need serious development for non-identical apertures
+    
+    #             ant_aprtr = copy.deepcopy(self.antenna_array.antennas.itervalues().next().aperture)
+    #             pol_type = 'dual'
+    #             kerntype = ant_aprtr.kernel_type
+    #             shape = ant_aprtr.shape
+    #             # kernshapeparms = {'xmax': {p: ant_aprtr.xmax[p] for p in pol}, 'ymax': {p: ant_aprtr.ymax[p] for p in pol}, 'rmin': {p: ant_aprtr.rmin[p] for p in pol}, 'rmax': {p: ant_aprtr.rmax[p] for p in pol}, 'rotangle': {p: ant_aprtr.rotangle[p] for p in pol}}
+    #             kernshapeparms = {p: {'xmax': ant_aprtr.xmax[p], 'ymax': ant_aprtr.ymax[p], 'rmax': ant_aprtr.rmax[p], 'rmin': ant_aprtr.rmin[p], 'rotangle': ant_aprtr.rotangle[p]} for p in pol}
+    
+    #             for p in pol:
+    #                 if kerntype[p] == 'func':
+    #                     if shape[p] == 'rect':
+    #                         shape[p] = 'auto_convolved_rect'
+    #                     elif shape[p] == 'square':
+    #                         shape[p] = 'auto_convolved_square'
+    #                     elif shape[p] == 'circular':
+    #                         shape[p] = 'auto_convolved_circular'
+    #                     else:
+    #                         raise ValueError('Aperture kernel footprint shape - {0} - currently unsupported'.format(shape[p]))
+                        
+    #             aprtr = APR.Aperture(pol_type=pol_type, kernel_type=kerntype,
+    #                                  shape=shape, parms=kernshapeparms,
+    #                                  lkpinfo=lkpinfo, load_lookup=True)
+                
+    #             du = self.gridu[0,1] - self.gridu[0,0]
+    #             dv = self.gridv[1,0] - self.gridv[0,0]
+    #             if self.measured_type == 'E-field':
+    #                 gridu, gridv = NP.meshgrid(du*(NP.arange(2*self.gridu.shape[1])-self.gridu.shape[1]), dv*(NP.arange(2*self.gridu.shape[0])-self.gridu.shape[0]))
+    #             else:
+    #                 gridu, gridv = self.gridu, self.gridv
+    
+    #             wavelength = FCNST.c / self.f
+    #             min_lambda = NP.abs(wavelength).min()
+    #             rmaxNN = 0.5 * NP.sqrt(du**2 + dv**2) * min_lambda 
+    
+    #             gridx = gridu[:,:,NP.newaxis] * wavelength.reshape(1,1,-1)
+    #             gridy = gridv[:,:,NP.newaxis] * wavelength.reshape(1,1,-1)
+    #             gridxy = NP.hstack((gridx.reshape(-1,1), gridy.reshape(-1,1)))
+    #             wl = NP.ones(gridu.shape)[:,:,NP.newaxis] * wavelength.reshape(1,1,-1)
+    #             wl = wl.reshape(-1)
+    #             distNN = 2.0 * max([NP.sqrt(aprtr.xmax['P1']**2 + NP.sqrt(aprtr.ymax['P1']**2)), NP.sqrt(aprtr.xmax['P2']**2 + NP.sqrt(aprtr.ymax['P2']**2)), aprtr.rmax['P1'], aprtr.rmax['P2']]) # factor in the front is to safely estimate kernel around some extra grid pixels
+    #             indNN_list, blind, vuf_gridind = LKP.find_NN(NP.zeros((1,2)), gridxy, distance_ULIM=distNN, flatten=True, parallel=False)
+    #             dxy = gridxy[vuf_gridind,:]
+    #             unraveled_vuf_ind = NP.unravel_index(vuf_gridind, gridu.shape+(self.f.size,))
+    
+    #             self.autocorr_wts_vuf = {p: NP.zeros(gridu.shape+(self.f.size,), dtype=NP.complex64) for p in pol}
+    #             # self.pbeam = {p: NP.zeros((2*gridv.shape[0],2*gridu.shape[1],self.f.size), dtype=NP.complex64) for p in pol}                
+    #             for p in pol:
+    #                 krn = aprtr.compute(dxy, wavelength=wl[vuf_gridind], pol=p, rmaxNN=rmaxNN, load_lookup=False)
+    #                 self.autocorr_wts_vuf[p][unraveled_vuf_ind] = krn[p]
+    #                 self.autocorr_wts_vuf[p] = self.autocorr_wts_vuf[p] / NP.sum(self.autocorr_wts_vuf[p], axis=(0,1), keepdims=True)
+    #                 # sum_wts = NP.sum(self.autocorr_wts_vuf[p], axis=(0,1), keepdims=True)
+    #                 # padded_wts_vuf = NP.pad(self.autocorr_wts_vuf[p], ((self.gridv.shape[0],self.gridv.shape[0]),(self.gridu.shape[1],self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
+    #                 # padded_wts_vuf = NP.fft.ifftshift(padded_wts_vuf, axes=(0,1))
+    #                 # wts_lmf = NP.fft.fft2(padded_wts_vuf, axes=(0,1)) / sum_wts
+    #                 # if NP.abs(wts_lmf.imag).max() < 1e-10:
+    #                 #     self.pbeam[p] = NP.fft.fftshift(wts_lmf.real, axes=(0,1))
+    #                 # else:
+    #                 #     raise ValueError('Significant imaginary component found in the power pattern')
+                    
+    #             self.autocorr_set = True
+
+    ############################################################################
+
+    def evalAutoCorr(self, datapool='stack', forceeval=False):
 
         """
         ------------------------------------------------------------------------
-        Evaluate auto-correlation of single antenna weights with itself on the
+        Evaluate sum of auto-correlations of all antenna weights on the
         UV-plane. 
 
         Inputs:
 
-        lkpinfo   [dictionary] consists of weights information for each of 
-                  the polarizations under polarization keys. Each of 
-                  the values under the keys is a string containing the full
-                  path to a filename that contains the positions and 
-                  weights for the aperture illumination in the form of 
-                  a lookup table as columns (x-loc [float], y-loc 
-                  [float], wts[real], wts[imag if any]). In this case, the 
-                  lookup is for auto-corrlation of antenna weights. It only 
-                  applies when the antenna aperture class is set to 
-                  lookup-based kernel estimation instead of a functional form
+        datapool  [string] Specifies whether data to be used in determining the
+                  auto-correlation the E-fields to be used come from
+                  'stack' (default), 'current', or 'avg'. Squared electric 
+                  fields will be used if set to 'current' or 'stack', and 
+                  averaged squared electric fields if set to 'avg'
 
         forceeval [boolean] When set to False (default) the auto-correlation in
                   the UV plane is not evaluated if it was already evaluated 
@@ -7228,76 +7338,11 @@ class NewImage:
         """
 
         if forceeval or (not self.autocorr_set):
-            if self.measured_type == 'E-field':
-    
-                pol = ['P1', 'P2']
-    
-                # Assume all antenna apertures are identical and make a copy of the
-                # antenna aperture
-                # Need serious development for non-identical apertures
-    
-                ant_aprtr = copy.deepcopy(self.antenna_array.antennas.itervalues().next().aperture)
-                pol_type = 'dual'
-                kerntype = ant_aprtr.kernel_type
-                shape = ant_aprtr.shape
-                # kernshapeparms = {'xmax': {p: ant_aprtr.xmax[p] for p in pol}, 'ymax': {p: ant_aprtr.ymax[p] for p in pol}, 'rmin': {p: ant_aprtr.rmin[p] for p in pol}, 'rmax': {p: ant_aprtr.rmax[p] for p in pol}, 'rotangle': {p: ant_aprtr.rotangle[p] for p in pol}}
-                kernshapeparms = {p: {'xmax': ant_aprtr.xmax[p], 'ymax': ant_aprtr.ymax[p], 'rmax': ant_aprtr.rmax[p], 'rmin': ant_aprtr.rmin[p], 'rotangle': ant_aprtr.rotangle[p]} for p in pol}
-    
-                for p in pol:
-                    if kerntype[p] == 'func':
-                        if shape[p] == 'rect':
-                            shape[p] = 'auto_convolved_rect'
-                        elif shape[p] == 'square':
-                            shape[p] = 'auto_convolved_square'
-                        elif shape[p] == 'circular':
-                            shape[p] = 'auto_convolved_circular'
-                        else:
-                            raise ValueError('Aperture kernel footprint shape - {0} - currently unsupported'.format(shape[p]))
-                        
-                aprtr = APR.Aperture(pol_type=pol_type, kernel_type=kerntype,
-                                     shape=shape, parms=kernshapeparms,
-                                     lkpinfo=lkpinfo, load_lookup=True)
-                
-                du = self.gridu[0,1] - self.gridu[0,0]
-                dv = self.gridv[1,0] - self.gridv[0,0]
-                if self.measured_type == 'E-field':
-                    gridu, gridv = NP.meshgrid(du*(NP.arange(2*self.gridu.shape[1])-self.gridu.shape[1]), dv*(NP.arange(2*self.gridu.shape[0])-self.gridu.shape[0]))
-                else:
-                    gridu, gridv = self.gridu, self.gridv
-    
-                wavelength = FCNST.c / self.f
-                min_lambda = NP.abs(wavelength).min()
-                rmaxNN = 0.5 * NP.sqrt(du**2 + dv**2) * min_lambda 
-    
-                gridx = gridu[:,:,NP.newaxis] * wavelength.reshape(1,1,-1)
-                gridy = gridv[:,:,NP.newaxis] * wavelength.reshape(1,1,-1)
-                gridxy = NP.hstack((gridx.reshape(-1,1), gridy.reshape(-1,1)))
-                wl = NP.ones(gridu.shape)[:,:,NP.newaxis] * wavelength.reshape(1,1,-1)
-                wl = wl.reshape(-1)
-                distNN = 2.0 * max([NP.sqrt(aprtr.xmax['P1']**2 + NP.sqrt(aprtr.ymax['P1']**2)), NP.sqrt(aprtr.xmax['P2']**2 + NP.sqrt(aprtr.ymax['P2']**2)), aprtr.rmax['P1'], aprtr.rmax['P2']]) # factor in the front is to safely estimate kernel around some extra grid pixels
-                indNN_list, blind, vuf_gridind = LKP.find_NN(NP.zeros((1,2)), gridxy, distance_ULIM=distNN, flatten=True, parallel=False)
-                dxy = gridxy[vuf_gridind,:]
-                unraveled_vuf_ind = NP.unravel_index(vuf_gridind, gridu.shape+(self.f.size,))
-    
-                self.autocorr_wts_vuf = {p: NP.zeros(gridu.shape+(self.f.size,), dtype=NP.complex64) for p in pol}
-                # self.pbeam = {p: NP.zeros((2*gridv.shape[0],2*gridu.shape[1],self.f.size), dtype=NP.complex64) for p in pol}                
-                for p in pol:
-                    krn = aprtr.compute(dxy, wavelength=wl[vuf_gridind], pol=p, rmaxNN=rmaxNN, load_lookup=False)
-                    self.autocorr_wts_vuf[p][unraveled_vuf_ind] = krn[p]
-                    self.autocorr_wts_vuf[p] = self.autocorr_wts_vuf[p] / NP.sum(self.autocorr_wts_vuf[p], axis=(0,1), keepdims=True)
-                    # sum_wts = NP.sum(self.autocorr_wts_vuf[p], axis=(0,1), keepdims=True)
-                    # padded_wts_vuf = NP.pad(self.autocorr_wts_vuf[p], ((self.gridv.shape[0],self.gridv.shape[0]),(self.gridu.shape[1],self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
-                    # padded_wts_vuf = NP.fft.ifftshift(padded_wts_vuf, axes=(0,1))
-                    # wts_lmf = NP.fft.fft2(padded_wts_vuf, axes=(0,1)) / sum_wts
-                    # if NP.abs(wts_lmf.imag).max() < 1e-10:
-                    #     self.pbeam[p] = NP.fft.fftshift(wts_lmf.real, axes=(0,1))
-                    # else:
-                    #     raise ValueError('Significant imaginary component found in the power pattern')
-                    
-                self.autocorr_set = True
+            self.autocorr_wts_vuf, self.autocorr_data_vuf = self.antenna_array.makeAutoCorrCube(datapool=datapool)
+            self.autocorr_set = True
             
     ############################################################################
-
+    
     def evalPowerPattern(self, pad=0):
 
         """
@@ -10090,7 +10135,7 @@ class AntennaArray:
         """
         ------------------------------------------------------------------------
         Estimates antenna-wise E-field auto-correlations under both
-        polarizations. It can be for the msot recent timestamp, stacked or
+        polarizations. It can be for the most recent timestamp, stacked or
         averaged along timestamps.
 
         Inputs:
@@ -11764,10 +11809,10 @@ class AntennaArray:
 
         Tuple (autocorr_wts_cube, autocorr_data_cube). autocorr_wts_cube is a
         dictionary with polarization keys 'P1' and 'P2. Under each key is a 
-        sparse matrix of size nv x nu x nchan. autocorr_data_cube is also a 
+        matrix of size nt x nv x nu x nchan. autocorr_data_cube is also a 
         dictionary with polarization keys 'P1' and 'P2. Under each key is a 
-        matrix of size n_ts x nv x nu x nchan where n_ts=1, n_ts=n_timestamps,
-        or n_ts=n_tavg if datapool is set to 'current', 'stack' or 'avg'
+        matrix of size nt x nv x nu x nchan where nt=1, nt=n_timestamps,
+        or nt=n_tavg if datapool is set to 'current', 'stack' or 'avg'
         respectively
         ------------------------------------------------------------------------
         """
