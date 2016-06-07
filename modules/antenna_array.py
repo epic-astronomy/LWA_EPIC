@@ -7380,11 +7380,11 @@ class NewImage:
         if self.measured_type == 'E-field':
             self.pbeam = {p: None for p in pol}                
             for p in pol:
-                sum_wts = NP.sum(self.antenna_array.centered_crosscorr_wts_vuf[p], axis=(1,2), keepdims=True)
+                sum_wts = NP.sum(self.antenna_array.centered_crosscorr_wts_vuf[p], axis=(0,1), keepdims=True)
                 padded_wts_vuf = NP.pad(self.antenna_array.centered_crosscorr_wts_vuf[p], (((2**pad-1)*self.gridv.shape[0],(2**pad-1)*self.gridv.shape[0]),((2**pad-1)*self.gridu.shape[1],(2**pad-1)*self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
-                padded_wts_vuf = NP.fft.ifftshift(padded_wts_vuf, axes=(1,2))
-                wts_lmf = NP.fft.fft2(padded_wts_vuf, axes=(1,2)) / sum_wts
-                self.pbeam[p] = NP.fft.fftshift(wts_lmf.real, axes=(1,2))
+                padded_wts_vuf = NP.fft.ifftshift(padded_wts_vuf, axes=(0,1))
+                wts_lmf = NP.fft.fft2(padded_wts_vuf, axes=(0,1)) / sum_wts
+                self.pbeam[p] = NP.fft.fftshift(wts_lmf.real, axes=(0,1))
 
     ############################################################################
     
@@ -9136,9 +9136,13 @@ class AntennaArray:
     pairwise_typetags     
                  [dictionary] Dictionary containing keys which are unique 
                  pairwise combination (tuples) of antenna type tags. Under each 
-                 of these pairwise type tag keys is a set of pairwise (tuple) 
-                 antenna labels denoting the antenna pairs that are of that 
-                 type
+                 of these pairwise type tag keys is a dictionary with two keys 
+                 'auto' and 'cross' each of which contains a set of pairwise 
+                 (tuple) antenna labels denoting the antenna pairs that are of 
+                 that type. Under 'auto' are tuples with same antennas while
+                 under 'cross' it contains antenna pairs in which the antennas 
+                 are not the same. The 'auto' key exists only when antenna
+                 type tag tuple contains both antennas of same type. 
 
     antenna_pair_to_typetag
                  [dictionary] Dictionary containing antenna pair keys and the
@@ -9449,6 +9453,12 @@ class AntennaArray:
                       auto-correlation using the gridding information 
                       determined for every antenna. Flags are taken into 
                       account while constructing this grid
+
+    makeCrossCorrWtsCube()
+                      Constructs the grid of zero-centered cross-correlation 
+                      of antenna aperture pairs using the gridding information 
+                      determined for every antenna. Flags are taken into account 
+                      while constructing this grid
 
     quick_beam_synthesis()  
                       A quick generator of synthesized beam using antenna array 
@@ -11947,6 +11957,68 @@ class AntennaArray:
                     
     ############################################################################
 
+    def makeCrossCorrWtsCube(self, pol=None, data=None, datapool='stack',
+                             verbose=True):
+
+        """
+        ------------------------------------------------------------------------
+        Constructs the grid of zero-centered cross-correlation of antenna 
+        aperture pairs using the gridding information determined for every 
+        antenna. Flags are taken into account while constructing this grid
+
+        Inputs:
+
+        pol     [String] The polarization to be gridded. Can be set to 'P1' or 
+                'P2'. If set to None, gridding for all the polarizations is 
+                performed. Default=None
+        
+        datapool 
+                [string] Specifies whether flags that come from data to be 
+                used in determining the zero-centered cross-correlation come 
+                from 'stack' (default), 'current', or 'avg'. 
+
+        verbose [boolean] If True, prints diagnostic and progress messages. 
+                If False (default), suppress printing such messages.
+
+        Outputs:
+
+        centered_crosscorr_wts_vuf is a dictionary with polarization keys 
+        'P1' and 'P2. Under each key is a sparse matrix of size 
+        nv x nu x nchan. 
+        ------------------------------------------------------------------------
+        """
+        
+        if pol is None:
+            pol = ['P1', 'P2']
+
+        pol = NP.unique(NP.asarray(pol))
+        
+        if datapool not in ['stack', 'current', 'avg', 'custom']:
+            raise ValueError('Input datapool must be set to "stack" or "current"')
+
+        if not self.antenna_crosswts_set:
+            self.evalAllAntennaPairCorrWts()
+
+        centered_crosscorr_wts_cube = {p: None for p in ['P1', 'P2']}
+        for apol in pol:
+            if verbose:
+                print 'Gridding centered cross-correlation of aperture illumination for polarization {0} ...'.format(apol)
+
+            if apol not in ['P1', 'P2']:
+                raise ValueError('Invalid specification for input parameter pol')
+
+            for typetag_pair in self.pairwise_typetags:
+                if 'cross' in typetag_pair:
+                    n_bl = len(typetag_pair['cross'])
+                    if centered_crosscorr_wts_cube[apol] is None:
+                        centered_crosscorr_wts_cube[apol] = n_bl * self.pairwise_typetag_crosswts_vuf[typetag_pair][apol]
+                    else:
+                        centered_crosscorr_wts_cube[apol] += n_bl * self.pairwise_typetag_crosswts_vuf[typetag_pair][apol]
+
+        return centered_crosscorr_wts_cube
+                    
+    ############################################################################
+    
     def quick_beam_synthesis(self, pol=None, keep_zero_spacing=True):
         
         """

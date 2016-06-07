@@ -1,3 +1,14 @@
+From 639eea9 (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Create member function makeCrossCorrWtsCube() along with
+docstring under class AntennaArray. Update class docstring
+accordingly
+(*) Fix bugs in FFT axes in member function evalPowerPattern() of
+class NewImage
+
 From 03c076f (versatility):
 ==========================
 
