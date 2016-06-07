@@ -9070,6 +9070,10 @@ class AntennaArray:
                  [boolean] Indicates if auto-correlation of antenna-wise weights
                  have been determined (True) or not (False).
 
+    antenna_crosswts_set
+                 [boolean] Indicates if zero-centered cross-correlation of 
+                 antenna pair weights have been determined (True) or not (False)
+
     auto_corr_data
                  [dictionary] holds antenna auto-correlation of complex electric 
                  field spectra. It is under keys 'current', 'stack' and 'avg' 
@@ -9436,6 +9440,10 @@ class AntennaArray:
                       Evaluate auto-correlation of aperture illumination of 
                       each antenna on the UVF-plane
 
+    evalAllAntennaPairCorrWts()
+                      Evaluate zero-centered cross-correlation of aperture 
+                      illumination of each antenna pair on the UVF-plane
+
     makeAutoCorrCube()
                       Constructs the grid of antenna aperture illumination 
                       auto-correlation using the gridding information 
@@ -9468,7 +9476,7 @@ class AntennaArray:
         antennas, blc, trc, gridu, gridv, grid_ready, timestamp, 
         grid_illumination, grid_Ef, f, f0, t, ordered_labels, grid_mapper, 
         antennas_center, latitude, longitude, tbinsize, auto_corr_data, 
-        antenna_autocorr_set, typetags, pairwise_typetags, 
+        antenna_autocorr_set, typetags, pairwise_typetags, antenna_crosswts_set,
         pairwise_typetag_crosswts_vuf, antenna_pair_to_typetag
      
         Read docstring of class AntennaArray for details on these attributes.
@@ -9510,6 +9518,7 @@ class AntennaArray:
         self.auto_corr_data = {}
         self.pairwise_typetag_crosswts_vuf = {}
         self.antenna_autocorr_set = False
+        self.antenna_crosswts_set = False
 
         self._ant_contribution = {}
 
@@ -11811,6 +11820,31 @@ class AntennaArray:
             for antkey in self.antennas:
                 self.evalAntennaPairCorrWts(antkey, label2=None, forceeval=forceeval)
             self.antenna_autocorr_set = True
+            
+    ############################################################################ 
+
+    def evalAllAntennaPairCorrWts(self, forceeval=False):
+
+        """
+        ------------------------------------------------------------------------
+        Evaluate zero-centered cross-correlation of aperture illumination of 
+        each antenna pair on the UVF-plane
+
+        Inputs:
+
+        forceeval [boolean] When set to False (default) the zero-centered 
+                  cross-correlation of antenna illumination weights on
+                  the UV plane is not evaluated if it was already evaluated 
+                  earlier. If set to True, it will be forcibly evaluated 
+                  independent of whether they were already evaluated or not
+        ------------------------------------------------------------------------
+        """
+
+        if forceeval or (not self.antenna_crosswts_set):
+            for typetag_pair in self.pairwise_typetags:
+                label1, label2 = list(self.pairwise_typetags[typetag_pair])[0]
+                self.evalAntennaPairCorrWts(label1, label2=label2, forceeval=forceeval)
+            self.antenna_crosswts_set = True
             
     ############################################################################ 
 

@@ -1,3 +1,15 @@
+From 03c076f (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Create member function evalAllAntennaPairCorrWts() along with
+docstring under class AntennaArray. Update class docstring
+accordingly
+(*) Add and initialize attribute antenna_crosswts_set in member
+function __init__() of class AntennaArray. Update class docstring
+accordingly
+
 From f76414e (versatility):
 ==========================
 
