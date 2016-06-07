@@ -11673,7 +11673,7 @@ class AntennaArray:
                         
                 aprtr = APR.Aperture(pol_type=pol_type, kernel_type=kerntype,
                                      shape=shape, parms=kernshapeparms,
-                                     lkpinfo=lkpinfo, load_lookup=True)
+                                     lkpinfo=None, load_lookup=True)
                 
                 max_aprtr_size = max([NP.sqrt(aprtr.xmax['P1']**2 + NP.sqrt(aprtr.ymax['P1']**2)), NP.sqrt(aprtr.xmax['P2']**2 + NP.sqrt(aprtr.ymax['P2']**2)), aprtr.rmax['P1'], aprtr.rmax['P2']])
                 distNN = 2.0 * max_aprtr_size
@@ -11709,6 +11709,30 @@ class AntennaArray:
         else:
             print 'Specified antenna pair correlation weights have already been evaluated'
 
+    ############################################################################ 
+
+    def evalAntennaAutoCorrWts(self, forceeval=False):
+
+        """
+        ------------------------------------------------------------------------
+        Evaluate auto-correlation of aperture illumination of each antenna on
+        the UVF-plane
+
+        Inputs:
+
+        forceeval [boolean] When set to False (default) the auto-correlation in
+                  the UV plane is not evaluated if it was already evaluated 
+                  earlier. If set to True, it will be forcibly evaluated 
+                  independent of whether they were already evaluated or not
+        ------------------------------------------------------------------------
+        """
+
+        if forceeval or (not self.antenna_autocorr_set):
+            self.antenna_autocorr_set = False
+            for antkey in self.antennas:
+                self.evalAntennaPairCorrWts(antkey)
+            self.antenna_autocorr_set = True
+            
     ############################################################################ 
 
     def evalAntennaAutoCorrWts(self, lkpinfo=None, forceeval=False):

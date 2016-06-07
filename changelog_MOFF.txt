@@ -1,3 +1,12 @@
+From effb5e9 (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Replace existing member function evalAntennaAutoCorrWts() of
+class AntennaArray with an updated one that internally invokes the
+member function evalAntennaPairCorrWts()
+
 From 4bb6ec1 (versatility):
 ==========================
 
