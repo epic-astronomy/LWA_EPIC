@@ -1,3 +1,12 @@
+From b92bd2e (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Modify member function removeAutoCorr() of class NewImage to
+use appropriate auto-correlation weights and data to remove from
+the images
+
 From 639eea9 (versatility):
 ==========================
 
