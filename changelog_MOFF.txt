@@ -1,3 +1,16 @@
+From 5a58942 (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Remove usage of attributes antenna_auto_corr_wts_vuf and
+antenna_auto_corr_data_vuf in class AntennaArray. Update class
+docstring accordingly
+(*) Remove commented lines in member function makeAutoCorrCube() of
+class AntennaArray
+(*) Remove commented earlier version of member function
+evalAntennaAutoCorrWts() of class AntennaArray
+
 From 06f22b0 (versatility):
 ==========================
 
