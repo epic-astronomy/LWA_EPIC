@@ -7375,13 +7375,15 @@ class NewImage:
             raise ValueError('Invalid value specified for input datapool')
 
         self.antenna_array.evalAllAntennaPairCorrWts()
-        self.antenna_array.makeCrossCorrWtsCube()
+        centered_crosscorr_wts_vuf = self.antenna_array.makeCrossCorrWtsCube()
         pol = ['P1', 'P2']
+        shape_tuple = tuple(2 * NP.asarray(self.antenna_array.gridu.shape)) + (self.f.size,)
         if self.measured_type == 'E-field':
             self.pbeam = {p: None for p in pol}                
             for p in pol:
-                sum_wts = NP.sum(self.antenna_array.centered_crosscorr_wts_vuf[p], axis=(0,1), keepdims=True)
-                padded_wts_vuf = NP.pad(self.antenna_array.centered_crosscorr_wts_vuf[p], (((2**pad-1)*self.gridv.shape[0],(2**pad-1)*self.gridv.shape[0]),((2**pad-1)*self.gridu.shape[1],(2**pad-1)*self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
+                sum_wts = centered_crosscorr_wts_vuf[p].sum(axis=0).A # 1 x nchan
+                sum_wts = sum_wts[NP.newaxis,:,:] # 1 x 1 x nchan
+                padded_wts_vuf = NP.pad(centered_crosscorr_wts_vuf[p].toarray().reshape(shape_tuple), (((2**pad-1)*self.gridv.shape[0],(2**pad-1)*self.gridv.shape[0]),((2**pad-1)*self.gridu.shape[1],(2**pad-1)*self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
                 padded_wts_vuf = NP.fft.ifftshift(padded_wts_vuf, axes=(0,1))
                 wts_lmf = NP.fft.fft2(padded_wts_vuf, axes=(0,1)) / sum_wts
                 self.pbeam[p] = NP.fft.fftshift(wts_lmf.real, axes=(0,1))
@@ -11813,7 +11815,6 @@ class AntennaArray:
                 if label1 == label2:
                     for p in pol:
                         sum_wts1 = antenna_grid_wts_vuf_1[p].sum(axis=0).A
-                        # sum_wts1 = NP.sum(NP.abs(antenna_grid_wts_vuf_1[p].toarray()), axis=(0,1), keepdims=True)
                         sum_wts = NP.abs(sum_wts1)**2
                         antpair_beam = NP.abs(NP.fft.fft2(antenna_grid_wts_vuf_1[p].toarray().reshape(shape_tuple), axes=(0,1)))**2
                         antpair_grid_wts_vuf = NP.fft.ifft2(antpair_beam/sum_wts[NP.newaxis,:,:], axes=(0,1)) # Inverse FFT
@@ -11824,9 +11825,7 @@ class AntennaArray:
                     antenna_grid_wts_vuf_2 = self.antennas[label2].evalGridIllumination(uvlocs=(ulocs, vlocs), xy_center=NP.zeros(2))
                     for p in pol:
                         sum_wts1 = antenna_grid_wts_vuf_1[p].sum(axis=0).A
-                        # sum_wts1 = NP.sum(NP.abs(antenna_grid_wts_vuf_1[p].toarray()), axis=(0,1), keepdims=True)
                         sum_wts2 = antenna_grid_wts_vuf_2[p].sum(axis=0).A
-                        # sum_wts2 = NP.sum(NP.abs(antenna_grid_wts_vuf_2[p].toarray().conj()), axis=(0,1), keepdims=True)
                         sum_wts = sum_wts1 * sum_wts2.conj()
                         antpair_beam = NP.fft.fft2(antenna_grid_wts_vuf_1[p].toarray().reshape(shape_tuple), axes=(0,1)) * NP.fft.fft2(antenna_grid_wts_vuf_1[p].toarray().reshape(shape_tuple).conj(), axes=(0,1))
                         antpair_grid_wts_vuf = NP.fft.ifft2(antpair_beam/sum_wts[NP.newaxis,:,:], axes=(0,1)) # Inverse FFT

@@ -1,3 +1,11 @@
+From 4e1bc81 (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Fix bugs in member function evalPowerPattern() of class
+AntennaArray
+
 From a6c9389 (versatility):
 ==========================
 
