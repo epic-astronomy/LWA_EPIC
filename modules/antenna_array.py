@@ -7483,7 +7483,8 @@ class NewImage:
                     raise TypeError('Input keyword data pool must be a string')
         
                 if forceeval or (not self.autocorr_set):
-                    self.evalAutoCorr(lkpinfo=lkpinfo, forceeval=forceeval)
+                    self.evalAutoCorr(forceeval=forceeval)
+                    # self.evalAutoCorr(lkpinfo=lkpinfo, forceeval=forceeval)
         
                 autocorr_wts_vuf = copy.deepcopy(self.autocorr_wts_vuf)
                 autocorr_data_vuf = copy.deepcopy(self.autocorr_data_vuf)
@@ -7494,9 +7495,9 @@ class NewImage:
                             vis_vuf = NP.copy(self.grid_vis_avg[p])
                             wts_vuf = NP.copy(self.grid_illumination_avg[p])
     
-                            autocorr_wts_vuf[p] = autocorr_wts_vuf[p][NP.newaxis,:,:,:]
-                            vis_vuf = vis_vuf - (vis_vuf[:,self.gridv.shape[0],self.gridu.shape[1],:].reshape(vis_vuf.shape[0],1,1,self.f.size) / autocorr_data_vuf[p][0,self.gridv.shape[0],self.gridu.shape[1],:].reshape(1,1,1,self.f.size)) * autocorr_data_vuf[p]
-                            wts_vuf = wts_vuf - (wts_vuf[:,self.gridv.shape[0],self.gridu.shape[1],:].reshape(wts_vuf.shape[0],1,1,self.f.size) / autocorr_wts_vuf[p][0,self.gridv.shape[0],self.gridu.shape[1],:].reshape(1,1,1,self.f.size)) * autocorr_wts_vuf[p]
+                            # autocorr_wts_vuf[p] = autocorr_wts_vuf[p][NP.newaxis,:,:,:]
+                            vis_vuf = vis_vuf - (vis_vuf[:,self.gridv.shape[0],self.gridu.shape[1],:][:,NP.newaxis,NP.newaxis,:] / autocorr_data_vuf[p][:,self.gridv.shape[0],self.gridu.shape[1],:][:,NP.newaxis,NP.newaxis,:]) * autocorr_data_vuf[p]
+                            wts_vuf = wts_vuf - (wts_vuf[:,self.gridv.shape[0],self.gridu.shape[1],:][:,NP.newaxis,NP.newaxis,:] / autocorr_wts_vuf[p][:,self.gridv.shape[0],self.gridu.shape[1],:][:,NP.newaxis,NP.newaxis,:]) * autocorr_wts_vuf[p]
                             sum_wts = NP.sum(wts_vuf, axis=(1,2), keepdims=True)
                             padded_wts_vuf = NP.pad(wts_vuf, ((0,0),((2**pad-1)*self.gridv.shape[0],(2**pad-1)*self.gridv.shape[0]),((2**pad-1)*self.gridu.shape[1],(2**pad-1)*self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
                             padded_wts_vuf = NP.fft.ifftshift(padded_wts_vuf, axes=(1,2))

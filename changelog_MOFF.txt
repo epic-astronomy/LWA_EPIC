@@ -1,3 +1,10 @@
+From a30105f (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Fix bugs in member function removeAutoCorr() of class NewImage
+
 From 4e1bc81 (versatility):
 ==========================
 
