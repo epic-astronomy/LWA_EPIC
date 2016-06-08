@@ -1,3 +1,13 @@
+From 7d903d2 (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Fix bugs in member function evalGridIllumination() of class
+Antenna
+(*) Fix bugs in member function evalAntennaPairCorrWts() of class
+AntennaArray
+
 From 30a9688 (versatility):
 ==========================
 

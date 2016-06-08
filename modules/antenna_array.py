@@ -9014,12 +9014,20 @@ class Antenna:
         indNN_list, blind, vuf_gridind = LKP.find_NN(xy_center.reshape(1,-1), gridxy, distance_ULIM=distNN, flatten=True, parallel=False)
         dxy = gridxy[vuf_gridind,:]
         unraveled_vuf_ind = NP.unravel_index(vuf_gridind, gridu.shape+(self.f.size,))
+        unraveled_vu_ind = (unraveled_vuf_ind[0], unraveled_vuf_ind[1])
+        raveled_vu_ind = NP.ravel_multi_index(unraveled_vu_ind, (gridu.shape[0], gridu.shape[1]))
 
         antenna_grid_wts_vuf = {}
+        pol = ['P1', 'P2']
         for p in pol:
-            krn = self.aperture.compute(dxy, wavelength=wl[vuf_gridind], pol=p, rmaxNN=rmaxNN, load_lookup=False)
-            krn3d_sparse = SpM.csr_matrix((krn[p], unraveled_vuf_ind), shape=gridu.shape+(self.f.size,), dtype=NP.complex64)
-            antenna_grid_wts_vuf[p] = SpM.csr_matrix((krn3d_sparse/krn3d_sparse.sum(axis=0).sum(axis=1), unraveled_vuf_ind), shape=gridu.shape+(self.f.size,), dtype=NP.complex64)
+            krn = self.aperture.compute(dxy, wavelength=wl.ravel()[vuf_gridind], pol=p, rmaxNN=rmaxNN, load_lookup=False)
+            krn_sparse = SpM.csr_matrix((krn[p], (raveled_vu_ind,)+(unraveled_vuf_ind[2],)), shape=(gridu.size,)+(self.f.size,), dtype=NP.complex64)
+            krn_sparse_sumuv = krn_sparse.sum(axis=0)
+            krn_sparse_norm = krn_sparse.A / krn_sparse_sumuv.A
+            sprow = raveled_vu_ind
+            spcol = unraveled_vuf_ind[2]
+            spval = krn_sparse_norm[(sprow,)+(spcol,)]
+            antenna_grid_wts_vuf[p] = SpM.csr_matrix((spval, (sprow,)+(spcol,)), shape=(gridu.size,)+(self.f.size,), dtype=NP.complex64)
     
         return antenna_grid_wts_vuf
 
@@ -11747,10 +11755,11 @@ class AntennaArray:
 
         typetag1, typetag2 = typetag_pair
         if forceeval or (typetag_pair not in self.pairwise_typetag_crosswts_vuf):
+            pol = ['P1', 'P2']
             self.pairwise_typetag_crosswts_vuf[typetag_pair] = {}
-            if (typetag1 == typetag2) and (self.antennas[label1].aperture.kernel_type == 'func'):
-                du = self.gridu[0,1] - self.gridu[0,0]
-                dv = self.gridv[1,0] - self.gridv[0,0]
+            du = self.gridu[0,1] - self.gridu[0,0]
+            dv = self.gridv[1,0] - self.gridv[0,0]
+            if (typetag1 == typetag2) and (self.antennas[label1].aperture.kernel_type['P1'] == 'func') and (self.antennas[label1].aperture.kernel_type['P2'] == 'func'):
                 gridu, gridv = NP.meshgrid(du*(NP.arange(2*self.gridu.shape[1])-self.gridu.shape[1]), dv*(NP.arange(2*self.gridu.shape[0])-self.gridu.shape[0]))
                 wavelength = FCNST.c / self.f
                 min_lambda = NP.abs(wavelength).min()
@@ -11783,14 +11792,21 @@ class AntennaArray:
                 indNN_list, blind, vuf_gridind = LKP.find_NN(NP.zeros(2).reshape(1,-1), gridxy, distance_ULIM=distNN, flatten=True, parallel=False)
                 dxy = gridxy[vuf_gridind,:]
                 unraveled_vuf_ind = NP.unravel_index(vuf_gridind, gridu.shape+(self.f.size,))
+                unraveled_vu_ind = (unraveled_vuf_ind[0], unraveled_vuf_ind[1])
+                raveled_vu_ind = NP.ravel_multi_index(unraveled_vu_ind, (gridu.shape[0], gridu.shape[1]))
                 for p in pol:
-                    krn = aprtr.compute(dxy, wavelength=wl[vuf_gridind], pol=p, rmaxNN=rmaxNN, load_lookup=False)
-                    krn3d_sparse = SpM.csr_matrix((krn[p], unraveled_vuf_ind), shape=gridu.shape+(self.f.size,), dtype=NP.complex64)
-                    self.pairwise_typetag_crosswts_vuf[typetag_pair][p] = SpM.csr_matrix((krn3d_sparse/krn3d_sparse.sum(axis=0).sum(axis=1), unraveled_vuf_ind), shape=gridu.shape+(self.f.size,), dtype=NP.complex64)
+                    krn = aprtr.compute(dxy, wavelength=wl.ravel()[vuf_gridind], pol=p, rmaxNN=rmaxNN, load_lookup=False)
+                    krn_sparse = SpM.csr_matrix((krn[p], (raveled_vu_ind,)+(unraveled_vuf_ind[2],)), shape=(gridu.size,)+(self.f.size,), dtype=NP.complex64)
+                    krn_sparse_sumuv = krn_sparse.sum(axis=0)
+                    krn_sparse_norm = krn_sparse.A / krn_sparse_sumuv.A
+                    sprow = raveled_vu_ind
+                    spcol = unraveled_vuf_ind[2]
+                    spval = krn_sparse_norm[(sprow,)+(spcol,)]
+                    self.pairwise_typetag_crosswts_vuf[typetag_pair][p] = SpM.csr_matrix((spval, (sprow,)+(spcol,)), shape=(gridu.size,)+(self.f.size,), dtype=NP.complex64)
             else:
                 ulocs = du*(NP.arange(2*self.gridu.shape[1])-self.gridu.shape[1])
                 vlocs = dv*(NP.arange(2*self.gridu.shape[0])-self.gridu.shape[0])
-                antenna_grid_wts_vuf_1 = self.antennas[label1].evalGridIllumination(uvlocs=(ulocs, vlocs), xy_center=NP.zeroes(2))
+                antenna_grid_wts_vuf_1 = self.antennas[label1].evalGridIllumination(uvlocs=(ulocs, vlocs), xy_center=NP.zeros(2))
                 if label1 == label2:
                     for p in pol:
                         sum_wts1 = NP.sum(NP.abs(antenna_grid_wts_vuf_1[p].toarray()), axis=(0,1), keepdims=True)
