@@ -1,3 +1,15 @@
+From 337e1ad (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Add input keyword tbinsize to member function makeAutoCorrCube()
+of class AntennaArray. Update docstring accordingly
+(*) In member function evalAutoCorr() of class NewImage pass tbinsize
+parameter while calling member function makeAutoCorrCube() of class
+AntennaArray
+(*) Fix bugs in member function avgAutoCorr() of class AntennaArray
+
 From 7d903d2 (versatility):
 ==========================
 
