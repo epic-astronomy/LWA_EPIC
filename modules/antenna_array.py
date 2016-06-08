@@ -11808,24 +11808,31 @@ class AntennaArray:
                 ulocs = du*(NP.arange(2*self.gridu.shape[1])-self.gridu.shape[1])
                 vlocs = dv*(NP.arange(2*self.gridu.shape[0])-self.gridu.shape[0])
                 antenna_grid_wts_vuf_1 = self.antennas[label1].evalGridIllumination(uvlocs=(ulocs, vlocs), xy_center=NP.zeros(2))
+                shape_tuple = (vlocs.size, ulocs.size) + (self.f.size,)
+                eps = 1e-10
                 if label1 == label2:
                     for p in pol:
-                        sum_wts1 = NP.sum(NP.abs(antenna_grid_wts_vuf_1[p].toarray()), axis=(0,1), keepdims=True)
-                        sum_wts = sum_wts1**2
-                        antpair_beam = NP.abs(NP.fft.fft2(antenna_grid_wts_vuf_1[p].toarray(), axes=(0,1)))**2
-                        antpair_grid_wts_vuf = NP.fft.ifft2(antpair_beam/sum_wts, axes=(0,1)) # Inverse FFT
+                        sum_wts1 = antenna_grid_wts_vuf_1[p].sum(axis=0).A
+                        # sum_wts1 = NP.sum(NP.abs(antenna_grid_wts_vuf_1[p].toarray()), axis=(0,1), keepdims=True)
+                        sum_wts = NP.abs(sum_wts1)**2
+                        antpair_beam = NP.abs(NP.fft.fft2(antenna_grid_wts_vuf_1[p].toarray().reshape(shape_tuple), axes=(0,1)))**2
+                        antpair_grid_wts_vuf = NP.fft.ifft2(antpair_beam/sum_wts[NP.newaxis,:,:], axes=(0,1)) # Inverse FFT
                         antpair_grid_wts_vuf = NP.fft.ifftshift(antpair_grid_wts_vuf, axes=(0,1))
-                        self.pairwise_typetag_crosswts_vuf[typetag_pair][p] = SpM.csr_matrix(antpair_grid_wts_vuf)
+                        antpair_grid_wts_vuf[NP.abs(antpair_grid_wts_vuf) < eps] = 0.0
+                        self.pairwise_typetag_crosswts_vuf[typetag_pair][p] = SpM.csr_matrix(antpair_grid_wts_vuf.reshape(-1,self.f.size))
                 else:
-                    antenna_grid_wts_vuf_2 = self.antennas[label2].evalGridIllumination(uvlocs=(ulocs, vlocs), xy_center=NP.zeroes(2))
+                    antenna_grid_wts_vuf_2 = self.antennas[label2].evalGridIllumination(uvlocs=(ulocs, vlocs), xy_center=NP.zeros(2))
                     for p in pol:
-                        sum_wts1 = NP.sum(NP.abs(antenna_grid_wts_vuf_1[p].toarray()), axis=(0,1), keepdims=True)
-                        sum_wts2 = NP.sum(NP.abs(antenna_grid_wts_vuf_2[p].toarray().conj()), axis=(0,1), keepdims=True)
-                        sum_wts = sum_wts1 * sum_wts2
-                        antpair_beam = NP.fft.fft2(antenna_grid_wts_vuf_1[p].toarray(), axes=(0,1)) * NP.fft.fft2(antenna_grid_wts_vuf_1[p].toarray().conj(), axes=(0,1))
-                        antpair_grid_wts_vuf = NP.fft.ifft2(antpair_beam/sum_wts, axes=(0,1)) # Inverse FFT
+                        sum_wts1 = antenna_grid_wts_vuf_1[p].sum(axis=0).A
+                        # sum_wts1 = NP.sum(NP.abs(antenna_grid_wts_vuf_1[p].toarray()), axis=(0,1), keepdims=True)
+                        sum_wts2 = antenna_grid_wts_vuf_2[p].sum(axis=0).A
+                        # sum_wts2 = NP.sum(NP.abs(antenna_grid_wts_vuf_2[p].toarray().conj()), axis=(0,1), keepdims=True)
+                        sum_wts = sum_wts1 * sum_wts2.conj()
+                        antpair_beam = NP.fft.fft2(antenna_grid_wts_vuf_1[p].toarray().reshape(shape_tuple), axes=(0,1)) * NP.fft.fft2(antenna_grid_wts_vuf_1[p].toarray().reshape(shape_tuple).conj(), axes=(0,1))
+                        antpair_grid_wts_vuf = NP.fft.ifft2(antpair_beam/sum_wts[NP.newaxis,:,:], axes=(0,1)) # Inverse FFT
                         antpair_grid_wts_vuf = NP.fft.ifftshift(antpair_grid_wts_vuf, axes=(0,1))
-                        self.pairwise_typetag_crosswts_vuf[typetag_pair][p] = SpM.csr_matrix(antpair_grid_wts_vuf)
+                        antpair_grid_wts_vuf[NP.abs(antpair_grid_wts_vuf) < eps] = 0.0
+                        self.pairwise_typetag_crosswts_vuf[typetag_pair][p] = SpM.csr_matrix(antpair_grid_wts_vuf.reshape(-1,self.f.size))
         else:
             print 'Specified antenna pair correlation weights have already been evaluated'
 
@@ -11873,8 +11880,8 @@ class AntennaArray:
         """
 
         if forceeval or (not self.antenna_crosswts_set):
-            for typetag_pair in self.pairwise_typetags:
-                label1, label2 = list(self.pairwise_typetags[typetag_pair])[0]
+            for label_pair in self.antenna_pair_to_typetag:
+                label1, label2 = label_pair
                 self.evalAntennaPairCorrWts(label1, label2=label2, forceeval=forceeval)
             self.antenna_crosswts_set = True
             

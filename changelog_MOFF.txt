@@ -1,3 +1,11 @@
+From 6103a0d (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Fix bugs in member function evalAntennaPairCorrWts() of class
+AntennaArray.
+
 From 0140e0d (versatility):
 ==========================
 
