@@ -1,10 +1,18 @@
+From a6c9389 (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Fix bugs in member function makeCrossCorrWtsCube() of class
+AntennaArray
+
 From 6103a0d (versatility):
 ==========================
 
 In antenna_array.py,
 
 (*) Fix bugs in member function evalAntennaPairCorrWts() of class
-AntennaArray.
+AntennaArray
 
 From 0140e0d (versatility):
 ==========================

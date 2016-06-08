@@ -12052,8 +12052,8 @@ class AntennaArray:
                 raise ValueError('Invalid specification for input parameter pol')
 
             for typetag_pair in self.pairwise_typetags:
-                if 'cross' in typetag_pair:
-                    n_bl = len(typetag_pair['cross'])
+                if 'cross' in self.pairwise_typetags[typetag_pair]:
+                    n_bl = len(self.pairwise_typetags[typetag_pair]['cross'])
                     if centered_crosscorr_wts_cube[apol] is None:
                         centered_crosscorr_wts_cube[apol] = n_bl * self.pairwise_typetag_crosswts_vuf[typetag_pair][apol]
                     else:
