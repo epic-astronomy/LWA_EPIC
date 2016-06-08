@@ -9830,14 +9830,18 @@ class AntennaArray:
             labels1 = list(self.typetags[typekeys[i]])
             for j in range(i,len(typekeys)):
                 labels2 = list(self.typetags[typekeys[j]])
-                pairwise_typetags[(i,j)] = {}
+                pairwise_typetags[(typekeys[i],typekeys[j])] = {}
                 if i == j:
-                    pairwise_typetags[(i,j)]['auto'] = set([(l1,l1) for l1 in labels1])
-                    pairwise_typetags[(i,j)]['cross'] = set([(l1,l2) for i1,l1 in enumerate(labels1) for i2,l2 in enumerate(labels2) if i1 < i2])
+                    pairwise_typetags[(typekeys[i],typekeys[j])]['auto'] = set([(l1,l1) for l1 in labels1])
+                    pairwise_typetags[(typekeys[i],typekeys[j])]['cross'] = set([(l1,l2) for i1,l1 in enumerate(labels1) for i2,l2 in enumerate(labels2) if i1 < i2])
                 else:
-                    pairwise_typetags[(i,j)]['cross'] = set([(l1,l2) for l1 in labels1 for l2 in labels2])
+                    pairwise_typetags[(typekeys[i],typekeys[j])]['cross'] = set([(l1,l2) for l1 in labels1 for l2 in labels2])
         self.pairwise_typetags = pairwise_typetags
-        self.antenna_pair_to_typetag = {v: k  for v in list(val) for k,val in pairwise_typetags}
+        self.antenna_pair_to_typetag = {}
+        for k,val in pairwise_typetags.iteritems():
+            for subkey in val:
+                for v in list(val[subkey]):
+                    self.antenna_pair_to_typetag[v] = k
 
     ############################################################################
 

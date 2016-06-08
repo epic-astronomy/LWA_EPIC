@@ -1,3 +1,10 @@
+From 30a9688 (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Fix bugs in member function pairTypetags() of class AntennaArray
+
 From b92bd2e (versatility):
 ==========================
 
