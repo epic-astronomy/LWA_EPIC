@@ -1,3 +1,11 @@
+From 0140e0d (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Make operations compatible with sparse matrices in member function
+makeAutoCorrCube() of class AntennaArray.
+
 From 337e1ad (versatility):
 ==========================
 

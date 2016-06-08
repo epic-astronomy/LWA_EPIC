@@ -11979,12 +11979,13 @@ class AntennaArray:
 
             for antind, antkey in enumerate(data_info[apol]['labels']):
                 typetag_pair = self.antenna_pair_to_typetag[(antkey,antkey)]
+                shape_tuple = tuple(2*NP.asarray(self.gridu.shape))+(self.f.size,)
                 if autocorr_wts_cube[apol] is None:
-                    autocorr_wts_cube[apol] = self.pairwise_typetag_crosswts_vuf[typetag_pair][apol].toarray()[NP.newaxis,:,:,:] * data_info[apol]['twts'][:,antind,:][:,NP.newaxis,NP.newaxis,:] # nt x nv x nu x nchan
-                    autocorr_data_cube[apol] = self.pairwise_typetag_crosswts_vuf[typetag_pair][apol].toarray()[NP.newaxis,:,:,:] * data_info[apol]['twts'][:,antind,:][:,NP.newaxis,NP.newaxis,:] * data_info[apol]['E-fields'][:,antind,:][:,NP.newaxis,NP.newaxis,:] # nt x nv x nu x nchan
+                    autocorr_wts_cube[apol] = self.pairwise_typetag_crosswts_vuf[typetag_pair][apol].toarray().reshape(shape_tuple)[NP.newaxis,:,:,:] * data_info[apol]['twts'][:,antind,:][:,NP.newaxis,NP.newaxis,:] # nt x nv x nu x nchan
+                    autocorr_data_cube[apol] = self.pairwise_typetag_crosswts_vuf[typetag_pair][apol].toarray().reshape(shape_tuple)[NP.newaxis,:,:,:] * data_info[apol]['twts'][:,antind,:][:,NP.newaxis,NP.newaxis,:] * data_info[apol]['data'][:,antind,:][:,NP.newaxis,NP.newaxis,:] # nt x nv x nu x nchan
                 else:
-                    autocorr_wts_cube[apol] += self.pairwise_typetag_crosswts_vuf[typetag_pair][apol].toarray()[NP.newaxis,:,:,:] * data_info[apol]['twts'][:,antind,:][:,NP.newaxis,NP.newaxis,:] # nt x nv x nu x nchan
-                    autocorr_data_cube[apol] += self.pairwise_typetag_crosswts_vuf[typetag_pair][apol].toarray()[NP.newaxis,:,:,:] * data_info[apol]['twts'][:,antind,:][:,NP.newaxis,NP.newaxis,:] * data_info[apol]['E-fields'][:,antind,:][:,NP.newaxis,NP.newaxis,:] # nt x nv x nu x nchan
+                    autocorr_wts_cube[apol] += self.pairwise_typetag_crosswts_vuf[typetag_pair][apol].toarray().reshape(shape_tuple)[NP.newaxis,:,:,:] * data_info[apol]['twts'][:,antind,:][:,NP.newaxis,NP.newaxis,:] # nt x nv x nu x nchan
+                    autocorr_data_cube[apol] += self.pairwise_typetag_crosswts_vuf[typetag_pair][apol].toarray().reshape(shape_tuple)[NP.newaxis,:,:,:] * data_info[apol]['twts'][:,antind,:][:,NP.newaxis,NP.newaxis,:] * data_info[apol]['data'][:,antind,:][:,NP.newaxis,NP.newaxis,:] # nt x nv x nu x nchan
             sum_wts = NP.sum(data_info[apol]['twts'], axis=1) # nt x 1
             autocorr_wts_cube[apol] = autocorr_wts_cube[apol] / sum_wts[:,NP.newaxis,NP.newaxis,:] # nt x nv x nu x nchan
             autocorr_data_cube[apol] = autocorr_data_cube[apol] / sum_wts[:,NP.newaxis,NP.newaxis,:] # nt x nv x nu x nchan
