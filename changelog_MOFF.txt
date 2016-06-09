@@ -1,3 +1,12 @@
+From fb1eab3 (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Modify member function getStats() of class NewImage. It now uses
+masked arrays to get the appropriate statistics. Update docstring
+accordingly
+
 From 41fae99 (versatility):
 ==========================
 

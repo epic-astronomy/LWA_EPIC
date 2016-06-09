@@ -1,4 +1,5 @@
 import numpy as NP
+import numpy.ma as MA
 import multiprocessing as MP
 import itertools as IT
 import copy
@@ -7686,17 +7687,28 @@ class NewImage:
         outstats    [list] List of dictionaries one for each element in input
                     box_center. Each dictionary consists of the following keys
                     'P1' and 'P2'  for the two polarizations. Under each of 
-                    these keys is another dictionary with the fillowing keys and
+                    these keys is another dictionary with the following keys and
                     values:
-                    'peak'  [scalar or list] Peak value(s) in the box. If 
-                            input datapool is set to 'current', it will be a 
-                            scalar, but if set to 'avg' or 'stack', it will be
-                            a list one for each timestamp in the image.
-                    'mad'   [scalar or list] Median Absolute Deviation(s) in
+                    'peak-spectrum'
+                            [list of numpy arrays] List of Numpy arrays
+                            with peak value in each frequency channel. This array
+                            is of size nchan. Length of the list is equal to the 
+                            number of timestamps as determined by input datapool. 
+                            If input datapool is set to 'current', the list will 
+                            contain one numpy array of size nchan. If datapool is 
+                            set to 'avg' or 'stack', the list will contain n_t
+                            number of numpy arrays one for each processed 
+                            timestamp
+                    'peak-avg'
+                            [list] Average of each numpy array in the list under
+                            key 'peak-spectrum'. It will have n_t elements where
+                            n_t is the number of timestamps as determined by 
+                            input datapool
+                    'mad'   [list] Median Absolute Deviation(s) in
                             the box determined by input rms_box_scale_factor. 
                             If input datapool is set to 'current', it will be a 
-                            scalar, but if set to 'avg' or 'stack', it will be
-                            a list one for each timestamp in the image.
+                            one-element list, but if set to 'avg' or 'stack', it 
+                            will be a list one for each timestamp in the image
         ------------------------------------------------------------------------
         """
 
@@ -7762,34 +7774,46 @@ class NewImage:
                     bc[2] = self.f.size
             if coords == 'physical':
                 if box_type == 'square':
-                    ind3d = NP.where((NP.abs(lfgrid - bc[0]) <= 0.5*bs[0]) & (NP.abs(mfgrid - bc[1]) <= 0.5*bs[0]) & (NP.abs(fgrid - bc[2]) <= 0.5*bs[1]))
-                    ind3d_rmsbox = NP.where((NP.abs(lfgrid - bc[0]) <= 0.5*rms_box_scale_factor*bs[0]) & (NP.abs(mfgrid - bc[1]) <= 0.5*rms_box_scale_factor*bs[0]) & (NP.abs(fgrid - bc[2]) <= 0.5*bs[1]))
+                    ind3d = (NP.abs(lfgrid - bc[0]) <= 0.5*bs[0]) & (NP.abs(mfgrid - bc[1]) <= 0.5*bs[0]) & (NP.abs(fgrid - bc[2]) <= 0.5*bs[1])
+                    ind3d_rmsbox = (NP.abs(lfgrid - bc[0]) <= 0.5*rms_box_scale_factor*bs[0]) & (NP.abs(mfgrid - bc[1]) <= 0.5*rms_box_scale_factor*bs[0]) & (NP.abs(fgrid - bc[2]) <= 0.5*bs[1])
                 else:
-                    ind3d = NP.where((NP.sqrt(NP.abs(lfgrid - bc[0])**2 + NP.abs(mfgrid - bc[0])**2) <= 0.5*bs[0]) & (NP.abs(fgrid - bc[2]) <= 0.5*bs[1])) 
-                    ind3d_rmsbox = NP.where((NP.sqrt(NP.abs(lfgrid - bc[0])**2 + NP.abs(mfgrid - bc[0])**2) <= 0.5*rms_box_scale_factor*bs[0]) & (NP.abs(fgrid - bc[2]) <= 0.5*bs[1]))
+                    ind3d = (NP.sqrt(NP.abs(lfgrid - bc[0])**2 + NP.abs(mfgrid - bc[0])**2) <= 0.5*bs[0]) & (NP.abs(fgrid - bc[2]) <= 0.5*bs[1])
+                    ind3d_rmsbox = (NP.sqrt(NP.abs(lfgrid - bc[0])**2 + NP.abs(mfgrid - bc[0])**2) <= 0.5*rms_box_scale_factor*bs[0]) & (NP.abs(fgrid - bc[2]) <= 0.5*bs[1])
+                msk = NP.logical_not(ind3d)
+                msk_rms = NP.logical_not(ind3d_rmsbox)
     
                 for apol in ['P1', 'P2']:
-                    stats[apol] = {}
+                    stats[apol] = {'peak-spectrum': [], 'peak-avg': [], 'mad': []}
                     if datapool == 'current':
                         if self.nzsp_img[apol] is not None:
-                            stats[apol]['peak'] = NP.nanmax(NP.abs(self.nzsp_img[apol][ind3d]))
-                            mdn = NP.median(NP.abs(self.nzsp_img[apol][ind3d_rmsbox]))
-                            stats[apol]['mad'] = NP.median(NP.abs(NP.abs(self.nzsp_img[apol][ind3d_rmsbox]) - mdn))
+                            img_masked = MA.array(self.nzsp_img[apol], mask=msk)
+                            stats[apol]['peak-spectrum'] += [NP.amax(NP.abs(img_masked), axis=(0,1))]
+                            stats[apol]['peak-avg'] += [NP.mean(stats[apol]['peak-spectrum'])]
+                            img_masked = MA.array(self.nzsp_img[apol], mask=msk_rms)
+                            mdn = NP.median(img_masked[~img_masked.mask])
+                            absdev = NP.abs(img_masked - mdn)
+                            stats[apol]['mad'] += [NP.median(absdev[~absdev.mask])]
                     else:
-                        stats[apol]['peak'] = []
-                        stats[apol]['mad'] = []
                         if datapool == 'avg':
                             if self.nzsp_img_avg[apol] is not None:
                                 for ti in range(self.nzsp_img_avg[apol].shape[0]):
-                                    stats[apol]['peak'] += [NP.nanmax(NP.abs(self.nzsp_img_avg[apol][ti,...][ind3d]))]
-                                    mdn = NP.median(NP.abs(self.nzsp_img_avg[apol][ti,...][ind3d_rmsbox]))
-                                    stats[apol]['mad'] += [NP.median(NP.abs(NP.abs(self.nzsp_img_avg[apol][ti,...][ind3d_rmsbox]) - mdn))]
+                                    img_masked = MA.array(self.nzsp_img_avg[apol][ti,...], mask=msk)
+                                    stats[apol]['peak-spectrum'] += [NP.amax(NP.abs(img_masked), axis=(0,1))]
+                                    stats[apol]['peak-avg'] += [NP.mean(stats[apol]['peak-spectrum'][ti])]
+                                    img_masked = MA.array(self.nzsp_img_avg[apol][ti,...], mask=msk_rms)
+                                    mdn = NP.median(img_masked[~img_masked.mask])
+                                    absdev = NP.abs(img_masked - mdn)
+                                    stats[apol]['mad'] += [NP.median(absdev[~absdev.mask])]
                         else:
                             if self.img_stack[apol] is not None:
                                 for ti in range(self.img_stack[apol].shape[0]):
-                                    stats[apol]['peak'] += [NP.nanmax(NP.abs(self.img_stack[apol][ti,...][ind3d]))]
-                                    mdn = NP.median(NP.abs(self.img_stack[apol][ti,...][ind3d_rmsbox]))
-                                    stats[apol]['mad'] += [NP.median(NP.abs(NP.abs(self.img_stack[apol][ti,...][ind3d_rmsbox]) - mdn))]
+                                    img_masked = MA.array(self.img_stack[apol][ti,...], mask=msk)
+                                    stats[apol]['peak-spectrum'] += [NP.amax(NP.abs(img_masked), axis=(0,1))]
+                                    stats[apol]['peak-avg'] += [NP.mean(stats[apol]['peak-spectrum'][ti])]
+                                    img_masked = MA.array(self.img_stack[apol][ti,...], mask=msk_rms)
+                                    mdn = NP.median(img_masked[~img_masked.mask])
+                                    absdev = NP.abs(img_masked - mdn)
+                                    stats[apol]['mad'] += [NP.median(absdev[~absdev.mask])]
                 outstats += [stats]
             else:
                 pass
