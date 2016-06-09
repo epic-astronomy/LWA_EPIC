@@ -1,3 +1,11 @@
+From 41fae99 (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Create member function evalPowerPatternSkypos() along with
+docstring under class NewImage. Update class docstring accordingly
+
 From a30105f (versatility):
 ==========================
 

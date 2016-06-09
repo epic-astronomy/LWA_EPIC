@@ -6355,6 +6355,10 @@ class NewImage:
                  Evaluate sum of auto-correlations of all antenna weights on 
                  the UV-plane. 
 
+    evalPowerPatternSkypos()
+                 Evaluate power pattern at the given sky positions for the 
+                 antenna from its zero-centered cross-correlated footprint
+
     getStats()   Get statistics from images from inside specified boxes
 
     save()       Saves the image information to disk
@@ -7347,8 +7351,8 @@ class NewImage:
 
         """
         ------------------------------------------------------------------------
-        Evaluate power pattern for the antenna from its auto-correlated 
-        footprint
+        Evaluate power pattern for the antenna from its zero-centered 
+        cross-correlated footprint
 
         Input:
 
@@ -7545,6 +7549,78 @@ class NewImage:
             
     ############################################################################
 
+    def evalPowerPatternSkypos(self, skypos, datapool='avg'):
+
+        """
+        ------------------------------------------------------------------------
+        Evaluate power pattern at the given sky positions for the antenna from 
+        its zero-centered cross-correlated footprint
+
+        Input:
+
+        skypos  [numpy array] Positions on sky at which power pattern is to be
+                esimated. It is a 2- or 3-column numpy array in direction
+                cosine coordinates. It must be of size nsrc x 2 or nsrc x 3.
+
+        datapool
+                [string] Specifies whether weights to be used in determining 
+                the power pattern come from 'stack', 'current', or 'avg' 
+                (default). 
+
+        Output:
+        pb_skypos is a dictionary with keys 'P1' and 'P2' for polarization. 
+        Under each key is a numpy array of size nsrc x nchan with the esimated
+        power pattern spectra at the specified sky locations 
+        ------------------------------------------------------------------------
+        """
+
+        try:
+            skypos
+        except NameError:
+            raise NameError('Input skypos must be specified')
+
+        if datapool not in ['stack', 'avg', 'recent']:
+            raise ValueError('Invalid value specified for input datapool')
+
+        if not isinstance(skypos, NP.ndarray):
+            raise TypeError('Input skypos must be a numpy array')
+
+        if skypos.ndim != 2:
+            raise ValueError('Input skypos must be a 2D numpy array')
+
+        if (skypos.shape[1] < 2) or (skypos.shape[1] > 3):
+            raise ValueError('Input skypos must be a 2- or 3-column array')
+
+        skypos = skypos[:,:2]
+        if NP.any(NP.sum(skypos**2, axis=1) > 1.0):
+            raise ValueError('Magnitude of skypos direction cosine must not exceed unity')
+
+        self.antenna_array.evalAllAntennaPairCorrWts()
+        centered_crosscorr_wts_vuf = self.antenna_array.makeCrossCorrWtsCube()
+
+        du = self.gridu[0,1] - self.gridu[0,0]
+        dv = self.gridv[1,0] - self.gridv[0,0]
+        gridu, gridv = NP.meshgrid(du*(NP.arange(2*self.gridu.shape[1])-self.gridu.shape[1]), dv*(NP.arange(2*self.gridu.shape[0])-self.gridu.shape[0]))
+        griduv = NP.hstack((gridu.reshape(-1,1),gridv.reshape(-1,1)))
+        pol = ['P1', 'P2']
+        pb_skypos = {}
+        for p in pol:
+            uvind = SpM.find(centered_crosscorr_wts_vuf[p])[0]
+            uniq_uvind = NP.unique(uvind)
+            matFT = NP.exp(-1j*2*NP.pi*NP.dot(skypos,griduv[uniq_uvind,:].T))
+            uvmeshind, srcmeshind = NP.meshgrid(uniq_uvind, NP.arange(skypos.shape[0]))
+            uvmeshind = uvmeshind.ravel()
+            srcmeshind = srcmeshind.ravel()
+            spFTmat = SpM.csr_matrix((matFT.ravel(), (srcmeshind, uvmeshind)), shape=(skypos.shape[0],griduv.shape[0]), dtype=NP.complex64)
+            sum_wts = centered_crosscorr_wts_vuf[p].sum(axis=0)
+            pb_skypos[p] = spFTmat.dot(centered_crosscorr_wts_vuf[p]) / sum_wts
+            # if NP.abs(pb_skypos[p].imag).max() > 1e-10:
+            #     raise ValueError('Significant imaginary component found. Needs debugging')
+            pb_skypos[p] = pb_skypos[p].real
+        return pb_skypos
+        
+    ############################################################################
+    
     def getStats(self, box_type='square', box_center=None, box_size=None,
                  rms_box_scale_factor=10.0, coords='physical', datapool='avg'):
 
@@ -12028,7 +12104,7 @@ class AntennaArray:
 
         centered_crosscorr_wts_vuf is a dictionary with polarization keys 
         'P1' and 'P2. Under each key is a sparse matrix of size 
-        nv x nu x nchan. 
+        (nv x nu) x nchan. 
         ------------------------------------------------------------------------
         """
         
