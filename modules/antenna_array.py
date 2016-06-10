@@ -7608,7 +7608,7 @@ class NewImage:
         for p in pol:
             uvind = SpM.find(centered_crosscorr_wts_vuf[p])[0]
             uniq_uvind = NP.unique(uvind)
-            matFT = NP.exp(-1j*2*NP.pi*NP.dot(skypos,griduv[uniq_uvind,:].T))
+            matFT = NP.exp(-1j*2*NP.pi*NP.dot(skypos, griduv[uniq_uvind,:].T))
             uvmeshind, srcmeshind = NP.meshgrid(uniq_uvind, NP.arange(skypos.shape[0]))
             uvmeshind = uvmeshind.ravel()
             srcmeshind = srcmeshind.ravel()
@@ -9544,6 +9544,9 @@ class AntennaArray:
                       weights on grid. It will be computed only if it was not 
                       computed or stored in attribute 
                       pairwise_typetag_crosswts_vuf earlier
+
+    evalAntennaPairPBeam()
+                      Evaluate power pattern response on sky of an antenna pair
 
     avgAutoCorr()     Accumulates and averages auto-correlation of electric 
                       fields of individual antennas under each polarization
@@ -12163,6 +12166,135 @@ class AntennaArray:
                     
     ############################################################################
     
+    def evalAntennaPairPBeam(self, typetag_pair=None, label_pair=None,
+                             skypos=None):
+
+        """
+        ------------------------------------------------------------------------
+        Evaluate power pattern response on sky of an antenna pair
+
+        Inputs:
+
+        typetag_pair    
+                    [dictionary] dictionary with two keys '1' and '2' denoting
+                    the antenna typetag. At least one of them must be specified.
+                    If one of them is not specified, it is assumed to be the
+                    same as the other. Only one of the inputs typetag_pair or 
+                    label_pair must be set
+
+        label_pair  [dictionary] dictionary with two keys '1' and '2' denoting 
+                    the antenna label. At least one of them must be specified.
+                    If one of them is not specified, it is assumed to be the
+                    same as the other. Only one of the inputs typetag_pair or 
+                    label_pair must be set
+
+        skypos      [numpy array] Positions on sky at which power pattern is 
+                    to be esimated. It is a 2- or 3-column numpy array in 
+                    direction cosine coordinates. It must be of size nsrc x 2 
+                    or nsrc x 3. If set to None (default), the power pattern is 
+                    estimated over a grid on the sky. If a numpy array is
+                    specified, then power pattern at the given locations is 
+                    estimated.
+
+        Outputs:
+
+        Power pattern returned as a dictionary with keys 'P1' and 'P2' for the
+        two polarizations. Under each key is a numpy array. If skypos was set 
+        to None, the numpy array is three-dimensional of size nm x nl x nchan.
+        If skypos was a numpy array, the numpy array is two-dimensional of size
+        nsrc x nchan
+        ------------------------------------------------------------------------
+        """
+
+        if skypos is not None:
+            if not isinstance(skypos, NP.ndarray):
+                raise TypeError('Input skypos must be a numpy array')
+            if skypos.ndim != 2:
+                raise ValueError('Input skypos must be a 2D numpy array')
+    
+            if (skypos.shape[1] < 2) or (skypos.shape[1] > 3):
+                raise ValueError('Input skypos must be a 2- or 3-column array')
+    
+            skypos = skypos[:,:2]
+            if NP.any(NP.sum(skypos**2, axis=1) > 1.0):
+                raise ValueError('Magnitude of skypos direction cosine must not exceed unity')
+
+        if (typetag_pair is None) and (label_pair is None):
+            raise ValueError('One of the inputs typetag_pair or label_pair must be specified')
+        elif (typetag_pair is not None) and (label_pair is not None):
+            raise ValueError('Only one of the inputs typetag_pair or label_pair must be specified')
+
+        if typetag_pair is not None:
+            if ('1' not in typetag_pair) and ('2' not in typetag_pair):
+                raise KeyError('Required keys not found in input typetag_pair')
+            elif ('1' not in typetag_pair) and ('2' in typetag_pair):
+                typetag_pair['1'] = typetag_pair['2']
+            elif ('1' in typetag_pair) and ('2' not in typetag_pair):
+                typetag_pair['2'] = typetag_pair['1']
+            typetag_tuple = (typetag_pair['1'], typetag_pair['2'])
+            if typetag_tuple not in self.pairwise_typetags:
+                if typetag_tuple[::-1] not in self.pairwise_typetags:
+                    raise KeyError('typetag pair not found in antenna cross weights')
+                else:
+                    typetag_tuple = typetag_tuple[::-1]
+            if 'auto' in self.pairwise_tags[typetag_tuple]:
+                label1, label2 = list(self.pairwise_tags[typetag_tuple]['auto'])[0]
+            else:
+                label1, label2 = list(self.pairwise_tags[typetag_tuple]['cross'])[0]
+        else:
+            if ('1' not in label_pair) and ('2' not in label_pair):
+                raise KeyError('Required keys not found in input label_pair')
+            elif ('1' not in label_pair) and ('2' in label_pair):
+                label_pair['1'] = label_pair['2']
+            elif ('1' in label_pair) and ('2' not in label_pair):
+                label_pair['2'] = label_pair['1']
+            label1 = label_pair['1']
+            label2 = label_pair['2']
+            label_tuple = (label1, label2)
+            if label_tuple not in self.antenna_pair_to_typetag:
+                if label_tuple[::-1] not in self.antenna_pair_to_typetag:
+                    raise KeyError('label pair not found in antenna pairs')
+                else:
+                    label_tuple = label_tuple[::-1]
+            label1, label2 = label_tuple
+            typetag_tuple = self.antenna_pair_to_typetag[label_tuple]
+
+        if typetag_tuple not in self.pairwise_typetag_crosswts_vuf:
+            self.evalAntennaPairCorrWts(label1, label2=label2)
+        centered_crosscorr_wts_vuf = self.pairwise_typetag_crosswts_vuf[typetag_tuple]
+
+        pol = ['P1', 'P2']
+        pbeam = {}
+        if skypos is None:
+            for p in pol:
+                shape_tuple = tuple(2 * NP.asarray(self.gridu.shape)) + (self.f.size,)
+                sum_wts = centered_crosscorr_wts_vuf[p].sum(axis=0).A # 1 x nchan
+                sum_wts = sum_wts[NP.newaxis,:,:] # 1 x 1 x nchan
+                padded_wts_vuf = NP.pad(centered_crosscorr_wts_vuf[p].toarray().reshape(shape_tuple), (((2**pad-1)*self.gridv.shape[0],(2**pad-1)*self.gridv.shape[0]),((2**pad-1)*self.gridu.shape[1],(2**pad-1)*self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
+                padded_wts_vuf = NP.fft.ifftshift(padded_wts_vuf, axes=(0,1))
+                wts_lmf = NP.fft.fft2(padded_wts_vuf, axes=(0,1)) / sum_wts
+                pbeam[p] = NP.fft.fftshift(wts_lmf.real, axes=(0,1))
+        else:
+            du = self.gridu[0,1] - self.gridu[0,0]
+            dv = self.gridv[1,0] - self.gridv[0,0]
+            gridu, gridv = NP.meshgrid(du*(NP.arange(2*self.gridu.shape[1])-self.gridu.shape[1]), dv*(NP.arange(2*self.gridu.shape[0])-self.gridu.shape[0]))
+            griduv = NP.hstack((gridu.reshape(-1,1),gridv.reshape(-1,1)))
+            for p in pol:
+                uvind = SpM.find(centered_crosscorr_wts_vuf[p])[0]
+                uniq_uvind = NP.unique(uvind)
+                matFT = NP.exp(-1j*2*NP.pi*NP.dot(skypos, griduv[uniq_uvind,:].T))
+                uvmeshind, srcmeshind = NP.meshgrid(uniq_uvind, NP.arange(skypos.shape[0]))
+                uvmeshind = uvmeshind.ravel()
+                srcmeshind = srcmeshind.ravel()
+                spFTmat = SpM.csr_matrix((matFT.ravel(), (srcmeshind, uvmeshind)), shape=(skypos.shape[0],griduv.shape[0]), dtype=NP.complex64)
+                sum_wts = centered_crosscorr_wts_vuf[p].sum(axis=0)
+                pbeam[p] = spFTmat.dot(centered_crosscorr_wts_vuf[p]) / sum_wts
+                pbeam[p] = pbeam[p].real
+            
+        return pbeam
+
+    ############################################################################ 
+
     def quick_beam_synthesis(self, pol=None, keep_zero_spacing=True):
         
         """

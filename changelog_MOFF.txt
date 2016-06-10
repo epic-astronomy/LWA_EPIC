@@ -1,3 +1,11 @@
+From 693d52a (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Add member function evalAntennaPairPBeam() along with docstring
+under class AntennaArray. Update class docstring accordingly
+
 From fb1eab3 (versatility):
 ==========================
 
