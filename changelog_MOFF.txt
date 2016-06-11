@@ -1,3 +1,16 @@
+From 39ee6aa (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Add function evalAntennaPairCorrWts2PB() along with docstring to
+estimate power pattern from antenna-antenna correlation weights in
+the UV-plane
+(*) Update member function evalAntennaPairCorrWts2PB() of class
+AntennaArray to call newly created function
+evalAntennaPairCorrWts2PB() to estimate power pattern. Update
+docstring of member function
+
 From 693d52a (versatility):
 ==========================
 

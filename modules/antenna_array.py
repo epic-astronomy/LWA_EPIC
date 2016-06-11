@@ -115,6 +115,142 @@ def genMatrixMapper(val, ind, shape):
 
 ################################################################################
 
+def evalAntennaPairCorrWts2PB(wts_grid, ulocs, vlocs, pad=0, skypos=None):
+
+    """
+    ------------------------------------------------------------------------
+    Evaluate power pattern on sky from weights on the UV-plane
+    
+    Inputs:
+
+    wts_grid    [numpy array or scipy sparse matrix] Complex weights on 
+                the UV-plane and along frequency axis. It can be a numpy 
+                array of size nv x nu x nchan or a scipy sparse matrix of
+                size (nv x nu) x nchan. 
+
+    ulocs       [numpy array] u-locations on grid. It is of size nu and must
+                match the dimension in wts_grid
+
+    vlocs       [numpy array] v-locations on grid. It is of size nv and must
+                match the dimension in wts_grid
+
+    pad         [integer] indicates the amount of padding before estimating
+                power pattern. Applicable only when skypos is set to None. 
+                The output power pattern will be of size 2**pad-1 times the 
+                size of the UV-grid along l- and m-axes. Value must 
+                not be negative. Default=0 (implies no padding). pad=1 
+                implies padding by factor 2 along u- and v-axes
+
+    skypos      [numpy array] Positions on sky at which power pattern is 
+                to be esimated. It is a 2- or 3-column numpy array in 
+                direction cosine coordinates. It must be of size nsrc x 2 
+                or nsrc x 3. If set to None (default), the power pattern is 
+                estimated over a grid on the sky. If a numpy array is
+                specified, then power pattern at the given locations is 
+                estimated.
+
+    Outputs:
+    pbinfo is a dictionary with the following keys and values:
+    'pb'    [numpy array] If skypos was set to None, the numpy array is 
+            3D masked array of size nm x nl x nchan. The mask is based on 
+            which parts of the grid are valid direction cosine coordinates 
+            on the sky. If skypos was a numpy array denoting specific sky 
+            locations, the value in this key is a 2D numpy array of size 
+            nsrc x nchan
+    'llocs' [None or numpy array] If the power pattern estimated is a grid
+            (if input skypos was set to None), it contains the l-locations
+            of the grid on the sky. If input skypos was not set to None, 
+            the value under this key is set to None
+    'mlocs' [None or numpy array] If the power pattern estimated is a grid
+            (if input skypos was set to None), it contains the m-locations
+            of the grid on the sky. If input skypos was not set to None, 
+            the value under this key is set to None
+    ------------------------------------------------------------------------
+    """
+
+    try:
+        wts_grid, ulocs, vlocs
+    except NameError:
+        raise NameError('Inputs wts_grid, ulocs and vlocs must be specified')
+
+    if skypos is not None:
+        if not isinstance(skypos, NP.ndarray):
+            raise TypeError('Input skypos must be a numpy array')
+        if skypos.ndim != 2:
+            raise ValueError('Input skypos must be a 2D numpy array')
+
+        if (skypos.shape[1] < 2) or (skypos.shape[1] > 3):
+            raise ValueError('Input skypos must be a 2- or 3-column array')
+
+        skypos = skypos[:,:2]
+        if NP.any(NP.sum(skypos**2, axis=1) > 1.0):
+            raise ValueError('Magnitude of skypos direction cosine must not exceed unity')
+
+    if not isinstance(ulocs, NP.ndarray):
+        raise TypeError('Input ulocs must be a numpy array')
+
+    if not isinstance(vlocs, NP.ndarray):
+        raise TypeError('Input vlocs must be a numpy array')
+
+    if not isinstance(pad, int):
+        raise TypeError('Input must be an integer')
+    if pad < 0:
+        raise ValueError('Input pad must be non-negative')
+
+    ulocs = ulocs.ravel()
+    vlocs = vlocs.ravel()
+    
+    wts_shape = wts_grid.shape
+    if wts_shape[0] != ulocs.size * vlocs.size:
+        raise ValueError('Shape of input wts_grid incompatible with that of ulocs and vlocs')
+    
+    if SpM.issparse(wts_grid):
+        sum_wts = wts_grid.sum(axis=0).A # 1 x nchan
+        sum_wts = sum_wts[NP.newaxis,:,:] # 1 x 1 x nchan
+    else:
+        sum_wts = NP.sum(wts_grid, axis=(0,1), keepdims=True) # 1 x 1 x nchan
+        
+    llocs = None
+    mlocs = None
+    if skypos is None:
+        if SpM.issparse(wts_grid):
+            shape_tuple = (vlocs.size, ulocs.size) + (wts_grid.shape[1],)
+            wts_grid = wts_grid.toarray().reshape(shape_tuple)
+        padded_wts_grid = NP.pad(wts_grid, (((2**pad-1)*vlocs.size/2,(2**pad-1)*vlocs.size/2),((2**pad-1)*ulocs.size/2,(2**pad-1)*ulocs.size/2),(0,0)), mode='constant', constant_values=0)
+        padded_wts_grid = NP.fft.ifftshift(padded_wts_grid, axes=(0,1))
+        wts_lmf = NP.fft.fft2(padded_wts_grid, axes=(0,1)) / sum_wts
+        pb = NP.fft.fftshift(wts_lmf, axes=(0,1))
+        llocs = NP.fft.fftshift(NP.fft.fftfreq(2**pad * ulocs.size, ulocs[1]-ulocs[0]))
+        mlocs = NP.fft.fftshift(NP.fft.fftfreq(2**pad * vlocs.size, vlocs[1]-vlocs[0]))
+        lmgrid_invalid = llocs.reshape(1,-1)**2 + mlocs.reshape(-1,1)**2 > 1.0
+        lmgrid_invalid = lmgrid_invalid[:,:,NP.newaxis] * NP.ones(pb.shape[2], dtype=NP.bool).reshape(1,1,-1)
+        pb = MA.array(pb, mask=lmgrid_invalid)
+    else:
+        gridu, gridv = NP.meshgrid(ulocs, vlocs)
+        griduv = NP.hstack((gridu.reshape(-1,1),gridv.reshape(-1,1)))
+        if SpM.issparse(wts_grid):
+            uvind = SpM.find(wts_grid)[0]
+        else:
+            eps = 1e-10
+            wts_grid = wts_grid.reshape(griduv.shape[0],-1)
+            uvind, freqind = NP.where(NP.abs(wts_grid) > eps)
+            wts_grid = SpM.csr_matrix((wts_grid[(uvind, freqind)], (uvind, freqind)), shape=(gridu.size,wts_grid.shape[1]), dtype=NP.complex64)
+            
+        uniq_uvind = NP.unique(uvind)
+        matFT = NP.exp(-1j*2*NP.pi*NP.dot(skypos, griduv[uniq_uvind,:].T))
+        uvmeshind, srcmeshind = NP.meshgrid(uniq_uvind, NP.arange(skypos.shape[0]))
+        uvmeshind = uvmeshind.ravel()
+        srcmeshind = srcmeshind.ravel()
+        spFTmat = SpM.csr_matrix((matFT.ravel(), (srcmeshind, uvmeshind)), shape=(skypos.shape[0],griduv.shape[0]), dtype=NP.complex64)
+        sum_wts = wts_grid.sum(axis=0).A
+        pb = spFTmat.dot(wts_grid) / sum_wts
+        pb = pb.A
+    pb = pb.real
+    pbinfo = {'pb': pb, 'llocs': llocs, 'mlocs': mlocs}
+    return pbinfo
+
+################################################################################
+
 class CrossPolInfo:
 
     """
@@ -7365,7 +7501,7 @@ class NewImage:
         pad     [integer] indicates the amount of padding before estimating
                 power pattern image. Applicable only when attribute 
                 measured_type is set to 'E-field' (MOFF imaging). The output 
-                image of the pwoer pattern will be of size 2**pad-1 times the 
+                image of the power pattern will be of size 2**pad-1 times the 
                 size of the antenna array grid along u- and v-axes. Value must 
                 not be negative. Default=0 (implies no padding of the 
                 auto-correlated footprint). pad=1 implies padding by factor 2 
@@ -12167,7 +12303,7 @@ class AntennaArray:
     ############################################################################
     
     def evalAntennaPairPBeam(self, typetag_pair=None, label_pair=None,
-                             skypos=None):
+                             pad=0, skypos=None):
 
         """
         ------------------------------------------------------------------------
@@ -12188,6 +12324,13 @@ class AntennaArray:
                     same as the other. Only one of the inputs typetag_pair or 
                     label_pair must be set
 
+        pad         [integer] indicates the amount of padding before estimating
+                    power pattern. Applicable only when skypos is set to None. 
+                    The output power pattern will be of size 2**pad-1 times the 
+                    size of the UV-grid along l- and m-axes. Value must 
+                    not be negative. Default=0 (implies no padding). pad=1 
+                    implies padding by factor 2 along u- and v-axes
+
         skypos      [numpy array] Positions on sky at which power pattern is 
                     to be esimated. It is a 2- or 3-column numpy array in 
                     direction cosine coordinates. It must be of size nsrc x 2 
@@ -12205,19 +12348,6 @@ class AntennaArray:
         nsrc x nchan
         ------------------------------------------------------------------------
         """
-
-        if skypos is not None:
-            if not isinstance(skypos, NP.ndarray):
-                raise TypeError('Input skypos must be a numpy array')
-            if skypos.ndim != 2:
-                raise ValueError('Input skypos must be a 2D numpy array')
-    
-            if (skypos.shape[1] < 2) or (skypos.shape[1] > 3):
-                raise ValueError('Input skypos must be a 2- or 3-column array')
-    
-            skypos = skypos[:,:2]
-            if NP.any(NP.sum(skypos**2, axis=1) > 1.0):
-                raise ValueError('Magnitude of skypos direction cosine must not exceed unity')
 
         if (typetag_pair is None) and (label_pair is None):
             raise ValueError('One of the inputs typetag_pair or label_pair must be specified')
@@ -12237,10 +12367,10 @@ class AntennaArray:
                     raise KeyError('typetag pair not found in antenna cross weights')
                 else:
                     typetag_tuple = typetag_tuple[::-1]
-            if 'auto' in self.pairwise_tags[typetag_tuple]:
-                label1, label2 = list(self.pairwise_tags[typetag_tuple]['auto'])[0]
+            if 'auto' in self.pairwise_typetags[typetag_tuple]:
+                label1, label2 = list(self.pairwise_typetags[typetag_tuple]['auto'])[0]
             else:
-                label1, label2 = list(self.pairwise_tags[typetag_tuple]['cross'])[0]
+                label1, label2 = list(self.pairwise_typetags[typetag_tuple]['cross'])[0]
         else:
             if ('1' not in label_pair) and ('2' not in label_pair):
                 raise KeyError('Required keys not found in input label_pair')
@@ -12263,35 +12393,20 @@ class AntennaArray:
             self.evalAntennaPairCorrWts(label1, label2=label2)
         centered_crosscorr_wts_vuf = self.pairwise_typetag_crosswts_vuf[typetag_tuple]
 
+        du = self.gridu[0,1] - self.gridu[0,0]
+        dv = self.gridv[1,0] - self.gridv[0,0]
+        ulocs = du*(NP.arange(2*self.gridu.shape[1])-self.gridu.shape[1])
+        vlocs = dv*(NP.arange(2*self.gridv.shape[0])-self.gridv.shape[0])        
+        
         pol = ['P1', 'P2']
-        pbeam = {}
-        if skypos is None:
-            for p in pol:
-                shape_tuple = tuple(2 * NP.asarray(self.gridu.shape)) + (self.f.size,)
-                sum_wts = centered_crosscorr_wts_vuf[p].sum(axis=0).A # 1 x nchan
-                sum_wts = sum_wts[NP.newaxis,:,:] # 1 x 1 x nchan
-                padded_wts_vuf = NP.pad(centered_crosscorr_wts_vuf[p].toarray().reshape(shape_tuple), (((2**pad-1)*self.gridv.shape[0],(2**pad-1)*self.gridv.shape[0]),((2**pad-1)*self.gridu.shape[1],(2**pad-1)*self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
-                padded_wts_vuf = NP.fft.ifftshift(padded_wts_vuf, axes=(0,1))
-                wts_lmf = NP.fft.fft2(padded_wts_vuf, axes=(0,1)) / sum_wts
-                pbeam[p] = NP.fft.fftshift(wts_lmf.real, axes=(0,1))
-        else:
-            du = self.gridu[0,1] - self.gridu[0,0]
-            dv = self.gridv[1,0] - self.gridv[0,0]
-            gridu, gridv = NP.meshgrid(du*(NP.arange(2*self.gridu.shape[1])-self.gridu.shape[1]), dv*(NP.arange(2*self.gridu.shape[0])-self.gridu.shape[0]))
-            griduv = NP.hstack((gridu.reshape(-1,1),gridv.reshape(-1,1)))
-            for p in pol:
-                uvind = SpM.find(centered_crosscorr_wts_vuf[p])[0]
-                uniq_uvind = NP.unique(uvind)
-                matFT = NP.exp(-1j*2*NP.pi*NP.dot(skypos, griduv[uniq_uvind,:].T))
-                uvmeshind, srcmeshind = NP.meshgrid(uniq_uvind, NP.arange(skypos.shape[0]))
-                uvmeshind = uvmeshind.ravel()
-                srcmeshind = srcmeshind.ravel()
-                spFTmat = SpM.csr_matrix((matFT.ravel(), (srcmeshind, uvmeshind)), shape=(skypos.shape[0],griduv.shape[0]), dtype=NP.complex64)
-                sum_wts = centered_crosscorr_wts_vuf[p].sum(axis=0)
-                pbeam[p] = spFTmat.dot(centered_crosscorr_wts_vuf[p]) / sum_wts
-                pbeam[p] = pbeam[p].real
-            
-        return pbeam
+        pbinfo = {'pb': {}}
+        for p in pol:
+            pb = evalAntennaPairCorrWts2PB(centered_crosscorr_wts_vuf[p], ulocs, vlocs, pad=pad, skypos=skypos)
+            pbinfo['pb'][p] = pb['pb']
+            pbinfo['llocs'] = pb['llocs']
+            pbinfo['mlocs'] = pb['mlocs']
+
+        return pbinfo
 
     ############################################################################ 
 
