@@ -115,7 +115,7 @@ def genMatrixMapper(val, ind, shape):
 
 ################################################################################
 
-def evalAntennaPairCorrWts2PB(wts_grid, ulocs, vlocs, pad=0, skypos=None):
+def evalCorrWts2PB(wts_grid, ulocs, vlocs, pad=0, skypos=None):
 
     """
     ------------------------------------------------------------------------
@@ -12401,7 +12401,7 @@ class AntennaArray:
         pol = ['P1', 'P2']
         pbinfo = {'pb': {}}
         for p in pol:
-            pb = evalAntennaPairCorrWts2PB(centered_crosscorr_wts_vuf[p], ulocs, vlocs, pad=pad, skypos=skypos)
+            pb = evalCorrWts2PB(centered_crosscorr_wts_vuf[p], ulocs, vlocs, pad=pad, skypos=skypos)
             pbinfo['pb'][p] = pb['pb']
             pbinfo['llocs'] = pb['llocs']
             pbinfo['mlocs'] = pb['mlocs']

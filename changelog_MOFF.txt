@@ -1,3 +1,12 @@
+From 618cdc3 (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Rename function evalAntennaPairCorrWts2PB() to evalCrooWts2PB()
+(*) Replace all occurrences of evalAntennaPairCorrWts2PB() to
+evalCorrWts2PB()
+
 From 39ee6aa (versatility):
 ==========================
 
