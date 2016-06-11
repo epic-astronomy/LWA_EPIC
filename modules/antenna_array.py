@@ -6492,6 +6492,10 @@ class NewImage:
                  Evaluate sum of auto-correlations of all antenna weights on 
                  the UV-plane. 
 
+    evalPowerPattern()
+                 Evaluate power pattern for the antenna from its zero-centered 
+                 cross-correlated footprint
+
     evalPowerPatternSkypos()
                  Evaluate power pattern at the given sky positions for the 
                  antenna from its zero-centered cross-correlated footprint
@@ -7484,7 +7488,7 @@ class NewImage:
             
     ############################################################################
     
-    def evalPowerPattern(self, pad=0, datapool='avg'):
+    def evalPowerPattern(self, pad=0, skypos=None, datapool='avg'):
 
         """
         ------------------------------------------------------------------------
@@ -7498,14 +7502,41 @@ class NewImage:
                 the power pattern come from 'stack', 'current', or 'avg' 
                 (default). 
 
+        skypos  [numpy array] Positions on sky at which power pattern is 
+                to be esimated. It is a 2- or 3-column numpy array in 
+                direction cosine coordinates. It must be of size nsrc x 2 
+                or nsrc x 3. If set to None (default), the power pattern is 
+                estimated over a grid on the sky. If a numpy array is
+                specified, then power pattern at the given locations is 
+                estimated.
+
         pad     [integer] indicates the amount of padding before estimating
                 power pattern image. Applicable only when attribute 
                 measured_type is set to 'E-field' (MOFF imaging). The output 
                 image of the power pattern will be of size 2**pad-1 times the 
                 size of the antenna array grid along u- and v-axes. Value must 
-                not be negative. Default=0 (implies no padding of the 
-                auto-correlated footprint). pad=1 implies padding by factor 2 
-                along u- and v-axes for MOFF
+                not be negative. Default=0 (implies no padding). pad=1 implies 
+                padding by factor 2 along u- and v-axes for MOFF
+
+        Outputs:
+
+        pbinfo is a dictionary with the following keys and values:
+        'pb'    [dictionary] Dictionary with keys 'P1' and 'P2' for 
+                polarization. Under each key is a numpy array of estimated 
+                power patterns. If skypos was set to None, the numpy array is 
+                3D masked array of size nm x nl x nchan. The mask is based on 
+                which parts of the grid are valid direction cosine coordinates 
+                on the sky. If skypos was a numpy array denoting specific sky 
+                locations, the value in this key is a 2D numpy array of size 
+                nsrc x nchan
+        'llocs' [None or numpy array] If the power pattern estimated is a grid
+                (if input skypos was set to None), it contains the l-locations
+                of the grid on the sky. If input skypos was not set to None, 
+                the value under this key is set to None
+        'mlocs' [None or numpy array] If the power pattern estimated is a grid
+                (if input skypos was set to None), it contains the m-locations
+                of the grid on the sky. If input skypos was not set to None, 
+                the value under this key is set to None
         ------------------------------------------------------------------------
         """
 
@@ -7517,17 +7548,30 @@ class NewImage:
 
         self.antenna_array.evalAllAntennaPairCorrWts()
         centered_crosscorr_wts_vuf = self.antenna_array.makeCrossCorrWtsCube()
+        du = self.antenna_array.gridu[0,1] - self.antenna_array.gridu[0,0]
+        dv = self.antenna_array.gridv[1,0] - self.antenna_array.gridv[0,0]
+        ulocs = du*(NP.arange(2*self.antenna_array.gridu.shape[1])-self.antenna_array.gridu.shape[1])
+        vlocs = dv*(NP.arange(2*self.antenna_array.gridv.shape[0])-self.antenna_array.gridv.shape[0])
         pol = ['P1', 'P2']
-        shape_tuple = tuple(2 * NP.asarray(self.antenna_array.gridu.shape)) + (self.f.size,)
-        if self.measured_type == 'E-field':
-            self.pbeam = {p: None for p in pol}                
-            for p in pol:
-                sum_wts = centered_crosscorr_wts_vuf[p].sum(axis=0).A # 1 x nchan
-                sum_wts = sum_wts[NP.newaxis,:,:] # 1 x 1 x nchan
-                padded_wts_vuf = NP.pad(centered_crosscorr_wts_vuf[p].toarray().reshape(shape_tuple), (((2**pad-1)*self.gridv.shape[0],(2**pad-1)*self.gridv.shape[0]),((2**pad-1)*self.gridu.shape[1],(2**pad-1)*self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
-                padded_wts_vuf = NP.fft.ifftshift(padded_wts_vuf, axes=(0,1))
-                wts_lmf = NP.fft.fft2(padded_wts_vuf, axes=(0,1)) / sum_wts
-                self.pbeam[p] = NP.fft.fftshift(wts_lmf.real, axes=(0,1))
+        pbinfo = {'pb': {}}
+        for p in pol:
+            pb = evalCorrWts2PB(centered_crosscorr_wts_vuf[p], ulocs, vlocs, pad=pad, skypos=skypos)
+            pbinfo['pb'][p] = pb['pb']
+            pbinfo['llocs'] = pb['llocs']
+            pbinfo['mlocs'] = pb['mlocs']
+
+        return pbinfo
+
+        # shape_tuple = tuple(2 * NP.asarray(self.antenna_array.gridu.shape)) + (self.f.size,)
+        # if self.measured_type == 'E-field':
+        #     self.pbeam = {p: None for p in pol}                
+        #     for p in pol:
+        #         sum_wts = centered_crosscorr_wts_vuf[p].sum(axis=0).A # 1 x nchan
+        #         sum_wts = sum_wts[NP.newaxis,:,:] # 1 x 1 x nchan
+        #         padded_wts_vuf = NP.pad(centered_crosscorr_wts_vuf[p].toarray().reshape(shape_tuple), (((2**pad-1)*self.gridv.shape[0],(2**pad-1)*self.gridv.shape[0]),((2**pad-1)*self.gridu.shape[1],(2**pad-1)*self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
+        #         padded_wts_vuf = NP.fft.ifftshift(padded_wts_vuf, axes=(0,1))
+        #         wts_lmf = NP.fft.fft2(padded_wts_vuf, axes=(0,1)) / sum_wts
+        #         self.pbeam[p] = NP.fft.fftshift(wts_lmf.real, axes=(0,1))
 
     ############################################################################
     
@@ -12341,11 +12385,23 @@ class AntennaArray:
 
         Outputs:
 
-        Power pattern returned as a dictionary with keys 'P1' and 'P2' for the
-        two polarizations. Under each key is a numpy array. If skypos was set 
-        to None, the numpy array is three-dimensional of size nm x nl x nchan.
-        If skypos was a numpy array, the numpy array is two-dimensional of size
-        nsrc x nchan
+        pbinfo is a dictionary with the following keys and values:
+        'pb'    [dictionary] Dictionary with keys 'P1' and 'P2' for 
+                polarization. Under each key is a numpy array of estimated 
+                power patterns. If skypos was set to None, the numpy array is 
+                3D masked array of size nm x nl x nchan. The mask is based on 
+                which parts of the grid are valid direction cosine coordinates 
+                on the sky. If skypos was a numpy array denoting specific sky 
+                locations, the value in this key is a 2D numpy array of size 
+                nsrc x nchan
+        'llocs' [None or numpy array] If the power pattern estimated is a grid
+                (if input skypos was set to None), it contains the l-locations
+                of the grid on the sky. If input skypos was not set to None, 
+                the value under this key is set to None
+        'mlocs' [None or numpy array] If the power pattern estimated is a grid
+                (if input skypos was set to None), it contains the m-locations
+                of the grid on the sky. If input skypos was not set to None, 
+                the value under this key is set to None
         ------------------------------------------------------------------------
         """
 

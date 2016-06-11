@@ -1,3 +1,15 @@
+From 39365ca (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Update member function evalPowerPattern() of class NewImage. It
+can compute a grid of power pattern as well as at specified locations.
+It makes use of function evalCorrWts2PB(). Update member function and
+class docstring accordingly
+(*) Update docstring of member function evalAntennaPairPBeam() of
+class AntennaArray
+
 From 618cdc3 (versatility):
 ==========================
 
