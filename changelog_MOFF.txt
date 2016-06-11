@@ -1,3 +1,15 @@
+From c605081 (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Remove member function evalPowerPatternSkypos() of class
+NewImage since it is now made redundant with the updated member
+function evalPowerPattern() of the same class. Update class
+docstring by removing description of this defunct member function
+(*) Remove commented lines from member function evalPowerPattern() of
+class NewImage
+
 From 39365ca (versatility):
 ==========================
 

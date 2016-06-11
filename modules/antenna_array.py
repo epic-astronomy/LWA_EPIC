@@ -6496,10 +6496,6 @@ class NewImage:
                  Evaluate power pattern for the antenna from its zero-centered 
                  cross-correlated footprint
 
-    evalPowerPatternSkypos()
-                 Evaluate power pattern at the given sky positions for the 
-                 antenna from its zero-centered cross-correlated footprint
-
     getStats()   Get statistics from images from inside specified boxes
 
     save()       Saves the image information to disk
@@ -7562,60 +7558,8 @@ class NewImage:
 
         return pbinfo
 
-        # shape_tuple = tuple(2 * NP.asarray(self.antenna_array.gridu.shape)) + (self.f.size,)
-        # if self.measured_type == 'E-field':
-        #     self.pbeam = {p: None for p in pol}                
-        #     for p in pol:
-        #         sum_wts = centered_crosscorr_wts_vuf[p].sum(axis=0).A # 1 x nchan
-        #         sum_wts = sum_wts[NP.newaxis,:,:] # 1 x 1 x nchan
-        #         padded_wts_vuf = NP.pad(centered_crosscorr_wts_vuf[p].toarray().reshape(shape_tuple), (((2**pad-1)*self.gridv.shape[0],(2**pad-1)*self.gridv.shape[0]),((2**pad-1)*self.gridu.shape[1],(2**pad-1)*self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
-        #         padded_wts_vuf = NP.fft.ifftshift(padded_wts_vuf, axes=(0,1))
-        #         wts_lmf = NP.fft.fft2(padded_wts_vuf, axes=(0,1)) / sum_wts
-        #         self.pbeam[p] = NP.fft.fftshift(wts_lmf.real, axes=(0,1))
-
     ############################################################################
     
-    # def evalPowerPattern(self, pad=0):
-
-    #     """
-    #     ------------------------------------------------------------------------
-    #     Evaluate power pattern for the antenna from its auto-correlated 
-    #     footprint
-
-    #     Input:
-
-    #     pad     [integer] indicates the amount of padding before estimating
-    #             power pattern image. Applicable only when attribute 
-    #             measured_type is set to 'E-field' (MOFF imaging). The output 
-    #             image of the pwoer pattern will be of size 2**pad-1 times the 
-    #             size of the antenna array grid along u- and v-axes. Value must 
-    #             not be negative. Default=0 (implies no padding of the 
-    #             auto-correlated footprint). pad=1 implies padding by factor 2 
-    #             along u- and v-axes for MOFF
-    #     ------------------------------------------------------------------------
-    #     """
-
-    #     if not isinstance(pad, int):
-    #         raise TypeError('Input keyword pad must be an integer')
-        
-    #     if not self.autocorr_set:
-    #         self.evalAutoCorr()
-
-    #     pol = ['P1', 'P2']
-    #     if self.measured_type == 'E-field':
-    #         self.pbeam = {p: None for p in pol}                
-    #         for p in pol:
-    #             sum_wts = NP.sum(self.autocorr_wts_vuf[p], axis=(0,1), keepdims=True)
-    #             padded_wts_vuf = NP.pad(self.autocorr_wts_vuf[p], (((2**pad-1)*self.gridv.shape[0],(2**pad-1)*self.gridv.shape[0]),((2**pad-1)*self.gridu.shape[1],(2**pad-1)*self.gridu.shape[1]),(0,0)), mode='constant', constant_values=0)
-    #             padded_wts_vuf = NP.fft.ifftshift(padded_wts_vuf, axes=(0,1))
-    #             wts_lmf = NP.fft.fft2(padded_wts_vuf, axes=(0,1)) / sum_wts
-    #             if NP.abs(wts_lmf.imag).max() < 1e-10:
-    #                 self.pbeam[p] = NP.fft.fftshift(wts_lmf.real, axes=(0,1))
-    #             else:
-    #                 raise ValueError('Significant imaginary component found in the power pattern')
-
-    ############################################################################
-
     def removeAutoCorr(self, lkpinfo=None, forceeval=False, datapool='avg',
                        pad=0):
 
@@ -7728,78 +7672,6 @@ class NewImage:
             else:
                 print 'Antenna auto-correlations have been removed already'
             
-    ############################################################################
-
-    def evalPowerPatternSkypos(self, skypos, datapool='avg'):
-
-        """
-        ------------------------------------------------------------------------
-        Evaluate power pattern at the given sky positions for the antenna from 
-        its zero-centered cross-correlated footprint
-
-        Input:
-
-        skypos  [numpy array] Positions on sky at which power pattern is to be
-                esimated. It is a 2- or 3-column numpy array in direction
-                cosine coordinates. It must be of size nsrc x 2 or nsrc x 3.
-
-        datapool
-                [string] Specifies whether weights to be used in determining 
-                the power pattern come from 'stack', 'current', or 'avg' 
-                (default). 
-
-        Output:
-        pb_skypos is a dictionary with keys 'P1' and 'P2' for polarization. 
-        Under each key is a numpy array of size nsrc x nchan with the esimated
-        power pattern spectra at the specified sky locations 
-        ------------------------------------------------------------------------
-        """
-
-        try:
-            skypos
-        except NameError:
-            raise NameError('Input skypos must be specified')
-
-        if datapool not in ['stack', 'avg', 'recent']:
-            raise ValueError('Invalid value specified for input datapool')
-
-        if not isinstance(skypos, NP.ndarray):
-            raise TypeError('Input skypos must be a numpy array')
-
-        if skypos.ndim != 2:
-            raise ValueError('Input skypos must be a 2D numpy array')
-
-        if (skypos.shape[1] < 2) or (skypos.shape[1] > 3):
-            raise ValueError('Input skypos must be a 2- or 3-column array')
-
-        skypos = skypos[:,:2]
-        if NP.any(NP.sum(skypos**2, axis=1) > 1.0):
-            raise ValueError('Magnitude of skypos direction cosine must not exceed unity')
-
-        self.antenna_array.evalAllAntennaPairCorrWts()
-        centered_crosscorr_wts_vuf = self.antenna_array.makeCrossCorrWtsCube()
-
-        du = self.gridu[0,1] - self.gridu[0,0]
-        dv = self.gridv[1,0] - self.gridv[0,0]
-        gridu, gridv = NP.meshgrid(du*(NP.arange(2*self.gridu.shape[1])-self.gridu.shape[1]), dv*(NP.arange(2*self.gridu.shape[0])-self.gridu.shape[0]))
-        griduv = NP.hstack((gridu.reshape(-1,1),gridv.reshape(-1,1)))
-        pol = ['P1', 'P2']
-        pb_skypos = {}
-        for p in pol:
-            uvind = SpM.find(centered_crosscorr_wts_vuf[p])[0]
-            uniq_uvind = NP.unique(uvind)
-            matFT = NP.exp(-1j*2*NP.pi*NP.dot(skypos, griduv[uniq_uvind,:].T))
-            uvmeshind, srcmeshind = NP.meshgrid(uniq_uvind, NP.arange(skypos.shape[0]))
-            uvmeshind = uvmeshind.ravel()
-            srcmeshind = srcmeshind.ravel()
-            spFTmat = SpM.csr_matrix((matFT.ravel(), (srcmeshind, uvmeshind)), shape=(skypos.shape[0],griduv.shape[0]), dtype=NP.complex64)
-            sum_wts = centered_crosscorr_wts_vuf[p].sum(axis=0)
-            pb_skypos[p] = spFTmat.dot(centered_crosscorr_wts_vuf[p]) / sum_wts
-            # if NP.abs(pb_skypos[p].imag).max() > 1e-10:
-            #     raise ValueError('Significant imaginary component found. Needs debugging')
-            pb_skypos[p] = pb_skypos[p].real
-        return pb_skypos
-        
     ############################################################################
     
     def getStats(self, box_type='square', box_center=None, box_size=None,
