@@ -115,16 +115,17 @@ def genMatrixMapper(val, ind, shape):
 
 ################################################################################
 
-def evalCorrWts2PB(wts_grid, ulocs, vlocs, pad=0, skypos=None):
+def evalApertureResponse(wts_grid, ulocs, vlocs, pad=0, skypos=None):
 
     """
-    ------------------------------------------------------------------------
-    Evaluate power pattern on sky from weights on the UV-plane
+    --------------------------------------------------------------------------
+    Evaluate response on sky from aperture weights on the UV-plane. It applies
+    to both single antennas and antenna pairs
     
     Inputs:
 
     wts_grid    [numpy array or scipy sparse matrix] Complex weights on 
-                the UV-plane and along frequency axis. It can be a numpy 
+                the aperture-plane and along frequency axis. It can be a numpy 
                 array of size nv x nu x nchan or a scipy sparse matrix of
                 size (nv x nu) x nchan. 
 
@@ -7551,7 +7552,7 @@ class NewImage:
         pol = ['P1', 'P2']
         pbinfo = {'pb': {}}
         for p in pol:
-            pb = evalCorrWts2PB(centered_crosscorr_wts_vuf[p], ulocs, vlocs, pad=pad, skypos=skypos)
+            pb = evalApertureResponse(centered_crosscorr_wts_vuf[p], ulocs, vlocs, pad=pad, skypos=skypos)
             pbinfo['pb'][p] = pb['pb']
             pbinfo['llocs'] = pb['llocs']
             pbinfo['mlocs'] = pb['mlocs']
@@ -12329,7 +12330,7 @@ class AntennaArray:
         pol = ['P1', 'P2']
         pbinfo = {'pb': {}}
         for p in pol:
-            pb = evalCorrWts2PB(centered_crosscorr_wts_vuf[p], ulocs, vlocs, pad=pad, skypos=skypos)
+            pb = evalApertureResponse(centered_crosscorr_wts_vuf[p], ulocs, vlocs, pad=pad, skypos=skypos)
             pbinfo['pb'][p] = pb['pb']
             pbinfo['llocs'] = pb['llocs']
             pbinfo['mlocs'] = pb['mlocs']

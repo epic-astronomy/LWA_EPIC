@@ -1,3 +1,11 @@
+From 4e38f42 (versatility):
+==========================
+
+In antenna_array.py,
+
+(*) Rename function evalCorrWts2PB() with evalApertureResponse() and
+replace its occurrences throughout
+
 From c605081 (versatility):
 ==========================
 
