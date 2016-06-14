@@ -1,3 +1,11 @@
+From dc41c7f (versatility):
+==========================
+
+In sim_observe.py,
+
+(*) Add member function generate_sky_E_spectrum() along with docstring
+under class AntennaArraySimulator. Update class docstring accordingly
+
 From 4e38f42 (versatility):
 ==========================
 

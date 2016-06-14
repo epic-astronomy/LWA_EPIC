@@ -1497,6 +1497,14 @@ class AntennaArraySimulator(object):
                     Compute a stochastic electric field spectrum obtained 
                     from sources in the catalog. It can be parallelized.
 
+    generate_E_spectrum()
+                    Compute a stochastic electric field spectrum obtained 
+                    from a sky model using aperture plane computations. The 
+                    antenna kernel is not applied here. It is a component 
+                    in creating an aperture plane alternative to the member 
+                    function generate_E_spectrum() but without application 
+                    of the individual antenna pattern
+
     stack_E_spectrum()
                     Stack E-field spectra along time-axis
 
@@ -2034,7 +2042,7 @@ class AntennaArraySimulator(object):
 
         Output:
     
-        Ef_info   [dictionary] Consits of E-field info under two keys 'P1' and
+        Ef_info   [dictionary] Consists of E-field info under two keys 'P1' and
                   'P2', one for each polarization. Under each of these keys
                   the complex electric fields spectra of shape nchan x nant are 
                   stored. nchan is the number of channels in the spectrum and 
@@ -2174,6 +2182,161 @@ class AntennaArraySimulator(object):
                 self.Ef_info[apol] = Ef_info[apol]['Ef']
         if action == 'return':
             return self.Ef_info
+
+    ############################################################################
+    
+    def generate_sky_E_spectrum(self, altaz, ctlgind=None, uvlocs=None, 
+                                pol=None, randomseed=None, randvals=None):
+
+        """
+        ----------------------------------------------------------------------------
+        Compute a stochastic electric field spectrum obtained from a sky model 
+        using aperture plane computations. The antenna kernel is not applied here. 
+        It is a component in creating an aperture plane alternative to the member 
+        function generate_E_spectrum() but without application of the individual 
+        antenna pattern
+    
+        Inputs: 
+    
+        altaz       [numpy array] Alt-az sky positions (in degrees) of sources 
+                    It should be a 2-column numpy array. Each 2-column entity 
+                    corresponds to a source position. Number of 2-column 
+                    entities should equal the number of sources as specified 
+                    by the size of flux_ref. It is of size nsrc x 2
+    
+        ctlgind     [numpy array] Indices of sources in the attribute skymodel 
+                    that will be used in generating the E-field spectrum. If
+                    specified as None (default), all objects in the attribute
+                    skymodel will be used. It size must be of size nsrc as 
+                    described in input altaz
+    
+        uvlocs      [numpy array] Locations in the UV-plane at which electric
+                    fields are to be computed. It must be of size nuv x 2
+
+        pol         [list] List of polarizations to process. The polarizations
+                    are specified as strings 'P1' and 'P2. If set to None
+                    (default), both polarizations are processed
+    
+        randomseed  [integer] Seed to initialize the randon generator. If set
+                    to None (default), the random sequences generated are not
+                    reproducible. Set to an integer to generate reproducible
+                    random sequences. Will be used only if the other input 
+                    randvals is set to None
+    
+        randvals    [numpy array] Externally generated complex random numbers.
+                    Both real and imaginary parts must be drawn from a normal
+                    distribution (mean=0, var=1). Always must have size equal 
+                    to nsrc x nchan x npol. If specified as a vector, it must be 
+                    of size nsrc x nchan x npol. Either way it will be resphaed 
+                    to size nsrc x nchan x npol. If randvals is specified, no 
+                    fresh random numbers will be generated and the input 
+                    randomseed will be ignored.
+    
+        Output:
+    
+        sky_Ef_info [dictionary] Consists of E-field info under two keys 'P1' and
+                    'P2', one for each polarization. Under each of these keys
+                    the complex electric fields spectra of shape nuv x nchan are 
+                    stored. nchan is the number of channels in the spectrum and 
+                    nuv is the number of gridded points in the aperture footprint
+        ----------------------------------------------------------------------------
+        """
+        
+        try:
+            altaz
+        except NameError:
+            raise NameError('Input altaz must be specified')
+
+        srcdircos = GEOM.altaz2dircos(altaz, units='degrees')
+
+        if ctlgind is None:
+            ctlgind = NP.arange(self.skymodel.location.shape[0])
+        elif isinstance(ctlgind, list):
+            ctlgind = NP.asarray(ctlgind)
+        elif isinstance(ctlgind, NP.ndarray):
+            ctlgind = ctlgind.ravel()
+        else:
+            raise TypeError('Input ctlgind must be a list, numpy array or set to None')
+        if ctlgind.size != altaz.shape[0]:
+            raise ValueError('Input ctlgind must contain same number of elements as number of objects in input altaz.')
+        skymodel = self.skymodel.subset(ctlgind, axis='position')
+        nsrc = ctlgind.size
+        nchan = self.f.size
+        spectrum = skymodel.generate_spectrum()
+
+        if pol is None:
+            pol = ['P1', 'P2']
+        elif isinstance(pol, str):
+            if pol in ['P1', 'P2']:
+                pol = [pol]
+            else:
+                raise ValueError('Invalid polarization specified')
+        elif isinstance(pol, list):
+            p = [apol for apol in pol if apol in ['P1', 'P2']]
+            if len(p) == 0:
+                raise ValueError('Invalid polarization specified')
+            pol = p
+        else:
+            raise TypeError('Input keyword pol must be string, list or set to None')
+        pol = sorted(pol)
+        npol = pol.size
+
+        if randomseed is None:
+            randomseed = NP.random.randint(1000000)
+        elif not isinstance(randomseed, int):
+            raise TypeError('If input randomseed is not None, it must be an integer')
+
+        if uvlocs is None:
+            typetags = self.antenna_array.typetags
+            antwts = {}
+            antlabels = []
+            aprtrs = []
+            max_aprtr_size = []
+            for typetag in typetags:
+                antlabel = list(self.antenna_array.typetags[typetag])[0]
+                antlabels += [antlabel]
+                aprtr = self.antenna_array.antennas[antlabel].aperture
+                max_aprtr_size += [max([NP.sqrt(aprtr.xmax['P1']**2 + NP.sqrt(aprtr.ymax['P1']**2)), NP.sqrt(aprtr.xmax['P2']**2 + NP.sqrt(aprtr.ymax['P2']**2)), aprtr.rmax['P1'], aprtr.rmax['P2']])]
+                
+            max_aprtr_halfwidth = NP.amax(NP.asarray(max_aprtr_size))
+            wl = FCNST.c / self.f
+            trc = max_aprtr_halfwidth / wl.min()
+            blc = -trc
+            uvspacing = 0.5
+            gridu, gridv = GRD.grid_2d([(blc, trc), (blc, trc)], pad=0.0, spacing=uvspacing, pow2=True)
+            uvlocs = NP.hstack((gridu.reshape(-1,1), gridv.reshape(-1,1)))
+        else:
+            if not isinstance(uvlocs, NP.ndarray):
+                raise TypeError('Input uvlocs is numpy array')
+            if uvlocs.ndim != 2:
+                raise ValueError('Input uvlocs must be a 2D numpy array')
+            if uvlocs.shape[1] != 2:
+                raise ValueError('Input uvlocs must be a 2-column array')
+
+        if randvals is not None:
+            if not isinstance(randvals, NP.ndarray):
+                raise TypeError('Input randvals must be a numpy array')
+            if randvals.size != nsrc * nchan * npol:
+                raise ValueError('Input randvals found to be of invalid size')
+            randvals = randvals.reshape(nsrc,nchan,npol)
+        else:
+            randstate = NP.random.RandomState(randomseed + polind)
+            randvals = randstate.normal(loc=0.0, scale=1.0, size=(nsrc,nchan,npol)) + 1j * randstate.normal(loc=0.0, scale=1.0, size=(nsrc,nchan,npol)) # nsrc x nchan x npol
+
+        sigmas = NP.sqrt(spectrum) # nsrc x nchan
+        sky_Ef_info = {}
+        for polind, p in enumerate(pol):
+            Ef_amp = sigmas/NP.sqrt(2) * randvals[:,:,polind] # nsrc x nchan
+            Ef_phase = 1.0
+            Ef = Ef_amp * Ef_phase # nsrc x nchan
+            
+            srcdircos_2d = srcdircos[:,:2] # nsrc x 2
+            u_dot_l = NP.dot(uvlocs, srcdircos_2d.T) # nuv x nsrc
+            matDFT = NP.exp(1j * 2 * NP.pi * u_dot_l) # nuv x nsrc
+    
+            sky_Ef_info[p] = NP.dot(matDFT, Ef) # nuv x nchan
+
+        return sky_Ef_info
 
     ############################################################################
     
