@@ -1,3 +1,11 @@
+From e77a8e3 (sim-uv):
+=====================
+
+In sim_observe.py,
+
+(*) Fix bugs in member function generate_sky_E_spectrum() of class
+AntennaArraySimulator. 
+
 From dc41c7f (versatility):
 ==========================
 

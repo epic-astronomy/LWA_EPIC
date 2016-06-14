@@ -985,7 +985,7 @@ class Aperture(object):
         pol     [string or list] The polarization for which the kernel is to be 
                 estimated. Can be set to one or both of 'P1' and 'P2' for antenna 
                 apertures or one or more or all of 'P11', 'P12', 'P21', 'P22' for
-                interferometer apertures as a listk. If set to None, kernel is 
+                interferometer apertures as a list. If set to None, kernel is 
                 estimated for all the polarizations. Default=None
 
         rmaxNN  [scalar] Search distance upper limit in case of kernel 
