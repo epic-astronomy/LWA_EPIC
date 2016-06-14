@@ -1,5 +1,6 @@
 import copy
 import numpy as NP
+import scipy.sparse as SpM
 import scipy.constants as FCNST
 import ephem as EP
 import multiprocessing as MP
@@ -14,6 +15,7 @@ from astroutils import geometry as GEOM
 from astroutils import constants as CNST
 from astroutils import catalog as SM
 from astroutils import gridding_modules as GRD
+from astroutils import lookup_operations as LKP
 import antenna_array as AA
 import antenna_beams as AB
 
@@ -2406,13 +2408,6 @@ class AntennaArraySimulator(object):
         if len(set(pol).intersection(sky_Ef_info.keys())) == 0:
             raise KeyError('Input sky_Ef_info does not contain any of the accepted polarizations')
         
-        for p in pol:
-            if p in sky_Ef_info:
-                if not isinstance(sky_Ef_info[p], NP.ndarray):
-                    raise TypeError('Input sky_Ef_info under polarization key {0} must be a numpy array'.format(p))
-                if sky_Ef_info[p].shape != (uvlocs.shape[0], self.f.size):
-                    raise ValueError('Input sky_Ef_info under polarization key {0} has incompatible dimensions'.format(p))
-
         typetags = self.antenna_array.typetags.keys()
         antlabels = []
         aprtrs = []
@@ -2440,18 +2435,28 @@ class AntennaArraySimulator(object):
             if uvlocs.shape[1] != 2:
                 raise ValueError('Input uvlocs must be a 2-column array')
         
+        for p in pol:
+            if p in sky_Ef_info:
+                if not isinstance(sky_Ef_info[p], NP.ndarray):
+                    raise TypeError('Input sky_Ef_info under polarization key {0} must be a numpy array'.format(p))
+                if sky_Ef_info[p].shape != (uvlocs.shape[0], self.f.size):
+                    raise ValueError('Input sky_Ef_info under polarization key {0} has incompatible dimensions'.format(p))
+
         wl = FCNST.c / self.f
         wavelength = NP.zeros(uvlocs.shape[0]).reshape(-1,1) + wl.reshape(1,-1)
-        gridx = uvlocs[:,0].reshape(-1,1) * wl.reshape(1,-1)
-        gridy = uvlocs[:,1].reshape(-1,1) * wl.reshape(1,-1)
-        gridxy = NP.hstack((gridx.reshape(-1,1), gridy.reshape(-1,1)))
+        xlocs = uvlocs[:,0].reshape(-1,1) * wl.reshape(1,-1)
+        ylocs = uvlocs[:,1].reshape(-1,1) * wl.reshape(1,-1)
+        xylocs = NP.hstack((xlocs.reshape(-1,1), ylocs.reshape(-1,1)))
 
-        distNN = 2.0 * max_aprtr_size
-        indNN_list, blind, vuf_gridind = LKP.find_NN(NP.zeros(2).reshape(1,-1), gridxy, distance_ULIM=distNN, flatten=True, parallel=False)
-        dxy = gridxy[vuf_gridind,:]
+        du = NP.diff(uvlocs[:,0]).max()
+        dv = NP.diff(uvlocs[:,1]).max()
+        rmaxNN = 0.5 * NP.sqrt(du**2 + dv**2) * wl.min()
+        distNN = 2.0 * max_aprtr_halfwidth
+        indNN_list, blind, vuf_gridind = LKP.find_NN(NP.zeros(2).reshape(1,-1), xylocs, distance_ULIM=distNN, flatten=True, parallel=False)
+        dxy = xylocs[vuf_gridind,:]
         unraveled_vuf_ind = NP.unravel_index(vuf_gridind, (uvlocs.shape[0],self.f.size,))
         ant_Ef_info = {}
-        for aprtrind in xrange(aprtrs):
+        for aprtrind, aprtr in enumerate(aprtrs):
             typetag = typetags[aprtrind]
             ant_Ef_info[typetag] = {}
             for p in pol:
@@ -2461,7 +2466,7 @@ class AntennaArraySimulator(object):
                 krn_sparse_norm = krn_sparse.A / krn_sparse_sumuv.A
                 spval = krn_sparse_norm[unraveled_vuf_ind]
                 antwts = SpM.csr_matrix((spval, unraveled_vuf_ind), shape=(uvlocs.shape[0],self.f.size), dtype=NP.complex64)
-                weighted_Ef = antwts * sky_Ef_info[p]
+                weighted_Ef = antwts.A * sky_Ef_info[p]
                 ant_Ef_info[typetag][p] = NP.sum(weighted_Ef, axis=0)
                 
         return ant_Ef_info

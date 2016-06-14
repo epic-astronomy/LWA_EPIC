@@ -1,3 +1,11 @@
+From 8ce3c69 (sim-uv):
+=====================
+
+In sim_observe.py,
+
+(*) Debug member function applyApertureWts() of class
+AntennaArraySimulator
+
 From e77a8e3 (sim-uv):
 =====================
 
