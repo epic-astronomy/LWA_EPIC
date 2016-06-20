@@ -1,3 +1,11 @@
+From 6c4e4cf (sim-uv):
+=====================
+
+In sim_observe.py,
+
+(*) Minor change in error message in member function
+applyApertureWts() of class AntennaArraySimulator
+
 From 8ce3c69 (sim-uv):
 =====================
 

@@ -2383,7 +2383,7 @@ class AntennaArraySimulator(object):
         try:
             sky_Ef_info
         except NameError:
-            raise NameError('Inputs sky_Ef_info must be specified')
+            raise NameError('Input sky_Ef_info must be specified')
 
         if not isinstance(sky_Ef_info, dict):
             raise TypeError('Input sky_Ef_info must be a dictionary')
@@ -2470,6 +2470,47 @@ class AntennaArraySimulator(object):
                 ant_Ef_info[typetag][p] = NP.sum(weighted_Ef, axis=0)
                 
         return ant_Ef_info
+
+    ############################################################################
+    
+    # def applyGeometricPhase(self, ant_Ef_info):
+
+    #     try:
+    #         ant_Ef_info
+    #     except NameError:
+    #         raise NameError('Input ant_Ef_info must be specified')
+
+    #     if not isinstance(ant_Ef_info, dict):
+    #         raise TypeError('Input ant_Ef_info must be a dictionary')
+
+    #     if pol is None:
+    #         pol = ['P1', 'P2']
+    #     elif isinstance(pol, str):
+    #         if pol in ['P1', 'P2']:
+    #             pol = [pol]
+    #         else:
+    #             raise ValueError('Invalid polarization specified')
+    #     elif isinstance(pol, list):
+    #         p = [apol for apol in pol if apol in ['P1', 'P2']]
+    #         if len(p) == 0:
+    #             raise ValueError('Invalid polarization specified')
+    #         pol = p
+    #     else:
+    #         raise TypeError('Input keyword pol must be string, list or set to None')
+    #     pol = sorted(pol)
+    #     npol = len(pol)
+
+    #     all_ant_Ef_info = {}
+    #     antlocs = None
+    #     for antlabel in self.antenna_array.antennas:
+    #         typetag = self.antenna_array.antennas[antlabel].typetag
+    #         if antlocs is None:
+    #             antlocs = NP.asarray([self.antenna_array.antennas[antlabel].location.x, self.antenna_array.antennas[antlabel].location.y]).reshape(1,-1)
+    #         else:
+    #             antlocs = NP.vstack((antlocs, NP.asarray([self.antenna_array.antennas[antlabel].location.x, self.antenna_array.antennas[antlabel].location.y]).reshape(1,-1)))
+    #         for p in pol:
+    #             all_ant_Ef_info 
+            
 
     ############################################################################
     
