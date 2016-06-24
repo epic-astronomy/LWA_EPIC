@@ -1515,6 +1515,11 @@ class AntennaArraySimulator(object):
                     here. It is a component in creating an aperture plane 
                     alternative to the member function generate_E_spectrum() 
 
+    generate_antenna_wts_spectrum()
+                    Generate aperture weights of antennas. Aperture 
+                    illumination weights are estimated only for the unique 
+                    antenna typetags.
+
     stack_E_spectrum()
                     Stack E-field spectra along time-axis
 
@@ -2479,6 +2484,105 @@ class AntennaArraySimulator(object):
 
         return (antpos_info['labels'], aperture_Ef_info)
         
+    ############################################################################
+    
+    def generate_antenna_wts_spectrum(self, uvlocs=None, pol=None):
+
+        """
+        ------------------------------------------------------------------------
+        Generate aperture weights of antennas. Aperture illumination
+        weights are estimated only for the unique antenna typetags.
+
+        Inputs:
+
+        uvlocs      [numpy array] Locations in the UV-plane at which electric
+                    fields are to be computed. It must be of size nuv x 2. If
+                    set to None (default), it will be automatically determined
+                    from the antenna aperture attribute
+
+        Outputs:
+
+        antwts      [dictionary] Contains antenna aperture weights. 
+                    It consists of keys which are unique antenna 
+                    typetags. Under each of these keys is another dictionary 
+                    with two keys 'P1' and 'P2' for the two polarizations. The
+                    value under each of these keys is a sparse matrix of size 
+                    nuv x nchan where nchan is the number of frequency channels
+                    and nuv is the number of uv locations
+        ------------------------------------------------------------------------
+        """
+
+        if pol is None:
+            pol = ['P1', 'P2']
+        elif isinstance(pol, str):
+            if pol in ['P1', 'P2']:
+                pol = [pol]
+            else:
+                raise ValueError('Invalid polarization specified')
+        elif isinstance(pol, list):
+            p = [apol for apol in pol if apol in ['P1', 'P2']]
+            if len(p) == 0:
+                raise ValueError('Invalid polarization specified')
+            pol = p
+        else:
+            raise TypeError('Input keyword pol must be string, list or set to None')
+           pol = sorted(pol)
+        npol = len(pol)
+
+        typetags = self.antenna_array.typetags.keys()
+        antlabels = []
+        aprtrs = []
+        max_aprtr_size = []
+        for typetag in typetags:
+            antlabel = list(self.antenna_array.typetags[typetag])[0]
+            antlabels += [antlabel]
+            aprtr = self.antenna_array.antennas[antlabel].aperture
+            aprtrs += [aprtr]
+            max_aprtr_size += [max([NP.sqrt(aprtr.xmax['P1']**2 + NP.sqrt(aprtr.ymax['P1']**2)), NP.sqrt(aprtr.xmax['P2']**2 + NP.sqrt(aprtr.ymax['P2']**2)), aprtr.rmax['P1'], aprtr.rmax['P2']])]
+        max_aprtr_halfwidth = NP.amax(NP.asarray(max_aprtr_size))
+        
+        if uvlocs is None:
+            wl = FCNST.c / self.f
+            trc = max_aprtr_halfwidth / wl.min()
+            blc = -trc
+            uvspacing = 0.5
+            gridu, gridv = GRD.grid_2d([(blc, trc), (blc, trc)], pad=0.0, spacing=uvspacing, pow2=True)
+            uvlocs = NP.hstack((gridu.reshape(-1,1), gridv.reshape(-1,1)))
+        else:
+            if not isinstance(uvlocs, NP.ndarray):
+                raise TypeError('Input uvlocs is numpy array')
+            if uvlocs.ndim != 2:
+                raise ValueError('Input uvlocs must be a 2D numpy array')
+            if uvlocs.shape[1] != 2:
+                raise ValueError('Input uvlocs must be a 2-column array')
+        
+        wl = FCNST.c / self.f
+        wavelength = NP.zeros(uvlocs.shape[0]).reshape(-1,1) + wl.reshape(1,-1)
+        xlocs = uvlocs[:,0].reshape(-1,1) * wl.reshape(1,-1)
+        ylocs = uvlocs[:,1].reshape(-1,1) * wl.reshape(1,-1)
+        xylocs = NP.hstack((xlocs.reshape(-1,1), ylocs.reshape(-1,1)))
+
+        du = NP.diff(uvlocs[:,0]).max()
+        dv = NP.diff(uvlocs[:,1]).max()
+        rmaxNN = 0.5 * NP.sqrt(du**2 + dv**2) * wl.min()
+        distNN = 2.0 * max_aprtr_halfwidth
+        indNN_list, blind, vuf_gridind = LKP.find_NN(NP.zeros(2).reshape(1,-1), xylocs, distance_ULIM=distNN, flatten=True, parallel=False)
+        dxy = xylocs[vuf_gridind,:]
+        unraveled_vuf_ind = NP.unravel_index(vuf_gridind, (uvlocs.shape[0],self.f.size,))
+        antwts = {}
+        for aprtrind, aprtr in enumerate(aprtrs):
+            typetag = typetags[aprtrind]
+            antwts[typetag] = {}
+            for p in pol:
+                krn = aprtr.compute(dxy, wavelength=wavelength.ravel()[vuf_gridind], pol=p, rmaxNN=rmaxNN, load_lookup=False)
+                krn_sparse = SpM.csr_matrix((krn[p], unraveled_vuf_ind), shape=(uvlocs.shape[0], self.f.size), dtype=NP.complex64)
+                krn_sparse_sumuv = krn_sparse.sum(axis=0)
+                krn_sparse_norm = krn_sparse.A / krn_sparse_sumuv.A
+                spval = krn_sparse_norm[unraveled_vuf_ind]
+                antwts[typetag][p] = SpM.csr_matrix((spval, unraveled_vuf_ind), shape=(uvlocs.shape[0],self.f.size), dtype=NP.complex64)
+        
+        return antwts
+
     ############################################################################
     
     def applyApertureWts(self, sky_Ef_info, uvlocs=None, pol=None):

@@ -1,3 +1,10 @@
+From dd84fac (sim-uv):
+=====================
+
+(*) Add member function generate_antenna_wts_spectrum() along with
+docstring under class AntennaArraySimulator. Update class docstring
+accordingly
+
 From 6417951 (sim-uv):
 =====================
 
