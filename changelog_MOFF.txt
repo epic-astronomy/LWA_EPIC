@@ -1,3 +1,9 @@
+From 6417951 (sim-uv):
+=====================
+
+(*) Update member function propagate_sky_E_spectrum() of class
+AntennaArraySimulator. Update docstring accordingly
+
 From d86a4d3 (sim-uv):
 =====================
 

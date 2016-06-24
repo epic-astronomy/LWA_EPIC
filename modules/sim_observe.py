@@ -2390,13 +2390,15 @@ class AntennaArraySimulator(object):
     
         Output:
     
-        aperture_Ef_info 
-                    [dictionary] Consists of E-field info on the aperture plane 
-                    under two keys 'P1' and 'P2', one for each polarization. 
-                    Under each of these keys the complex electric fields 
-                    spectra of shape nuv x nchan are stored. nchan is the 
-                    number of channels in the spectrum and nuv is the number 
-                    of gridded points in the aperture footprint
+        Tuple with first element being the antenna labels and the second element
+        a dictionary containing electric field information at the sampled 
+        aperture locations. This dictionary consists of two keys 'P1' and 'P2', 
+        one for each polarization. Under each of these keys the complex electric 
+        fields spectra of shape nuv x nant x nchan are stored. nchan is the 
+        number of channels in the spectrum, nuv is the number of gridded points 
+        in the aperture footprint and nant is the number of antennas. The order 
+        of antennas in nant is given by the first element of the tuple returned 
+        that contains the antenna labels
         ------------------------------------------------------------------------
         """
 
@@ -2434,6 +2436,7 @@ class AntennaArraySimulator(object):
         pol = sorted(pol)
         npol = len(pol)
 
+        wl = FCNST.c / self.f
         if uvlocs is None:
             typetags = self.antenna_array.typetags
             antwts = {}
@@ -2447,7 +2450,6 @@ class AntennaArraySimulator(object):
                 max_aprtr_size += [max([NP.sqrt(aprtr.xmax['P1']**2 + NP.sqrt(aprtr.ymax['P1']**2)), NP.sqrt(aprtr.xmax['P2']**2 + NP.sqrt(aprtr.ymax['P2']**2)), aprtr.rmax['P1'], aprtr.rmax['P2']])]
                 
             max_aprtr_halfwidth = NP.amax(NP.asarray(max_aprtr_size))
-            wl = FCNST.c / self.f
             trc = max_aprtr_halfwidth / wl.min()
             blc = -trc
             uvspacing = 0.5
@@ -2461,13 +2463,21 @@ class AntennaArraySimulator(object):
             if uvlocs.shape[1] != 2:
                 raise ValueError('Input uvlocs must be a 2-column array')
 
+        antpos_info = self.antenna_array.antenna_positions(pol=None, flag=False, sort=True, centering=False)
+        skypos_dot_antpos = NP.dot(antpos_info['positions'], skypos.T) # nant x nsrc
+        skypos_dot_antpos = skypos_dot_antpos[:,:,NP.newaxis] / wl.reshape(1,1,-1) # nant x nsrc x nchan
+        skypos_dot_antpos = NP.exp(1j * 2 * NP.pi * skypos_dot_antpos) # nant x nsrc x nchan
+
+        if not apply_aprtr_wts:
+            aprtr_wts = {p: 1.0 for p in pol}
+
         aperture_Ef_info = {}
         for polind, p in enumerate(pol):
             u_dot_l = NP.dot(uvlocs, srcdircos_2d.T) # nuv x nsrc
             matDFT = NP.exp(1j * 2 * NP.pi * u_dot_l) # nuv x nsrc
-            aperture_Ef_info[p] = NP.dot(matDFT, sky_Ef_info[p]) # nuv x nchan
+            aperture_Ef_info[p] = NP.dot(matDFT, sky_Ef_info[p][NP.newaxis,:,:]*skypos_dot_antpos) # nuv x nant x nchan
 
-        return aperture_Ef_info
+        return (antpos_info['labels'], aperture_Ef_info)
         
     ############################################################################
     
@@ -2527,7 +2537,7 @@ class AntennaArraySimulator(object):
             pol = p
         else:
             raise TypeError('Input keyword pol must be string, list or set to None')
-        pol = sorted(pol)
+           pol = sorted(pol)
         npol = len(pol)
 
         if len(set(pol).intersection(sky_Ef_info.keys())) == 0:
