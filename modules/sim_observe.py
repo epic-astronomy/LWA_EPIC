@@ -1502,11 +1502,13 @@ class AntennaArraySimulator(object):
 
     generate_sky_E_spectrum()
                     Compute a stochastic electric field spectrum obtained 
-                    from a sky model using aperture plane computations. The 
-                    antenna kernel is not applied here. It is a component 
-                    in creating an aperture plane alternative to the member 
-                    function generate_E_spectrum() but without application 
-                    of the individual antenna pattern
+                    from a sky model. It is a component in creating an 
+                    aperture plane alternative to the member function 
+                    generate_E_spectrum() but without application of the 
+                    individual antenna pattern. This sky spectrum can be 
+                    propagated to any antenna aperture which can then be 
+                    summed with appropriate aperture weights to estimate 
+                    antenna response
 
     propagate_sky_E_spectrum()
                     Propagate the stochastic electric field sky spectrum 
@@ -2200,16 +2202,17 @@ class AntennaArraySimulator(object):
 
     ############################################################################
     
-    def generate_sky_E_spectrum(self, altaz, ctlgind=None, uvlocs=None, 
-                                pol=None, randomseed=None, randvals=None):
+    def generate_sky_E_spectrum(self, altaz, ctlgind=None, pol=None,
+                                randomseed=None, randvals=None):
 
         """
         ------------------------------------------------------------------------
-        Compute a stochastic electric field spectrum obtained from a sky model 
-        using aperture plane computations. The antenna kernel is not applied 
-        here. It is a component in creating an aperture plane alternative to 
+        Compute a stochastic electric field spectrum obtained from a sky model. 
+        It is a component in creating an aperture plane alternative to 
         the member function generate_E_spectrum() but without application of 
-        the individual antenna pattern
+        the individual antenna pattern. This sky spectrum can be propagated to 
+        any antenna aperture which can then be summed with appropriate aperture
+        weights to estimate antenna response
     
         Inputs: 
     
@@ -2225,11 +2228,6 @@ class AntennaArraySimulator(object):
                     skymodel will be used. It size must be of size nsrc as 
                     described in input altaz
     
-        uvlocs      [numpy array] Locations in the UV-plane at which electric
-                    fields are to be computed. It must be of size nuv x 2. If
-                    set to None (default), it will be automatically determined
-                    from the antenna aperture attribute
-
         pol         [list] List of polarizations to process. The polarizations
                     are specified as strings 'P1' and 'P2. If set to None
                     (default), both polarizations are processed
@@ -2254,9 +2252,9 @@ class AntennaArraySimulator(object):
         sky_Ef_info [dictionary] Consists of E-field info under two keys 'P1' 
                     and 'P2', one for each polarization. Under each of these 
                     keys the complex electric fields spectra of shape 
-                    nuv x nchan are stored. nchan is the number of channels in 
-                    the spectrum and nuv is the number of gridded points in the 
-                    aperture footprint
+                    nsrc x nchan are stored. nchan is the number of channels in 
+                    the spectrum and nsrc is the number of objects in the sky 
+                    model
         ------------------------------------------------------------------------
         """
         
@@ -2304,33 +2302,6 @@ class AntennaArraySimulator(object):
         elif not isinstance(randomseed, int):
             raise TypeError('If input randomseed is not None, it must be an integer')
 
-        if uvlocs is None:
-            typetags = self.antenna_array.typetags
-            antwts = {}
-            antlabels = []
-            aprtrs = []
-            max_aprtr_size = []
-            for typetag in typetags:
-                antlabel = list(self.antenna_array.typetags[typetag])[0]
-                antlabels += [antlabel]
-                aprtr = self.antenna_array.antennas[antlabel].aperture
-                max_aprtr_size += [max([NP.sqrt(aprtr.xmax['P1']**2 + NP.sqrt(aprtr.ymax['P1']**2)), NP.sqrt(aprtr.xmax['P2']**2 + NP.sqrt(aprtr.ymax['P2']**2)), aprtr.rmax['P1'], aprtr.rmax['P2']])]
-                
-            max_aprtr_halfwidth = NP.amax(NP.asarray(max_aprtr_size))
-            wl = FCNST.c / self.f
-            trc = max_aprtr_halfwidth / wl.min()
-            blc = -trc
-            uvspacing = 0.5
-            gridu, gridv = GRD.grid_2d([(blc, trc), (blc, trc)], pad=0.0, spacing=uvspacing, pow2=True)
-            uvlocs = NP.hstack((gridu.reshape(-1,1), gridv.reshape(-1,1)))
-        else:
-            if not isinstance(uvlocs, NP.ndarray):
-                raise TypeError('Input uvlocs is numpy array')
-            if uvlocs.ndim != 2:
-                raise ValueError('Input uvlocs must be a 2D numpy array')
-            if uvlocs.shape[1] != 2:
-                raise ValueError('Input uvlocs must be a 2-column array')
-
         if randvals is not None:
             if not isinstance(randvals, NP.ndarray):
                 raise TypeError('Input randvals must be a numpy array')
@@ -2347,12 +2318,7 @@ class AntennaArraySimulator(object):
             Ef_amp = sigmas/NP.sqrt(2) * randvals[:,:,polind] # nsrc x nchan
             Ef_phase = 1.0
             Ef = Ef_amp * Ef_phase # nsrc x nchan
-            
-            srcdircos_2d = srcdircos[:,:2] # nsrc x 2
-            u_dot_l = NP.dot(uvlocs, srcdircos_2d.T) # nuv x nsrc
-            matDFT = NP.exp(1j * 2 * NP.pi * u_dot_l) # nuv x nsrc
-    
-            sky_Ef_info[p] = NP.dot(matDFT, Ef) # nuv x nchan
+            sky_Ef_info[p] = Ef
 
         return sky_Ef_info
 

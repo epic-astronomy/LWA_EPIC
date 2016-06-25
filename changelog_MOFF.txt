@@ -1,3 +1,12 @@
+From a8c9c43 (sim-uv):
+=====================
+
+(*) Remove input uvlocs in member function generate_sky_E_spectrum()
+of class AntennaArraySimulator. Update docstring accordingly
+(*) Modify return value in member function generate_sky_E_spectrum()
+of class AntennaArraySimulator. Update docstring accordingly
+(*) Update class docstring accordingly
+
 From dd84fac (sim-uv):
 =====================
 
