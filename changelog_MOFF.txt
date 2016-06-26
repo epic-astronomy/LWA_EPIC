@@ -1,3 +1,11 @@
+From 9ad828b (sim-uv):
+=====================
+
+In sim_observe.py,
+
+(*) Remove commented obsolete member function applyGeometricPhase()
+of class AntennaArraySimulator
+
 From a8b1eb5 (sim-uv):
 =====================
 
