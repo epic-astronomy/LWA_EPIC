@@ -1522,6 +1522,12 @@ class AntennaArraySimulator(object):
                     illumination weights are estimated only for the unique 
                     antenna typetags.
 
+    generate_antenna_E_spectrum()
+                    Generate antenna E-field spectra using sky model, 
+                    generating sky E-fields, propagating them to antenna 
+                    apertures, applying aperture weights and summing over 
+                    individual antenna apertures.
+
     stack_E_spectrum()
                     Stack E-field spectra along time-axis
 
@@ -2548,6 +2554,85 @@ class AntennaArraySimulator(object):
                 antwts[typetag][p] = SpM.csr_matrix((spval, unraveled_vuf_ind), shape=(uvlocs.shape[0],self.f.size), dtype=NP.complex64)
         
         return antwts
+
+    ############################################################################
+    
+    def generate_antenna_E_spectrum(self, altaz, ctlgind=None, uvlocs=None, 
+                                    pol=None, randomseed=None, randvals=None):
+
+        """
+        ------------------------------------------------------------------------
+        Generate antenna E-field spectra using sky model, generating sky 
+        E-fields, propagating them to antenna apertures, applying aperture
+        weights and summing over individual antenna apertures.
+
+        Inputs:
+
+        altaz       [numpy array] Alt-az sky positions (in degrees) of sources 
+                    It should be a 2-column numpy array. Each 2-column entity 
+                    corresponds to a source position. Number of 2-column 
+                    entities should equal the number of sources as specified 
+                    by the size of flux_ref. It is of size nsrc x 2
+    
+        ctlgind     [numpy array] Indices of sources in the attribute skymodel 
+                    that will be used in generating the E-field spectrum. If
+                    specified as None (default), all objects in the attribute
+                    skymodel will be used. It size must be of size nsrc as 
+                    described in input altaz
+    
+        uvlocs      [numpy array] Locations in the UV-plane at which electric
+                    fields are to be propagated. It must be of size nuv x 2. If
+                    set to None (default), it will be automatically determined
+                    from the antenna aperture attribute
+
+        pol         [list] List of polarizations to process. The polarizations
+                    are specified as strings 'P1' and 'P2. If set to None
+                    (default), both polarizations are processed
+    
+        randomseed  [integer] Seed to initialize the randon generator. If set
+                    to None (default), the random sequences generated are not
+                    reproducible. Set to an integer to generate reproducible
+                    random sequences. Will be used only if the other input 
+                    randvals is set to None
+    
+        randvals    [numpy array] Externally generated complex random numbers.
+                    Both real and imaginary parts must be drawn from a normal
+                    distribution (mean=0, var=1). Always must have size equal 
+                    to nsrc x nchan x npol. If specified as a vector, it must be 
+                    of size nsrc x nchan x npol. Either way it will be resphaed 
+                    to size nsrc x nchan x npol. If randvals is specified, no 
+                    fresh random numbers will be generated and the input 
+                    randomseed will be ignored.
+    
+        Outputs:
+
+        Tuple of two outputs. The first element is a list of antenna labels.
+        The second element in the tuple is a dictionary consisting of antenna
+        E-field spectra. The dictionary consists of two keys 'P1' and 'P2'
+        for the two polarizations. Under each key is a numpy array of size 
+        nant x nchan consisting of complex E-field spectra. nant is the number 
+        of antennas, nchan is the number of frequency channels. The nant 
+        axis is arranged in the same order as the sequence in the list which is
+        provided in the first element of the output tuple
+        ------------------------------------------------------------------------
+        """
+
+        sky_Ef_info = self.generate_sky_E_spectrum(altaz, ctlgind=ctlgind, pol=pol, randomseed=randomseed, randvals=randvals)
+        antlabels, aperture_Ef_info = self.propagate_sky_E_spectrum(sky_Ef_info, altaz, uvlocs=uvlocs, pol=pol)
+        antwts_dict = self.generate_antenna_wts_spectrum(uvlocs=uvlocs, pol=pol)
+        antenna_Ef_info = {p: None for p in sky_Ef_info}
+        for p in pol:
+            all_antwts = None
+            for antlabel in antlabels:
+                typetag = self.antenna_array.antennas[antlabel].typetag
+                if all_antwts is None:
+                    all_antwts = antwts_dict[typetag][p].A
+                    all_antwts = all_antwts[:,NP.newaxis,:]
+                else:
+                    all_antwts = NP.hstack((all_antwts, antwts_dict[typetag][p].A[:,NP.newaxis,:]))
+            antenna_Ef_info[p] = NP.sum(aperture_Ef_info[p] * all_antwts, axis=0)
+
+        return (antlabels, antenna_Ef_info)
 
     ############################################################################
     

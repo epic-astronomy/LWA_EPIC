@@ -1,5 +1,20 @@
+From a8b1eb5 (sim-uv):
+=====================
+
+In sim_observe.py,
+
+(*) Add member function generate_antenna_E_spectrum() along with
+docstring under class AntennaArraySimulator. Update class docstring
+accordingly
+
+In changelog_MOFF.txt,
+
+(*) Indicate the filename to which previous revisions were made
+
 From a8c9c43 (sim-uv):
 =====================
+
+In sim_observe.py,
 
 (*) Remove input uvlocs in member function generate_sky_E_spectrum()
 of class AntennaArraySimulator. Update docstring accordingly
@@ -10,12 +25,16 @@ of class AntennaArraySimulator. Update docstring accordingly
 From dd84fac (sim-uv):
 =====================
 
+In sim_observe.py,
+
 (*) Add member function generate_antenna_wts_spectrum() along with
 docstring under class AntennaArraySimulator. Update class docstring
 accordingly
 
 From 6417951 (sim-uv):
 =====================
+
+In sim_observe.py,
 
 (*) Update member function propagate_sky_E_spectrum() of class
 AntennaArraySimulator. Update docstring accordingly
