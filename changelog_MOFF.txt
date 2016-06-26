@@ -1,3 +1,14 @@
+From 23cc0a3 (sim-uv):
+=====================
+
+In sim_observe.py,
+
+(*) Change returned shape of output in member function
+generate_antenna_E_spectrum() of class AntennaArraySimulator. Update
+member function docstring accordingly
+(*) Add input keyword action to specify if computed values are to be
+just store or returned. Update member function docstring accordingly
+
 From 9ad828b (sim-uv):
 =====================
 

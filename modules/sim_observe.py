@@ -2558,7 +2558,8 @@ class AntennaArraySimulator(object):
     ############################################################################
     
     def generate_antenna_E_spectrum(self, altaz, ctlgind=None, uvlocs=None, 
-                                    pol=None, randomseed=None, randvals=None):
+                                    pol=None, randomseed=None, randvals=None,
+                                    action='return'):
 
         """
         ------------------------------------------------------------------------
@@ -2603,17 +2604,22 @@ class AntennaArraySimulator(object):
                     to size nsrc x nchan x npol. If randvals is specified, no 
                     fresh random numbers will be generated and the input 
                     randomseed will be ignored.
+
+        action      [string] If set to 'store' (default), the attribute Ef_info
+                    is updated but no value is returned. If set to 'return', 
+                    the output described below is returned
     
         Outputs:
 
-        Tuple of two outputs. The first element is a list of antenna labels.
-        The second element in the tuple is a dictionary consisting of antenna
-        E-field spectra. The dictionary consists of two keys 'P1' and 'P2'
-        for the two polarizations. Under each key is a numpy array of size 
-        nant x nchan consisting of complex E-field spectra. nant is the number 
-        of antennas, nchan is the number of frequency channels. The nant 
-        axis is arranged in the same order as the sequence in the list which is
-        provided in the first element of the output tuple
+        If input keyword action is set to 'return' the following tuple 
+        containing two elements is returned. The first element is a list of 
+        antenna labels. The second element in the tuple is a dictionary 
+        consisting of antenna E-field spectra. The dictionary consists of two 
+        keys 'P1' and 'P2' for the two polarizations. Under each key is a numpy 
+        array of size nchan x nant consisting of complex E-field spectra. nant 
+        is the number of antennas, nchan is the number of frequency channels. 
+        The nant axis is arranged in the same order as the sequence in the list 
+        which is provided in the first element of the output tuple
         ------------------------------------------------------------------------
         """
 
@@ -2630,9 +2636,11 @@ class AntennaArraySimulator(object):
                     all_antwts = all_antwts[:,NP.newaxis,:]
                 else:
                     all_antwts = NP.hstack((all_antwts, antwts_dict[typetag][p].A[:,NP.newaxis,:]))
-            antenna_Ef_info[p] = NP.sum(aperture_Ef_info[p] * all_antwts, axis=0)
+            antenna_Ef_info[p] = NP.sum(aperture_Ef_info[p] * all_antwts, axis=0).T
 
-        return (antlabels, antenna_Ef_info)
+        self.Ef_info = antenna_Ef_info
+        if action == 'return':
+            return (antlabels, antenna_Ef_info)
 
     ############################################################################
     
