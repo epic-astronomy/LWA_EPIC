@@ -2559,7 +2559,7 @@ class AntennaArraySimulator(object):
     
     def generate_antenna_E_spectrum(self, altaz, ctlgind=None, uvlocs=None, 
                                     pol=None, randomseed=None, randvals=None,
-                                    action='return'):
+                                    phase_center_dircos=None, action='return'):
 
         """
         ------------------------------------------------------------------------
@@ -2605,6 +2605,12 @@ class AntennaArraySimulator(object):
                     fresh random numbers will be generated and the input 
                     randomseed will be ignored.
 
+        phase_center_dircos
+                    [numpy array] Phase center in direction cosine units. Must
+                    be a 3-element array obeying rules of direction cosines. If
+                    set to None (default), the phase center will be assumed to
+                    be at zenith
+
         action      [string] If set to 'store' (default), the attribute Ef_info
                     is updated but no value is returned. If set to 'return', 
                     the output described below is returned
@@ -2623,6 +2629,26 @@ class AntennaArraySimulator(object):
         ------------------------------------------------------------------------
         """
 
+        if phase_center_dircos is None:
+            phase_center_dircos = NP.asarray([0.0, 0.0, 1.0]).reshape(1,-1)
+        elif isinstance(phase_center_dircos, (list, tuple, NP.ndarray)):
+            phase_center_dircos = NP.asarray(phase_center_dircos).reshape(1,-1)
+        else:
+            raise TypeError('Reference position must be a list, tuple or numpy array.')
+    
+        if phase_center_dircos.size != 3:
+            raise ValueError('Reference position must be a 3-element list, tuple or numpy array of direction cosines.')
+        eps = 1e-10
+        if NP.any(NP.abs(phase_center_dircos) >= 1.0+eps):
+            raise ValueError('Components of direction cosines must not exceed unity')
+        if NP.any(NP.abs(NP.sum(phase_center_dircos**2,axis=1)-1.0) >= eps):
+            raise ValueError('Magnitudes of direction cosines must not exceed unity')
+        
+        antpos_info = self.antenna_array.antenna_positions(pol=None, flag=False, sort=True, centering=False)
+        phase_center_dot_antpos = NP.dot(phase_center_dircos, antpos_info['positions'].T).ravel() # nant
+        phase_center_dot_antpos = phase_center_dot_antpos[NP.newaxis,:] / wl.reshape(-1,1) # nchan x nant
+        phase_center_dot_antpos = NP.exp(-1j * 2 * NP.pi * phase_center_dot_antpos) # nchan x nant
+
         sky_Ef_info = self.generate_sky_E_spectrum(altaz, ctlgind=ctlgind, pol=pol, randomseed=randomseed, randvals=randvals)
         antlabels, aperture_Ef_info = self.propagate_sky_E_spectrum(sky_Ef_info, altaz, uvlocs=uvlocs, pol=pol)
         antwts_dict = self.generate_antenna_wts_spectrum(uvlocs=uvlocs, pol=pol)
@@ -2636,7 +2662,7 @@ class AntennaArraySimulator(object):
                     all_antwts = all_antwts[:,NP.newaxis,:]
                 else:
                     all_antwts = NP.hstack((all_antwts, antwts_dict[typetag][p].A[:,NP.newaxis,:]))
-            antenna_Ef_info[p] = NP.sum(aperture_Ef_info[p] * all_antwts, axis=0).T
+            antenna_Ef_info[p] = NP.sum(aperture_Ef_info[p] * all_antwts, axis=0).T *  phase_center_dot_antpos # nchan x nant
 
         self.Ef_info = antenna_Ef_info
         if action == 'return':

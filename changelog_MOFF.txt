@@ -1,3 +1,15 @@
+From a63200d (sim-uv):
+=====================
+
+In sim_observe.py,
+
+(*) Add keyword input phase_center_dircos to member function
+generate_antenna_E_spectrum() of class AntennaArraySimulator.
+Update member function docstring accordingly
+(*) Modify member function generate_antenna_E_spectrum() to
+phase reference the generated antenna voltages based on the
+input specified in phase_center_dircos
+
 From 4367c91 (sim-uv):
 =====================
 
