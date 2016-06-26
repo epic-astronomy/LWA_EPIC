@@ -2867,10 +2867,10 @@ class AntennaArraySimulator(object):
     
     def observe(self, lst, phase_center_coords, pointing_center_coords,
                 obs_date=None, phase_center=None, pointing_center=None,
-                pointing_info=None, vbeam_files=None, obsmode=None, 
-                randomseed=None, stack=False, short_dipole_approx=False,
-                half_wave_dipole_approx=False, parallel_genvb=False,
-                parallel_genEf=False, nproc=None):
+                pointing_info=None, domain_type='sky', vbeam_files=None, 
+                obsmode=None, randomseed=None, stack=False, 
+                short_dipole_approx=False, half_wave_dipole_approx=False, 
+                parallel_genvb=False, parallel_genEf=False, nproc=None):
 
         """
         ------------------------------------------------------------------------
@@ -2968,6 +2968,10 @@ class AntennaArraySimulator(object):
                                      provided, it defaults to 0 (no jitter). 
                                      Used only in phased array mode.
         
+        domain_type 
+                   [string] Specifies if antenna field pattern is estimated and
+                   applied in the 'sky' (default) or 'aperture' planes.
+
         vbeam_files 
                    [dictionary] Dictionary containing file locations of 
                    far-field voltage patterns. It is specified under keys
@@ -3043,6 +3047,9 @@ class AntennaArraySimulator(object):
 
         if pointing_center_coords not in ['hadec', 'radec', 'altaz', 'dircos']:
             raise ValueError('Input pointing_center_coords must be set tp "radec", "hadec", "altaz" or "dircos"')
+
+        if domain_type not in ['sky', 'aperture']:
+            raise ValueError('Input domain_type must be a string set to "sky" or "aperture"')
         
         if obs_date is None:
             obs_date = self.observer.date
@@ -3099,13 +3106,16 @@ class AntennaArraySimulator(object):
             for apol in ['P1', 'P2']:
                 self.Ef_info[apol] = NP.zeros((self.f.size, len(self.antenna_array.antennas)), dtype=NP.complex)
         else:
-            if vbeam_files is not None:
-                vbeams = self.load_voltage_patterns(vbeam_files, altaz, parallel=parallel, nproc=nproc)
+            if domain_type == 'sky':
+                if vbeam_files is not None:
+                    vbeams = self.load_voltage_patterns(vbeam_files, altaz, parallel=parallel, nproc=nproc)
+                else:
+                    vbeams = self.generate_voltage_pattern(altaz, pointing_center=pointing_center_altaz, pointing_info=pointing_info, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, parallel=parallel_genvb, nproc=nproc)
+                self.generate_E_spectrum(altaz, vbeams, ctlgind=hemind, pol=['P1','P2'], ref_point=phase_center_dircos, randomseed=randomseed, parallel=parallel_genEf, nproc=nproc, action='store')
+                # sky_Ef_info = self.generate_sky_E_spectrum(altaz, ctlgind=hemind, uvlocs=None, pol=None, randomseed=randomseed, randvals=None)
+                # ant_Ef_info = self.applyApertureWts(sky_Ef_info, uvlocs=None, pol=None)
             else:
-                vbeams = self.generate_voltage_pattern(altaz, pointing_center=pointing_center_altaz, pointing_info=pointing_info, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, parallel=parallel_genvb, nproc=nproc)
-            self.generate_E_spectrum(altaz, vbeams, ctlgind=hemind, pol=['P1','P2'], ref_point=phase_center_dircos, randomseed=randomseed, parallel=parallel_genEf, nproc=nproc, action='store')
-            # sky_Ef_info = self.generate_sky_E_spectrum(altaz, ctlgind=hemind, uvlocs=None, pol=None, randomseed=randomseed, randvals=None)
-            # ant_Ef_info = self.applyApertureWts(sky_Ef_info, uvlocs=None, pol=None)
+                self.generate_antenna_E_spectrum(altaz, ctlgind=hemind, uvlocs=None, pol=['P1','P2'], randomseed=randomseed, randvals=None, action='store'):
 
         if obsmode is not None:
             if obsmode in ['drift', 'track']:

@@ -1,3 +1,15 @@
+From 4367c91 (sim-uv):
+=====================
+
+In sim_observe.py,
+
+(*) Add keyword input domain_type to member function observe() of
+class AntennaArraySimulator. Update member function docstring
+accordingly. 
+(*) Add option to simulate using image plane or aperture plane
+computations in observe() member function of class
+AntennaArraySimulator
+
 From 23cc0a3 (sim-uv):
 =====================
 
