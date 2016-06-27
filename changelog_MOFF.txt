@@ -1,3 +1,11 @@
+From 1100adf (sim-uv):
+=====================
+
+In aperture.py,
+
+(*) Add member function update() along with docstring under class
+Aperture. Update class docstring accordingly
+
 From 1b29340 (sim-uv):
 =====================
 

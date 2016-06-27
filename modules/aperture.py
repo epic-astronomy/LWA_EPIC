@@ -755,6 +755,8 @@ class Aperture(object):
     compute()   Estimates the kernel for given locations based on the aperture 
                 attributes
 
+    update()    Updates the attributes of the class
+
     Read the member function docstrings for details.
     ----------------------------------------------------------------------------
     """
@@ -1061,9 +1063,147 @@ class Aperture(object):
             
     ############################################################################
 
+    def update(self, kernel_type=None, shape=None, parms=None, lkpinfo=None,
+               load_lookup=False):
+
+        """
+        ------------------------------------------------------------------------
+        Updates the attributes of the class
+
+        Inputs:
+
+        kernel_type [dictionary] denotes whether the kernel is analytic or based 
+                    on a lookup table. It has two or four keys (depending on 
+                    attribute pol) - one for each polarization. Under each key 
+                    the allowed values are 'func' and 'lookup' (default). If 
+                    specified as None, it is set to 'lookup' under both 
+                    polarizations.
+    
+        shape       [dictionary] denotes the shape of the aperture. It has two 
+                    or four keys (depending on attribute pol) - one for each 
+                    polarization. Under each key the allowed values are 
+                    'rect', 'square', 'circular', 'auto_convolved_rect', 
+                    'auto_convolved_square', 'auto_convolved_circular'  or None. 
+                    These apply only if the corresponding kernel_type for the 
+                    polarization is set to 'func' else the shape will be set to 
+                    None.
+
+        parms       [dictionary] denotes parameters of the original aperture 
+                    shape. It has two or four keys (depending on attribute pol),
+                    one for each polarization. Under each of these keys is 
+                    another dictionary with the following keys and information:
+                    'xmax'  [scalar] Upper limit along the x-axis for the 
+                            original aperture kernel footprint. Applicable in 
+                            case of original rectangular or square apertures. 
+                            Lower limit along the x-axis is set to -xmax. 
+                            Length of the original rectangular/square footprint 
+                            is 2*xmax
+                    'ymax'  [scalar] Upper limit along the y-axis for the 
+                            original aperture kernel footprint. Applicable in 
+                            case of original rectangular apertures. Default=1.0. 
+                            Lower limit along the y-axis is set to -ymax. 
+                            Breadth of the original rectangular footprint is 
+                            2*ymax
+                    'rmin'  [scalar] Lower limit along radial axis for the 
+                            original aperture kernel footprint. Applicable in 
+                            case of original circular apertures. Default=0.0
+                    'rmax'  [scalar] Upper limit along radial axis for the 
+                            original aperture kernel footprint. Applicable in 
+                            case of original circular apertures. Default=1.0
+                    'rotangle'
+                            [scalar] Angle (in radians) by which the principal 
+                            axis of the aperture is rotated counterclockwise 
+                            east of sky frame. Applicable in case of 
+                            rectangular, square and elliptical apertures. It 
+                            has two keys 'P1' and 'P2' - one for each 
+                            polarization. The value (default=0.0) held by each 
+                            key is a scalar
+
+        lkpinfo     [dictionary] consists of weights information for each of 
+                    the polarizations under polarization keys. Each of 
+                    the values under the keys is a string containing the full
+                    path to a filename that contains the positions and 
+                    weights for the aperture illumination in the form of 
+                    a lookup table as columns (x-loc [float], y-loc 
+                    [float], wts[real], wts[imag if any]). 
+
+        load_lookup [boolean] If set to True (default), loads from the lookup 
+                    table. If set to False, the values may be loaded later 
+                    using member function compute()
+        ------------------------------------------------------------------------
+        """
+
+        if kernel_type is not None:
+            if isinstance(kernel_type, dict):
+                for pol in self.pol:
+                    if pol not in kernel_type:
+                        kernel_type[pol] = 'lookup'
+                    elif kernel_type[pol] not in ['lookup', 'func']:
+                        raise ValueError('Invalid value specified for kernel_type under polarization {0}'.format(pol))
+            else:
+                raise TypeError('kernel_type must be a dictionary')
         
-        
+        if shape is not None:
+            if isinstance(shape, dict):
+                 for pol in self.pol:
+                    if pol not in shape:
+                        if kernel_type[pol] == 'lookup':
+                            shape[pol] = None
+                        else:
+                            shape[pol] = 'circular'
+                    else:
+                        if kernel_type[pol] != 'func':
+                            raise ValueError('Values specified in kernel_type and shape are incompatible')
+                        elif shape[pol] not in ['rect', 'square', 'circular', 'auto_convolved_rect', 'auto_convolved_square', 'auto_convolved_circular']:
+                            raise ValueError('Invalid value specified for shape under polarization {0}'.format(pol))
+            else:
+                raise TypeError('Aperture kernel shape must be a dictionary')
+
+        if parms is not None:
+            if isinstance(parms, dict):
+                for pol in self.pol:
+                    if pol not in parms:
+                        parms[pol] = {}
+                        parms[pol]['rmin'] = 0.0
+                        parms[pol]['xmax'] = 1.0
+                        parms[pol]['ymax'] = 1.0
+                        parms[pol]['rmax'] = 1.0
+                        parms[pol]['rotangle'] = 0.0
+                    elif isinstance(parms[pol], dict):
+                        if 'rmin' not in parms[pol]: parms[pol]['rmin'] = 0.0
+                        if 'xmax' not in parms[pol]: parms[pol]['xmax'] = 1.0
+                        if 'ymax' not in parms[pol]: parms[pol]['ymax'] = 1.0
+                        if 'rmax' not in parms[pol]: parms[pol]['rmax'] = 1.0
+                        if 'rotangle' not in parms[pol]: parms[pol]['rotangle'] = 0.0
+                    else:
+                        raise TypeError('Aperture parameters under polarization {0} must be a dictionary'.format(pol))
+            else:
+                raise TypeError('Aperture kernel parameters must be a dictionary')
             
-        
+        for pol in self.pol:
+            self.kernel_type[pol] = kernel_type[pol]
+            self.shape[pol] = shape[pol]
+            parmsdict = parmscheck(xmax=parms[pol]['xmax'], ymax=parms[pol]['ymax'], rmin=parms[pol]['rmin'], rmax=parms[pol]['rmax'], rotangle=parms[pol]['rotangle'])
+            self.rmin[pol] = parmsdict['rmin']
+            self.xmax[pol] = parmsdict['xmax']
+            self.ymax[pol] = parmsdict['ymax']
+            self.rmax[pol] = parmsdict['rmax']
+            self.rotangle[pol] = parmsdict['rotangle']
+
+        if lkpinfo is not None:
+            if not isinstance(lkpinfo, dict):
+                raise TypeError('Input parameter lkpinfo must be a dictionary')
+            for pol in self.pol:
+                self.wtsposxy[pol] = None
+                self.wtsxy[pol] = None
+                if pol in lkpinfo:
+                    self.lkpinfo[pol] = lkpinfo[pol]
+                    if load_lookup:
+                        lkpdata = LKP.read_lookup(self.lkpinfo[pol])
+                        self.wtsposxy[pol] = NP.hstack((lkpdata[0].reshape(-1,1),lkpdata[1].reshape(-1,1)))
+                        self.wtsxy[pol] = lkpdata[2]
+                        if len(lkpdata) == 4:  # Read in the imaginary part
+                            self.wtsxy[pol] += 1j * lkpdata[3]
             
+    ############################################################################
         
