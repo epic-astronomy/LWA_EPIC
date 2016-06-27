@@ -2670,132 +2670,132 @@ class AntennaArraySimulator(object):
 
     ############################################################################
     
-    def applyApertureWts(self, sky_Ef_info, uvlocs=None, pol=None):
+    # def applyApertureWts(self, sky_Ef_info, uvlocs=None, pol=None):
 
-        """
-        ------------------------------------------------------------------------
-        Apply aperture weights and estimate measurements of antenna electric 
-        fields (assuming they are centered at origin). Aperture illumination
-        weights are estimated and applied only for the unique antenna typetags.
+    #     """
+    #     ------------------------------------------------------------------------
+    #     Apply aperture weights and estimate measurements of antenna electric 
+    #     fields (assuming they are centered at origin). Aperture illumination
+    #     weights are estimated and applied only for the unique antenna typetags.
 
-        Inputs:
+    #     Inputs:
 
-        sky_Ef_info [dictionary] Consists of E-field info under two keys 'P1' and
-                    'P2', one for each polarization. Under each of these keys
-                    the complex electric fields spectra of shape nuv x nchan are 
-                    stored. nchan is the number of channels in the spectrum and 
-                    nuv is the number of gridded points in the aperture footprint
+    #     sky_Ef_info [dictionary] Consists of E-field info under two keys 'P1' and
+    #                 'P2', one for each polarization. Under each of these keys
+    #                 the complex electric fields spectra of shape nuv x nchan are 
+    #                 stored. nchan is the number of channels in the spectrum and 
+    #                 nuv is the number of gridded points in the aperture footprint
 
-        uvlocs      [numpy array] Locations in the UV-plane at which electric
-                    fields are to be computed. It must be of size nuv x 2. If
-                    set to None (default), it will be automatically determined
-                    from the antenna aperture attribute
+    #     uvlocs      [numpy array] Locations in the UV-plane at which electric
+    #                 fields are to be computed. It must be of size nuv x 2. If
+    #                 set to None (default), it will be automatically determined
+    #                 from the antenna aperture attribute
 
-        Outputs:
+    #     Outputs:
 
-        ant_Ef_info [dictionary] Contains antenna electric fields obtained by 
-                    summing the electric fields on the grid locations that
-                    come under the aperture illumination footprint of that
-                    antenna. It consists of keys which are unique antenna 
-                    typetags. Under each of these keys is another dictionary 
-                    with two keys 'P1' and 'P2' for the two polarizations. The
-                    value under each of these keys is a numpy array of size 
-                    nchan where nchan is the number of frequency channels
-        ------------------------------------------------------------------------
-        """
+    #     ant_Ef_info [dictionary] Contains antenna electric fields obtained by 
+    #                 summing the electric fields on the grid locations that
+    #                 come under the aperture illumination footprint of that
+    #                 antenna. It consists of keys which are unique antenna 
+    #                 typetags. Under each of these keys is another dictionary 
+    #                 with two keys 'P1' and 'P2' for the two polarizations. The
+    #                 value under each of these keys is a numpy array of size 
+    #                 nchan where nchan is the number of frequency channels
+    #     ------------------------------------------------------------------------
+    #     """
 
-        try:
-            sky_Ef_info
-        except NameError:
-            raise NameError('Input sky_Ef_info must be specified')
+    #     try:
+    #         sky_Ef_info
+    #     except NameError:
+    #         raise NameError('Input sky_Ef_info must be specified')
 
-        if not isinstance(sky_Ef_info, dict):
-            raise TypeError('Input sky_Ef_info must be a dictionary')
+    #     if not isinstance(sky_Ef_info, dict):
+    #         raise TypeError('Input sky_Ef_info must be a dictionary')
 
-        if pol is None:
-            pol = ['P1', 'P2']
-        elif isinstance(pol, str):
-            if pol in ['P1', 'P2']:
-                pol = [pol]
-            else:
-                raise ValueError('Invalid polarization specified')
-        elif isinstance(pol, list):
-            p = [apol for apol in pol if apol in ['P1', 'P2']]
-            if len(p) == 0:
-                raise ValueError('Invalid polarization specified')
-            pol = p
-        else:
-            raise TypeError('Input keyword pol must be string, list or set to None')
-           pol = sorted(pol)
-        npol = len(pol)
+    #     if pol is None:
+    #         pol = ['P1', 'P2']
+    #     elif isinstance(pol, str):
+    #         if pol in ['P1', 'P2']:
+    #             pol = [pol]
+    #         else:
+    #             raise ValueError('Invalid polarization specified')
+    #     elif isinstance(pol, list):
+    #         p = [apol for apol in pol if apol in ['P1', 'P2']]
+    #         if len(p) == 0:
+    #             raise ValueError('Invalid polarization specified')
+    #         pol = p
+    #     else:
+    #         raise TypeError('Input keyword pol must be string, list or set to None')
+    #        pol = sorted(pol)
+    #     npol = len(pol)
 
-        if len(set(pol).intersection(sky_Ef_info.keys())) == 0:
-            raise KeyError('Input sky_Ef_info does not contain any of the accepted polarizations')
+    #     if len(set(pol).intersection(sky_Ef_info.keys())) == 0:
+    #         raise KeyError('Input sky_Ef_info does not contain any of the accepted polarizations')
         
-        typetags = self.antenna_array.typetags.keys()
-        antlabels = []
-        aprtrs = []
-        max_aprtr_size = []
-        for typetag in typetags:
-            antlabel = list(self.antenna_array.typetags[typetag])[0]
-            antlabels += [antlabel]
-            aprtr = self.antenna_array.antennas[antlabel].aperture
-            aprtrs += [aprtr]
-            max_aprtr_size += [max([NP.sqrt(aprtr.xmax['P1']**2 + NP.sqrt(aprtr.ymax['P1']**2)), NP.sqrt(aprtr.xmax['P2']**2 + NP.sqrt(aprtr.ymax['P2']**2)), aprtr.rmax['P1'], aprtr.rmax['P2']])]
-        max_aprtr_halfwidth = NP.amax(NP.asarray(max_aprtr_size))
+    #     typetags = self.antenna_array.typetags.keys()
+    #     antlabels = []
+    #     aprtrs = []
+    #     max_aprtr_size = []
+    #     for typetag in typetags:
+    #         antlabel = list(self.antenna_array.typetags[typetag])[0]
+    #         antlabels += [antlabel]
+    #         aprtr = self.antenna_array.antennas[antlabel].aperture
+    #         aprtrs += [aprtr]
+    #         max_aprtr_size += [max([NP.sqrt(aprtr.xmax['P1']**2 + NP.sqrt(aprtr.ymax['P1']**2)), NP.sqrt(aprtr.xmax['P2']**2 + NP.sqrt(aprtr.ymax['P2']**2)), aprtr.rmax['P1'], aprtr.rmax['P2']])]
+    #     max_aprtr_halfwidth = NP.amax(NP.asarray(max_aprtr_size))
         
-        if uvlocs is None:
-            wl = FCNST.c / self.f
-            trc = max_aprtr_halfwidth / wl.min()
-            blc = -trc
-            uvspacing = 0.5
-            gridu, gridv = GRD.grid_2d([(blc, trc), (blc, trc)], pad=0.0, spacing=uvspacing, pow2=True)
-            uvlocs = NP.hstack((gridu.reshape(-1,1), gridv.reshape(-1,1)))
-        else:
-            if not isinstance(uvlocs, NP.ndarray):
-                raise TypeError('Input uvlocs is numpy array')
-            if uvlocs.ndim != 2:
-                raise ValueError('Input uvlocs must be a 2D numpy array')
-            if uvlocs.shape[1] != 2:
-                raise ValueError('Input uvlocs must be a 2-column array')
+    #     if uvlocs is None:
+    #         wl = FCNST.c / self.f
+    #         trc = max_aprtr_halfwidth / wl.min()
+    #         blc = -trc
+    #         uvspacing = 0.5
+    #         gridu, gridv = GRD.grid_2d([(blc, trc), (blc, trc)], pad=0.0, spacing=uvspacing, pow2=True)
+    #         uvlocs = NP.hstack((gridu.reshape(-1,1), gridv.reshape(-1,1)))
+    #     else:
+    #         if not isinstance(uvlocs, NP.ndarray):
+    #             raise TypeError('Input uvlocs is numpy array')
+    #         if uvlocs.ndim != 2:
+    #             raise ValueError('Input uvlocs must be a 2D numpy array')
+    #         if uvlocs.shape[1] != 2:
+    #             raise ValueError('Input uvlocs must be a 2-column array')
         
-        for p in pol:
-            if p in sky_Ef_info:
-                if not isinstance(sky_Ef_info[p], NP.ndarray):
-                    raise TypeError('Input sky_Ef_info under polarization key {0} must be a numpy array'.format(p))
-                if sky_Ef_info[p].shape != (uvlocs.shape[0], self.f.size):
-                    raise ValueError('Input sky_Ef_info under polarization key {0} has incompatible dimensions'.format(p))
+    #     for p in pol:
+    #         if p in sky_Ef_info:
+    #             if not isinstance(sky_Ef_info[p], NP.ndarray):
+    #                 raise TypeError('Input sky_Ef_info under polarization key {0} must be a numpy array'.format(p))
+    #             if sky_Ef_info[p].shape != (uvlocs.shape[0], self.f.size):
+    #                 raise ValueError('Input sky_Ef_info under polarization key {0} has incompatible dimensions'.format(p))
 
-        wl = FCNST.c / self.f
-        wavelength = NP.zeros(uvlocs.shape[0]).reshape(-1,1) + wl.reshape(1,-1)
-        xlocs = uvlocs[:,0].reshape(-1,1) * wl.reshape(1,-1)
-        ylocs = uvlocs[:,1].reshape(-1,1) * wl.reshape(1,-1)
-        xylocs = NP.hstack((xlocs.reshape(-1,1), ylocs.reshape(-1,1)))
+    #     wl = FCNST.c / self.f
+    #     wavelength = NP.zeros(uvlocs.shape[0]).reshape(-1,1) + wl.reshape(1,-1)
+    #     xlocs = uvlocs[:,0].reshape(-1,1) * wl.reshape(1,-1)
+    #     ylocs = uvlocs[:,1].reshape(-1,1) * wl.reshape(1,-1)
+    #     xylocs = NP.hstack((xlocs.reshape(-1,1), ylocs.reshape(-1,1)))
 
-        du = NP.diff(uvlocs[:,0]).max()
-        dv = NP.diff(uvlocs[:,1]).max()
-        rmaxNN = 0.5 * NP.sqrt(du**2 + dv**2) * wl.min()
-        distNN = 2.0 * max_aprtr_halfwidth
-        indNN_list, blind, vuf_gridind = LKP.find_NN(NP.zeros(2).reshape(1,-1), xylocs, distance_ULIM=distNN, flatten=True, parallel=False)
-        dxy = xylocs[vuf_gridind,:]
-        unraveled_vuf_ind = NP.unravel_index(vuf_gridind, (uvlocs.shape[0],self.f.size,))
-        ant_Ef_info = {}
-        for aprtrind, aprtr in enumerate(aprtrs):
-            typetag = typetags[aprtrind]
-            ant_Ef_info[typetag] = {}
-            for p in pol:
-                krn = aprtr.compute(dxy, wavelength=wavelength.ravel()[vuf_gridind], pol=p, rmaxNN=rmaxNN, load_lookup=False)
-                krn_sparse = SpM.csr_matrix((krn[p], unraveled_vuf_ind), shape=(uvlocs.shape[0], self.f.size), dtype=NP.complex64)
-                krn_sparse_sumuv = krn_sparse.sum(axis=0)
-                krn_sparse_norm = krn_sparse.A / krn_sparse_sumuv.A
-                spval = krn_sparse_norm[unraveled_vuf_ind]
-                antwts = SpM.csr_matrix((spval, unraveled_vuf_ind), shape=(uvlocs.shape[0],self.f.size), dtype=NP.complex64)
-                weighted_Ef = antwts.A * sky_Ef_info[p]
-                ant_Ef_info[typetag][p] = NP.sum(weighted_Ef, axis=0)
+    #     du = NP.diff(uvlocs[:,0]).max()
+    #     dv = NP.diff(uvlocs[:,1]).max()
+    #     rmaxNN = 0.5 * NP.sqrt(du**2 + dv**2) * wl.min()
+    #     distNN = 2.0 * max_aprtr_halfwidth
+    #     indNN_list, blind, vuf_gridind = LKP.find_NN(NP.zeros(2).reshape(1,-1), xylocs, distance_ULIM=distNN, flatten=True, parallel=False)
+    #     dxy = xylocs[vuf_gridind,:]
+    #     unraveled_vuf_ind = NP.unravel_index(vuf_gridind, (uvlocs.shape[0],self.f.size,))
+    #     ant_Ef_info = {}
+    #     for aprtrind, aprtr in enumerate(aprtrs):
+    #         typetag = typetags[aprtrind]
+    #         ant_Ef_info[typetag] = {}
+    #         for p in pol:
+    #             krn = aprtr.compute(dxy, wavelength=wavelength.ravel()[vuf_gridind], pol=p, rmaxNN=rmaxNN, load_lookup=False)
+    #             krn_sparse = SpM.csr_matrix((krn[p], unraveled_vuf_ind), shape=(uvlocs.shape[0], self.f.size), dtype=NP.complex64)
+    #             krn_sparse_sumuv = krn_sparse.sum(axis=0)
+    #             krn_sparse_norm = krn_sparse.A / krn_sparse_sumuv.A
+    #             spval = krn_sparse_norm[unraveled_vuf_ind]
+    #             antwts = SpM.csr_matrix((spval, unraveled_vuf_ind), shape=(uvlocs.shape[0],self.f.size), dtype=NP.complex64)
+    #             weighted_Ef = antwts.A * sky_Ef_info[p]
+    #             ant_Ef_info[typetag][p] = NP.sum(weighted_Ef, axis=0)
                 
-        return ant_Ef_info
+    #     return ant_Ef_info
 
-    ############################################################################
+    # ############################################################################
     
     def stack_E_spectrum(self, Ef_info=None):
 

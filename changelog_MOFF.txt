@@ -1,3 +1,11 @@
+From a3ca432 (sim-uv):
+=====================
+
+In sim_observe.py,
+
+(*) Comment out obsolete member function applyApertureWts() of class
+AntennaArraySimulator
+
 From a06f591 (sim-uv):
 =====================
 
