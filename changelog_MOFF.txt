@@ -1,3 +1,12 @@
+From 1b29340 (sim-uv):
+=====================
+
+In sim_observe.py,
+
+(*) Pass parameter phase_center_dircos in call to member
+function generate_antenna_E_spectrum() inside member function
+observe() of class AntennaArraySimulator
+
 From a63200d (sim-uv):
 =====================
 

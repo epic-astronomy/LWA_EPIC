@@ -3141,7 +3141,7 @@ class AntennaArraySimulator(object):
                 # sky_Ef_info = self.generate_sky_E_spectrum(altaz, ctlgind=hemind, uvlocs=None, pol=None, randomseed=randomseed, randvals=None)
                 # ant_Ef_info = self.applyApertureWts(sky_Ef_info, uvlocs=None, pol=None)
             else:
-                self.generate_antenna_E_spectrum(altaz, ctlgind=hemind, uvlocs=None, pol=['P1','P2'], randomseed=randomseed, randvals=None, action='store'):
+                self.generate_antenna_E_spectrum(altaz, ctlgind=hemind, uvlocs=None, pol=['P1','P2'], randomseed=randomseed, randvals=None, phase_center_dircos=phase_center_dircos, action='store'):
 
         if obsmode is not None:
             if obsmode in ['drift', 'track']:
