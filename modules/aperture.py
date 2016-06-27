@@ -1129,7 +1129,6 @@ class Aperture(object):
 
         load_lookup [boolean] If set to True (default), loads from the lookup 
                     table. If set to False, the values may be loaded later 
-                    using member function compute()
         ------------------------------------------------------------------------
         """
 

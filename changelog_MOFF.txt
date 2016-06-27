@@ -1,3 +1,15 @@
+From b2dabdc (sim-uv):
+=====================
+
+In sim_observe.py,
+
+(*) Create member function update_apertures() along with docstring
+under class AntennaArraySimulator. Update class docstring accordingly
+
+In aperture.py,
+
+(*) Minor update in docstring
+
 From a3ca432 (sim-uv):
 =====================
 

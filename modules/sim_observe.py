@@ -1490,6 +1490,9 @@ class AntennaArraySimulator(object):
                     in the upper celestial hemisphere for a given LST on a 
                     given date of observation
 
+    update_apertures()
+                    Update aperture information of antennas
+
     load_voltage_pattern()
                     Generates (by interpolating if necessary) voltage 
                     pattern at the location of catalog sources based on 
@@ -1670,6 +1673,125 @@ class AntennaArraySimulator(object):
         altaz = GEOM.hadec2altaz(NP.hstack((ha.reshape(-1,1), dec.reshape(-1,1))), self.latitude, units='degrees')
         hemind, = NP.where(altaz[:,0] >= 0.0)
         return (hemind, altaz[hemind,:])
+
+    ############################################################################
+    
+    def update_apertures(self, aperture_info=None):
+
+        """
+        ------------------------------------------------------------------------
+        Update aperture information of antennas
+
+        Inputs:
+
+        aperture_info   [dictionary] Dictionary containing aperture information
+                        to update antenna apertures with. The keys are given by
+                        the typetag of unique antenna types. Under these typetag 
+                        keys is another dictionary with the following keys and 
+                        values:
+                        'kernel_type' [dictionary] denotes whether the kernel is 
+                                      analytic or based on a lookup table. It 
+                                      has two or four keys (depending on 
+                                      attribute pol) - one for each 
+                                      polarization. Under each key the allowed 
+                                      values are 'func' and 'lookup' (default). 
+                                      If specified as None, it is set to 
+                                      'lookup' under both polarizations.
+                        'shape'       [dictionary] denotes the shape of the 
+                                      aperture. It has two or four keys 
+                                      (depending on attribute pol) - one for 
+                                      each polarization. Under each key the 
+                                      allowed values are 'rect', 'square', 
+                                      'circular', 'auto_convolved_rect', 
+                                      'auto_convolved_square', 
+                                      'auto_convolved_circular' or None. These 
+                                      apply only if the corresponding 
+                                      kernel_type for the polarization is set 
+                                      to 'func' else the shape will be set to 
+                                      None.
+                        parms         [dictionary] denotes parameters of the 
+                                      original aperture shape. It has two or 
+                                      four keys (depending on attribute pol), 
+                                      one for each polarization. Under each of 
+                                      these keys is another dictionary with the 
+                                      following keys and information:
+                                      'xmax'  [scalar] Upper limit along the 
+                                              x-axis for the original aperture 
+                                              kernel footprint. Applicable in 
+                                              case of original rectangular or 
+                                              square apertures. Lower limit 
+                                              along the x-axis is set to -xmax. 
+                                              Length of the original 
+                                              rectangular/square footprint is 
+                                              2*xmax
+                                      'ymax'  [scalar] Upper limit along the 
+                                              y-axis for the original aperture 
+                                              kernel footprint. Applicable in 
+                                              case of original rectangular 
+                                              apertures. Default=1.0. Lower 
+                                              limit along the y-axis is set to 
+                                              -ymax. Breadth of the original 
+                                              rectangular footprint is 2*ymax
+                                      'rmin'  [scalar] Lower limit along radial 
+                                              axis for the original aperture 
+                                              kernel footprint. Applicable in 
+                                              case of original circular 
+                                              apertures. Default=0.0
+                                      'rmax'  [scalar] Upper limit along radial 
+                                              axis for the original aperture 
+                                              kernel footprint. Applicable in 
+                                              case of original circular 
+                                              apertures. Default=1.0
+                                      'rotangle'
+                                              [scalar] Angle (in radians) by 
+                                              which the principal axis of the 
+                                              aperture is rotated 
+                                              counterclockwise east of sky 
+                                              frame. Applicable in case of 
+                                              rectangular, square and 
+                                              elliptical apertures. It has two 
+                                              keys 'P1' and 'P2' - one for each 
+                                              polarization. The value 
+                                              (default=0.0) held by each key is 
+                                              a scalar
+                        lkpinfo       [dictionary] consists of weights 
+                                      information for each of the polarizations 
+                                      under polarization keys. Each of the 
+                                      values under the keys is a string 
+                                      containing the full path to a filename 
+                                      that contains the positions and weights 
+                                      for the aperture illumination in the 
+                                      form of a lookup table as columns (x-loc 
+                                      [float], y-loc [float], wts[real], 
+                                      wts[imag if any]). 
+                        load_lookup   [boolean] If set to True (default), loads 
+                                      from the lookup table. If set to False, 
+                                      the values may be loaded later
+        ------------------------------------------------------------------------
+        """
+
+        if aperture_info is not None:
+            if not isinstance(aperture_info, dict):
+                raise TypeError('Input aperture_info must be a dictionary')
+            for typetag in aperture_info:
+                if typetag in self.antenna_array.typetags:
+                    kernel_type = None
+                    shape = None
+                    parms = None
+                    lkpinfo = None
+                    load_lookup = False
+                    if 'kernel_type' in aperture_info[typetag]:
+                        kernel_type = aperture_info[typetag]['kernel_type']
+                    if 'shape' in aperture_info[typetag]:
+                        shape = aperture_info[typetag]['shape']
+                    if 'parms' in aperture_info[typetag]:
+                        parms = aperture_info[typetag]['parms']
+                    if 'lkpinfo' in aperture_info[typetag]:
+                        lkpinfo = aperture_info[typetag]['lkpinfo']
+                    if 'load_lookup' in aperture_info[typetag]:
+                        load_lookup = aperture_info[typetag]['load_lookup']
+                    for antlabel in list(self.antenna_array.typetags[typetag]):
+                        self.antenna_array.antennas[antlabel].aperture.update(kernel_type=kernel_type, shape=shape, parms=parms, lkpinfo=lkpinfo, load_lookup=load_lookup)
 
     ############################################################################
     
