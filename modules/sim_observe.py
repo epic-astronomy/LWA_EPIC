@@ -3015,8 +3015,8 @@ class AntennaArraySimulator(object):
     
     def observe(self, lst, phase_center_coords, pointing_center_coords,
                 obs_date=None, phase_center=None, pointing_center=None,
-                pointing_info=None, domain_type='sky', vbeam_files=None, 
-                obsmode=None, randomseed=None, stack=False, 
+                pointing_info=None, domain_type='sky', aperture_info=None,
+                vbeam_files=None, obsmode=None, randomseed=None, stack=False, 
                 short_dipole_approx=False, half_wave_dipole_approx=False, 
                 parallel_genvb=False, parallel_genEf=False, nproc=None):
 
@@ -3119,6 +3119,91 @@ class AntennaArraySimulator(object):
         domain_type 
                    [string] Specifies if antenna field pattern is estimated and
                    applied in the 'sky' (default) or 'aperture' planes.
+
+        aperture_info   
+                   [dictionary] Dictionary containing aperture information
+                   to update antenna apertures with. The keys are given by
+                   the typetag of unique antenna types. Under these typetag 
+                   keys is another dictionary with the following keys and 
+                   values:
+                   'kernel_type' [dictionary] denotes whether the kernel is 
+                                 analytic or based on a lookup table. It 
+                                 has two or four keys (depending on 
+                                 attribute pol) - one for each 
+                                 polarization. Under each key the allowed 
+                                 values are 'func' and 'lookup' (default). 
+                                 If specified as None, it is set to 
+                                 'lookup' under both polarizations.
+                   'shape'       [dictionary] denotes the shape of the 
+                                 aperture. It has two or four keys 
+                                 (depending on attribute pol) - one for 
+                                 each polarization. Under each key the 
+                                 allowed values are 'rect', 'square', 
+                                 'circular', 'auto_convolved_rect', 
+                                 'auto_convolved_square', 
+                                 'auto_convolved_circular' or None. These 
+                                 apply only if the corresponding 
+                                 kernel_type for the polarization is set 
+                                 to 'func' else the shape will be set to 
+                                 None.
+                   parms         [dictionary] denotes parameters of the 
+                                 original aperture shape. It has two or 
+                                 four keys (depending on attribute pol), 
+                                 one for each polarization. Under each of 
+                                 these keys is another dictionary with the 
+                                 following keys and information:
+                                 'xmax'  [scalar] Upper limit along the 
+                                         x-axis for the original aperture 
+                                         kernel footprint. Applicable in 
+                                         case of original rectangular or 
+                                         square apertures. Lower limit 
+                                         along the x-axis is set to -xmax. 
+                                         Length of the original 
+                                         rectangular/square footprint is 
+                                         2*xmax
+                                 'ymax'  [scalar] Upper limit along the 
+                                         y-axis for the original aperture 
+                                         kernel footprint. Applicable in 
+                                         case of original rectangular 
+                                         apertures. Default=1.0. Lower 
+                                         limit along the y-axis is set to 
+                                         -ymax. Breadth of the original 
+                                         rectangular footprint is 2*ymax
+                                 'rmin'  [scalar] Lower limit along radial 
+                                         axis for the original aperture 
+                                         kernel footprint. Applicable in 
+                                         case of original circular 
+                                         apertures. Default=0.0
+                                 'rmax'  [scalar] Upper limit along radial 
+                                         axis for the original aperture 
+                                         kernel footprint. Applicable in 
+                                         case of original circular 
+                                         apertures. Default=1.0
+                                 'rotangle'
+                                         [scalar] Angle (in radians) by 
+                                         which the principal axis of the 
+                                         aperture is rotated 
+                                         counterclockwise east of sky 
+                                         frame. Applicable in case of 
+                                         rectangular, square and 
+                                         elliptical apertures. It has two 
+                                         keys 'P1' and 'P2' - one for each 
+                                         polarization. The value 
+                                         (default=0.0) held by each key is 
+                                         a scalar
+                   lkpinfo       [dictionary] consists of weights 
+                                 information for each of the polarizations 
+                                 under polarization keys. Each of the 
+                                 values under the keys is a string 
+                                 containing the full path to a filename 
+                                 that contains the positions and weights 
+                                 for the aperture illumination in the 
+                                 form of a lookup table as columns (x-loc 
+                                 [float], y-loc [float], wts[real], 
+                                 wts[imag if any]). 
+                   load_lookup   [boolean] If set to True (default), loads 
+                                 from the lookup table. If set to False, 
+                                 the values may be loaded later
 
         vbeam_files 
                    [dictionary] Dictionary containing file locations of 
@@ -3248,6 +3333,8 @@ class AntennaArraySimulator(object):
             else:
                 raise ValueError('Invalid value specified in pointing_center_coords')
             
+        self.update_apertures(aperture_info=aperture_info)
+
         hemind, altaz = self.upper_hemisphere(lst, obs_date=obs_date)
         if hemind.size == 0:
             self.Ef_info = {}

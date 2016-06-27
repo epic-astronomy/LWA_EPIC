@@ -1,3 +1,14 @@
+From 26d7c7c (sim-uv):
+=====================
+
+In sim_observe.py,
+
+(*) Add input keyword aperture_info in member function observe() of
+class AntennaArraySimulator. Update member function docstring
+accordingly
+(*) Modify member function observe() of class AntennaArraySimulator
+to update antenna apertures
+
 From b2dabdc (sim-uv):
 =====================
 
