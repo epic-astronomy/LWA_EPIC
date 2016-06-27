@@ -1,3 +1,11 @@
+From 6398b6e (sim-uv):
+=====================
+
+In sim_observe.py,
+
+(*) Remove commented and obsolete member function applyApertureWts()
+of class AntennaArraySimulator
+
 From 2585010 (sim-uv):
 =====================
 
