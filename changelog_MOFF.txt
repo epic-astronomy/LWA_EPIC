@@ -1,3 +1,12 @@
+From a06f591 (sim-uv):
+=====================
+
+In sim_observe.py,
+
+(*) Add input keyword domain_type to member function observing_run()
+of class AntennaArraySimulator. Update member function docstring
+accordingly
+
 From 1100adf (sim-uv):
 =====================
 

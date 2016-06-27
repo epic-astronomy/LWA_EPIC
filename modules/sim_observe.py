@@ -3155,10 +3155,11 @@ class AntennaArraySimulator(object):
 
     ############################################################################
 
-    def observing_run(self, init_parms, obsmode='track', duration=None,
-                      pointing_info=None, vbeam_files=None, randomseed=None,
-                      short_dipole_approx=False, half_wave_dipole_approx=False,
-                      parallel_genvb=False, parallel_genEf=False, nproc=None):
+    def observing_run(self, init_parms, obsmode='track', domain_type='sky',
+                      duration=None, pointing_info=None, vbeam_files=None, 
+                      randomseed=None, short_dipole_approx=False, 
+                      half_wave_dipole_approx=False, parallel_genvb=False,
+                      parallel_genEf=False, nproc=None):
 
         """
         ------------------------------------------------------------------------
@@ -3221,6 +3222,10 @@ class AntennaArraySimulator(object):
 
         obsmode    [string] Mode of observation. Accepted values are 'drift' 
                    and 'track' (default)
+
+        domain_type 
+                   [string] Specifies if antenna field pattern is estimated and
+                   applied in the 'sky' (default) or 'aperture' planes.
 
         duration   [float] Total duration of the observing run (in seconds). If
                    set to None (default), one timeseries is generated
@@ -3459,7 +3464,7 @@ class AntennaArraySimulator(object):
         writer = WM.Writer(progressbar_loc)
         progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} Iterations '.format(n_nyqseries), PGB.ETA()], maxval=n_nyqseries, fd=writer).start()
         for i in range(n_nyqseries):
-            self.observe(updated_sdrltime, phase_center_coords, pointing_center_coords, obs_date=updated_obsdate, phase_center=phase_center, pointing_center=pointing_center, pointing_info=pointing_info, vbeam_files=vbeam_files, randomseed=randomseed+i, stack=True, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, parallel_genvb=parallel_genvb, parallel_genEf=parallel_genEf, nproc=nproc)
+            self.observe(updated_sdrltime, phase_center_coords, pointing_center_coords, obs_date=updated_obsdate, phase_center=phase_center, pointing_center=pointing_center, pointing_info=pointing_info, domain_type=domain_type, vbeam_files=vbeam_files, randomseed=randomseed+i, stack=True, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, parallel_genvb=parallel_genvb, parallel_genEf=parallel_genEf, nproc=nproc)
             obsrvr.date = obsrvr.date + EP.second * self.t.max()
             updated_sdrltime = NP.degrees(obsrvr.sidereal_time()) / 15.0
             updated_slrtime = copy.copy(obsrvr.date)
