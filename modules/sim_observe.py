@@ -3121,11 +3121,13 @@ class AntennaArraySimulator(object):
                    applied in the 'sky' (default) or 'aperture' planes.
 
         aperture_info   
-                   [dictionary] Dictionary containing aperture information
-                   to update antenna apertures with. The keys are given by
-                   the typetag of unique antenna types. Under these typetag 
-                   keys is another dictionary with the following keys and 
-                   values:
+                   [dictionary] This is used only if domain_type is set to 
+                   'aperture' and as an alternative to 'sky' domain application
+                   of the antenna beam using the other input vbeam_files. This 
+                   dictionary contains aperture information to update antenna 
+                   apertures with. The keys are given by the typetag of unique 
+                   antenna types. Under these typetag keys is another dictionary 
+                   with the following keys and values:
                    'kernel_type' [dictionary] denotes whether the kernel is 
                                  analytic or based on a lookup table. It 
                                  has two or four keys (depending on 
@@ -3206,7 +3208,10 @@ class AntennaArraySimulator(object):
                                  the values may be loaded later
 
         vbeam_files 
-                   [dictionary] Dictionary containing file locations of 
+                   [dictionary] This is only used when domain_type is set to
+                   'sky' which is an alternate way of specifying antenna 
+                   response in the 'aperture' domain using the input 
+                   aperture_info. Dictionary containing file locations of 
                    far-field voltage patterns. It is specified under keys
                    'P1' and 'P2' denoting the two polarizations. Under each
                    polarization key is another dictionary with keys for 
@@ -3365,10 +3370,10 @@ class AntennaArraySimulator(object):
     ############################################################################
 
     def observing_run(self, init_parms, obsmode='track', domain_type='sky',
-                      duration=None, pointing_info=None, vbeam_files=None, 
-                      randomseed=None, short_dipole_approx=False, 
-                      half_wave_dipole_approx=False, parallel_genvb=False,
-                      parallel_genEf=False, nproc=None):
+                      duration=None, pointing_info=None, aperture_updates=None,
+                      vbeam_files=None, randomseed=None, 
+                      short_dipole_approx=False, half_wave_dipole_approx=False, 
+                      parallel_genvb=False, parallel_genEf=False, nproc=None):
 
         """
         ------------------------------------------------------------------------
@@ -3489,6 +3494,100 @@ class AntennaArraySimulator(object):
                                      provided, it defaults to 0 (no jitter). 
                                      Used only in phased array mode.
         
+        aperture_updates
+                   [list of dictionaries] A time-ordered list of dictionaries
+                   where each dictionary contains updates to apertures that 
+                   are to to be applied to that time instant. This is only used
+                   if input domain_type is set to 'aperture'. If this input
+                   is set to None, it assumes there are no updates to antenna
+                   apertures across time. If specified as a list, number of 
+                   elements in the list must be at least equal to the number of 
+                   snapshots as determined by the total duration and the 
+                   Nyquist series duration. Each element in the list can be set 
+                   to None (which assumes no update for that time instant) or a
+                   dictionary. This dictionary contains aperture information to 
+                   update antenna apertures with. The keys are given by the 
+                   typetag of unique antenna types. Under these typetag keys is 
+                   another dictionary with the following keys and values:
+                   'kernel_type' [dictionary] denotes whether the kernel is 
+                                 analytic or based on a lookup table. It 
+                                 has two or four keys (depending on 
+                                 attribute pol) - one for each 
+                                 polarization. Under each key the allowed 
+                                 values are 'func' and 'lookup' (default). 
+                                 If specified as None, it is set to 
+                                 'lookup' under both polarizations.
+                   'shape'       [dictionary] denotes the shape of the 
+                                 aperture. It has two or four keys 
+                                 (depending on attribute pol) - one for 
+                                 each polarization. Under each key the 
+                                 allowed values are 'rect', 'square', 
+                                 'circular', 'auto_convolved_rect', 
+                                 'auto_convolved_square', 
+                                 'auto_convolved_circular' or None. These 
+                                 apply only if the corresponding 
+                                 kernel_type for the polarization is set 
+                                 to 'func' else the shape will be set to 
+                                 None.
+                   parms         [dictionary] denotes parameters of the 
+                                 original aperture shape. It has two or 
+                                 four keys (depending on attribute pol), 
+                                 one for each polarization. Under each of 
+                                 these keys is another dictionary with the 
+                                 following keys and information:
+                                 'xmax'  [scalar] Upper limit along the 
+                                         x-axis for the original aperture 
+                                         kernel footprint. Applicable in 
+                                         case of original rectangular or 
+                                         square apertures. Lower limit 
+                                         along the x-axis is set to -xmax. 
+                                         Length of the original 
+                                         rectangular/square footprint is 
+                                         2*xmax
+                                 'ymax'  [scalar] Upper limit along the 
+                                         y-axis for the original aperture 
+                                         kernel footprint. Applicable in 
+                                         case of original rectangular 
+                                         apertures. Default=1.0. Lower 
+                                         limit along the y-axis is set to 
+                                         -ymax. Breadth of the original 
+                                         rectangular footprint is 2*ymax
+                                 'rmin'  [scalar] Lower limit along radial 
+                                         axis for the original aperture 
+                                         kernel footprint. Applicable in 
+                                         case of original circular 
+                                         apertures. Default=0.0
+                                 'rmax'  [scalar] Upper limit along radial 
+                                         axis for the original aperture 
+                                         kernel footprint. Applicable in 
+                                         case of original circular 
+                                         apertures. Default=1.0
+                                 'rotangle'
+                                         [scalar] Angle (in radians) by 
+                                         which the principal axis of the 
+                                         aperture is rotated 
+                                         counterclockwise east of sky 
+                                         frame. Applicable in case of 
+                                         rectangular, square and 
+                                         elliptical apertures. It has two 
+                                         keys 'P1' and 'P2' - one for each 
+                                         polarization. The value 
+                                         (default=0.0) held by each key is 
+                                         a scalar
+                   lkpinfo       [dictionary] consists of weights 
+                                 information for each of the polarizations 
+                                 under polarization keys. Each of the 
+                                 values under the keys is a string 
+                                 containing the full path to a filename 
+                                 that contains the positions and weights 
+                                 for the aperture illumination in the 
+                                 form of a lookup table as columns (x-loc 
+                                 [float], y-loc [float], wts[real], 
+                                 wts[imag if any]). 
+                   load_lookup   [boolean] If set to True (default), loads 
+                                 from the lookup table. If set to False, 
+                                 the values may be loaded later
+
         vbeam_files 
                    [dictionary] Dictionary containing file locations of 
                    far-field voltage patterns. It is specified under keys
@@ -3582,6 +3681,14 @@ class AntennaArraySimulator(object):
         if n_nyqseries < 1:
             raise ValueError('Observation duration is too short to make a single Nyquist observation sample')
 
+        if aperture_updates is None:
+            aperture_updates = [None] * n_nyqseries
+        elif isinstance(aperture_updates, list):
+            if len(aperture_updates) < n_nyqseries:
+                raise ValueError('Input aperture_updates has too few elements relative to that required for the total duration')
+        else:
+            raise TypeError('Input aperture_updates must be a list of dictionaries ordered in time')
+
         if 'sidereal_time' in init_parms:
             if not isinstance(init_parms['sidereal_time'], (int,float)):
                 raise TypeError('sidereal time must be a scalar')
@@ -3673,7 +3780,7 @@ class AntennaArraySimulator(object):
         writer = WM.Writer(progressbar_loc)
         progress = PGB.ProgressBar(widgets=[PGB.Percentage(), PGB.Bar(marker='-', left=' |', right='| '), PGB.Counter(), '/{0:0d} Iterations '.format(n_nyqseries), PGB.ETA()], maxval=n_nyqseries, fd=writer).start()
         for i in range(n_nyqseries):
-            self.observe(updated_sdrltime, phase_center_coords, pointing_center_coords, obs_date=updated_obsdate, phase_center=phase_center, pointing_center=pointing_center, pointing_info=pointing_info, domain_type=domain_type, vbeam_files=vbeam_files, randomseed=randomseed+i, stack=True, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, parallel_genvb=parallel_genvb, parallel_genEf=parallel_genEf, nproc=nproc)
+            self.observe(updated_sdrltime, phase_center_coords, pointing_center_coords, obs_date=updated_obsdate, phase_center=phase_center, pointing_center=pointing_center, pointing_info=pointing_info, domain_type=domain_type, aperture_info=aperture_updates[i], vbeam_files=vbeam_files, randomseed=randomseed+i, stack=True, short_dipole_approx=short_dipole_approx, half_wave_dipole_approx=half_wave_dipole_approx, parallel_genvb=parallel_genvb, parallel_genEf=parallel_genEf, nproc=nproc)
             obsrvr.date = obsrvr.date + EP.second * self.t.max()
             updated_sdrltime = NP.degrees(obsrvr.sidereal_time()) / 15.0
             updated_slrtime = copy.copy(obsrvr.date)
