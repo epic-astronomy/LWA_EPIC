@@ -2563,17 +2563,17 @@ class AntennaArraySimulator(object):
                 raise ValueError('Input uvlocs must be a 2-column array')
 
         antpos_info = self.antenna_array.antenna_positions(pol=None, flag=False, sort=True, centering=False)
-        skypos_dot_antpos = NP.dot(antpos_info['positions'], skypos.T) # nant x nsrc
+        skypos_dot_antpos = NP.dot(antpos_info['positions'], srcdircos.T) # nant x nsrc
         skypos_dot_antpos = skypos_dot_antpos[:,:,NP.newaxis] / wl.reshape(1,1,-1) # nant x nsrc x nchan
         skypos_dot_antpos = NP.exp(1j * 2 * NP.pi * skypos_dot_antpos) # nant x nsrc x nchan
 
-        if not apply_aprtr_wts:
-            aprtr_wts = {p: 1.0 for p in pol}
+        # if not apply_aprtr_wts:
+        #     aprtr_wts = {p: 1.0 for p in pol}
 
         aperture_Ef_info = {}
+        u_dot_l = NP.dot(uvlocs, srcdircos_2d.T) # nuv x nsrc
+        matDFT = NP.exp(1j * 2 * NP.pi * u_dot_l) # nuv x nsrc
         for polind, p in enumerate(pol):
-            u_dot_l = NP.dot(uvlocs, srcdircos_2d.T) # nuv x nsrc
-            matDFT = NP.exp(1j * 2 * NP.pi * u_dot_l) # nuv x nsrc
             aperture_Ef_info[p] = NP.dot(matDFT, sky_Ef_info[p][NP.newaxis,:,:]*skypos_dot_antpos) # nuv x nant x nchan
 
         return (antpos_info['labels'], aperture_Ef_info)
@@ -2620,7 +2620,7 @@ class AntennaArraySimulator(object):
             pol = p
         else:
             raise TypeError('Input keyword pol must be string, list or set to None')
-           pol = sorted(pol)
+        pol = sorted(pol)
         npol = len(pol)
 
         typetags = self.antenna_array.typetags.keys()
@@ -2766,6 +2766,7 @@ class AntennaArraySimulator(object):
         if NP.any(NP.abs(NP.sum(phase_center_dircos**2,axis=1)-1.0) >= eps):
             raise ValueError('Magnitudes of direction cosines must not exceed unity')
         
+        wl = FCNST.c / self.f
         antpos_info = self.antenna_array.antenna_positions(pol=None, flag=False, sort=True, centering=False)
         phase_center_dot_antpos = NP.dot(phase_center_dircos, antpos_info['positions'].T).ravel() # nant
         phase_center_dot_antpos = phase_center_dot_antpos[NP.newaxis,:] / wl.reshape(-1,1) # nchan x nant
@@ -3228,7 +3229,7 @@ class AntennaArraySimulator(object):
                 # sky_Ef_info = self.generate_sky_E_spectrum(altaz, ctlgind=hemind, uvlocs=None, pol=None, randomseed=randomseed, randvals=None)
                 # ant_Ef_info = self.applyApertureWts(sky_Ef_info, uvlocs=None, pol=None)
             else:
-                self.generate_antenna_E_spectrum(altaz, ctlgind=hemind, uvlocs=None, pol=['P1','P2'], randomseed=randomseed, randvals=None, phase_center_dircos=phase_center_dircos, action='store'):
+                self.generate_antenna_E_spectrum(altaz, ctlgind=hemind, uvlocs=None, pol=['P1','P2'], randomseed=randomseed, randvals=None, phase_center_dircos=phase_center_dircos, action='store')
 
         if obsmode is not None:
             if obsmode in ['drift', 'track']:

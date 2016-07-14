@@ -1,3 +1,11 @@
+From 0e6acd6 (sim-uv):
+=====================
+
+In sim_observe.py,
+
+(*) Fix bugs to allow simulation of antenna electric fields through
+aperture plane computations
+
 From 6398b6e (sim-uv):
 =====================
 
