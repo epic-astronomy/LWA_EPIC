@@ -11525,11 +11525,11 @@ class AntennaArray:
         rmaxNN = 0.5 * NP.sqrt(du**2 + dv**2) * min_lambda
  
         krn = {}
-        self.ant2grid_mapper = {}
+        # self.ant2grid_mapper = {}
         antpol = ['P1', 'P2']
         for apol in antpol:
             krn[apol] = None
-            self.ant2grid_mapper[apol] = None
+            # self.ant2grid_mapper[apol] = None
             if apol in pol:
                 ant_dict = self.antenna_positions(pol=apol, flag=None, sort=True, centering=True)
                 self.ordered_labels = ant_dict['labels']
@@ -11540,6 +11540,7 @@ class AntennaArray:
                     print 'Gathered antenna data for gridding convolution for timestamp {0}'.format(self.timestamp)
 
                 if wts_change or (not self.grid_mapper[apol]['all_ant2grid']):
+                    self.ant2grid_mapper[apol] = None
                     self.grid_mapper[apol]['per_ant2grid'] = []
                     self.grid_mapper[apol]['all_ant2grid'] = {}
                     gridlocs = NP.hstack((self.gridu.reshape(-1,1), self.gridv.reshape(-1,1)))

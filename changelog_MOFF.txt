@@ -1,3 +1,11 @@
+From 3440502 (sim-uv):
+=====================
+
+In antenn_array.py,
+
+(*) Fix bugs in AntennaArray.genMappingMatrix() to compute antenna
+to grid mapping only when necessary
+
 From 0e6acd6 (sim-uv):
 =====================
 
