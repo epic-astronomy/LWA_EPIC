@@ -1,3 +1,12 @@
+From c42f325 (sim-uv):
+=====================
+
+In antenna_array.py,
+
+(*) Estimate nearest neighbour spectrum and average in member function
+getStats() of class NewImage. Update member function docstring
+accordingly
+
 From 3440502 (sim-uv):
 =====================
 

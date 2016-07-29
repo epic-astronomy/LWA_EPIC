@@ -7757,6 +7757,9 @@ class NewImage:
                             key 'peak-spectrum'. It will have n_t elements where
                             n_t is the number of timestamps as determined by 
                             input datapool
+                    'nn-spectrum'
+                            [list] Frequency spectrum of the nearest neighbour 
+                            pixel relative to the box center. 
                     'mad'   [list] Median Absolute Deviation(s) in
                             the box determined by input rms_box_scale_factor. 
                             If input datapool is set to 'current', it will be a 
@@ -7793,9 +7796,9 @@ class NewImage:
             raise TypeError('Input rms_box_scale_factor must be a scalar')
 
         bandwidth = (self.f[1] - self.f[0]) * self.f.size
-        lfgrid = self.gridl[:,:,NP.newaxis] * NP.ones(self.f.size).reshape(1,1,-1)
-        mfgrid = self.gridm[:,:,NP.newaxis] * NP.ones(self.f.size).reshape(1,1,-1)
-        fgrid = NP.ones_like(self.gridl)[:,:,NP.newaxis] * self.f.reshape(1,1,-1)
+        lfgrid = self.gridl[:,:,NP.newaxis] * NP.ones(self.f.size).reshape(1,1,-1) # nm x nl x nchan
+        mfgrid = self.gridm[:,:,NP.newaxis] * NP.ones(self.f.size).reshape(1,1,-1)  # nm x nl x nchan
+        fgrid = NP.ones_like(self.gridl)[:,:,NP.newaxis] * self.f.reshape(1,1,-1)  # nm x nl x nchan
         outstats = []
         for i in xrange(len(box_center)):
             stats = {}
@@ -7826,6 +7829,9 @@ class NewImage:
                 if bc[2] > self.f.size:
                     bc[2] = self.f.size
             if coords == 'physical':
+                nn_ind2d = NP.argmin(NP.abs((lfgrid[:,:,0] - bc[0])**2 + (mfgrid[:,:,0] - bc[1])**2))
+                unraveled_nn_ind2d = NP.unravel_index(nn_ind2d, self.gridl.shape)
+                unraveled_nn_ind3d = (NP.asarray([unraveled_nn_ind2d[0]]*self.f.size), NP.asarray([unraveled_nn_ind2d[1]]*self.f.size), NP.arange(self.f.size))
                 if box_type == 'square':
                     ind3d = (NP.abs(lfgrid - bc[0]) <= 0.5*bs[0]) & (NP.abs(mfgrid - bc[1]) <= 0.5*bs[0]) & (NP.abs(fgrid - bc[2]) <= 0.5*bs[1])
                     ind3d_rmsbox = (NP.abs(lfgrid - bc[0]) <= 0.5*rms_box_scale_factor*bs[0]) & (NP.abs(mfgrid - bc[1]) <= 0.5*rms_box_scale_factor*bs[0]) & (NP.abs(fgrid - bc[2]) <= 0.5*bs[1])
@@ -7836,12 +7842,14 @@ class NewImage:
                 msk_rms = NP.logical_not(ind3d_rmsbox)
     
                 for apol in ['P1', 'P2']:
-                    stats[apol] = {'peak-spectrum': [], 'peak-avg': [], 'mad': []}
+                    stats[apol] = {'peak-spectrum': [], 'peak-avg': [], 'mad': [], 'nn-spectrum': [], 'nn-avg': []}
                     if datapool == 'current':
                         if self.nzsp_img[apol] is not None:
                             img_masked = MA.array(self.nzsp_img[apol], mask=msk)
                             stats[apol]['peak-spectrum'] += [NP.amax(NP.abs(img_masked), axis=(0,1))]
                             stats[apol]['peak-avg'] += [NP.mean(stats[apol]['peak-spectrum'])]
+                            stats[apol]['nn-spectrum'] += [img_masked[unraveled_nn_ind3d]]
+                            stats[apol]['nn-avg'] += [NP.mean(stats[apol]['nn-spectrum'])]
                             img_masked = MA.array(self.nzsp_img[apol], mask=msk_rms)
                             mdn = NP.median(img_masked[~img_masked.mask])
                             absdev = NP.abs(img_masked - mdn)
@@ -7853,6 +7861,8 @@ class NewImage:
                                     img_masked = MA.array(self.nzsp_img_avg[apol][ti,...], mask=msk)
                                     stats[apol]['peak-spectrum'] += [NP.amax(NP.abs(img_masked), axis=(0,1))]
                                     stats[apol]['peak-avg'] += [NP.mean(stats[apol]['peak-spectrum'][ti])]
+                                    stats[apol]['nn-spectrum'] += [img_masked[unraveled_nn_ind3d]]
+                                    stats[apol]['nn-avg'] += [NP.mean(stats[apol]['nn-spectrum'][ti])]
                                     img_masked = MA.array(self.nzsp_img_avg[apol][ti,...], mask=msk_rms)
                                     mdn = NP.median(img_masked[~img_masked.mask])
                                     absdev = NP.abs(img_masked - mdn)
@@ -7863,6 +7873,8 @@ class NewImage:
                                     img_masked = MA.array(self.img_stack[apol][ti,...], mask=msk)
                                     stats[apol]['peak-spectrum'] += [NP.amax(NP.abs(img_masked), axis=(0,1))]
                                     stats[apol]['peak-avg'] += [NP.mean(stats[apol]['peak-spectrum'][ti])]
+                                    stats[apol]['nn-spectrum'] += [img_masked[unraveled_nn_ind3d]]
+                                    stats[apol]['nn-avg'] += [NP.mean(stats[apol]['nn-spectrum'][ti])]
                                     img_masked = MA.array(self.img_stack[apol][ti,...], mask=msk_rms)
                                     mdn = NP.median(img_masked[~img_masked.mask])
                                     absdev = NP.abs(img_masked - mdn)
