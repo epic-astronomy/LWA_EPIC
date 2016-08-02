@@ -1,3 +1,12 @@
+From 75cbe1a (sim-uv):
+=====================
+
+In antenna_array.py,
+
+(*) Minor changes in estimation of nearest neighbour pixel value
+averaged over frequency in member function getStats() of class
+NewImage. It has not been thoroughly tested yet.
+
 From c42f325 (sim-uv):
 =====================
 

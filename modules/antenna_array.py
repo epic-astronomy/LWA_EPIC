@@ -7848,7 +7848,7 @@ class NewImage:
                             img_masked = MA.array(self.nzsp_img[apol], mask=msk)
                             stats[apol]['peak-spectrum'] += [NP.amax(NP.abs(img_masked), axis=(0,1))]
                             stats[apol]['peak-avg'] += [NP.mean(stats[apol]['peak-spectrum'])]
-                            stats[apol]['nn-spectrum'] += [img_masked[unraveled_nn_ind3d]]
+                            stats[apol]['nn-spectrum'] += [NP.abs(img_masked[unraveled_nn_ind3d])]
                             stats[apol]['nn-avg'] += [NP.mean(stats[apol]['nn-spectrum'])]
                             img_masked = MA.array(self.nzsp_img[apol], mask=msk_rms)
                             mdn = NP.median(img_masked[~img_masked.mask])
@@ -7861,7 +7861,7 @@ class NewImage:
                                     img_masked = MA.array(self.nzsp_img_avg[apol][ti,...], mask=msk)
                                     stats[apol]['peak-spectrum'] += [NP.amax(NP.abs(img_masked), axis=(0,1))]
                                     stats[apol]['peak-avg'] += [NP.mean(stats[apol]['peak-spectrum'][ti])]
-                                    stats[apol]['nn-spectrum'] += [img_masked[unraveled_nn_ind3d]]
+                                    stats[apol]['nn-spectrum'] += [NP.abs(img_masked[unraveled_nn_ind3d])]
                                     stats[apol]['nn-avg'] += [NP.mean(stats[apol]['nn-spectrum'][ti])]
                                     img_masked = MA.array(self.nzsp_img_avg[apol][ti,...], mask=msk_rms)
                                     mdn = NP.median(img_masked[~img_masked.mask])
@@ -7873,7 +7873,7 @@ class NewImage:
                                     img_masked = MA.array(self.img_stack[apol][ti,...], mask=msk)
                                     stats[apol]['peak-spectrum'] += [NP.amax(NP.abs(img_masked), axis=(0,1))]
                                     stats[apol]['peak-avg'] += [NP.mean(stats[apol]['peak-spectrum'][ti])]
-                                    stats[apol]['nn-spectrum'] += [img_masked[unraveled_nn_ind3d]]
+                                    stats[apol]['nn-spectrum'] += [NP.abs(img_masked[unraveled_nn_ind3d])]
                                     stats[apol]['nn-avg'] += [NP.mean(stats[apol]['nn-spectrum'][ti])]
                                     img_masked = MA.array(self.img_stack[apol][ti,...], mask=msk_rms)
                                     mdn = NP.median(img_masked[~img_masked.mask])
