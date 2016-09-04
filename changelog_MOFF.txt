@@ -1,7 +1,20 @@
+From 18e1c6d (data-interface), 0ef6465 (master):
+===============================================
+
+(*) Merge changes in data-interface onto master branch
+
 From 40dada5 (versatility):
 ==========================
 
 (*) Commit stashed script changes (not very important)
+
+From 40dada5 (data-interface):
+=============================
+
+In data_interace.py,
+
+(*) Add classes DataContainer and DataStreamer to store and retrieve
+voltage data in a generic format
 
 From 75cbe1a (sim-uv):
 =====================
