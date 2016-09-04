@@ -1,3 +1,8 @@
+From 40dada5 (versatility):
+==========================
+
+(*) Commit stashed script changes (not very important)
+
 From 75cbe1a (sim-uv):
 =====================
 
