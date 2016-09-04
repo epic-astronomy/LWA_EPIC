@@ -1,3 +1,11 @@
+From 40dada5 (data-interface):
+=============================
+
+In data_interace.py,
+
+(*) Add classes DataContainer and DataStreamer to store and retrieve
+voltage data in a generic format
+
 From 75cbe1a (sim-uv):
 =====================
 
