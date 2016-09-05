@@ -1,3 +1,13 @@
+From 354594d (FX-input):
+=======================
+
+In antenna_array.py,
+
+(*) Update member function update() of class AntennaArray to update
+electric field spectrum
+(*) Update member function update() of class Antenna to update
+electric field spectrum. Update docstring accordingly
+
 From 18e1c6d (data-interface), 0ef6465 (master):
 ===============================================
 

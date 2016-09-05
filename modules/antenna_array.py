@@ -8741,6 +8741,10 @@ class Antenna:
                        which are stored under keys 'P1' and 'P22'. Default=None 
                        implies no updates for Et.
     
+            Ef         [dictionary] holds spectrum under 2 polarizations 
+                       which are stored under keys 'P1' and 'P22'. Default=None 
+                       implies no updates for Ef.
+
             aperture   [instance of class APR.Aperture] aperture 
                        information for the antenna. Read docstring of class 
                        Aperture for details
@@ -8821,6 +8825,7 @@ class Antenna:
         stack = False
         verify_flags = True
         Et = None
+        Ef = None
         wtsinfo = None
         gridfunc_freq = None
         ref_freq = None
@@ -8837,6 +8842,7 @@ class Antenna:
             if 'timestamp' in update_dict: timestamp = update_dict['timestamp']
             if 't' in update_dict: t = update_dict['t']
             if 'Et' in update_dict: Et = update_dict['Et']
+            if 'Ef' in update_dict: Ef = update_dict['Ef']
             if 'flags' in update_dict: flags = update_dict['flags']
             if 'stack' in update_dict: stack = update_dict['stack']
             if 'verify_flags' in update_dict: verify_flags = update_dict['verify_flags']            
@@ -8858,8 +8864,8 @@ class Antenna:
             self.f = self.f0 + self.channels()     
 
         # Updates, Et, Ef, delays, flags and verifies flags
-        if (Et is not None) or (delaydict is not None) or (flags is not None):
-            self.antpol.update(Et=Et, delaydict=delaydict, flags=flags, verify=verify_flags) 
+        if (Et is not None) or (Ef is not None) or (delaydict is not None) or (flags is not None):
+            self.antpol.update(Et=Et, Ef=Ef, delaydict=delaydict, flags=flags, verify=verify_flags) 
 
         # Stack flags and data
         self.update_flags(flags=None, stack=stack, verify=True)  
@@ -12757,6 +12763,13 @@ class AntennaArray:
                                               if set and if 'action' key value 
                                               is set to 'modify'. 
                                               Default = None.
+                                'Ef'          [Optional. Dictionary] Complex 
+                                              Electric field spectra under
+                                              two polarizations which are under
+                                              keys 'P1' and 'P2'. Is used only 
+                                              if set and if 'action' key value 
+                                              is set to 'modify'. 
+                                              Default = None.
                                 'stack'       [boolean] If True (default), 
                                               appends the updated flag and data 
                                               to the end of the stack as a 
@@ -12947,6 +12960,7 @@ class AntennaArray:
                         else:
                             if verbose:
                                 print 'Modifying antenna {0}...'.format(dictitem['label'])
+                            if 'Ef' not in dictitem: dictitem['Et']=None
                             if 'Et' not in dictitem: dictitem['Et']=None
                             if 't' not in dictitem: dictitem['t']=None
                             if 'timestamp' not in dictitem: dictitem['timestamp']=None
