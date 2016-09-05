@@ -8236,7 +8236,7 @@ class PolInfo:
         # Perform flag verification and re-update current flags
         if verify or (flags is None):
             for pol in ['P1', 'P2']:
-                if NP.any(NP.isnan(self.Et[pol])):
+                if NP.any(NP.isnan(self.Et[pol])) and NP.any(NP.isnan(self.Ef[pol])):
                     self.flag[pol] = True
 
     ############################################################################ 

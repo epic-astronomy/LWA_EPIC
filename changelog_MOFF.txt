@@ -1,3 +1,12 @@
+From 607d0a4 (FX-input):
+=======================
+
+In antenna_array.py,
+
+(*) Update checking of NaN values in both Ef and Et attributes in
+member function update_flags() of class PolInfo and update flags
+accordingly
+
 From 354594d (FX-input):
 =======================
 
