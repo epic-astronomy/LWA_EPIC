@@ -1,3 +1,8 @@
+From a20093a (FX-input):
+=======================
+
+(*) No major changes in this version. Just testing.
+
 From 607d0a4 (FX-input):
 =======================
 
