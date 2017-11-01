@@ -1,3 +1,10 @@
+From 1046014 (package):
+======================
+
+In README.rst,
+
+(*) Minor updates to point to updated AstroUtils package
+
 From 6573949 (package):
 ======================
 
