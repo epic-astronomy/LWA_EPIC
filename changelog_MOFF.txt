@@ -1,3 +1,10 @@
+From d2085fe (package):
+======================
+
+In README.rst,
+
+(*) Update some basic installation instructions
+
 From 1cf5b52 (master):
 =====================
 
