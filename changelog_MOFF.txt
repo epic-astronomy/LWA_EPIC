@@ -1,3 +1,10 @@
+From 6573949 (package):
+======================
+
+In README.rst,
+
+(*) Minor updates to documentation
+
 From d2085fe (package):
 ======================
 
