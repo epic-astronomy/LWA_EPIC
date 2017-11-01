@@ -1,0 +1,52 @@
+/*~
+/*.pyc
+modules/
+main/
+epic/*~
+epic/*.pyc
+# /main/*~
+# /main/*.pyc
+# /modules/*~
+# /modules/*.pyc
+# /changelog_MOFF.txt~
+# /main/MOFF_testing.py~
+# /modules/antenna_array.py~
+# /modules/antenna_array.pyc
+# /modules/sim_observe.pyc
+# /modules/sim_observe.py~
+# /main/MOFF_testing_LWA.py~
+# /main/interferometer_testing_LWA.py~
+# /main/interferometer_testing_MWA.py~
+# /main/new_MOFF_testing_LWA.py~
+# /main/new_MOFF_testing_MWA.py~
+# /modules/data_interface.py~
+# /modules/field_pattern_lookup_generator.py~
+# /modules/lookup.py~
+# /modules/lookup_operations.pyc
+# /modules/lookup_operations.py~
+# /tmp.txt~
+# /modules/data_interface.pyc
+# /main/LWA_FX_data_analysis.py~
+# /main/LWA_FX_stack_data_analysis.py~
+# /main/LWA_MOFF_data_analysis.lprof
+# /main/LWA_MOFF_data_analysis.py~
+# /main/LWA_MOFF_data_analysis_analytic_kernel.py~
+# /main/MOFF_FX_crossover.py~
+# /main/MOFF_FX_performance_comparison.py~
+# /main/MOFF_FX_performance_comparison_all_lines.py~
+# /main/MOFF_FX_performance_profiling_script.sh~
+# /main/MOFF_FX_performance_profiling_shell_script_generator.py~
+# /main/MOFF_simulations_test_sparse_matrix.py~
+# /main/MWA_simulations_MOFF_test_aperture.py~
+# /main/compare_simulations_MOFF_FX_MWA.py~
+# /main/compare_simulations_MOFF_FX_test_aperture.py~
+# /main/compare_simulations_MOFF_FX_test_stacking.py~
+# /main/convert_data_reformatted_LWA_to_CDF.py~
+# /modules/#_assh_benterprise.sese.asu.edu_b_ahome_at__nithyanandan_acodes_amine_apython_aMOFF_amodules_aantenna__layout.py#
+# /modules/analytic_kernels.py~
+# /modules/antenna_layout.pyc
+# /modules/antenna_layout.py~
+# /modules/aperture.pyc
+# /modules/aperture.py~
+# /main/LWA_OV_RFI_plots.py~
+# /main/convert_data_from_LWAOV_to_EPIC.py~

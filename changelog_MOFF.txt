@@ -1,3 +1,17 @@
+From 1cf5b52 (master):
+=====================
+
+(*) Convert EPIC into an installable python package
+(*) Add .gitingore to repo
+(*) Add LICENSE.md to repo
+(*) Add README.rst to repo
+(*) Add setup.py to repo
+(*) Move module files EPICal.py, antenna_array.py,
+antenna_array_for_profiler.py, antenna_beams.py, antenna_layout.py,
+aperture.py, data_interface.py, and sim_observe.py from modules/
+directory to epic/ directory
+(*) Add __init__.py in epic/ directory
+
 From a20093a (FX-input):
 =======================
 
