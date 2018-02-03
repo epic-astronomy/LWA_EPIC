@@ -4,6 +4,8 @@ modules/
 main/
 epic/*~
 epic/*.pyc
+scripts/*~
+scripts/*.pyc
 # /main/*~
 # /main/*.pyc
 # /modules/*~
@@ -50,3 +52,4 @@ epic/*.pyc
 # /modules/aperture.py~
 # /main/LWA_OV_RFI_plots.py~
 # /main/convert_data_from_LWAOV_to_EPIC.py~
+/scripts/convert_MWAVCS_data_to_EPIC_format.py~
