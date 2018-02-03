@@ -53,3 +53,6 @@ scripts/*.pyc
 # /main/LWA_OV_RFI_plots.py~
 # /main/convert_data_from_LWAOV_to_EPIC.py~
 /scripts/convert_MWAVCS_data_to_EPIC_format.py~
+/epic/examples/ioparms/LWASV_TBN_input_file_parameters.yaml~
+/epic/examples/ioparms/LWA_TBN_input_file_parameters.yaml~
+/epic/examples/ioparms/MWAVCS_input_file_parameters.yaml~
