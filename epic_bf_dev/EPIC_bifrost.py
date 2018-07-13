@@ -347,39 +347,39 @@ class MOFFCorrelatorOp(object):
                 ishape = (self.ntime_gulp/nchan,nchan,nstand,npol,2)
 
                 ohdr = ihdr.copy()
-                ohdr['nbit'] = 128
+                ohdr['nbit'] = 64
                 ohdr['npol'] = npol
                 ohdr['nchan'] = nchan
                 ohdr_str = json.dumps(ohdr)
                 
                 ##TODO: Setup output gulp and shape.
                 oshape = (nchan,npol,GRID_SIZE,GRID_SIZE)
-                ogulp_size = nchan * npol * GRID_SIZE * GRID_SIZE * 16
+                ogulp_size = nchan * npol * GRID_SIZE * GRID_SIZE * 8
                 self.oring.resize(ogulp_size)
-
                 self.grid = numpy.zeros(shape=(nchan,npol,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
                 self.grid = bifrost.ndarray(self.grid)
-                                            
                 self.image = numpy.zeros(shape=(nchan,npol,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
-
-            
-                with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
+                base_time_tag = iseq.time_tag
+                while not self.iring.writing_ended():
                     iseq_spans = iseq.read(igulp_size)
-                    while not self.iring.writing_ended():
-                        for ispan in iseq_spans:
+                    for ispan in iseq_spans:
 
-                            if ispan.size < igulp_size:
-                                continue
+                        if ispan.size < igulp_size:
+                            continue
 
-                            ###### Correlator #######
-                            ## Check the casting of ingulp to bfidata ci8
-                            idata = ispan.data_view(numpy.int8).reshape(ishape)
-                            bfidata = bifrost.ndarray(shape=idata.shape, dtype='ci8', native=False, buffer=idata.ctypes.data)
+                        for time in numpy.arange(100,101):
 
-                            if(self.cpu): #CPU
+                            with oring.begin_sequence(time_tag=base_time_tag, header=ohdr_str) as oseq:
+                                base_time_tag = base_time_tag + 1                                
+                        
+                                ###### Correlator #######
+                                ## Check the casting of ingulp to bfidata ci8
+                                idata = ispan.data_view(numpy.int8).reshape(ishape)
+                                bfidata = bifrost.ndarray(shape=idata.shape, dtype='ci8', native=False, buffer=idata.ctypes.data)
 
-                                # I am pretty sure I couldn't make this any less efficient if I tried. 
-                                for time in numpy.arange(100,101):
+                                if(self.cpu): #CPU
+
+                                    # I am pretty sure I couldn't make this any less efficient if I tried. 
                                     for i in numpy.arange(nchan): 
                                         for j in numpy.arange(npol):
                                             for k in numpy.arange(nstand):
@@ -404,31 +404,32 @@ class MOFFCorrelatorOp(object):
                                                         
                                                     
                                                 
-                                #Now that unsightly business is concluded, let us FFT.
-                                for i in numpy.arange(nchan):
-                                    for j in numpy.arange(npol):
-                                        self.image[i,j,:,:] = numpy.fft.fftshift(self.grid[i,j,:,:])
-                                        self.image[i,j,:,:] = numpy.fft.ifft2(self.grid[i,j,:,:])
-                                        self.image[i,j,:,:] = numpy.fft.fftshift(self.image[i,j,:,:])
+                                    #Now that unsightly business is concluded, let us FFT.
+                                    for i in numpy.arange(nchan):
+                                        for j in numpy.arange(npol):
+                                            self.image[i,j,:,:] = numpy.fft.fftshift(self.grid[i,j,:,:])
+                                            self.image[i,j,:,:] = numpy.fft.ifft2(self.image[i,j,:,:])
+                                            self.image[i,j,:,:] = numpy.fft.fftshift(self.image[i,j,:,:])
 
-                                plt.figure(1)
-                                #print(numpy.shape(self.image[2,0,:,:]))
-                                #print(self.image[2,0,:,:])
-                                plt.imshow(numpy.abs(numpy.real(self.grid[2,0,:,:])))
-                                plt.savefig("blahblah.png")
+                                    plt.figure(1)
+                                    #print(numpy.shape(self.image[2,0,:,:]))
+                                    #print(self.image[2,0,:,:])
+                                    plt.imshow(numpy.abs(numpy.real(self.image[2,0,:,:])))
+                                    plt.savefig("blahblah.png")
+                                    print "Saved Image"
                                                 
-                            else: #GPU
-                                pass
+                                else: #GPU
+                                    pass
 
 
                             
                         
 
 
-                            with oseq.reserve(ogulp_size) as ospan:
+                                with oseq.reserve(ogulp_size) as ospan:
 
-                                odata = ospan.data_view(numpy.complex64).reshape(oshape)
-                                odata[...] = self.image
+                                    odata = ospan.data_view(numpy.complex64).reshape(oshape)
+                                    odata[...] = self.image
                         
 
                 
