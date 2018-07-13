@@ -11,6 +11,8 @@ import argparse
 import numpy
 from scipy.fftpack import fft
 
+import matplotlib.pyplot as plt
+
 from bifrost.address import Address as BF_Address
 from bifrost.udp_socket import UDPSocket as BF_UDPSocket
 from bifrost.udp_capture import UDPCapture as BF_UDPCapture
@@ -20,8 +22,9 @@ from bifrost.quantize import quantize as Quantize
 from bifrost.proclog import ProcLog
 from bifrost.libbifrost import bf
 
+import bifrost
 import bifrost.affinity
-import bifrost.ndarray
+
 
 from lsl.common.constants import c as speedOfLight
 from lsl.writer import fitsidi
@@ -33,6 +36,45 @@ from lsl.common.stations import lwasv, parseSSMIF
 CHAN_BW = 25000	# Hz
 ANTENNAS = lwasv.getAntennas()
 DUMP_TIME = 5	# s
+
+# Build map of where the LWA-SV Stations are.
+## TODO: Make this non-SV specific
+LOCATIONS = lwasv.getStands()
+
+locations = numpy.empty(shape=(0,3))
+
+for stand in LOCATIONS:
+
+    locations = numpy.vstack((locations,[stand[0],stand[1],stand[2]]))
+    print 'X: %f' % stand[0] #x
+    print 'Y: %f' % stand[1] #y
+    print 'Z: %f' % stand[2] #z
+
+print locations
+locations = numpy.delete(locations, list(range(0,locations.shape[0],2)),axis=0)
+#locations = locations[0:255,:]
+print ("Max X: %f, Max Y: %f" % (numpy.max(locations[:,0]), numpy.max(locations[:,1])))
+print ("Min X: %f, Min Y: %f" % (numpy.min(locations[:,0]), numpy.min(locations[:,1])))
+print numpy.shape(locations)
+
+#for location in locations:
+#    print location
+RESOLUTION = 1.0
+GRID_SIZE = int(numpy.power(2,numpy.ceil(numpy.log(numpy.max(numpy.abs(locations))/RESOLUTION)/numpy.log(2))))
+print GRID_SIZE
+
+
+#plt.plot(locations[:,0],locations[:,1],'x')
+#plt.show()
+
+## Antenna Illumination Pattern params:
+# For now just use a square top-hat function..
+## TODO: Do this properly...
+Xmin= -1.5
+Xmax= 1.5
+Ymin= -1.5
+Ymax= 1.5
+
 
 
 
@@ -246,7 +288,7 @@ class FDomainOp(object):
                 
 
 ## For when we don't need to care about doing the F-Engine ourself.
-
+## TODO: Implement this come implementation time...
 class FEngineCaptureOp(object):
     '''
     Receives Fourier Spectra from LWA FPGA
@@ -285,30 +327,109 @@ class MOFFCorrelatorOp(object):
         self.oring = oring
         self.ntime_gulp = ntime_gulp
 
+        self.core = core
+        self.cpu = cpu
+        
+        self.grid = None
+        self.image = None
+
     def main(self):
         bifrost.affinity.set_core(self.core)
-
-        for iseq in self.iring.read(guarantee=True):
-
-            ihdr = json.loads(iseq.header.tostring())
-            nchan = ihdr['nchan']
-            nstand = ihdr['nstand']
-            npol = ihdr['npol']
-
-            igulp_size = self.ntime_gulp * 1 * nstand * npol * 2
-            ishape = (self.ntime_gulp/nchan,nchan,nstand,npol,2)
-
-            ohdr = ihdr.copy()
-            ohdr['nbit'] = 128
-            ohdr_str = json.dumps(ohdr)
-            
-            iseq_spans = iseq.read(igulp_size)
-            with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
-                iseq_spans = iseq.read(igulp_size)
-                while not self.iring.writing_ended():
-                    for ispan in iseq_spans:
+        with self.oring.begin_writing() as oring:
+            for iseq in self.iring.read(guarantee=True):
                 
-                        ###### Correlator #######
+                ihdr = json.loads(iseq.header.tostring())
+                nchan = ihdr['nchan']
+                nstand = ihdr['nstand']
+                npol = ihdr['npol']
+                
+                igulp_size = self.ntime_gulp * 1 * nstand * npol * 2
+                ishape = (self.ntime_gulp/nchan,nchan,nstand,npol,2)
+
+                ohdr = ihdr.copy()
+                ohdr['nbit'] = 128
+                ohdr['npol'] = npol
+                ohdr['nchan'] = nchan
+                ohdr_str = json.dumps(ohdr)
+                
+                ##TODO: Setup output gulp and shape.
+                oshape = (nchan,npol,GRID_SIZE,GRID_SIZE)
+                ogulp_size = nchan * npol * GRID_SIZE * GRID_SIZE * 16
+                self.oring.resize(ogulp_size)
+
+                self.grid = numpy.zeros(shape=(nchan,npol,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
+                self.grid = bifrost.ndarray(self.grid)
+                                            
+                self.image = numpy.zeros(shape=(nchan,npol,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
+
+            
+                with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
+                    iseq_spans = iseq.read(igulp_size)
+                    while not self.iring.writing_ended():
+                        for ispan in iseq_spans:
+
+                            if ispan.size < igulp_size:
+                                continue
+
+                            ###### Correlator #######
+                            ## Check the casting of ingulp to bfidata ci8
+                            idata = ispan.data_view(numpy.int8).reshape(ishape)
+                            bfidata = bifrost.ndarray(shape=idata.shape, dtype='ci8', native=False, buffer=idata.ctypes.data)
+
+                            if(self.cpu): #CPU
+
+                                # I am pretty sure I couldn't make this any less efficient if I tried. 
+                                for time in numpy.arange(100,101):
+                                    for i in numpy.arange(nchan): 
+                                        for j in numpy.arange(npol):
+                                            for k in numpy.arange(nstand):
+
+                                                #Get co-ordinates on the grid. Switch origin to centre
+                                                x = int(numpy.round(locations[k,0] + GRID_SIZE/2))
+                                                y = int(numpy.round(locations[k,1] + GRID_SIZE/2))
+                                                # y and x should now correspond to the i/j co-ordinates of the grid.
+                                                num = bfidata[time,i,k,0]
+                                                if i == 2:
+                                                    if j==0:
+                                                        print num
+                                                    
+                                                for yi in numpy.arange(y+int(Ymin),y+int(Ymax)):
+                                                    for xi in numpy.arange(x+int(Xmin),x+int(Xmax)):
+
+                                                        #num = 1 + 1j
+                                                        #print numpy.shape(num)
+                                                        #print num[0][0]
+                                                        #self.grid[i,j,xi,yi] += numpy.complex(1.0,1.0)
+                                                        self.grid[i,j,xi,yi] += numpy.complex(float(num[0][0]),float(num[0][1]))
+                                                        
+                                                    
+                                                
+                                #Now that unsightly business is concluded, let us FFT.
+                                for i in numpy.arange(nchan):
+                                    for j in numpy.arange(npol):
+                                        self.image[i,j,:,:] = numpy.fft.fftshift(self.grid[i,j,:,:])
+                                        self.image[i,j,:,:] = numpy.fft.ifft2(self.grid[i,j,:,:])
+                                        self.image[i,j,:,:] = numpy.fft.fftshift(self.image[i,j,:,:])
+
+                                plt.figure(1)
+                                #print(numpy.shape(self.image[2,0,:,:]))
+                                #print(self.image[2,0,:,:])
+                                plt.imshow(numpy.abs(numpy.real(self.grid[2,0,:,:])))
+                                plt.savefig("blahblah.png")
+                                                
+                            else: #GPU
+                                pass
+
+
+                            
+                        
+
+
+                            with oseq.reserve(ogulp_size) as ospan:
+
+                                odata = ospan.data_view(numpy.complex64).reshape(oshape)
+                                odata[...] = self.image
+                        
 
                 
 
@@ -404,14 +525,14 @@ def main():
 #    utc_start_dt = get_utc_start(shutdown_event)
     fcapture_ring = Ring(name="capture")
     if args.offline:
-        fdomain_ring = Ring(name="fengine",space='cuda')
+        fdomain_ring = Ring(name="fengine")
     #Think flagging/gains should be done on CPU?
     #calibration_ring = Ring(name="gains", space="cuda")
     if args.cpuonly:
         gridandfft_ring = Ring(name="gridandfft")
     else:
         gridandfft_ring = Ring(name="gridandfft", space="cuda")
-    output_ring = Ring(name="output", space="cuda") 
+    #output_ring = Ring(name="output", space="cuda")
     
     ##TODO: Setup configuration file for sockets etc.
 
@@ -426,7 +547,8 @@ def main():
 	                args.tbnfile, core=cores.pop(0)))
     ops.append(FDomainOp(log, fcapture_ring, fdomain_ring, 
 	                 ntime_gulp=2500, core=cores.pop(0)))
-    ops.append(SaveFFTOp(log, fdomain_ring,"EPIC_test",ntime_gulp=2500,core=cores.pop(0)))
+    ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, ntime_gulp=2500, core=cores.pop(0), cpu=True))
+#    ops.append(SaveFFTOp(log, fdomain_ring,"EPIC_test",ntime_gulp=2500,core=cores.pop(0)))
 
     #ops.append(CaptureOp(log, fmt="chips", sock=fenginesocket, ring=fcapture_ring,
     #                     nsrc=1, src0=0, max_payload_size=9000, buffer_ntime=500,
