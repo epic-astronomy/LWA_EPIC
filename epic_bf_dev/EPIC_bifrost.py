@@ -432,9 +432,42 @@ class MOFFCorrelatorOp(object):
                                     odata[...] = self.image
                         
 
-                
+class ImagingOp(object):
+    def __init__(self, log, iring, filename, nimage_gulp=100, core=-1,*args, **kwargs):
+        self.log = log
+        self.iring = iring
+        self.filename
+        self.nimage_gulp=100
+        self.core = core
 
-            
+    def main(self):
+        bifrost.affinity.set_core(self.core)
+
+        for iseq in self.iring.read(guarantee=True):
+            ihdr = json.loads(iseq.header.tostring())
+
+            nchan = ihdr['nchan']
+            npol = ihdr['npol']
+
+            igulp_size = nimage_gulp * nchan * npol * GRID_SIZE * GRID_SIZE * 8
+            ishape = nimage_gulp * nchan * npol * GRID_SIZE * GRID_SIZE 
+            self.iring.resize(igulp_size)
+
+            iseq_spans = iseq.read(igulp_size)
+            while not self.iring.writing_ended():
+                for ispan in iseq_spans:
+
+                    idata = ispan.data_view(numpy.complex64).reshape(ishape)
+                    #Square
+                    idata = numpy.square(idata)
+                    #Accumulate
+                    ## TODO: Implement this.
+
+
+                    #Save and output
+                    
+                    
+                                
 class SaveFFTOp(object):
     def __init__(self, log, iring, filename, ntime_gulp=2500, core=-1,*args, **kwargs):
         self.log = log
