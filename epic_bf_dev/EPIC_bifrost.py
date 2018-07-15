@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-
+## TODO: Check with the order of the antennas.
 import signal
 import logging
 import time
@@ -9,6 +9,8 @@ import sys
 import threading
 import argparse
 import numpy
+import time
+
 from scipy.fftpack import fft
 
 import matplotlib.pyplot as plt
@@ -44,14 +46,9 @@ LOCATIONS = lwasv.getStands()
 locations = numpy.empty(shape=(0,3))
 
 for stand in LOCATIONS:
-
     locations = numpy.vstack((locations,[stand[0],stand[1],stand[2]]))
-    print 'X: %f' % stand[0] #x
-    print 'Y: %f' % stand[1] #y
-    print 'Z: %f' % stand[2] #z
-
-print locations
 locations = numpy.delete(locations, list(range(0,locations.shape[0],2)),axis=0)
+locations = locations[0:255,:]
 #locations = locations[0:255,:]
 print ("Max X: %f, Max Y: %f" % (numpy.max(locations[:,0]), numpy.max(locations[:,1])))
 print ("Min X: %f, Min Y: %f" % (numpy.min(locations[:,0]), numpy.min(locations[:,1])))
@@ -60,7 +57,7 @@ print numpy.shape(locations)
 #for location in locations:
 #    print location
 RESOLUTION = 1.0
-GRID_SIZE = int(numpy.power(2,numpy.ceil(numpy.log(numpy.max(numpy.abs(locations))/RESOLUTION)/numpy.log(2))))
+GRID_SIZE = int(numpy.power(2,numpy.ceil(numpy.log(numpy.max(numpy.abs(locations))/RESOLUTION)/numpy.log(2))+1))
 print GRID_SIZE
 
 
@@ -99,7 +96,7 @@ class OfflineCaptureOp(object):
         self.shutdown_event.set()
 
     def main(self):
-        bifrost.affinity.set_core(self.core)
+        #bifrost.affinity.set_core(self.core)
 
         idf = TBNFile(self.filename)
 	cfreq = idf.getInfo('freq1')
@@ -196,7 +193,7 @@ class FDomainOp(object):
 		self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
 		
 	def main(self):
-		bifrost.affinity.set_core(self.core)
+		#bifrost.affinity.set_core(self.core)
 		self.bind_proclog.update({'ncore': 1, 
 		                          'core0': bifrost.affinity.get_core(),})
 		
@@ -217,7 +214,7 @@ class FDomainOp(object):
 				ogulp_size = self.ntime_gulp*1*nstand*npol * 2		# ci8
 				oshape = (self.ntime_gulp/nchan,nchan,nstand,npol,2)
 				#self.iring.resize(igulp_size)
-				self.oring.resize(ogulp_size)
+				self.oring.resize(ogulp_size,buffer_factor=1000)
 				
 				# Set the output header
 				ohdr = ihdr.copy()
@@ -328,13 +325,68 @@ class MOFFCorrelatorOp(object):
         self.ntime_gulp = ntime_gulp
 
         self.core = core
-        self.cpu = cpu
-        
+        self.cpu = cpu        
         self.grid = None
         self.image = None
 
+
+        self.antgridmap = self.make_grid(RESOLUTION,
+                                    GRID_SIZE,
+                                    numpy.ones((3,3)),
+                                    locations).astype(numpy.float)
+
+
+    def ant_conv(self, ngrid, kernel, pos):
+        """ Function to convolve single antenna onto grid
+            Args:
+            ngrid: Number of grid size per side (512x512 would have ngrid=512)
+            kernel: Convolution kernel
+            pos: Antenna position x and y, in units of grid pixels
+            Returns:
+            mat: 1D mapping from antenna to grid (this is one row of the total
+             gridding matrix)
+            """
+        mat = numpy.zeros((ngrid, ngrid))
+
+        # Do convolution
+        pos = numpy.round(pos).astype(numpy.int)  # Nearest pixel for now
+        mat[pos[0]:pos[0] + kernel.shape[0], pos[1]:pos[1] + kernel.shape[1]] = kernel
+
+        return mat.reshape(-1)
+
+    def make_grid(self, delta, ngrid, kernel, pos, wavelength=None):
+        """ Function to convolve antennas onto grid. This creates the gridding matrix
+        used to map antenna signals to grid.
+    Args:
+        delta: Grid resolution, in wavelength
+        ngrid: Number of grid size per side (512x512 would have ngrid=512)
+        kernel: Convolution kernel. Can be single kernel (same for all antennas),
+                or list of kernels.
+        pos: Antenna positions (Nant, 2), in wavelengths (if wavelength==None) or
+             meters (if wavelength given)
+        wavelength: wavelength of observations in meters. If None (default), pos
+                    is assumed to be in wavelength already.
+    Returns:
+        mat: Matrix mapping from antennas to grid.
+        """
+
+        mat = numpy.zeros((int(ngrid**2), int(pos.shape[0])))
+        if not isinstance(kernel, list):
+            kernel = [kernel for i in range(int(pos.shape[0]))]
+            # put positions in units of grid pixels
+        pos[:, 0] -= pos[:, 0].min()
+        pos[:, 1] -= pos[:, 1].min()
+        if wavelength is not None:
+            pos /= wavelength
+        pos /= delta  # units of grid pixels
+
+        for i, p in enumerate(pos):
+            mat[:, i] = self.ant_conv(ngrid, kernel[i], p)
+        return mat
+
+    
+        
     def main(self):
-        bifrost.affinity.set_core(self.core)
         with self.oring.begin_writing() as oring:
             for iseq in self.iring.read(guarantee=True):
                 
@@ -363,69 +415,40 @@ class MOFFCorrelatorOp(object):
                 while not self.iring.writing_ended():
                     iseq_spans = iseq.read(igulp_size)
                     for ispan in iseq_spans:
-
                         if ispan.size < igulp_size:
                             continue
 
-                        for time in numpy.arange(100,101):
-
-                            with oring.begin_sequence(time_tag=base_time_tag, header=ohdr_str) as oseq:
-                                base_time_tag = base_time_tag + 1                                
-                        
+                        with oring.begin_sequence(time_tag=base_time_tag, header=ohdr_str) as oseq:
+                            base_time_tag = base_time_tag + 1                                                        
+                            for time_index in numpy.arange(0,625):
+  
                                 ###### Correlator #######
                                 ## Check the casting of ingulp to bfidata ci8
                                 idata = ispan.data_view(numpy.int8).reshape(ishape)
-                                bfidata = bifrost.ndarray(shape=idata.shape, dtype='ci8', native=False, buffer=idata.ctypes.data)
-
+                                idata = idata[:,:,0:255,:,:] # Get rid of outrigger.
                                 if(self.cpu): #CPU
-
-                                    # I am pretty sure I couldn't make this any less efficient if I tried. 
                                     for i in numpy.arange(nchan): 
                                         for j in numpy.arange(npol):
-                                            for k in numpy.arange(nstand):
-
-                                                #Get co-ordinates on the grid. Switch origin to centre
-                                                x = int(numpy.round(locations[k,0] + GRID_SIZE/2))
-                                                y = int(numpy.round(locations[k,1] + GRID_SIZE/2))
-                                                # y and x should now correspond to the i/j co-ordinates of the grid.
-                                                num = bfidata[time,i,k,0]
-                                                if i == 2:
-                                                    if j==0:
-                                                        print num
-                                                    
-                                                for yi in numpy.arange(y+int(Ymin),y+int(Ymax)):
-                                                    for xi in numpy.arange(x+int(Xmin),x+int(Xmax)):
-
-                                                        #num = 1 + 1j
-                                                        #print numpy.shape(num)
-                                                        #print num[0][0]
-                                                        #self.grid[i,j,xi,yi] += numpy.complex(1.0,1.0)
-                                                        self.grid[i,j,xi,yi] += numpy.complex(float(num[0][0]),float(num[0][1]))
-                                                        
-                                                    
-                                                
-                                    #Now that unsightly business is concluded, let us FFT.
+                                            evectorr = idata[time_index,i,:,j,0]
+                                            evectorc = idata[time_index,i,:,j,1]
+                                           
+                                            #t1 = time.time()
+                                            dotr = numpy.dot(self.antgridmap,evectorr).reshape(256,256)
+                                            doti = numpy.dot(self.antgridmap,evectorc).reshape(256,256)
+                                            #t2 = time.time()
+                                            #print("DOT TIME: %f"%(t2-t1))
+                                            self.grid[i,j,:,:] += dotr + 1J*doti
+                                          
+                                    #FFT
                                     for i in numpy.arange(nchan):
                                         for j in numpy.arange(npol):
                                             self.image[i,j,:,:] = numpy.fft.fftshift(self.grid[i,j,:,:])
                                             self.image[i,j,:,:] = numpy.fft.ifft2(self.image[i,j,:,:])
                                             self.image[i,j,:,:] = numpy.fft.fftshift(self.image[i,j,:,:])
 
-                                    plt.figure(1)
-                                    #print(numpy.shape(self.image[2,0,:,:]))
-                                    #print(self.image[2,0,:,:])
-                                    plt.imshow(numpy.abs(numpy.real(self.image[2,0,:,:])))
-                                    plt.savefig("blahblah.png")
-                                    print "Saved Image"
-                                                
                                 else: #GPU
                                     pass
-
-
-                            
-                        
-
-
+                                
                                 with oseq.reserve(ogulp_size) as ospan:
 
                                     odata = ospan.data_view(numpy.complex64).reshape(oshape)
@@ -433,41 +456,68 @@ class MOFFCorrelatorOp(object):
                         
 
 class ImagingOp(object):
-    def __init__(self, log, iring, filename, nimage_gulp=100, core=-1,*args, **kwargs):
+    def __init__(self, log, iring, filename, nimage_gulp=1, accumulation_time=1, core=-1,*args, **kwargs):
         self.log = log
         self.iring = iring
-        self.filename
-        self.nimage_gulp=100
+        self.filename = filename
+        self.nimage_gulp= nimage_gulp
+        self.accumulation_time = accumulation_time
         self.core = core
 
-    def main(self):
-        bifrost.affinity.set_core(self.core)
+        self.accumulated_image = None
+        self.newflag = True
 
+    def main(self):
+        #bifrost.affinity.set_core(self.core)
+        accum = 0
         for iseq in self.iring.read(guarantee=True):
             ihdr = json.loads(iseq.header.tostring())
 
             nchan = ihdr['nchan']
             npol = ihdr['npol']
 
-            igulp_size = nimage_gulp * nchan * npol * GRID_SIZE * GRID_SIZE * 8
-            ishape = nimage_gulp * nchan * npol * GRID_SIZE * GRID_SIZE 
+            igulp_size = nchan * npol * GRID_SIZE * GRID_SIZE * 8
+            ishape = (nchan,npol,GRID_SIZE,GRID_SIZE)
             self.iring.resize(igulp_size)
-
+            
             iseq_spans = iseq.read(igulp_size)
+
+            fileid = 1
+
             while not self.iring.writing_ended():
                 for ispan in iseq_spans:
-
+                    
                     idata = ispan.data_view(numpy.complex64).reshape(ishape)
                     #Square
-                    idata = numpy.square(idata)
+                    print "Data Received!"
+                    print numpy.shape(idata)
+                    idata = numpy.square(numpy.abs(idata))
+                    if self.newflag is True:
+                        self.accumulated_image = numpy.zeros(shape=(nchan,npol,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
+                        self.newflag=False
+                    
                     #Accumulate
-                    ## TODO: Implement this.
+                    self.accumulated_image = self.accumulated_image + idata
 
-
+                    
                     #Save and output
+                    accum += 1
+                    if accum > self.accumulation_time:
+                        accum = 0
+                        # Save and output
+                        ## TODO: Do this in Matplotlib. For now NPZ files..
+                        numpy.savez(self.filename+'%04i.png'%(fileid),image=self.accumulated_image)
+                        self.newflag = True
+                        plt.figure(1)
+                        #print(numpy.shape(self.image[2,0,:,:]))
+                        #print(self.image[2,0,:,:])
+                        
+                        plt.imshow(numpy.real(self.accumulated_image[2,0,:,:]))
+                        plt.savefig("ImagingOP-%04i.png"%(fileid))
+                        fileid += 1
+                        print "ImagingOP - Image Saved"
                     
-                    
-                                
+## TODO:                                 
 class SaveFFTOp(object):
     def __init__(self, log, iring, filename, ntime_gulp=2500, core=-1,*args, **kwargs):
         self.log = log
@@ -477,7 +527,7 @@ class SaveFFTOp(object):
         self.ntime_gulp = ntime_gulp
 
     def main(self):
-        bifrost.affinity.set_core(self.core)
+        #bifrost.affinity.set_core(self.core)
 
         for iseq in self.iring.read(guarantee=True):
             
@@ -501,6 +551,7 @@ class SaveFFTOp(object):
                     idata = ispan.data_view(numpy.int8)
 
                     idata = idata.reshape(ishape)
+                    idata = bifrost.ndarray(shape=ishape, dtype='ci4', native=False, buffer=idata.ctypes.data)
                     print(numpy.shape(idata))
                     numpy.savez(self.filename + "asdasd.npy",data=idata)
                     print("Wrote to disk")
@@ -578,10 +629,11 @@ def main():
 
 
     ops.append(OfflineCaptureOp(log, fcapture_ring,
-	                args.tbnfile, core=cores.pop(0)))
+	                args.tbnfile))
     ops.append(FDomainOp(log, fcapture_ring, fdomain_ring, 
-	                 ntime_gulp=2500, core=cores.pop(0)))
-    ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, ntime_gulp=2500, core=cores.pop(0), cpu=True))
+	                 ntime_gulp=2500))
+    ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, ntime_gulp=2500, cpu=True))
+    ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", nimage_gulp=1, accumulation_time=620))
 #    ops.append(SaveFFTOp(log, fdomain_ring,"EPIC_test",ntime_gulp=2500,core=cores.pop(0)))
 
     #ops.append(CaptureOp(log, fmt="chips", sock=fenginesocket, ring=fcapture_ring,
