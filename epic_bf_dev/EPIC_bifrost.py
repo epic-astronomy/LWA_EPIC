@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 ## TODO: Check with the order of the antennas.
+from __future__ import print_function
+
 import signal
 import logging
 import time
@@ -52,13 +54,13 @@ locations = locations[0:255,:]
 #locations = locations[0:255,:]
 print ("Max X: %f, Max Y: %f" % (numpy.max(locations[:,0]), numpy.max(locations[:,1])))
 print ("Min X: %f, Min Y: %f" % (numpy.min(locations[:,0]), numpy.min(locations[:,1])))
-print numpy.shape(locations)
+print (numpy.shape(locations))
 
 #for location in locations:
 #    print location
 RESOLUTION = 1.0
 GRID_SIZE = int(numpy.power(2,numpy.ceil(numpy.log(numpy.max(numpy.abs(locations))/RESOLUTION)/numpy.log(2))+1))
-print GRID_SIZE
+print(GRID_SIZE)
 
 
 #plt.plot(locations[:,0],locations[:,1],'x')
@@ -136,7 +138,7 @@ class OfflineCaptureOp(object):
 		    try:
 			tInt, tStart, data = idf.read(0.1, timeInSamples=True)
 		    except Exception as e:
-			print "FillerOp: Error - '%s'" % str(e)
+			print("FillerOp: Error - '%s'" % str(e))
 			idf.close()
 			self.shutdown()
 			break
@@ -167,11 +169,11 @@ class OfflineCaptureOp(object):
 			self.perf_proclog.update({'acquire_time': acquire_time, 
 					          'reserve_time': reserve_time, 
 					          'process_time': process_time,})
-	print "FillerOp - Done"
+	print("FillerOp - Done")
 
 
 class FDomainOp(object):
-	def __init__(self, log, iring, oring, ntime_gulp=2500, nchan_out=4, core=-1):
+	def __init__(self, log, iring, oring, ntime_gulp=2500, nchan_out=1, core=-1):
 		self.log = log
 		self.iring = iring
 		self.oring = oring
@@ -179,7 +181,7 @@ class FDomainOp(object):
 		self.nchan_out = nchan_out
 		self.core = core
 		
-		self.nchan_out = 4
+		self.nchan_out = nchan_out
 		
 		self.bind_proclog = ProcLog(type(self).__name__+"/bind")
 		self.in_proclog   = ProcLog(type(self).__name__+"/in")
@@ -202,7 +204,7 @@ class FDomainOp(object):
 				ihdr = json.loads(iseq.header.tostring())
 				
 				self.sequence_proclog.update(ihdr)
-				print 'FDomainOp: Config - %s' % ihdr
+				print('FDomainOp: Config - %s' % ihdr)
 				
 				# Setup the ring metadata and gulp sizes
 				nchan  = self.nchan_out
@@ -214,7 +216,7 @@ class FDomainOp(object):
 				ogulp_size = self.ntime_gulp*1*nstand*npol * 2		# ci8
 				oshape = (self.ntime_gulp/nchan,nchan,nstand,npol,2)
 				#self.iring.resize(igulp_size)
-				self.oring.resize(ogulp_size,buffer_factor=1000)
+				self.oring.resize(ogulp_size,buffer_factor=10)
 				
 				# Set the output header
 				ohdr = ihdr.copy()
@@ -237,6 +239,7 @@ class FDomainOp(object):
 					
 				prev_time = time.time()
 				with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
+                                        print("FDomain Out Sequence!")
 					iseq_spans = iseq.read(igulp_size)
 					while not self.iring.writing_ended():
 						for ispan in iseq_spans:
@@ -279,8 +282,8 @@ class FDomainOp(object):
 							self.perf_proclog.update({'acquire_time': acquire_time, 
 							                          'reserve_time': reserve_time, 
 							                          'process_time': process_time,})
-				break	# Only do one pass through the loop
-		print "FDomainOp - Done"
+					# Only do one pass through the loop
+		print("FDomainOp - Done")
 
                 
 
@@ -389,14 +392,14 @@ class MOFFCorrelatorOp(object):
     def main(self):
         with self.oring.begin_writing() as oring:
             for iseq in self.iring.read(guarantee=True):
-                
+                print("Sequence!")
                 ihdr = json.loads(iseq.header.tostring())
                 nchan = ihdr['nchan']
                 nstand = ihdr['nstand']
                 npol = ihdr['npol']
                 
-                igulp_size = self.ntime_gulp * 1 * nstand * npol * 2
-                ishape = (self.ntime_gulp/nchan,nchan,nstand,npol,2)
+                igulp_size = self.ntime_gulp * nchan * nstand * npol * 2 # Complex 8
+                ishape = (self.ntime_gulp,nchan,nstand,npol,2) 
 
                 ohdr = ihdr.copy()
                 ohdr['nbit'] = 64
@@ -405,118 +408,121 @@ class MOFFCorrelatorOp(object):
                 ohdr_str = json.dumps(ohdr)
                 
                 ##TODO: Setup output gulp and shape.
-                oshape = (nchan,npol,GRID_SIZE,GRID_SIZE)
-                ogulp_size = nchan * npol * GRID_SIZE * GRID_SIZE * 8
+                oshape = (self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE)
+                ogulp_size = self.ntime_gulp * nchan * npol * GRID_SIZE * GRID_SIZE * 8 #Complex64
+                self.iring.resize(igulp_size)
                 self.oring.resize(ogulp_size)
-                self.grid = numpy.zeros(shape=(nchan,npol,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
+                self.grid = numpy.zeros(shape=(self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
                 self.grid = bifrost.ndarray(self.grid)
-                self.image = numpy.zeros(shape=(nchan,npol,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
-                base_time_tag = iseq.time_tag
+                self.image = numpy.zeros(shape=(self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
                 while not self.iring.writing_ended():
+                    print("More spans")
                     iseq_spans = iseq.read(igulp_size)
                     for ispan in iseq_spans:
                         if ispan.size < igulp_size:
                             continue
-
-                        with oring.begin_sequence(time_tag=base_time_tag, header=ohdr_str) as oseq:
-                            base_time_tag = base_time_tag + 1                                                        
-                            for time_index in numpy.arange(0,625):
-  
-                                ###### Correlator #######
-                                ## Check the casting of ingulp to bfidata ci8
-                                idata = ispan.data_view(numpy.int8).reshape(ishape)
-                                idata = idata[:,:,0:255,:,:] # Get rid of outrigger.
-                                if(self.cpu): #CPU
-                                    for i in numpy.arange(nchan): 
-                                        for j in numpy.arange(npol):
-                                            evectorr = idata[time_index,i,:,j,0]
-                                            evectorc = idata[time_index,i,:,j,1]
-                                           
-                                            #t1 = time.time()
-                                            dotr = numpy.dot(self.antgridmap,evectorr).reshape(256,256)
-                                            doti = numpy.dot(self.antgridmap,evectorc).reshape(256,256)
-                                            #t2 = time.time()
-                                            #print("DOT TIME: %f"%(t2-t1))
-                                            self.grid[i,j,:,:] += dotr + 1J*doti
-                                          
-                                    #FFT
-                                    for i in numpy.arange(nchan):
-                                        for j in numpy.arange(npol):
-                                            self.image[i,j,:,:] = numpy.fft.fftshift(self.grid[i,j,:,:])
-                                            self.image[i,j,:,:] = numpy.fft.ifft2(self.image[i,j,:,:])
-                                            self.image[i,j,:,:] = numpy.fft.fftshift(self.image[i,j,:,:])
-
-                                else: #GPU
-                                    pass
-                                
-                                with oseq.reserve(ogulp_size) as ospan:
-
+                        with oring.begin_sequence(header=ohdr_str) as oseq:
+                            print("New sequence")
+                            with oseq.reserve(ogulp_size) as ospan:
+                                for time_index in numpy.arange(0,self.ntime_gulp):
+                                    print("TI: %d"%time_index)
+                                    ###### Correlator #######
+                                    ## Check the casting of ingulp to bfidata ci8
+                                    idata = ispan.data_view(numpy.int8).reshape(ishape)
+                                    idata = idata[:,:,0:255,:,:] # Get rid of outrigger.
                                     odata = ospan.data_view(numpy.complex64).reshape(oshape)
-                                    odata[...] = self.image
+                                    if(self.cpu): #CPU
+                                        for i in numpy.arange(nchan): 
+                                            for j in numpy.arange(npol):
+                                                evectorr = idata[time_index,i,:,j,0]
+                                                evectorc = idata[time_index,i,:,j,1]
+                                                #t1 = time.time()
+                                                dotr = numpy.dot(self.antgridmap,evectorr).reshape(GRID_SIZE,GRID_SIZE)
+                                                doti = numpy.dot(self.antgridmap,evectorc).reshape(GRID_SIZE,GRID_SIZE)
+                                                #t2 = time.time()
+                                                #print("DOT TIME: %f"%(t2-t1))
+                                                self.grid[time_index,i,j,:,:] += dotr + 1J*doti
+                                          
+                                            #FFT
+                                        for i in numpy.arange(nchan):
+                                            for j in numpy.arange(npol):
+                                                self.image[time_index,i,j,:,:] = numpy.fft.fftshift(self.grid[time_index,i,j,:,:])
+                                                self.image[time_index,i,j,:,:] = numpy.fft.ifft2(self.image[time_index,i,j,:,:])
+                                                self.image[time_index,i,j,:,:] = numpy.fft.fftshift(self.image[time_index,i,j,:,:])
+
+                                    else: #GPU
+                                        pass
+                                
+                                
+
+
+                                odata[...] = self.image
                         
 
 class ImagingOp(object):
-    def __init__(self, log, iring, filename, nimage_gulp=1, accumulation_time=1, core=-1,*args, **kwargs):
+    def __init__(self, log, iring, filename, ntime_gulp=100, accumulation_time=1, core=-1,*args, **kwargs):
         self.log = log
         self.iring = iring
         self.filename = filename
-        self.nimage_gulp= nimage_gulp
+        self.ntime_gulp= ntime_gulp
         self.accumulation_time = accumulation_time
         self.core = core
-
         self.accumulated_image = None
         self.newflag = True
 
     def main(self):
         #bifrost.affinity.set_core(self.core)
         accum = 0
+        fileid = 1
         for iseq in self.iring.read(guarantee=True):
+            print("New Sequence")
             ihdr = json.loads(iseq.header.tostring())
-
             nchan = ihdr['nchan']
             npol = ihdr['npol']
+            print("Channel no: %d, Polarisation no: %d"%(nchan,npol))
+            igulp_size = self.ntime_gulp * nchan * npol * GRID_SIZE * GRID_SIZE * 8
+            ishape = (self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE)     
 
-            igulp_size = nchan * npol * GRID_SIZE * GRID_SIZE * 8
-            ishape = (nchan,npol,GRID_SIZE,GRID_SIZE)
-            self.iring.resize(igulp_size)
-            
-            iseq_spans = iseq.read(igulp_size)
-
-            fileid = 1
 
             while not self.iring.writing_ended():
+                iseq_spans = iseq.read(igulp_size)
+                print("Imaging ISEQ SPAN")
                 for ispan in iseq_spans:
-                    
+                    if ispan.size < igulp_size:
+                        continue
                     idata = ispan.data_view(numpy.complex64).reshape(ishape)
                     #Square
-                    print "Data Received!"
-                    print numpy.shape(idata)
                     idata = numpy.square(numpy.abs(idata))
-                    if self.newflag is True:
-                        self.accumulated_image = numpy.zeros(shape=(nchan,npol,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
-                        self.newflag=False
+
+
+                    for ti in numpy.arange(0,self.ntime_gulp):
+                        print ("Accum: %d"%accum,end='\n')
+                        if self.newflag is True:
+                        
+                            self.accumulated_image = numpy.zeros(shape=(nchan,npol,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
+                            self.newflag=False
                     
-                    #Accumulate
-                    self.accumulated_image = self.accumulated_image + idata
+                        #Accumulate
+                        self.accumulated_image = self.accumulated_image + idata[ti,:,:,:,:]
 
                     
-                    #Save and output
-                    accum += 1
-                    if accum > self.accumulation_time:
-                        accum = 0
-                        # Save and output
-                        ## TODO: Do this in Matplotlib. For now NPZ files..
-                        numpy.savez(self.filename+'%04i.png'%(fileid),image=self.accumulated_image)
-                        self.newflag = True
-                        plt.figure(1)
-                        #print(numpy.shape(self.image[2,0,:,:]))
-                        #print(self.image[2,0,:,:])
+                        #Save and output
+                        accum += 1
+                        if accum >= self.accumulation_time:
+                            accum = 0
+                            # Save and output
+                            ## TODO: Do this in Matplotlib. For now NPZ files..
+                            numpy.savez(self.filename+'%04i.png'%(fileid),image=self.accumulated_image)
+                            self.newflag = True
+                            plt.figure(1)
+                            #print(numpy.shape(self.image[2,0,:,:]))
+                            #print(self.image[2,0,:,:])
                         
-                        plt.imshow(numpy.real(self.accumulated_image[2,0,:,:]))
-                        plt.savefig("ImagingOP-%04i.png"%(fileid))
-                        fileid += 1
-                        print "ImagingOP - Image Saved"
-                    
+                            plt.imshow(numpy.real(self.accumulated_image[0,0,:,:]))
+                            plt.savefig("ImagingOP-%04i.png"%(fileid))
+                            fileid += 1
+                            print("ImagingOP - Image Saved")
+                break
 ## TODO:                                 
 class SaveFFTOp(object):
     def __init__(self, log, iring, filename, ntime_gulp=2500, core=-1,*args, **kwargs):
@@ -569,6 +575,9 @@ def main():
     parser.add_argument('-o', '--offline', action='store_true', help = 'Load TBN data from Disk')
     parser.add_argument('-f', '--tbnfile', type=str, help = 'TBN Data Path')
     parser.add_argument('-c', '--cpuonly', action='store_true', help = 'Runs EPIC Correlator on CPU Only.')
+    parser.add_argument('-t', '--nts',type=int, default = 1000, help= 'Number of timestamps per span.')
+    parser.add_argument('-u', '--accumulate',type=int, default = 1000, help='How many milliseconds to accumulate an image over.')
+    parser.add_argument('-n', '--channels',type=int, default=4, help='How many channels to produce.')
 
     args = parser.parse_args()
     # Logging Setup
@@ -607,7 +616,6 @@ def main():
 	        signal.SIGTSTP]:
 	signal.signal(sig, handle_signal_terminate)
 
-#    utc_start_dt = get_utc_start(shutdown_event)
     fcapture_ring = Ring(name="capture")
     if args.offline:
         fdomain_ring = Ring(name="fengine")
@@ -617,31 +625,11 @@ def main():
         gridandfft_ring = Ring(name="gridandfft")
     else:
         gridandfft_ring = Ring(name="gridandfft", space="cuda")
-    #output_ring = Ring(name="output", space="cuda")
     
-    ##TODO: Setup configuration file for sockets etc.
-
-    
-    #fengineaddr = Address(args.iaddr, args.iport)
-    #fenginesocket = BF_UDPSocket()
-    #fenginesocket.bind(fengineaddr)
-    #fenginesocket.timeout=0.5
-
-
-    ops.append(OfflineCaptureOp(log, fcapture_ring,
-	                args.tbnfile))
-    ops.append(FDomainOp(log, fcapture_ring, fdomain_ring, 
-	                 ntime_gulp=2500))
-    ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, ntime_gulp=2500, cpu=True))
-    ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", nimage_gulp=1, accumulation_time=620))
-#    ops.append(SaveFFTOp(log, fdomain_ring,"EPIC_test",ntime_gulp=2500,core=cores.pop(0)))
-
-    #ops.append(CaptureOp(log, fmt="chips", sock=fenginesocket, ring=fcapture_ring,
-    #                     nsrc=1, src0=0, max_payload_size=9000, buffer_ntime=500,
-    #                     slot_ntime=25000, core=cores.pop(0), utc_start=utc_start_dt))
-    #ops.append(CalibrationOp(log, iring = fcapture_ring, oring = calibration_ring))
-    #ops.append(GridandFFTOp(log, iring = calibration_ring, oring=gridandfft_ring))
-    #ops.append(CopyOp(log))
+    ops.append(OfflineCaptureOp(log, fcapture_ring,args.tbnfile))
+    ops.append(FDomainOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts, nchan_out=1))
+    ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, ntime_gulp=args.nts, cpu=True))
+    ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", ntime_gulp=args.nts, accumulation_time=args.accumulate))
 
     threads= [threading.Thread(target=op.main) for op in ops]
 
