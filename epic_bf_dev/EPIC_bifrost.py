@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-## TODO: Check with the order of the antennas.
 from __future__ import print_function
 
 import signal
@@ -25,9 +24,12 @@ from bifrost.ring import Ring
 from bifrost.quantize import quantize as Quantize
 from bifrost.proclog import ProcLog
 from bifrost.libbifrost import bf
+from bifrost.linalg import LinAlg
+from bifrost.fft import Fft
 
 import bifrost
 import bifrost.affinity
+
 
 
 from lsl.common.constants import c as speedOfLight
@@ -338,6 +340,8 @@ class MOFFCorrelatorOp(object):
                                     numpy.ones((3,3)),
                                     locations).astype(numpy.float)
 
+        self.LinAlgObj = LinAlg() # Jayce does this need to be here?
+
 
     def ant_conv(self, ngrid, kernel, pos):
         """ Function to convolve single antenna onto grid
@@ -424,39 +428,72 @@ class MOFFCorrelatorOp(object):
                         with oring.begin_sequence(header=ohdr_str) as oseq:
                             print("New sequence")
                             with oseq.reserve(ogulp_size) as ospan:
-                                for time_index in numpy.arange(0,self.ntime_gulp):
-                                    print("TI: %d"%time_index)
                                     ###### Correlator #######
                                     ## Check the casting of ingulp to bfidata ci8
                                     idata = ispan.data_view(numpy.int8).reshape(ishape)
                                     idata = idata[:,:,0:255,:,:] # Get rid of outrigger.
                                     odata = ospan.data_view(numpy.complex64).reshape(oshape)
-                                    if(self.cpu): #CPU
-                                        for i in numpy.arange(nchan): 
-                                            for j in numpy.arange(npol):
-                                                evectorr = idata[time_index,i,:,j,0]
-                                                evectorc = idata[time_index,i,:,j,1]
-                                                #t1 = time.time()
-                                                dotr = numpy.dot(self.antgridmap,evectorr).reshape(GRID_SIZE,GRID_SIZE)
-                                                doti = numpy.dot(self.antgridmap,evectorc).reshape(GRID_SIZE,GRID_SIZE)
-                                                #t2 = time.time()
-                                                #print("DOT TIME: %f"%(t2-t1))
-                                                self.grid[time_index,i,j,:,:] += dotr + 1J*doti
+                                    if(self.cpu == True): #CPU
+                                        for time_index in numpy.arange(0,self.ntime_gulp):
+                                            print("TI: %d"%time_index)
+
+                                            for i in numpy.arange(nchan): 
+                                                for j in numpy.arange(npol):
+                                                    evectorr = idata[time_index,i,:,j,0]
+                                                    evectorc = idata[time_index,i,:,j,1]
+                                                    #t1 = time.time()
+                                                    dotr = numpy.dot(self.antgridmap,evectorr).reshape(GRID_SIZE,GRID_SIZE)
+                                                    doti = numpy.dot(self.antgridmap,evectorc).reshape(GRID_SIZE,GRID_SIZE)
+                                                    #t2 = time.time()
+                                                    #print("DOT TIME: %f"%(t2-t1))
+                                                    self.grid[time_index,i,j,:,:] += dotr + 1J*doti
                                           
                                             #FFT
-                                        for i in numpy.arange(nchan):
-                                            for j in numpy.arange(npol):
-                                                self.image[time_index,i,j,:,:] = numpy.fft.fftshift(self.grid[time_index,i,j,:,:])
-                                                self.image[time_index,i,j,:,:] = numpy.fft.ifft2(self.image[time_index,i,j,:,:])
-                                                self.image[time_index,i,j,:,:] = numpy.fft.fftshift(self.image[time_index,i,j,:,:])
-
+                                            for i in numpy.arange(nchan):
+                                                for j in numpy.arange(npol):
+                                                    self.image[time_index,i,j,:,:] = numpy.fft.fftshift(self.grid[time_index,i,j,:,:])
+                                                    self.image[time_index,i,j,:,:] = numpy.fft.ifft2(self.image[time_index,i,j,:,:])
+                                                    self.image[time_index,i,j,:,:] = numpy.fft.fftshift(self.image[time_index,i,j,:,:])
+                                            odata[...] = self.image
                                     else: #GPU
-                                        pass
+
+                                        bfidata = bifrost.ndarray(shape=ishape,dtype='ci8',native=False,
+                                                                  buffer=idata.ctypes.data)
+                                        bfidata = bfidata.copy(space='cuda')
+
+                                        bfantgridmap = bifrost.ndarray(self.antgridmap)
+                                        bfantgridmap = bfantgridmap.copy(space='cuda')
+                                        gdata = numpy.zeros(shape=oshape,dtype=numpy.complex64)
+                                        imdata = numpy.zeros(shape=oshape,dtype=numpy.complex64)
+
+                                        gdata = bifrost.ndarray(gdata,space='cuda')
+                                        imdata = bifrost.ndarray(imdata,space='cuda')
+                                        
+                                        
+                                        for time_index in numpy.arange(self.ntime_gulp):
+                                            for i in numpy.arange(nchan):
+                                                for j in numpy.arange(npol):
+
+                                                    gdata[time_index,i,j,:] = self.LinAlgObj.matmul(1.0,
+                                                                                                    bfidata[time_index,i,:,j],
+                                                                                                    bfantgridmap,
+                                                                                                    1.0,
+                                                                                                    gdata[time_index,i,j,:])
+
+                                        bf_fft = Fft()
+                                        bf_fft.init(gdata,fdata,axes=(3,4),apply_fftshift=True)
+                                        bf_fft.execute(gdata,fdata,inverse=True)
+                                    
+                                        
+                                                                
+
+                                        
+                                        
                                 
                                 
 
 
-                                odata[...] = self.image
+
                         
 
 class ImagingOp(object):
@@ -496,7 +533,7 @@ class ImagingOp(object):
 
 
                     for ti in numpy.arange(0,self.ntime_gulp):
-                        print ("Accum: %d"%accum,end='\n')
+                        #print ("Accum: %d"%accum,end='\n')
                         if self.newflag is True:
                         
                             self.accumulated_image = numpy.zeros(shape=(nchan,npol,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
@@ -624,11 +661,11 @@ def main():
     if args.cpuonly:
         gridandfft_ring = Ring(name="gridandfft")
     else:
-        gridandfft_ring = Ring(name="gridandfft", space="cuda")
+        gridandfft_ring = Ring(name="gridandfft", space="system")
     
     ops.append(OfflineCaptureOp(log, fcapture_ring,args.tbnfile))
     ops.append(FDomainOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts, nchan_out=1))
-    ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, ntime_gulp=args.nts, cpu=True))
+    ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, ntime_gulp=args.nts, cpu=args.cpuonly))
     ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", ntime_gulp=args.nts, accumulation_time=args.accumulate))
 
     threads= [threading.Thread(target=op.main) for op in ops]
