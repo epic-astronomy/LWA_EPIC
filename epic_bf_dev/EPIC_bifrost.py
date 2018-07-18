@@ -53,16 +53,18 @@ locations = numpy.empty(shape=(0,3))
 for stand in LOCATIONS:
     locations = numpy.vstack((locations,[stand[0],stand[1],stand[2]]))
 locations = numpy.delete(locations, list(range(0,locations.shape[0],2)),axis=0)
-locations = locations[0:255,:]
+# Mask out the outrigger
+locations[255,:] = numpy.nan
 #locations = locations[0:255,:]
-print ("Max X: %f, Max Y: %f" % (numpy.max(locations[:,0]), numpy.max(locations[:,1])))
-print ("Min X: %f, Min Y: %f" % (numpy.min(locations[:,0]), numpy.min(locations[:,1])))
+#locations = locations[0:255,:]
+print ("Max X: %f, Max Y: %f" % (numpy.nanmax(locations[:,0]), numpy.nanmax(locations[:,1])))
+print ("Min X: %f, Min Y: %f" % (numpy.nanmin(locations[:,0]), numpy.nanmin(locations[:,1])))
 print (numpy.shape(locations))
 
 #for location in locations:
 #    print location
 RESOLUTION = 1.0
-GRID_SIZE = int(numpy.power(2,numpy.ceil(numpy.log(numpy.max(numpy.abs(locations))/RESOLUTION)/numpy.log(2))+1))
+GRID_SIZE = int(numpy.power(2,numpy.ceil(numpy.log(numpy.max(numpy.abs(locations[:255,:]))/RESOLUTION)/numpy.log(2))+1))
 print(GRID_SIZE)
 
 
@@ -358,8 +360,12 @@ class MOFFCorrelatorOp(object):
 
         # Do convolution
         pos = numpy.round(pos).astype(numpy.int)  # Nearest pixel for now
-        mat[pos[0]:pos[0] + kernel.shape[0], pos[1]:pos[1] + kernel.shape[1]] = kernel
-
+        try:
+            mat[pos[0]:pos[0] + kernel.shape[0], pos[1]:pos[1] + kernel.shape[1]] = kernel
+        except ValueError:
+            ## Ignore anything that doesn't fall on the grid
+            pass
+            
         return mat.reshape(-1)
 
     def make_grid(self, delta, ngrid, kernel, pos, wavelength=None):
@@ -382,8 +388,8 @@ class MOFFCorrelatorOp(object):
         if not isinstance(kernel, list):
             kernel = [kernel for i in range(int(pos.shape[0]))]
             # put positions in units of grid pixels
-        pos[:, 0] -= pos[:, 0].min()
-        pos[:, 1] -= pos[:, 1].min()
+        pos[:, 0] -= numpy.nanmin(pos[:, 0])
+        pos[:, 1] -= numpy.nanmin(pos[:, 1])
         if wavelength is not None:
             pos /= wavelength
         pos /= delta  # units of grid pixels
@@ -432,7 +438,7 @@ class MOFFCorrelatorOp(object):
                                     ###### Correlator #######
                                     ## Check the casting of ingulp to bfidata ci8
                                     idata = ispan.data_view(numpy.int8).reshape(ishape)
-                                    idata = idata[:,:,0:255,:,:] # Get rid of outrigger.
+                                    #idata = idata[:,:,0:255,:,:] # Get rid of outrigger.
                                     odata = ospan.data_view(numpy.complex64).reshape(oshape)
                                     if(self.cpu == True): #CPU
                                         for time_index in numpy.arange(0,self.ntime_gulp):
@@ -459,69 +465,52 @@ class MOFFCorrelatorOp(object):
                                     else: #GPU
                                         ## Combine stand and pols into standpols, promote the data to complex64, and 
                                         ## move it over to the GPU 
-					idata = numpy.reshape(idata, (self.ntime_gulp,nchan,-1,2))
-					idata = (idata[...,0] + 1j*idata[...,1]).astype(numpy.complex64)
-					bfidata = bifrost.ndarray(shape=(self.ntime_gulp,nchan,(nstand-1)*npol),
+                                        idata = numpy.reshape(idata, (self.ntime_gulp,nchan,-1,2))
+                                        idata = (idata[...,0] + 1j*idata[...,1]).astype(numpy.complex64)
+                                        bfidata = bifrost.ndarray(shape=(self.ntime_gulp,nchan,nstand*npol),
                                                                   dtype=numpy.complex64, 
                                                                   buffer=idata.ctypes.data)
-                                        #bfidata = bifrost.ndarray(shape=(self.ntime_gulp,nchan,(nstand-1)*npol),
+                                        #bfidata = bifrost.ndarray(shape=(self.ntime_gulp,nchan,nstand*npol),
                                         #                          dtype='ci8', 
                                         #                          buffer=idata.ctypes.data)
                                         bfidata = bfidata.copy(space='cuda')
-					
-                                        ## Make sure we have gridding kernels for X and Y on the GPU
+                                        
+                                        ## Make sure we have gridding kernel on the GPU
                                         try:
-                                            bfantgridmapX
-					except NameError:
-                                            antgridX = numpy.zeros((1,GRID_SIZE**2,(nstand-1)*npol), dtype=numpy.complex64)
-                                            antgridY = numpy.zeros((1,GRID_SIZE**2,(nstand-1)*npol), dtype=numpy.complex64)
-                                            antgridX[:,:,0::2] = self.antgridmap
-                                            antgridY[:,:,1::2] = self.antgridmap
+                                            bfantgridmap
+                                        except NameError:
+                                            antgrid = numpy.zeros((1,2,GRID_SIZE**2,nstand*npol), dtype=numpy.complex64)
+                                            antgrid[:,0,:,0::2] = self.antgridmap
+                                            antgrid[:,1,:,1::2] = self.antgridmap
+                                            antgrid = antgrid.reshape(1,2*GRID_SIZE**2,nstand*npol)
                                             
-                                            bfantgridmapX = bifrost.ndarray(antgridX)
-                                            #bfantgridmapX = bifrost.ndarray(shape=(1,GRID_SIZE**2,(nstand-1)*npol), 
+                                            bfantgridmap = bifrost.ndarray(antgrid)
+                                            #bfantgridmap = bifrost.ndarray(shape=(1,2*GRID_SIZE**2,nstand*npol), 
                                             #                                dtype='ci8',
-                                            #                                buffer=antgridX.ctypes.data)
-                                            bfantgridmapX = bfantgridmapX.copy(space='cuda')
-                                            bfantgridmapY = bifrost.ndarray(antgridY)
-                                            #bfantgridmapY = bifrost.ndarray(shape=(1,GRID_SIZE**2,(nstand-1)*npol), 
-                                            #                                dtype='ci8',
-                                            #                                buffer=antgridY.ctypes.data)
-                                            bfantgridmapY = bfantgridmapY.copy(space='cuda')
+                                            #                                buffer=antgrid.ctypes.data)
+                                            bfantgridmap = bfantgridmap.copy(space='cuda')
                                             
                                         ## Make sure we have a place to put the data
                                         try:
-                                            gdataX = gdataX.reshape(self.ntime_gulp,nchan,GRID_SIZE*GRID_SIZE)
-                                            gdataY = gdataY.reshape(self.ntime_gulp,nchan,GRID_SIZE*GRID_SIZE)
+                                            gdata = gdata.reshape(self.ntime_gulp,nchan,2*GRID_SIZE*GRID_SIZE)
                                         except NameError:
-                                            gdataX = numpy.zeros(shape=(self.ntime_gulp,nchan,GRID_SIZE * GRID_SIZE),dtype=numpy.complex64)
-                                            gdataY = numpy.zeros(shape=(self.ntime_gulp,nchan,GRID_SIZE * GRID_SIZE),dtype=numpy.complex64)
+                                            gdata = bifrost.zeros(shape=(self.ntime_gulp,nchan,2*GRID_SIZE*GRID_SIZE),dtype=numpy.complex64, space='cuda')
                                             
-                                            gdataX = bifrost.ndarray(gdataX,space='cuda')
-                                            gdataY = bifrost.ndarray(gdataY,space='cuda')
-                                        
                                         ## Grid the data
-                                        gdataX = self.LinAlgObj.matmul(1.0, bfidata, bfantgridmapX.transpose(0,2,1), 0.0, gdataX)
-                                        gdataY = self.LinAlgObj.matmul(1.0, bfidata, bfantgridmapY.transpose(0,2,1), 0.0, gdataY)
+                                        gdata = self.LinAlgObj.matmul(1.0, bfidata, bfantgridmap.transpose(0,2,1), 0.0, gdata)
                                         
                                         ## Inverse transform
-                                        gdataX = gdataX.reshape(self.ntime_gulp,nchan,GRID_SIZE,GRID_SIZE)
-                                        gdataY = gdataY.reshape(self.ntime_gulp,nchan,GRID_SIZE,GRID_SIZE)
+                                        gdata = gdata.reshape(self.ntime_gulp,nchan,2,GRID_SIZE,GRID_SIZE)
                                         try:
-                                            bf_fft.execute(gdataX,fdataX,inverse=True)
-                                            bf_fft.execute(gdataY,fdataY,inverse=True)
+                                            bf_fft.execute(gdata,fdata,inverse=True)
                                         except NameError:
-                                            fdataX = bifrost.ndarray(shape=gdataX.shape, dtype=numpy.complex64, space='cuda')
-                                            fdataY = bifrost.ndarray(shape=gdataY.shape, dtype=numpy.complex64, space='cuda')
+                                            fdata = bifrost.ndarray(shape=gdata.shape, dtype=numpy.complex64, space='cuda')
                                             bf_fft = Fft()
-                                            bf_fft.init(gdataX,fdataX,axes=(2,3))#,apply_fftshift=True)
-                                            bf_fft.execute(gdataX,fdataX,inverse=True)
-                                            bf_fft.execute(gdataY,fdataY,inverse=True)
+                                            bf_fft.init(gdata,fdata,axes=(3,4))
+                                            bf_fft.execute(gdata,fdata,inverse=True)
                                             
                                         ## Combine the polarizations and output
-                                        self.image[:,:,0,:,:] = fdataX.copy(space='system')
-                                        self.image[:,:,1,:,:] = fdataY.copy(space='system')
-                                        odata[...] = numpy.fft.fftshift(self.image , axes=(3,4))                     
+                                        odata[...] = numpy.fft.fftshift(fdata.copy(space='system') , axes=(3,4))                     
 
                                         
                                         
@@ -565,20 +554,29 @@ class ImagingOp(object):
                         continue
                     idata = ispan.data_view(numpy.complex64).reshape(ishape)
                     #Square
-                    idata = numpy.square(numpy.abs(idata))
+                    xdata, ydata = idata[:,:,0,:,:], idata[:,:,1,:,:]
+                    xxdata = numpy.abs(xdata*xdata.conj())
+                    xydata = numpy.abs(xdata*ydata.conj()) \
+                             * numpy.where( numpy.angle(xdata*ydata.conj()) > 0, 1, -1 )
+                    yxdata = numpy.abs(ydata*xdata.conj())\
+                             * numpy.where( numpy.angle(ydata*xdata.conj()) > 0, 1, -1 )
+                    yydata = numpy.abs(ydata*ydata.conj())
 
 
                     for ti in numpy.arange(0,self.ntime_gulp):
                         #print ("Accum: %d"%accum,end='\n')
                         if self.newflag is True:
                         
-                            self.accumulated_image = numpy.zeros(shape=(nchan,npol,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
+                            self.accumulated_image = numpy.zeros(shape=(nchan,npol**2,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
                             self.newflag=False
                     
                         #Accumulate
-                        self.accumulated_image = self.accumulated_image + idata[ti,:,:,:,:]
-
-                    
+                        #self.accumulated_image = self.accumulated_image + idata[ti,:,:,:,:]
+                        self.accumulated_image[:,0,:,:] += xxdata[ti,:,:,:]
+                        self.accumulated_image[:,1,:,:] += xydata[ti,:,:,:]
+                        self.accumulated_image[:,2,:,:] += yxdata[ti,:,:,:]
+                        self.accumulated_image[:,3,:,:] += yydata[ti,:,:,:]
+                        
                         #Save and output
                         accum += 1
                         if accum >= self.accumulation_time:
@@ -587,11 +585,14 @@ class ImagingOp(object):
                             ## TODO: Do this in Matplotlib. For now NPZ files..
                             numpy.savez(self.filename+'%04i.png'%(fileid),image=self.accumulated_image)
                             self.newflag = True
-                            plt.figure(1)
+                            fig = plt.figure(1)
                             #print(numpy.shape(self.image[2,0,:,:]))
                             #print(self.image[2,0,:,:])
-                        
-                            plt.imshow(numpy.real(self.accumulated_image[0,0,:,:].T))
+                            
+                            for i in xrange(npol**2):
+                                ax = fig.add_subplot(2, 2, i+1)
+                                ax.imshow(numpy.real(self.accumulated_image[0,i,:,:].T))
+                            #plt.imshow(numpy.real(self.accumulated_image[0,0,:,:].T))
                             plt.savefig("ImagingOP-%04i.png"%(fileid))
                             fileid += 1
                             print("ImagingOP - Image Saved")
