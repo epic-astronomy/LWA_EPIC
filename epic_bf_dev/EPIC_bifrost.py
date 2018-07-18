@@ -463,7 +463,7 @@ class MOFFCorrelatorOp(object):
 
                                         bfantgridmap = bifrost.ndarray(self.antgridmap)
                                         bfantgridmap = bfantgridmap.copy(space='cuda')
-                                        gdata = numpy.zeros(shape=oshape,dtype=numpy.complex64)
+                                        gdata = numpy.zeros(shape=(self.ntime_gulp,nchan,npol,GRID_SIZE * GRID_SIZE),dtype=numpy.float32)
                                         imdata = numpy.zeros(shape=oshape,dtype=numpy.complex64)
 
                                         gdata = bifrost.ndarray(gdata,space='cuda')
@@ -475,8 +475,8 @@ class MOFFCorrelatorOp(object):
                                                 for j in numpy.arange(npol):
 
                                                     gdata[time_index,i,j,:] = self.LinAlgObj.matmul(1.0,
-                                                                                                    bfidata[time_index,i,:,j],
-                                                                                                    bfantgridmap,
+                                                                                                    bfidata[time_index,i,:,j,0],
+                                                                                                    bfantgridmap, 
                                                                                                     1.0,
                                                                                                     gdata[time_index,i,j,:])
 
