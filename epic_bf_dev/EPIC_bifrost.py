@@ -21,6 +21,7 @@ from bifrost.udp_socket import UDPSocket as BF_UDPSocket
 from bifrost.udp_capture import UDPCapture as BF_UDPCapture
 from bifrost.udp_transmit import UDPTransmit as BF_UDPTransmit
 from bifrost.ring import Ring
+from bifrost.unpack import unpack as Unpack
 from bifrost.quantize import quantize as Quantize
 from bifrost.proclog import ProcLog
 from bifrost.libbifrost import bf
@@ -275,7 +276,7 @@ class FDomainOp(object):
 									
 								## Save
 								rdata = qdata.view(numpy.int8).reshape(oshape)
-								rdata = rdata.copy(space='cuda')
+								#rdata = rdata.copy(space='cuda')
 								odata[...] = rdata
 								
 							curr_time = time.time()
@@ -456,36 +457,71 @@ class MOFFCorrelatorOp(object):
                                                     self.image[time_index,i,j,:,:] = numpy.fft.fftshift(self.image[time_index,i,j,:,:])
                                             odata[...] = self.image
                                     else: #GPU
-
-                                        bfidata = bifrost.ndarray(shape=ishape,dtype='ci8',native=False,
+                                        ## Combine stand and pols into standpols, promote the data to complex64, and 
+                                        ## move it over to the GPU 
+					idata = numpy.reshape(idata, (self.ntime_gulp,nchan,-1,2))
+					idata = (idata[...,0] + 1j*idata[...,1]).astype(numpy.complex64)
+					bfidata = bifrost.ndarray(shape=(self.ntime_gulp,nchan,(nstand-1)*npol),
+                                                                  dtype=numpy.complex64, 
                                                                   buffer=idata.ctypes.data)
+                                        #bfidata = bifrost.ndarray(shape=(self.ntime_gulp,nchan,(nstand-1)*npol),
+                                        #                          dtype='ci8', 
+                                        #                          buffer=idata.ctypes.data)
                                         bfidata = bfidata.copy(space='cuda')
-
-                                        bfantgridmap = bifrost.ndarray(self.antgridmap)
-                                        bfantgridmap = bfantgridmap.copy(space='cuda')
-                                        gdata = numpy.zeros(shape=(self.ntime_gulp,nchan,npol,GRID_SIZE * GRID_SIZE),dtype=numpy.float32)
-                                        imdata = numpy.zeros(shape=oshape,dtype=numpy.complex64)
-
-                                        gdata = bifrost.ndarray(gdata,space='cuda')
-                                        imdata = bifrost.ndarray(imdata,space='cuda')
+					
+                                        ## Make sure we have gridding kernels for X and Y on the GPU
+                                        try:
+                                            bfantgridmapX
+					except NameError:
+                                            antgridX = numpy.zeros((1,GRID_SIZE**2,(nstand-1)*npol), dtype=numpy.complex64)
+                                            antgridY = numpy.zeros((1,GRID_SIZE**2,(nstand-1)*npol), dtype=numpy.complex64)
+                                            antgridX[:,:,0::2] = self.antgridmap
+                                            antgridY[:,:,1::2] = self.antgridmap
+                                            
+                                            bfantgridmapX = bifrost.ndarray(antgridX)
+                                            #bfantgridmapX = bifrost.ndarray(shape=(1,GRID_SIZE**2,(nstand-1)*npol), 
+                                            #                                dtype='ci8',
+                                            #                                buffer=antgridX.ctypes.data)
+                                            bfantgridmapX = bfantgridmapX.copy(space='cuda')
+                                            bfantgridmapY = bifrost.ndarray(antgridY)
+                                            #bfantgridmapY = bifrost.ndarray(shape=(1,GRID_SIZE**2,(nstand-1)*npol), 
+                                            #                                dtype='ci8',
+                                            #                                buffer=antgridY.ctypes.data)
+                                            bfantgridmapY = bfantgridmapY.copy(space='cuda')
+                                            
+                                        ## Make sure we have a place to put the data
+                                        try:
+                                            gdataX = gdataX.reshape(self.ntime_gulp,nchan,GRID_SIZE*GRID_SIZE)
+                                            gdataY = gdataY.reshape(self.ntime_gulp,nchan,GRID_SIZE*GRID_SIZE)
+                                        except NameError:
+                                            gdataX = numpy.zeros(shape=(self.ntime_gulp,nchan,GRID_SIZE * GRID_SIZE),dtype=numpy.complex64)
+                                            gdataY = numpy.zeros(shape=(self.ntime_gulp,nchan,GRID_SIZE * GRID_SIZE),dtype=numpy.complex64)
+                                            
+                                            gdataX = bifrost.ndarray(gdataX,space='cuda')
+                                            gdataY = bifrost.ndarray(gdataY,space='cuda')
                                         
+                                        ## Grid the data
+                                        gdataX = self.LinAlgObj.matmul(1.0, bfidata, bfantgridmapX.transpose(0,2,1), 0.0, gdataX)
+                                        gdataY = self.LinAlgObj.matmul(1.0, bfidata, bfantgridmapY.transpose(0,2,1), 0.0, gdataY)
                                         
-                                        for time_index in numpy.arange(self.ntime_gulp):
-                                            for i in numpy.arange(nchan):
-                                                for j in numpy.arange(npol):
-
-                                                    gdata[time_index,i,j,:] = self.LinAlgObj.matmul(1.0,
-                                                                                                    bfidata[time_index,i,:,j,0],
-                                                                                                    bfantgridmap, 
-                                                                                                    1.0,
-                                                                                                    gdata[time_index,i,j,:])
-
-                                        bf_fft = Fft()
-                                        bf_fft.init(gdata,fdata,axes=(3,4),apply_fftshift=True)
-                                        bf_fft.execute(gdata,fdata,inverse=True)
-                                    
-                                        
-                                                                
+                                        ## Inverse transform
+                                        gdataX = gdataX.reshape(self.ntime_gulp,nchan,GRID_SIZE,GRID_SIZE)
+                                        gdataY = gdataY.reshape(self.ntime_gulp,nchan,GRID_SIZE,GRID_SIZE)
+                                        try:
+                                            bf_fft.execute(gdataX,fdataX,inverse=True)
+                                            bf_fft.execute(gdataY,fdataY,inverse=True)
+                                        except NameError:
+                                            fdataX = bifrost.ndarray(shape=gdataX.shape, dtype=numpy.complex64, space='cuda')
+                                            fdataY = bifrost.ndarray(shape=gdataY.shape, dtype=numpy.complex64, space='cuda')
+                                            bf_fft = Fft()
+                                            bf_fft.init(gdataX,fdataX,axes=(2,3))#,apply_fftshift=True)
+                                            bf_fft.execute(gdataX,fdataX,inverse=True)
+                                            bf_fft.execute(gdataY,fdataY,inverse=True)
+                                            
+                                        ## Combine the polarizations and output
+                                        self.image[:,:,0,:,:] = fdataX.copy(space='system')
+                                        self.image[:,:,1,:,:] = fdataY.copy(space='system')
+                                        odata[...] = numpy.fft.fftshift(self.image , axes=(3,4))                     
 
                                         
                                         
@@ -555,7 +591,7 @@ class ImagingOp(object):
                             #print(numpy.shape(self.image[2,0,:,:]))
                             #print(self.image[2,0,:,:])
                         
-                            plt.imshow(numpy.real(self.accumulated_image[0,0,:,:]))
+                            plt.imshow(numpy.real(self.accumulated_image[0,0,:,:].T))
                             plt.savefig("ImagingOP-%04i.png"%(fileid))
                             fileid += 1
                             print("ImagingOP - Image Saved")
