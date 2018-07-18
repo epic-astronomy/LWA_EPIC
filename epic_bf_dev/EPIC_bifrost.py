@@ -405,6 +405,8 @@ class MOFFCorrelatorOp(object):
             for iseq in self.iring.read(guarantee=True):
                 print("Sequence!")
                 ihdr = json.loads(iseq.header.tostring())
+                print('MOFFCorrelatorOp: Config - %s' % ihdr)
+                
                 nchan = ihdr['nchan']
                 nstand = ihdr['nstand']
                 npol = ihdr['npol']
@@ -539,6 +541,7 @@ class ImagingOp(object):
         for iseq in self.iring.read(guarantee=True):
             print("New Sequence")
             ihdr = json.loads(iseq.header.tostring())
+            print('ImagingOp: Config - %s' % ihdr)
             nchan = ihdr['nchan']
             npol = ihdr['npol']
             print("Channel no: %d, Polarisation no: %d"%(nchan,npol))
@@ -651,7 +654,7 @@ def main():
     parser.add_argument('-c', '--cpuonly', action='store_true', help = 'Runs EPIC Correlator on CPU Only.')
     parser.add_argument('-t', '--nts',type=int, default = 1000, help= 'Number of timestamps per span.')
     parser.add_argument('-u', '--accumulate',type=int, default = 1000, help='How many milliseconds to accumulate an image over.')
-    parser.add_argument('-n', '--channels',type=int, default=4, help='How many channels to produce.')
+    parser.add_argument('-n', '--channels',type=int, default=1, help='How many channels to produce.')
 
     args = parser.parse_args()
     # Logging Setup
@@ -701,7 +704,7 @@ def main():
         gridandfft_ring = Ring(name="gridandfft", space="system")
     
     ops.append(OfflineCaptureOp(log, fcapture_ring,args.tbnfile))
-    ops.append(FDomainOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts, nchan_out=1))
+    ops.append(FDomainOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts, nchan_out=args.channels))
     ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, ntime_gulp=args.nts, cpu=args.cpuonly))
     ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", ntime_gulp=args.nts, accumulation_time=args.accumulate))
 
