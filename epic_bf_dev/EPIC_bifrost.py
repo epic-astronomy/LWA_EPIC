@@ -90,15 +90,14 @@ class OfflineCaptureOp(object):
         self.core = core
 
         self.bind_proclog = ProcLog(type(self).__name__+"/bind")
-	self.out_proclog  = ProcLog(type(self).__name__+"/out")
-	self.size_proclog = ProcLog(type(self).__name__+"/size")
-	self.sequence_proclog = ProcLog(type(self).__name__+"/sequence0")
-	self.perf_proclog = ProcLog(type(self).__name__+"/perf")	
-	self.out_proclog.update({'nring':1, 'ring0':self.oring.name})
-		
+        self.out_proclog  = ProcLog(type(self).__name__+"/out")
+        self.size_proclog = ProcLog(type(self).__name__+"/size")
+        self.sequence_proclog = ProcLog(type(self).__name__+"/sequence0")
+        self.perf_proclog = ProcLog(type(self).__name__+"/perf")	
+        self.out_proclog.update({'nring':1, 'ring0':self.oring.name})
         
         self.shutdown_event = threading.Event()
-
+        
     def shutdown(self):
         self.shutdown_event.set()
 
@@ -106,189 +105,173 @@ class OfflineCaptureOp(object):
         #bifrost.affinity.set_core(self.core)
 
         idf = TBNFile(self.filename)
-	cfreq = idf.getInfo('freq1')
-	srate = idf.getInfo('sampleRate')
-	tInt, tStart, data = idf.read(0.1, timeInSamples=True)
-	idf.reset()
-	
-	# Setup the ring metadata and gulp sizes
-	ntime = data.shape[1]
-	nstand, npol = data.shape[0]/2, 2
-	oshape = (ntime,nstand,npol)
-	ogulp_size = ntime*nstand*npol*8		# complex64
-	self.oring.resize(ogulp_size, buffer_factor=10)
-	
-	self.size_proclog.update({'nseq_per_gulp': ntime})
-	
-	# Build the initial ring header
-	ohdr = {}
-	ohdr['time_tag'] = tStart
-	ohdr['seq0']     = 0
-	ohdr['chan0']    = int((cfreq - srate/2)/CHAN_BW)
-	ohdr['nchan']    = 1
-	ohdr['cfreq']    = cfreq
-	ohdr['bw']       = srate
-	ohdr['nstand']   = nstand
-	ohdr['npol']     = npol
-	ohdr['nbit']     = 8
-	ohdr['complex']  = True
-	ohdr_str = json.dumps(ohdr)
-		
-	## Fill the ring using the same data over and over again
-	with self.oring.begin_writing() as oring:
-	    with oring.begin_sequence(time_tag=tStart, header=ohdr_str) as oseq:
-		prev_time = time.time()
-		while not self.shutdown_event.is_set():
-		    ## Get the current section to use
-		    try:
-			tInt, tStart, data = idf.read(0.1, timeInSamples=True)
-		    except Exception as e:
-			print("FillerOp: Error - '%s'" % str(e))
-			idf.close()
-			self.shutdown()
-			break
-		    
-		    curr_time = time.time()
-		    acquire_time = curr_time - prev_time
-		    prev_time = curr_time
-		    
-		    with oseq.reserve(ogulp_size) as ospan:
-			curr_time = time.time()
-			reserve_time = curr_time - prev_time
-			prev_time = curr_time
-			
-			## Setup and load
-			idata = data
-			odata = ospan.data_view(numpy.complex64).reshape(oshape)
-			
-			## Transpose and reshape to time by stand by pol
-			idata = idata.transpose((1,0))
-			idata = idata.reshape((ntime,nstand,npol))
-			
-			## Save
-			odata[...] = idata
-			
-			curr_time = time.time()
-			process_time = curr_time - prev_time
-			prev_time = curr_time
-			self.perf_proclog.update({'acquire_time': acquire_time, 
-					          'reserve_time': reserve_time, 
-					          'process_time': process_time,})
-	print("FillerOp - Done")
+        cfreq = idf.getInfo('freq1')
+        srate = idf.getInfo('sampleRate')
+        tInt, tStart, data = idf.read(0.1, timeInSamples=True)
+        idf.reset()
+        
+        # Setup the ring metadata and gulp sizes
+        ntime = data.shape[1]
+        nstand, npol = data.shape[0]/2, 2
+        oshape = (ntime,nstand,npol)
+        ogulp_size = ntime*nstand*npol*8		# complex64
+        self.oring.resize(ogulp_size, buffer_factor=10)
+        
+        self.size_proclog.update({'nseq_per_gulp': ntime})
+        
+        # Build the initial ring header
+        ohdr = {}
+        ohdr['time_tag'] = tStart
+        ohdr['seq0']     = 0
+        ohdr['chan0']    = int((cfreq - srate/2)/CHAN_BW)
+        ohdr['nchan']    = 1
+        ohdr['cfreq']    = cfreq
+        ohdr['bw']       = srate
+        ohdr['nstand']   = nstand
+        ohdr['npol']     = npol
+        ohdr['nbit']     = 8
+        ohdr['complex']  = True
+        ohdr_str = json.dumps(ohdr)
+            
+        ## Fill the ring using the same data over and over again
+        with self.oring.begin_writing() as oring:
+            with oring.begin_sequence(time_tag=tStart, header=ohdr_str) as oseq:
+                prev_time = time.time()
+                while not self.shutdown_event.is_set():
+                    ## Get the current section to use
+                    try:
+                        tInt, tStart, data = idf.read(0.1, timeInSamples=True)
+                    except Exception as e:
+                        print("FillerOp: Error - '%s'" % str(e))
+                        idf.close()
+                        self.shutdown()
+                        break
+                        
+                    curr_time = time.time()
+                    acquire_time = curr_time - prev_time
+                    prev_time = curr_time
+                    
+                    with oseq.reserve(ogulp_size) as ospan:
+                        curr_time = time.time()
+                        reserve_time = curr_time - prev_time
+                        prev_time = curr_time
+                        
+                        ## Setup and load
+                        idata = data
+                        odata = ospan.data_view(numpy.complex64).reshape(oshape)
+                        
+                        ## Transpose and reshape to time by stand by pol
+                        idata = idata.transpose((1,0))
+                        idata = idata.reshape((ntime,nstand,npol))
+                        
+                        ## Save
+                        odata[...] = idata
+                        
+                    curr_time = time.time()
+                    process_time = curr_time - prev_time
+                    prev_time = curr_time
+                    self.perf_proclog.update({'acquire_time': acquire_time, 
+                                              'reserve_time': reserve_time, 
+                                              'process_time': process_time,})
+        print("FillerOp - Done")
 
 
 class FDomainOp(object):
-	def __init__(self, log, iring, oring, ntime_gulp=2500, nchan_out=1, core=-1):
-		self.log = log
-		self.iring = iring
-		self.oring = oring
-		self.ntime_gulp = ntime_gulp
-		self.nchan_out = nchan_out
-		self.core = core
-		
-		self.nchan_out = nchan_out
-		
-		self.bind_proclog = ProcLog(type(self).__name__+"/bind")
-		self.in_proclog   = ProcLog(type(self).__name__+"/in")
-		self.out_proclog  = ProcLog(type(self).__name__+"/out")
-		self.size_proclog = ProcLog(type(self).__name__+"/size")
-		self.sequence_proclog = ProcLog(type(self).__name__+"/sequence0")
-		self.perf_proclog = ProcLog(type(self).__name__+"/perf")
-		
-		self.in_proclog.update( {'nring':1, 'ring0':self.iring.name})
-		self.out_proclog.update({'nring':1, 'ring0':self.oring.name})
-		self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
-		
-	def main(self):
-		#bifrost.affinity.set_core(self.core)
-		self.bind_proclog.update({'ncore': 1, 
-		                          'core0': bifrost.affinity.get_core(),})
-		
-		with self.oring.begin_writing() as oring:
-			for iseq in self.iring.read(guarantee=True):
-				ihdr = json.loads(iseq.header.tostring())
-				
-				self.sequence_proclog.update(ihdr)
-				print('FDomainOp: Config - %s' % ihdr)
-				
-				# Setup the ring metadata and gulp sizes
-				nchan  = self.nchan_out
-				nstand = ihdr['nstand']
-				npol   = ihdr['npol']
-				
-				igulp_size = self.ntime_gulp*1*nstand*npol * 8		# complex64
-				ishape = (self.ntime_gulp/nchan,nchan,nstand,npol)
-				ogulp_size = self.ntime_gulp*1*nstand*npol * 2		# ci8
-				oshape = (self.ntime_gulp/nchan,nchan,nstand,npol,2)
-				#self.iring.resize(igulp_size)
-				self.oring.resize(ogulp_size,buffer_factor=10)
-				
-				# Set the output header
-				ohdr = ihdr.copy()
-				ohdr['nchan'] = nchan
-				ohdr['nbit']  = 8
-				ohdr_str = json.dumps(ohdr)
-				
-				# Setup the phasing terms for zenith
-				phases = numpy.zeros(ishape, dtype=numpy.complex64)
-				freq = numpy.fft.fftfreq(nchan, d=1.0/ihdr['bw']) + ihdr['cfreq']
-				for i in xrange(nstand):
-					## X
-					a = ANTENNAS[2*i + 0]  
-					delay = a.cable.delay(freq) - a.stand.z / speedOfLight
-					phases[:,:,i,0] = numpy.exp(2j*numpy.pi*freq*delay)
-					## Y
-					a = ANTENNAS[2*i + 1]
-					delay = a.cable.delay(freq) - a.stand.z / speedOfLight
-					phases[:,:,i,1] = numpy.exp(2j*numpy.pi*freq*delay)
-					
-				prev_time = time.time()
-				with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
-                                        print("FDomain Out Sequence!")
-					iseq_spans = iseq.read(igulp_size)
-					while not self.iring.writing_ended():
-						for ispan in iseq_spans:
-							if ispan.size < igulp_size:
-								continue # Ignore final gulp
-							curr_time = time.time()
-							acquire_time = curr_time - prev_time
-							prev_time = curr_time
-							
-							with oseq.reserve(ogulp_size) as ospan:
-								curr_time = time.time()
-								reserve_time = curr_time - prev_time
-								prev_time = curr_time
-								
-								## Setup and load
-								idata = ispan.data_view(numpy.complex64).reshape(ishape)
-								odata = ospan.data_view(numpy.int8).reshape(oshape)
-								
-								## FFT, shift, and phase
-								fdata = fft(idata, axis=1)
-								fdata = numpy.fft.fftshift(fdata, axes=1)
-								fdata = bifrost.ndarray(fdata, space='system')
-								fdata *= phases
-								
-								## Quantization
-								try:
-									Quantize(fdata, qdata, scale=1./numpy.sqrt(nchan))
-								except NameError:
-									qdata = bifrost.ndarray(shape=fdata.shape, native=False, dtype='ci8', space='system')
-									Quantize(fdata, qdata, scale=1./numpy.sqrt(nchan))
-									
-								## Save
-								rdata = qdata.view(numpy.int8).reshape(oshape)
-								#rdata = rdata.copy(space='cuda')
-								odata[...] = rdata
-								
-							curr_time = time.time()
-							process_time = curr_time - prev_time
-							prev_time = curr_time
-							self.perf_proclog.update({'acquire_time': acquire_time, 
-							                          'reserve_time': reserve_time, 
-							                          'process_time': process_time,})
-					# Only do one pass through the loop
-		print("FDomainOp - Done")
+    def __init__(self, log, iring, oring, ntime_gulp=2500, nchan_out=1, core=-1):
+        self.log = log
+        self.iring = iring
+        self.oring = oring
+        self.ntime_gulp = ntime_gulp
+        self.nchan_out = nchan_out
+        self.core = core
+        
+        self.nchan_out = nchan_out
+        
+        self.bind_proclog = ProcLog(type(self).__name__+"/bind")
+        self.in_proclog   = ProcLog(type(self).__name__+"/in")
+        self.out_proclog  = ProcLog(type(self).__name__+"/out")
+        self.size_proclog = ProcLog(type(self).__name__+"/size")
+        self.sequence_proclog = ProcLog(type(self).__name__+"/sequence0")
+        self.perf_proclog = ProcLog(type(self).__name__+"/perf")
+        
+        self.in_proclog.update( {'nring':1, 'ring0':self.iring.name})
+        self.out_proclog.update({'nring':1, 'ring0':self.oring.name})
+        self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
+        
+    def main(self):
+        #bifrost.affinity.set_core(self.core)
+        self.bind_proclog.update({'ncore': 1, 
+                                'core0': bifrost.affinity.get_core(),})
+        
+        with self.oring.begin_writing() as oring:
+            for iseq in self.iring.read(guarantee=True):
+                ihdr = json.loads(iseq.header.tostring())
+                
+                self.sequence_proclog.update(ihdr)
+                print('FDomainOp: Config - %s' % ihdr)
+                
+                # Setup the ring metadata and gulp sizes
+                nchan  = self.nchan_out
+                nstand = ihdr['nstand']
+                npol   = ihdr['npol']
+                
+                igulp_size = self.ntime_gulp*1*nstand*npol * 8		# complex64
+                ishape = (self.ntime_gulp/nchan,nchan,nstand,npol)
+                ogulp_size = self.ntime_gulp*1*nstand*npol * 1		# ci4
+                oshape = (self.ntime_gulp/nchan,nchan,nstand,npol)
+                #self.iring.resize(igulp_size)
+                self.oring.resize(ogulp_size,buffer_factor=10)
+                
+                # Set the output header
+                ohdr = ihdr.copy()
+                ohdr['nchan'] = nchan
+                ohdr['nbit']  = 4
+                ohdr_str = json.dumps(ohdr)
+                
+                prev_time = time.time()
+                with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
+                    print("FDomain Out Sequence!")
+                    iseq_spans = iseq.read(igulp_size)
+                    while not self.iring.writing_ended():
+                        for ispan in iseq_spans:
+                            if ispan.size < igulp_size:
+                                continue # Ignore final gulp
+                            curr_time = time.time()
+                            acquire_time = curr_time - prev_time
+                            prev_time = curr_time
+                            
+                            with oseq.reserve(ogulp_size) as ospan:
+                                curr_time = time.time()
+                                reserve_time = curr_time - prev_time
+                                prev_time = curr_time
+                                
+                                ## Setup and load
+                                idata = ispan.data_view(numpy.complex64).reshape(ishape)
+                                odata = ospan.data_view(numpy.int8).reshape(oshape)
+                                
+                                ## FFT, shift, and phase
+                                fdata = fft(idata, axis=1)
+                                fdata = numpy.fft.fftshift(fdata, axes=1)
+                                fdata = bifrost.ndarray(fdata, space='system')
+                                
+                                ## Quantization
+                                try:
+                                    Quantize(fdata, qdata, scale=1./numpy.sqrt(nchan))
+                                except NameError:
+                                    qdata = bifrost.ndarray(shape=fdata.shape, native=False, dtype='ci4')
+                                    Quantize(fdata, qdata, scale=1./numpy.sqrt(nchan))
+                                    
+                                ## Save
+                                odata[...] = qdata.copy(space='cuda_host').view(numpy.int8).reshape(oshape)
+                                
+                            curr_time = time.time()
+                            process_time = curr_time - prev_time
+                            prev_time = curr_time
+                            self.perf_proclog.update({'acquire_time': acquire_time, 
+                                                      'reserve_time': reserve_time, 
+                                                      'process_time': process_time,})
+                    # Only do one pass through the loop
+        print("FDomainOp - Done")
 
                 
 
@@ -354,7 +337,7 @@ class MOFFCorrelatorOp(object):
             pos: Antenna position x and y, in units of grid pixels
             Returns:
             mat: 1D mapping from antenna to grid (this is one row of the total
-             gridding matrix)
+            gridding matrix)
             """
         mat = numpy.zeros((ngrid, ngrid))
 
@@ -377,7 +360,7 @@ class MOFFCorrelatorOp(object):
         kernel: Convolution kernel. Can be single kernel (same for all antennas),
                 or list of kernels.
         pos: Antenna positions (Nant, 2), in wavelengths (if wavelength==None) or
-             meters (if wavelength given)
+            meters (if wavelength given)
         wavelength: wavelength of observations in meters. If None (default), pos
                     is assumed to be in wavelength already.
     Returns:
@@ -411,8 +394,8 @@ class MOFFCorrelatorOp(object):
                 nstand = ihdr['nstand']
                 npol = ihdr['npol']
                 
-                igulp_size = self.ntime_gulp * nchan * nstand * npol * 2 # Complex 8
-                ishape = (self.ntime_gulp,nchan,nstand,npol,2) 
+                igulp_size = self.ntime_gulp * nchan * nstand * npol * 1 # ci4
+                ishape = (self.ntime_gulp,nchan,nstand,npol) 
 
                 ohdr = ihdr.copy()
                 ohdr['nbit'] = 64
@@ -420,6 +403,21 @@ class MOFFCorrelatorOp(object):
                 ohdr['nchan'] = nchan
                 ohdr_str = json.dumps(ohdr)
                 
+                # Setup the phasing terms for zenith
+                phases = numpy.zeros(ishape, dtype=numpy.complex64)
+                freq = numpy.fft.fftfreq(nchan, d=1.0/ihdr['bw']) + ihdr['cfreq']
+                for i in xrange(nstand):
+                    ## X
+                    a = ANTENNAS[2*i + 0]  
+                    delay = a.cable.delay(freq) - a.stand.z / speedOfLight
+                    phases[:,:,i,0] = numpy.exp(2j*numpy.pi*freq*delay)
+                    phases[:,:,i,0] /= numpy.sqrt(a.cable.gain(freq))
+                    ## Y
+                    a = ANTENNAS[2*i + 1]
+                    delay = a.cable.delay(freq) - a.stand.z / speedOfLight
+                    phases[:,:,i,1] = numpy.exp(2j*numpy.pi*freq*delay)
+                    phases[:,:,i,1] /= numpy.sqrt(a.cable.gain(freq))
+                    
                 ##TODO: Setup output gulp and shape.
                 oshape = (self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE)
                 ogulp_size = self.ntime_gulp * nchan * npol * GRID_SIZE * GRID_SIZE * 8 #Complex64
@@ -438,25 +436,38 @@ class MOFFCorrelatorOp(object):
                             print("New sequence")
                             with oseq.reserve(ogulp_size) as ospan:
                                     ###### Correlator #######
-                                    ## Check the casting of ingulp to bfidata ci8
-                                    idata = ispan.data_view(numpy.int8).reshape(ishape)
-                                    #idata = idata[:,:,0:255,:,:] # Get rid of outrigger.
+                                    ## Setup and load
+                                    idata = ispan.data_view(numpy.uint8).reshape(ishape)
+                                    
+                                    ## Fix the type
+                                    tdata = bifrost.ndarray(shape=ishape, dtype='ci4', native=False, buffer=idata.ctypes.data)
+                                    
                                     odata = ospan.data_view(numpy.complex64).reshape(oshape)
                                     if(self.cpu == True): #CPU
+                                        ## Unpack
+                                        try:
+                                            Unpack(tdata, udata)
+                                        except NameError:
+                                            udata = bifrost.ndarray(shape=tdata.shape, dtype='cf32', space='system')
+                                            Unpack(tdata, udata)
+                                            
+                                        ## Phase
+                                        udata *= phases
+                                        
                                         for time_index in numpy.arange(0,self.ntime_gulp):
                                             print("TI: %d"%time_index)
 
                                             for i in numpy.arange(nchan): 
                                                 for j in numpy.arange(npol):
-                                                    evectorr = idata[time_index,i,:,j,0]
-                                                    evectorc = idata[time_index,i,:,j,1]
+                                                    evectorr = idata[time_index,i,:,j].real
+                                                    evectorc = idata[time_index,i,:,j].imag
                                                     #t1 = time.time()
                                                     dotr = numpy.dot(self.antgridmap,evectorr).reshape(GRID_SIZE,GRID_SIZE)
                                                     doti = numpy.dot(self.antgridmap,evectorc).reshape(GRID_SIZE,GRID_SIZE)
                                                     #t2 = time.time()
                                                     #print("DOT TIME: %f"%(t2-t1))
                                                     self.grid[time_index,i,j,:,:] += dotr + 1J*doti
-                                          
+                                        
                                             #FFT
                                             for i in numpy.arange(nchan):
                                                 for j in numpy.arange(npol):
@@ -465,17 +476,27 @@ class MOFFCorrelatorOp(object):
                                                     self.image[time_index,i,j,:,:] = numpy.fft.fftshift(self.image[time_index,i,j,:,:])
                                             odata[...] = self.image
                                     else: #GPU
-                                        ## Combine stand and pols into standpols, promote the data to complex64, and 
-                                        ## move it over to the GPU 
-                                        idata = numpy.reshape(idata, (self.ntime_gulp,nchan,-1,2))
-                                        idata = (idata[...,0] + 1j*idata[...,1]).astype(numpy.complex64)
-                                        bfidata = bifrost.ndarray(shape=(self.ntime_gulp,nchan,nstand*npol),
-                                                                  dtype=numpy.complex64, 
-                                                                  buffer=idata.ctypes.data)
-                                        #bfidata = bifrost.ndarray(shape=(self.ntime_gulp,nchan,nstand*npol),
-                                        #                          dtype='ci8', 
-                                        #                          buffer=idata.ctypes.data)
-                                        bfidata = bfidata.copy(space='cuda')
+                                        ## Copy to the GPU
+                                        tdata = tdata.copy(space='cuda')
+                                        
+                                        ## Unpack
+                                        try:
+                                            udata = udata.reshape(*tdata.shape)
+                                            Unpack(tdata, udata)
+                                        except NameError:
+                                            udata = bifrost.ndarray(shape=tdata.shape, dtype=numpy.complex64, space='cuda')
+                                            Unpack(tdata, udata)
+                                            
+                                        ## Phase
+                                        try:
+                                            bifrost.map('a(i,j,k,l) *= b(i,j,k,l)', {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)
+                                        except NameError:
+                                            phases = bifrost.ndarray(phases)
+                                            gphases = phases.copy(space='cuda')
+                                            bifrost.map('a(i,j,k,l) *= b(i,j,k,l)', {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)
+                                            
+                                        ## Combine stand and pols into standpols
+                                        udata = udata.reshape(self.ntime_gulp,nchan,-1)
                                         
                                         ## Make sure we have gridding kernel on the GPU
                                         try:
@@ -499,7 +520,7 @@ class MOFFCorrelatorOp(object):
                                             gdata = bifrost.zeros(shape=(self.ntime_gulp,nchan,2*GRID_SIZE*GRID_SIZE),dtype=numpy.complex64, space='cuda')
                                             
                                         ## Grid the data
-                                        gdata = self.LinAlgObj.matmul(1.0, bfidata, bfantgridmap.transpose(0,2,1), 0.0, gdata)
+                                        gdata = self.LinAlgObj.matmul(1.0, udata, bfantgridmap.transpose(0,2,1), 0.0, gdata)
                                         
                                         ## Inverse transform
                                         gdata = gdata.reshape(self.ntime_gulp,nchan,2,GRID_SIZE,GRID_SIZE)
@@ -560,9 +581,9 @@ class ImagingOp(object):
                     xdata, ydata = idata[:,:,0,:,:], idata[:,:,1,:,:]
                     xxdata = numpy.abs(xdata*xdata.conj())
                     xydata = numpy.abs(xdata*ydata.conj()) \
-                             * numpy.where( numpy.angle(xdata*ydata.conj()) > 0, 1, -1 )
+                            * numpy.where( numpy.angle(xdata*ydata.conj()) > 0, 1, -1 )
                     yxdata = numpy.abs(ydata*xdata.conj())\
-                             * numpy.where( numpy.angle(ydata*xdata.conj()) > 0, 1, -1 )
+                            * numpy.where( numpy.angle(ydata*xdata.conj()) > 0, 1, -1 )
                     yydata = numpy.abs(ydata*ydata.conj())
 
 
@@ -621,7 +642,7 @@ class SaveFFTOp(object):
             
             
             igulp_size = self.ntime_gulp*1*nstand*npol * 2		# ci8
-	    ishape = (self.ntime_gulp/nchan,nchan,nstand,npol,2)
+            ishape = (self.ntime_gulp/nchan,nchan,nstand,npol,2)
 
             iseq_spans = iseq.read(igulp_size)
 
@@ -661,7 +682,7 @@ def main():
     # TODO: Set this up properly
     log = logging.getLogger(__name__)
     logFormat = logging.Formatter('%(asctime)s [%(levelname)-8s] %(message)s',
-	                          datefmt='%Y-%m-%d %H:%M:%S')
+                            datefmt='%Y-%m-%d %H:%M:%S')
     logFormat.converter = time.gmtime
     logHandler = logging.StreamHandler(sys.stdout)
     logHandler.setFormatter(logFormat)
@@ -676,26 +697,26 @@ def main():
     ops = []
     shutdown_event = threading.Event()
     def handle_signal_terminate(signum, frame):
-	SIGNAL_NAMES = dict((k, v) for v, k in \
-		            reversed(sorted(signal.__dict__.items()))
-		            if v.startswith('SIG') and \
-		            not v.startswith('SIG_'))
-	log.warning("Received signal %i %s", signum, SIGNAL_NAMES[signum])
-	try:
-	    ops[0].shutdown()
-	except IndexError:
-	    pass
-	shutdown_event.set()
+        SIGNAL_NAMES = dict((k, v) for v, k in \
+                            reversed(sorted(signal.__dict__.items()))
+                            if v.startswith('SIG') and \
+                            not v.startswith('SIG_'))
+        log.warning("Received signal %i %s", signum, SIGNAL_NAMES[signum])
+        try:
+            ops[0].shutdown()
+        except IndexError:
+            pass
+        shutdown_event.set()
     for sig in [signal.SIGHUP,
-	        signal.SIGINT,
-	        signal.SIGQUIT,
-	        signal.SIGTERM,
-	        signal.SIGTSTP]:
-	signal.signal(sig, handle_signal_terminate)
+            signal.SIGINT,
+            signal.SIGQUIT,
+            signal.SIGTERM,
+            signal.SIGTSTP]:
+        signal.signal(sig, handle_signal_terminate)
 
-    fcapture_ring = Ring(name="capture")
+    fcapture_ring = Ring(name="capture", space="cuda_host")
     if args.offline:
-        fdomain_ring = Ring(name="fengine")
+        fdomain_ring = Ring(name="fengine", space="cuda_host")
     #Think flagging/gains should be done on CPU?
     #calibration_ring = Ring(name="gains", space="cuda")
     if args.cpuonly:
