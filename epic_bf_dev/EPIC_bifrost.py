@@ -32,7 +32,6 @@ import bifrost
 import bifrost.affinity
 
 
-
 from lsl.common.constants import c as speedOfLight
 from lsl.writer import fitsidi
 from lsl.reader.ldp import TBNFile
@@ -325,7 +324,7 @@ class MOFFCorrelatorOp(object):
                                     GRID_SIZE,
                                     numpy.ones((3,3)),
                                     locations).astype(numpy.float)
-
+        self.autocorrmap = self.make_autocorr_grid(self.antgridmap,GRID_SIZE)
         self.LinAlgObj = LinAlg() # Jayce does this need to be here?
 
 
@@ -381,7 +380,22 @@ class MOFFCorrelatorOp(object):
             mat[:, i] = self.ant_conv(ngrid, kernel[i], p)
         return mat
 
-    
+    def make_autocorr_grid(self,antgridmap,ngrid):
+        """ Computes operator to create autocorrelations mapping
+        """
+        mat = numpy.zeros((int(numpy.shape(antgridmap)[0]),int(numpy.shape(antgridmap)[1])))
+        for i in range(numpy.shape(antgridmap)[1]):
+
+            antgrid2d = antgridmap[:,i].reshape(ngrid,ngrid)
+            antgrid2d = numpy.fft.fftshift(antgrid2d)
+            antgrid2d = numpy.fft.ifft2(antgrid2d)
+            antgrid2d = numpy.fft.fftshift(antgrid2d)
+            antgrid2d = antgrid2d * antgrid2d.conj()
+            mat[:,i] = numpy.abs((antgrid2d.reshape(ngrid*ngrid)))
+
+        return mat
+            
+                       
         
     def main(self):
         with self.oring.begin_writing() as oring:
@@ -399,7 +413,7 @@ class MOFFCorrelatorOp(object):
 
                 ohdr = ihdr.copy()
                 ohdr['nbit'] = 64
-                ohdr['npol'] = npol
+                ohdr['npol'] = 4
                 ohdr['nchan'] = nchan
                 ohdr_str = json.dumps(ohdr)
                 
@@ -417,15 +431,17 @@ class MOFFCorrelatorOp(object):
                     delay = a.cable.delay(freq) - a.stand.z / speedOfLight
                     phases[:,:,i,1] = numpy.exp(2j*numpy.pi*freq*delay)
                     phases[:,:,i,1] /= numpy.sqrt(a.cable.gain(freq))
-                    
-                ##TODO: Setup output gulp and shape.
-                oshape = (self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE)
-                ogulp_size = self.ntime_gulp * nchan * npol * GRID_SIZE * GRID_SIZE * 8 #Complex64
+
+
+                # Four polarisations as I need autocorrelations for XX,XY,YX,YY
+                # Axes are as follows (Image/Autocorrs, Time, Channel, Polarisation, Image, Image)
+                oshape = (2,self.ntime_gulp,nchan,4,GRID_SIZE,GRID_SIZE)
+                ogulp_size = 2 * self.ntime_gulp * nchan * 4 * GRID_SIZE * GRID_SIZE * 8 #Complex64
                 self.iring.resize(igulp_size)
                 self.oring.resize(ogulp_size)
-                self.grid = numpy.zeros(shape=(self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
+                self.grid = numpy.zeros(shape=(self.ntime_gulp,nchan,4,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
                 self.grid = bifrost.ndarray(self.grid)
-                self.image = numpy.zeros(shape=(self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
+                self.image = numpy.zeros(shape=(self.ntime_gulp,nchan,4,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
                 while not self.iring.writing_ended():
                     print("More spans")
                     iseq_spans = iseq.read(igulp_size)
@@ -441,24 +457,22 @@ class MOFFCorrelatorOp(object):
                                     
                                     ## Fix the type
                                     tdata = bifrost.ndarray(shape=ishape, dtype='ci4', native=False, buffer=idata.ctypes.data)
-                                    
                                     odata = ospan.data_view(numpy.complex64).reshape(oshape)
                                     if(self.cpu == True): #CPU
-                                        ## Unpack
+                                        ## Unpack. 
                                         try:
                                             Unpack(tdata, udata)
-                                        except NameError:
+                                        except NameError: #If one doesn't exist, then neither does the other.
                                             udata = bifrost.ndarray(shape=tdata.shape, dtype='cf32', space='system')
                                             Unpack(tdata, udata)
-                                            
                                         ## Phase
                                         udata *= phases
-                                        
+                                        acdata *= phases
                                         for time_index in numpy.arange(0,self.ntime_gulp):
                                             print("TI: %d"%time_index)
 
                                             for i in numpy.arange(nchan): 
-                                                for j in numpy.arange(npol):
+                                                for j in numpy.arange(2):
                                                     evectorr = idata[time_index,i,:,j].real
                                                     evectorc = idata[time_index,i,:,j].imag
                                                     #t1 = time.time()
@@ -470,34 +484,55 @@ class MOFFCorrelatorOp(object):
                                         
                                             #FFT
                                             for i in numpy.arange(nchan):
-                                                for j in numpy.arange(npol):
+                                                for j in numpy.arange(2):
                                                     self.image[time_index,i,j,:,:] = numpy.fft.fftshift(self.grid[time_index,i,j,:,:])
                                                     self.image[time_index,i,j,:,:] = numpy.fft.ifft2(self.image[time_index,i,j,:,:])
                                                     self.image[time_index,i,j,:,:] = numpy.fft.fftshift(self.image[time_index,i,j,:,:])
                                             odata[...] = self.image
                                     else: #GPU
-                                        ## Copy to the GPU
+                                        
+                            
+                                        ## Implent this on the GPU:
+                                        #autocorrelations = numpy.zeros(shape=(self.ntime_gulp,nchan,nstand,4),dtype=numpy.complex64)
+                                        #autocorr_x = acdata[:,:,:,0]
+                                        #autocorr_y = acdata[:,:,:,1]
+
+                                        #autocorrelations[:,:,:,0] = numpy.abs(autocorr_x * autocorr_x.conj())
+                                        #autocorrelations[:,:,:,1] = numpy.abs(autocorr_x * autocorr_y.conj()) \
+                                        #                            * numpy.where(numpy.angle(autocorr_x * autocorr_y.conj()) > 0, 1, -1)
+                                        #autocorrelations[:,:,:,2] = numpy.abs(autocorr_y * autocorr_x.conj()) \
+                                        #                            * numpy.where(numpy.angle(autocorr_y * autocorr_x.conj()) > 0, 1, -1)
+                                        #autocorrelations[:,:,:,3] = numpy.abs(autocorr_y * autocorr_y.conj())
+                                        
+
+                                        #autocorrelations = bifrost.ndarray(autocorrelations)
+                                        #autocorrelations = autocorrelations.copy(space='cuda')
                                         tdata = tdata.copy(space='cuda')
                                         
                                         ## Unpack
                                         try:
                                             udata = udata.reshape(*tdata.shape)
+                                            acdata = acdata.reshape(*acdata.shape)
                                             Unpack(tdata, udata)
+                                            Unpack(tdata, acdata)
                                         except NameError:
                                             udata = bifrost.ndarray(shape=tdata.shape, dtype=numpy.complex64, space='cuda')
+                                            acdata = bifrost.ndarray(shape=tdata.shape, dtype=numpy.complex64, space='cuda')
+                                            Unpack(tdata, acdata)
                                             Unpack(tdata, udata)
                                             
                                         ## Phase
                                         try:
-                                            bifrost.map('a(i,j,k,l) *= b(i,j,k,l)', {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)
+                                            bifrost.map('a(i,j,k,l) *= b(i,j,k,l)', {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)                                            
                                         except NameError:
                                             phases = bifrost.ndarray(phases)
                                             gphases = phases.copy(space='cuda')
                                             bifrost.map('a(i,j,k,l) *= b(i,j,k,l)', {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)
-                                            
+
+                                        acdata = bifrost.ndarray(udata,space='cuda')
                                         ## Combine stand and pols into standpols
                                         udata = udata.reshape(self.ntime_gulp,nchan,-1)
-                                        
+                                    
                                         ## Make sure we have gridding kernel on the GPU
                                         try:
                                             bfantgridmap
@@ -506,20 +541,17 @@ class MOFFCorrelatorOp(object):
                                             antgrid[:,0,:,0::2] = self.antgridmap
                                             antgrid[:,1,:,1::2] = self.antgridmap
                                             antgrid = antgrid.reshape(1,2*GRID_SIZE**2,nstand*npol)
-                                            
                                             bfantgridmap = bifrost.ndarray(antgrid)
-                                            #bfantgridmap = bifrost.ndarray(shape=(1,2*GRID_SIZE**2,nstand*npol), 
-                                            #                                dtype='ci8',
-                                            #                                buffer=antgrid.ctypes.data)
                                             bfantgridmap = bfantgridmap.copy(space='cuda')
-                                            
+
+                                        ## Make sure we have the autocorrelations on the GPU        
                                         ## Make sure we have a place to put the data
+                                        # Gridded Antennas
                                         try:
                                             gdata = gdata.reshape(self.ntime_gulp,nchan,2*GRID_SIZE*GRID_SIZE)
                                         except NameError:
-                                            gdata = bifrost.zeros(shape=(self.ntime_gulp,nchan,2*GRID_SIZE*GRID_SIZE),dtype=numpy.complex64, space='cuda')
-                                            
-                                        ## Grid the data
+                                            gdata = bifrost.zeros(shape=(self.ntime_gulp,nchan,2*GRID_SIZE*GRID_SIZE),dtype=numpy.complex64, space='cuda')  
+                                        ## Grid the Antennas
                                         gdata = self.LinAlgObj.matmul(1.0, udata, bfantgridmap.transpose(0,2,1), 0.0, gdata)
                                         
                                         ## Inverse transform
@@ -531,19 +563,17 @@ class MOFFCorrelatorOp(object):
                                             bf_fft = Fft()
                                             bf_fft.init(gdata,fdata,axes=(3,4))
                                             bf_fft.execute(gdata,fdata,inverse=True)
+
+
+
+                                        ######### Auto-Correlations ############:
+                                        
+                                        
                                             
-                                        ## Combine the polarizations and output
-                                        odata[...] = numpy.fft.fftshift(fdata.copy(space='system') , axes=(3,4))                     
-
+                                        ## Combine the polarizations and output for gridded electric fields.
+                                        odata[0,:,:,0:2,:,:] = numpy.fft.fftshift(fdata.copy(space='system') , axes=(3,4))
                                         
                                         
-                                
-                                
-
-
-
-                        
-
 class ImagingOp(object):
     def __init__(self, log, iring, filename, ntime_gulp=100, accumulation_time=1, core=-1,*args, **kwargs):
         self.log = log
@@ -566,8 +596,8 @@ class ImagingOp(object):
             nchan = ihdr['nchan']
             npol = ihdr['npol']
             print("Channel no: %d, Polarisation no: %d"%(nchan,npol))
-            igulp_size = self.ntime_gulp * nchan * npol * GRID_SIZE * GRID_SIZE * 8
-            ishape = (self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE)     
+            igulp_size = 2 * self.ntime_gulp * nchan * npol * GRID_SIZE * GRID_SIZE * 8
+            ishape = (2,self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE)     
 
 
             while not self.iring.writing_ended():
@@ -578,7 +608,7 @@ class ImagingOp(object):
                         continue
                     idata = ispan.data_view(numpy.complex64).reshape(ishape)
                     #Square
-                    xdata, ydata = idata[:,:,0,:,:], idata[:,:,1,:,:]
+                    xdata, ydata = idata[:,:,:,0,:,:], idata[:,:,:,1,:,:]
                     xxdata = numpy.abs(xdata*xdata.conj())
                     xydata = numpy.abs(xdata*ydata.conj()) \
                             * numpy.where( numpy.angle(xdata*ydata.conj()) > 0, 1, -1 )
@@ -595,24 +625,18 @@ class ImagingOp(object):
                             self.newflag=False
                     
                         #Accumulate
-                        #self.accumulated_image = self.accumulated_image + idata[ti,:,:,:,:]
-                        self.accumulated_image[:,0,:,:] += xxdata[ti,:,:,:]
-                        self.accumulated_image[:,1,:,:] += xydata[ti,:,:,:]
-                        self.accumulated_image[:,2,:,:] += yxdata[ti,:,:,:]
-                        self.accumulated_image[:,3,:,:] += yydata[ti,:,:,:]
+                        #Subtract auto-correlations.
+                        self.accumulated_image[:,0,:,:] += (xxdata[0,ti,:,:,:]) 
+                        self.accumulated_image[:,1,:,:] += (xydata[0,ti,:,:,:]) 
+                        self.accumulated_image[:,2,:,:] += (yxdata[0,ti,:,:,:]) 
+                        self.accumulated_image[:,3,:,:] += (yydata[0,ti,:,:,:]) 
                         
                         #Save and output
                         accum += 1
                         if accum >= self.accumulation_time:
                             accum = 0
-                            # Save and output
-                            ## TODO: Do this in Matplotlib. For now NPZ files..
-                            numpy.savez(self.filename+'%04i.png'%(fileid),image=self.accumulated_image)
                             self.newflag = True
-                            fig = plt.figure(1)
-                            #print(numpy.shape(self.image[2,0,:,:]))
-                            #print(self.image[2,0,:,:])
-                            
+                            fig = plt.figure(1)                            
                             for i in xrange(npol**2):
                                 ax = fig.add_subplot(2, 2, i+1)
                                 ax.imshow(numpy.real(self.accumulated_image[0,i,:,:].T))
