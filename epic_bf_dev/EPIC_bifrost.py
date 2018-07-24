@@ -54,6 +54,7 @@ for stand in LOCATIONS:
 locations = numpy.delete(locations, list(range(0,locations.shape[0],2)),axis=0)
 # Mask out the outrigger
 locations[255,:] = numpy.nan
+locations[:,1] = locations[:,1]-10.0
 #locations = locations[0:255,:]
 #locations = locations[0:255,:]
 print ("Max X: %f, Max Y: %f" % (numpy.nanmax(locations[:,0]), numpy.nanmax(locations[:,1])))
@@ -308,7 +309,7 @@ class CalibrationOp(object):
         pass
 
 class MOFFCorrelatorOp(object):
-    def __init__(self, log, iring, oring, ntime_gulp=2500, core=-1, cpu=False, *args, **kwargs):
+    def __init__(self, log, iring, oring, ntime_gulp=2500, core=-1, cpu=False, remove_autocorrs = False, *args, **kwargs):
         self.log = log
         self.iring = iring
         self.oring = oring
@@ -318,13 +319,14 @@ class MOFFCorrelatorOp(object):
         self.cpu = cpu        
         self.grid = None
         self.image = None
-
+        self.remove_autocorrs = remove_autocorrs
 
         self.antgridmap = self.make_grid(RESOLUTION,
                                     GRID_SIZE,
-                                    numpy.ones((3,3)),
+                                    numpy.ones((4,4)),
                                     locations).astype(numpy.float)
-        self.autocorrmap = self.make_autocorr_grid(self.antgridmap,GRID_SIZE)
+        if self.remove_autocorrs == True:
+            self.autocorrmap = self.make_autocorr_grid(self.antgridmap,GRID_SIZE)
         self.LinAlgObj = LinAlg() # Jayce does this need to be here?
 
 
@@ -415,7 +417,10 @@ class MOFFCorrelatorOp(object):
 
                 ohdr = ihdr.copy()
                 ohdr['nbit'] = 64
-                ohdr['npol'] = 4
+                if self.remove_autocorrs == True:
+                    ohdr['npol'] = 4
+                else:
+                    ohdr['npol'] = 2
                 ohdr['nchan'] = nchan
                 ohdr_str = json.dumps(ohdr)
                 
@@ -437,13 +442,23 @@ class MOFFCorrelatorOp(object):
 
                 # Four polarisations as I need autocorrelations for XX,XY,YX,YY
                 # Axes are as follows (Image/Autocorrs, Time, Channel, Polarisation, Image, Image)
-                oshape = (2,self.ntime_gulp,nchan,4,GRID_SIZE,GRID_SIZE)
-                ogulp_size = 2 * self.ntime_gulp * nchan * 4 * GRID_SIZE * GRID_SIZE * 8 #Complex64
+                if self.remove_autocorrs == True:
+                    oshape = (2,self.ntime_gulp,nchan,4,GRID_SIZE,GRID_SIZE)
+                    ogulp_size = 2 * self.ntime_gulp * nchan * 4 * GRID_SIZE * GRID_SIZE * 8 #Complex64
+                    self.grid = numpy.zeros(shape=(self.ntime_gulp,nchan,4,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
+                    self.grid = bifrost.ndarray(self.grid)
+                    self.image = numpy.zeros(shape=(self.ntime_gulp,nchan,4,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
+
+                else:
+                    oshape = (1,self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE)
+                    ogulp_size = self.ntime_gulp * nchan * npol * GRID_SIZE * GRID_SIZE * 8
+                    self.grid = numpy.zeros(shape=(self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
+                    self.grid = bifrost.ndarray(self.grid)
+                    self.image = numpy.zeros(shape=(self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
                 self.iring.resize(igulp_size)
-                self.oring.resize(ogulp_size)
-                self.grid = numpy.zeros(shape=(self.ntime_gulp,nchan,4,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
-                self.grid = bifrost.ndarray(self.grid)
-                self.image = numpy.zeros(shape=(self.ntime_gulp,nchan,4,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
+                self.oring.resize(ogulp_size,buffer_factor=20)
+
+                
                 while not self.iring.writing_ended():
                     print("More spans")
                     iseq_spans = iseq.read(igulp_size)
@@ -469,6 +484,7 @@ class MOFFCorrelatorOp(object):
                                             Unpack(tdata, udata)
                                         ## Phase
                                         udata *= phases
+                                        
                                         acdata *= phases
                                         for time_index in numpy.arange(0,self.ntime_gulp):
                                             print("TI: %d"%time_index)
@@ -492,20 +508,22 @@ class MOFFCorrelatorOp(object):
                                                     self.image[time_index,i,j,:,:] = numpy.fft.fftshift(self.image[time_index,i,j,:,:])
                                             odata[...] = self.image
                                     else: #GPU
-                                        
+                                        time1=time.time()
                                         tdata = tdata.copy(space='cuda')
                                         
                                         ## Unpack
                                         try:
                                             udata = udata.reshape(*tdata.shape)
-                                            acdata = acdata.reshape(*acdata.shape)
                                             Unpack(tdata, udata)
-                                            Unpack(tdata, acdata)
+                                            if self.remove_autocorrs == True:
+                                                acdata = acdata.reshape(*acdata.shape)
+                                                Unpack(tdata, acdata)
                                         except NameError:
                                             udata = bifrost.ndarray(shape=tdata.shape, dtype=numpy.complex64, space='cuda')
-                                            acdata = bifrost.ndarray(shape=tdata.shape, dtype=numpy.complex64, space='cuda')
-                                            Unpack(tdata, acdata)
                                             Unpack(tdata, udata)
+                                            if self.remove_autocorrs == True:
+                                                acdata = bifrost.ndarray(shape=tdata.shape, dtype=numpy.complex64, space='cuda')
+                                                Unpack(tdata, acdata)
                                             
                                         ## Phase
                                         try:
@@ -543,10 +561,15 @@ class MOFFCorrelatorOp(object):
                                             print((self.ntime_gulp,nchan,2*GRID_SIZE*GRID_SIZE))
                                             gdata = bifrost.zeros(shape=(self.ntime_gulp,nchan,2*GRID_SIZE*GRID_SIZE),dtype=numpy.complex64, space='cuda')  
                                         ## Grid the Antennas
+                                        timeg1 = time.time()
                                         gdata = self.LinAlgObj.matmul(1.0, udata, bfantgridmap, 0.0, gdata)
+                                        timeg2 = time.time()
+                                        print("LinAlg time: %f"%(timeg2 - timeg1))
+
                                         
                                         ## Inverse transform
                                         gdata = gdata.reshape(self.ntime_gulp,nchan,2,GRID_SIZE,GRID_SIZE)
+                                        timefft1 = time.time()
                                         try:
                                             bf_fft.execute(gdata,fdata,inverse=True)
                                         except NameError:
@@ -554,77 +577,73 @@ class MOFFCorrelatorOp(object):
                                             bf_fft = Fft()
                                             bf_fft.init(gdata,fdata,axes=(3,4))
                                             bf_fft.execute(gdata,fdata,inverse=True)
-                                
-                                        ######### Auto-Correlations ############:
-                                        # Phase auto-correlations.
-
-                                        
-                                        #bifrost.map('a(i,j,k,l) *= b(i,j,k,l)', {'a':acdata, 'b':gphases}, axis_names=('i','j','k','l'), shape=acdata.shape)
-
-                                        try:
-                                            bfautocorrmap
-                                        except NameError:
+                                        timefft2 = time.time()
+                                        print("FFT Time: %f"%(timefft2 - timefft1))
                                             
-                                            autocorrgrid = numpy.zeros((1,4,GRID_SIZE**2,nstand*npol*2), dtype=numpy.complex64)
-                                            autocorrgrid[:,0,:,0::4] = self.autocorrmap
-                                            autocorrgrid[:,1,:,1::4] = self.autocorrmap
-                                            autocorrgrid[:,2,:,2::4] = self.autocorrmap
-                                            autocorrgrid[:,3,:,3::4] = self.autocorrmap
-                                            print("Autocorrelations Shapes: ")
-                                            print(numpy.shape(autocorrgrid))
-                                            autocorrgrid = autocorrgrid.reshape(1,4*GRID_SIZE**2,nstand*npol*2)
-                                            print(numpy.shape(autocorrgrid))
-                                            print(numpy.shape(autocorrgrid.transpose(0,2,1)))
-                                            bfautocorrmap = bifrost.ndarray(autocorrgrid)
-                                            bfautocorrmap = bfautocorrmap.copy(space='cuda')
-                                            bfautocorrmap = bfautocorrmap.transpose(0,2,1)
+                                        if self.remove_autocorrs == True:
+                                            
+                                            try:
+                                                bfautocorrmap
+                                            except NameError:
+                                            
+                                                autocorrgrid = numpy.zeros((1,4,GRID_SIZE**2,nstand*npol*2), dtype=numpy.complex64)
+                                                autocorrgrid[:,0,:,0::4] = self.autocorrmap
+                                                autocorrgrid[:,1,:,1::4] = self.autocorrmap
+                                                autocorrgrid[:,2,:,2::4] = self.autocorrmap
+                                                autocorrgrid[:,3,:,3::4] = self.autocorrmap
+                                                print("Autocorrelations Shapes: ")
+                                                print(numpy.shape(autocorrgrid))
+                                                autocorrgrid = autocorrgrid.reshape(1,4*GRID_SIZE**2,nstand*npol*2)
+                                                print(numpy.shape(autocorrgrid))
+                                                print(numpy.shape(autocorrgrid.transpose(0,2,1)))
+                                                bfautocorrmap = bifrost.ndarray(autocorrgrid)
+                                                bfautocorrmap = bfautocorrmap.copy(space='cuda')
+                                                bfautocorrmap = bfautocorrmap.transpose(0,2,1)
                                         
 
-                                        ## Generate the Autocorrelations
-                                        autocorrs = bifrost.zeros(shape=(self.ntime_gulp,nchan,nstand,4),dtype=numpy.complex64,space='cuda')
-                                        # You have to cast everything that goes into this map?
-                                        # Whose responsibility is this madness?
-                                    
-                                        bifrost.map('a(i,j,k,in) = (Complex<float>(b(i,j,k,in).real,b(i,j,k,in).imag) * Complex<float>(b(i,j,k,in).real,-b(i,j,k,in).imag))', {'a':autocorrs, 'b':acdata,'in':0}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # XX Auto-Correlations
-                                        bifrost.map('a(i,j,k,in) = (Complex<float>(b(i,j,k,xn).real,b(i,j,k,xn).imag) * Complex<float>(b(i,j,k,in).real,-b(i,j,k,in).imag))', {'a':autocorrs, 'b':acdata,'in':1,'xn':0}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # XY Auto-Correlations
-                                        bifrost.map('a(i,j,k,in) = (Complex<float>(b(i,j,k,yn).real,b(i,j,k,yn).imag) * Complex<float>(b(i,j,k,xn).real,-b(i,j,k,xn).imag))', {'a':autocorrs, 'b':acdata,'in':2,'yn':1,'xn':0}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # YX Auto-Correlations 
-                                        bifrost.map('a(i,j,k,in) = (Complex<float>(b(i,j,k,yn).real,b(i,j,k,yn).imag) * Complex<float>(b(i,j,k,yn).real,-b(i,j,k,yn).imag))', {'a':autocorrs, 'b':acdata,'in':3,'yn':1}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # YY Auto-Correlations
+                                                ## Generate the Autocorrelations
+                                                autocorrs = bifrost.zeros(shape=(self.ntime_gulp,nchan,nstand,4),dtype=numpy.complex64,space='cuda')                       
+                                                bifrost.map('a(i,j,k,in) = (b(i,j,k,in) * b(i,j,k,in).conj())', {'a':autocorrs, 'b':acdata,'in':0}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # XX Auto-Correlations
+                                                bifrost.map('a(i,j,k,in) = (b(i,j,k,xn) * b(i,j,k,in).conj())', {'a':autocorrs, 'b':acdata,'in':1,'xn':0}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # XY Auto-Correlations
+                                                bifrost.map('a(i,j,k,in) = (b(i,j,k,yn) * b(i,j,k,xn).conj())', {'a':autocorrs, 'b':acdata,'in':2,'yn':1,'xn':0}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # YX Auto-Correlations 
+                                                bifrost.map('a(i,j,k,in) = (b(i,j,k,yn) * b(i,j,k,yn).conj())', {'a':autocorrs, 'b':acdata,'in':3,'yn':1}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # YY Auto-Correlations
 
-                                        ## Place to put autocorrelation data
+                                                ## Place to put autocorrelation data
+                                                
+                                                try:
+                                                    adata = adata.reshape(self.ntime_gulp,nchan,4*GRID_SIZE**2)
+                                                except NameError:
+                                                    print((self.ntime_gulp,nchan,4*GRID_SIZE**2))
+                                                    adata = bifrost.zeros(shape=(self.ntime_gulp,nchan,4*GRID_SIZE**2),dtype=numpy.complex64,space='cuda')
+                                        
+                                                ## Grid the Autocorrelations
+                                        
+                                                autocorrs = autocorrs.reshape(self.ntime_gulp,nchan,-1)
+                                                print(autocorrs.shape)
+                                                adata = self.LinAlgObj.matmul(1.0, autocorrs, bfautocorrmap, 0.0, adata)
 
-                                        try:
-                                            adata = adata.reshape(self.ntime_gulp,nchan,4*GRID_SIZE**2)
-                                        except NameError:
-                                            print((self.ntime_gulp,nchan,4*GRID_SIZE**2))
-                                            adata = bifrost.zeros(shape=(self.ntime_gulp,nchan,4*GRID_SIZE**2),dtype=numpy.complex64,space='cuda')
-                                        
-                                        ## Grid the Autocorrelations
-                                        
-                                        autocorrs = autocorrs.reshape(self.ntime_gulp,nchan,-1)
-                                        print(autocorrs.shape)
-                                        adata = self.LinAlgObj.matmul(1.0, autocorrs, bfautocorrmap, 0.0, adata)
+                                                ## Combine the polarizations and output for gridded electric fields.
+                                        odata[0,:,:,0:2,:,:] = numpy.fft.fftshift(fdata.copy(space='system') , axes=(3,4))/GRID_SIZE**2
 
-                                        ## Put the autocorrelations in output ring.
-
-                                                                    
-                                        ## Combine the polarizations and output for gridded electric fields.
-                                        odata[0,:,:,0:2,:,:] = numpy.fft.fftshift(fdata.copy(space='system') , axes=(3,4))
-                                        
-                                        ## Output autocorrelations in the same gulp.
-                                        adata = adata.reshape(self.ntime_gulp,nchan,4,GRID_SIZE,GRID_SIZE)
-                                        odata[1,...] = adata.copy(space='system')
-                                        
+                                        if self.remove_autocorrs == True:
+                                            ## Output autocorrelations in the same gulp.
+                                            adata = adata.reshape(self.ntime_gulp,nchan,4,GRID_SIZE,GRID_SIZE)
+                                            odata[1,...] = adata.copy(space='system')
+                                        time2=time.time()
+                                        print("GPU Time Taken: %f"%(time2-time1))
                                         
 class ImagingOp(object):
-    def __init__(self, log, iring, filename, ntime_gulp=100, accumulation_time=1, core=-1,*args, **kwargs):
+    def __init__(self, log, iring, filename, ntime_gulp=100, accumulation_time=1, core=-1, remove_autocorrs = False, *args, **kwargs):
         self.log = log
         self.iring = iring
         self.filename = filename
         self.ntime_gulp= ntime_gulp
         self.accumulation_time = accumulation_time
         self.core = core
+        self.remove_autocorrs = remove_autocorrs
         self.accumulated_image = None
         self.newflag = True
+        
 
     def main(self):
         #bifrost.affinity.set_core(self.core)
@@ -637,8 +656,13 @@ class ImagingOp(object):
             nchan = ihdr['nchan']
             npol = ihdr['npol']
             print("Channel no: %d, Polarisation no: %d"%(nchan,npol))
-            igulp_size = 2 * self.ntime_gulp * nchan * npol * GRID_SIZE * GRID_SIZE * 8
-            ishape = (2,self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE)     
+
+            if self.remove_autocorrs == True:
+                igulp_size = 2 * self.ntime_gulp * nchan * npol * GRID_SIZE * GRID_SIZE * 8
+                ishape = (2,self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE)
+            else:
+                igulp_size = self.ntime_gulp * nchan * npol * GRID_SIZE * GRID_SIZE * 8
+                ishape = (1,self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE)
 
 
             while not self.iring.writing_ended():
@@ -668,10 +692,16 @@ class ImagingOp(object):
                             
                         #Accumulate
                         #Subtract auto-correlations.
-                        self.accumulated_image[:,0,:,:] += (xxdata[ti,:,:,:] - numpy.abs(idata[1,ti,:,0,:,:]))
-                        self.accumulated_image[:,1,:,:] += (xydata[ti,:,:,:] - numpy.abs(idata[1,ti,:,1,:,:]))
-                        self.accumulated_image[:,2,:,:] += (yxdata[ti,:,:,:] - numpy.abs(idata[1,ti,:,2,:,:]))
-                        self.accumulated_image[:,3,:,:] += (yydata[ti,:,:,:] - numpy.abs(idata[1,ti,:,3,:,:]))
+                        if self.remove_autocorrs == True:
+                            self.accumulated_image[:,0,:,:] += (xxdata[ti,:,:,:] - numpy.abs(idata[1,ti,:,0,:,:]))
+                            self.accumulated_image[:,1,:,:] += (xydata[ti,:,:,:] - numpy.abs(idata[1,ti,:,1,:,:]))
+                            self.accumulated_image[:,2,:,:] += (yxdata[ti,:,:,:] - numpy.abs(idata[1,ti,:,2,:,:]))
+                            self.accumulated_image[:,3,:,:] += (yydata[ti,:,:,:] - numpy.abs(idata[1,ti,:,3,:,:]))
+                        else:
+                            self.accumulated_image[:,0,:,:] += (xxdata[ti,:,:,:])
+                            self.accumulated_image[:,1,:,:] += (xydata[ti,:,:,:])
+                            self.accumulated_image[:,2,:,:] += (yxdata[ti,:,:,:])
+                            self.accumulated_image[:,3,:,:] += (yydata[ti,:,:,:])
                             
                 
                         #Save and output
@@ -743,6 +773,7 @@ def main():
     parser.add_argument('-t', '--nts',type=int, default = 1000, help= 'Number of timestamps per span.')
     parser.add_argument('-u', '--accumulate',type=int, default = 1000, help='How many milliseconds to accumulate an image over.')
     parser.add_argument('-n', '--channels',type=int, default=1, help='How many channels to produce.')
+    parser.add_argument('-r', '--removeautocorrs',action='store_true', help = 'Removes Autocorrelations')
 
     args = parser.parse_args()
     # Logging Setup
@@ -793,8 +824,8 @@ def main():
     
     ops.append(OfflineCaptureOp(log, fcapture_ring,args.tbnfile))
     ops.append(FDomainOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts, nchan_out=args.channels))
-    ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, ntime_gulp=args.nts, cpu=args.cpuonly))
-    ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", ntime_gulp=args.nts, accumulation_time=args.accumulate))
+    ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, ntime_gulp=args.nts, cpu=args.cpuonly, remove_autocorrs=args.removeautocorrs))
+    ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", ntime_gulp=args.nts, accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs))
 
     threads= [threading.Thread(target=op.main) for op in ops]
 
