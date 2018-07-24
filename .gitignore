@@ -2,6 +2,9 @@
 /*.pyc
 modules/
 main/
+epic_bf_dev/*~
+epic_bf_dev/*.pyc
+epic_bf_dev/*.png
 epic/*~
 epic/*.pyc
 scripts/*~
