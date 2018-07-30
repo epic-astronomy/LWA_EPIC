@@ -595,7 +595,9 @@ class MOFFCorrelatorOp(object):
                                             bf_fft.execute(gdata,fdata,inverse=True)
                                         timefft2 = time.time()
                                         print("  FFT Time: %f"%(timefft2 - timefft1))
-                                        
+
+                                        # Normalise FFT Transform
+                                        bifrost.map('a(i,j,k,l,m) = a(i,j,k,l,m) / (b*b)', {'a':fdata, 'b':GRID_SIZE}, axis_names=('i','j','k','l','m'), shape=fdata.shape)
                                         if self.remove_autocorrs == True:
                                             time1f = time.time()
                                             
