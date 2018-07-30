@@ -615,32 +615,31 @@ class MOFFCorrelatorOp(object):
                                                 print(numpy.shape(autocorrgrid.transpose(0,2,1)))
                                                 bfautocorrmap = bifrost.ndarray(autocorrgrid)
                                                 bfautocorrmap = bfautocorrmap.copy(space='cuda')
-                                                bfautocorrmap = bfautocorrmap.transpose(0,2,1)
-                                        
+                                                bfautocorrmap = bfautocorrmap.transpose(0,2,1)       
 
-                                                ## Generate the Autocorrelations
-                                                autocorrs = bifrost.zeros(shape=(self.ntime_gulp,nchan,nstand,4),dtype=numpy.complex64,space='cuda')                       
-                                                bifrost.map('a(i,j,k,in) = (b(i,j,k,in) * b(i,j,k,in).conj())', {'a':autocorrs, 'b':acdata,'in':0}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # XX Auto-Correlations
-                                                bifrost.map('a(i,j,k,in) = (b(i,j,k,xn) * b(i,j,k,in).conj())', {'a':autocorrs, 'b':acdata,'in':1,'xn':0}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # XY Auto-Correlations
-                                                bifrost.map('a(i,j,k,in) = (b(i,j,k,yn) * b(i,j,k,xn).conj())', {'a':autocorrs, 'b':acdata,'in':2,'yn':1,'xn':0}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # YX Auto-Correlations 
-                                                bifrost.map('a(i,j,k,in) = (b(i,j,k,yn) * b(i,j,k,yn).conj())', {'a':autocorrs, 'b':acdata,'in':3,'yn':1}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # YY Auto-Correlations
+                                            ## Generate the Autocorrelations
+                                            autocorrs = bifrost.zeros(shape=(self.ntime_gulp,nchan,nstand,4),dtype=numpy.complex64,space='cuda')                       
+                                            bifrost.map('a(i,j,k,in) = (b(i,j,k,in) * b(i,j,k,in).conj())', {'a':autocorrs, 'b':acdata,'in':0}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # XX Auto-Correlations
+                                            bifrost.map('a(i,j,k,in) = (b(i,j,k,xn) * b(i,j,k,in).conj())', {'a':autocorrs, 'b':acdata,'in':1,'xn':0}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # XY Auto-Correlations
+                                            bifrost.map('a(i,j,k,in) = (b(i,j,k,yn) * b(i,j,k,xn).conj())', {'a':autocorrs, 'b':acdata,'in':2,'yn':1,'xn':0}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # YX Auto-Correlations 
+                                            bifrost.map('a(i,j,k,in) = (b(i,j,k,yn) * b(i,j,k,yn).conj())', {'a':autocorrs, 'b':acdata,'in':3,'yn':1}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # YY Auto-Correlations
 
-                                                ## Place to put autocorrelation data
+                                            ## Place to put autocorrelation data
                                                 
-                                                try:
-                                                    adata = adata.reshape(self.ntime_gulp,nchan,4*GRID_SIZE**2)
-                                                except NameError:
-                                                    print((self.ntime_gulp,nchan,4*GRID_SIZE**2))
-                                                    adata = bifrost.zeros(shape=(self.ntime_gulp,nchan,4*GRID_SIZE**2),dtype=numpy.complex64,space='cuda')
+                                            try:
+                                                adata = adata.reshape(self.ntime_gulp,nchan,4*GRID_SIZE**2)
+                                            except NameError:
+                                                print((self.ntime_gulp,nchan,4*GRID_SIZE**2))
+                                                adata = bifrost.zeros(shape=(self.ntime_gulp,nchan,4*GRID_SIZE**2),dtype=numpy.complex64,space='cuda')
                                         
-                                                ## Grid the Autocorrelations
+                                            ## Grid the Autocorrelations
                                         
-                                                autocorrs = autocorrs.reshape(self.ntime_gulp,nchan,-1)
-                                                print(autocorrs.shape)
-                                                adata = self.LinAlgObj.matmul(1.0, autocorrs, bfautocorrmap, 0.0, adata)
-                                                time1g = time.time()
-                                                print("  Auto-corrs LinAlg time: %f" % (time1g-time1f))
-                                                ## Combine the polarizations and output for gridded electric fields.
+                                            autocorrs = autocorrs.reshape(self.ntime_gulp,nchan,-1)
+                                            print(autocorrs.shape)
+                                            adata = self.LinAlgObj.matmul(1.0, autocorrs, bfautocorrmap, 0.0, adata)
+                                            time1g = time.time()
+                                            print("  Auto-corrs LinAlg time: %f" % (time1g-time1f))
+                                            ## Combine the polarizations and output for gridded electric fields.
                                         time1h = time.time()
                                         odata[0,:,:,0:2,:,:] = numpy.fft.fftshift(fdata.copy(space='system') , axes=(3,4))/GRID_SIZE**2
                                         time1i = time.time()
