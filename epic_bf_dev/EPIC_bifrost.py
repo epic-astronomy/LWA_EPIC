@@ -410,14 +410,10 @@ class MOFFCorrelatorOp(object):
             #antgrid2d = numpy.fft.fftshift(antgrid2d)
             antgrid2d = numpy.fft.ifft2(antgrid2d)
             #antgrid2d = numpy.fft.fftshift(antgrid2d)
-            antgrid2d = antgrid2d * antgrid2d.conj()  * mat.shape[0]*mat.shape[1]           
+            antgrid2d = antgrid2d * antgrid2d.conj()        
             mat[:,i] = numpy.abs((antgrid2d.reshape(ngrid*ngrid)))
-
-            
             
         return mat
-            
-                       
         
     def main(self):
         #bifrost.affinity.set_core(self.core)
@@ -463,8 +459,7 @@ class MOFFCorrelatorOp(object):
                     delay = a.cable.delay(freq) - a.stand.z / speedOfLight
                     phases[:,:,i,1] = numpy.exp(2j*numpy.pi*freq*delay)
                     phases[:,:,i,1] /= numpy.sqrt(a.cable.gain(freq))
-
-
+                    
                 # Four polarisations as I need autocorrelations for XX,XY,YX,YY
                 # Axes are as follows (Image/Autocorrs, Time, Channel, Polarisation, Image, Image)
                 if self.remove_autocorrs == True:
@@ -581,8 +576,8 @@ class MOFFCorrelatorOp(object):
                                         bfantgridmap
                                     except NameError:
                                         antgrid = numpy.zeros((1,2,GRID_SIZE**2,nstand*npol), dtype=numpy.complex64)
-                                        antgrid[:,0,:,0::2] = self.antgridmap / GRID_SIZE
-                                        antgrid[:,1,:,1::2] = self.antgridmap / GRID_SIZE
+                                        antgrid[:,0,:,0::2] = self.antgridmap / GRID_SIZE**2
+                                        antgrid[:,1,:,1::2] = self.antgridmap / GRID_SIZE**2
                                         print("Antenna Grid Shapes: ")
                                         print(numpy.shape(antgrid))
                                         antgrid = antgrid.reshape(1,2*GRID_SIZE**2,nstand*npol)
@@ -668,7 +663,7 @@ class MOFFCorrelatorOp(object):
                                     odata[0,:,:,0:2,:,:] = fdata.copy(space='cuda')
                                     time1i = time.time()
                                     print("  Shift-n-save time: %f" % (time1i-time1h))
-
+                                    
                                     if self.remove_autocorrs == True:
                                         ## Output autocorrelations in the same gulp.
                                         adata = adata.reshape(self.ntime_gulp,nchan,4,GRID_SIZE,GRID_SIZE)
