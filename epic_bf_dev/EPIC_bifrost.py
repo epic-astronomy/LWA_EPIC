@@ -24,6 +24,7 @@ from bifrost.udp_transmit import UDPTransmit as BF_UDPTransmit
 from bifrost.ring import Ring
 from bifrost.unpack import unpack as Unpack
 from bifrost.quantize import quantize as Quantize
+from bifrost.reduce import reduce as Reduce 
 from bifrost.proclog import ProcLog
 from bifrost.libbifrost import bf
 from bifrost.linalg import LinAlg
@@ -626,7 +627,132 @@ class MOFFCorrelatorOp(object):
                                     runtime_history.append(time2-time1)
                                     print("-> Average GPU Time Taken: %f (%i samples)" % (1.0*sum(runtime_history)/len(runtime_history), len(runtime_history)))
 
-                                        
+class ImagingOP_GPU(object):
+    def __init__(self, log, iring, oring, ntime_gulp, accumulation_time=100, gpu=-1, remove_autocorrs=False, *args, **kwargs):
+        self.log = log
+        self.iring = iring
+        self.oring = oring
+        self.ntime_gulp = ntime_gulp
+        self.accumulation_time = accumulation_time
+        self.remove_autocorrs = remove_autocorrs
+        self.accumulated_image = None
+        self.newflag = True
+         
+    def main(self):
+        
+        accum = 0
+        with self.oring.begin_writing() as oring:
+            for iseq in self.iring.read(guarantee=True):
+                ihdr = json.loads(iseq.header.tostring())
+                nchan = ihdr['nchan']
+                npol = ihdr['npol']
+
+                ohdr = ihdr.copy()
+                
+                ohdr_str = json.dumps(ohdr)
+                
+                
+                if self.remove_autocorrs == True:
+                    igulp_size = 2 * self.ntime_gulp * nchan * npol * GRID_SIZE * GRID_SIZE * 8
+                    ishape = (2, self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE)
+                else:
+                    igulp_size = self.ntime_gulp * nchan * npol * GRID_SIZE * GRID_SIZE * 8
+                    ishape = (1, self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE)
+
+                ogulp_size = nchan * npol**2 * GRID_SIZE * GRID_SIZE * 8
+                oshape = (1,1,nchan, npol**2, GRID_SIZE, GRID_SIZE)
+                self.oring.resize(ogulp_size,buffer_factor=10)
+                while not self.iring.writing_ended():
+                    iseq_spans = iseq.read(igulp_size)
+                    for ispan in iseq_spans:
+                        # Skip final gulp
+                        if ispan.size < igulp_size:
+                            continue
+                        with oring.begin_sequence(time_tag=iseq.time_tag,header=ohdr_str) as oseq:
+                            with oseq.reserve(ogulp_size) as ospan:
+
+                                odata = ospan.data_view(numpy.complex64).reshape(oshape)
+                                if self.remove_autocorrs == True:
+                                    idata = ispan.data_view(numpy.complex64).reshape(2,self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE)
+                                    ldata = bifrost.ndarray(idata)
+                                    ldata = ldata.copy(space='cuda')
+                                else:
+                                    idata = ispan.data_view(numpy.complex64).reshape(1,self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE)
+                                    ldata = bifrost.ndarray(idata)
+                                    ldata = ldata.copy(space='cuda')
+                            
+                            try:
+                                crosspol
+                            except NameError:
+                                if self.remove_autocorrs == True:
+                                    pass
+                                else:
+                                    crosspol = bifrost.zeros(shape=(1,self.ntime_gulp,nchan,npol**2,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64,space='cuda')
+                                
+                                
+
+                            if self.remove_autocorrs == True:
+                                pass # For now
+                            else:
+                                ## Cross Multiply Image Data
+                                bifrost.map('a(i,j,k,z,m,n) = (b(i,j,k,x,m,n) * b(i,j,k,y,m,n).conj())',
+                                            {'a': crosspol,
+                                             'b': ldata,
+                                             'x': 0,
+                                             'y': 0,
+                                             'z': 0},
+                                            axis_names=('i','j','k','l','m','n'),
+                                            shape = ldata.shape)
+                                bifrost.map('a(i,j,k,z,m,n) = (b(i,j,k,x,m,n) * b(i,j,k,y,m,n).conj())',
+                                            {'a': crosspol,
+                                             'b': ldata,
+                                             'x': 0,
+                                             'y': 1,
+                                             'z': 1},
+                                            axis_names=('i','j','k','l','m','n'),
+                                            shape = ldata.shape)
+                                bifrost.map('a(i,j,k,z,m,n) = (b(i,j,k,x,m,n) * b(i,j,k,y,m,n).conj())',
+                                            {'a': crosspol,
+                                             'b': ldata,
+                                             'x': 1,
+                                             'y': 0,
+                                             'z': 2},
+                                            axis_names=('i','j','k','l','m','n'),
+                                            shape = ldata.shape)
+                                bifrost.map('a(i,j,k,z,m,n) = (b(i,j,k,x,m,n) * b(i,j,k,y,m,n).conj())',
+                                            {'a': crosspol,
+                                             'b': ldata,
+                                             'x': 1,
+                                             'y': 1,
+                                             'z': 3},
+                                            axis_names=('i','j','k','l','m','n'),
+                                            shape = ldata.shape)
+
+                            
+
+                            if self.newflag == True:
+
+                                self.accumulated_image = bifrost.zeros(shape=(nchan,npol**2, GRID_SIZE, GRID_SIZE))
+                                self.accumulated_image = self.accumulated_image.copy(space='cuda')
+                                self.newflag = False
+                            
+
+                            if self.remove_autocorrs == True:
+                                pass #Ignore for now
+                            else:
+                                odata = Reduce(crosspol,odata,op='sum')
+                                #outdata = outdata.copy(space='system')
+                                #numpy.shape(outdata)
+                                #odata = outdata
+                            print("###IMAGING BLOCK###")
+                            print("Imaging Op Loop Finished")
+                    break
+                                
+                                
+                            
+
+
+                               
 class ImagingOp(object):
     def __init__(self, log, iring, filename, ntime_gulp=100, accumulation_time=1, core=-1, remove_autocorrs = False, *args, **kwargs):
         self.log = log
@@ -811,11 +937,13 @@ def main():
         fdomain_ring = Ring(name="fengine", space="cuda_host")
         fcapture_ring = Ring(name="capture",space="cuda_host")
     gridandfft_ring = Ring(name="gridandfft", space="cuda")
+    image_ring = Ring(name="image", space="system")
     
     ops.append(OfflineCaptureOp(log, fcapture_ring,args.tbnfile))
     ops.append(FDomainOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts, nchan_out=args.channels))
-    ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, ntime_gulp=args.nts, cpu=args.cpuonly, remove_autocorrs=args.removeautocorrs))
-    ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", ntime_gulp=args.nts, accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs))
+    ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, ntime_gulp=args.nts, remove_autocorrs=args.removeautocorrs))
+    ops.append(ImagingOP_GPU(log, gridandfft_ring, image_ring, ntime_gulp=args.nts,accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs))
+    #ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", ntime_gulp=args.nts, accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs))
 
     threads= [threading.Thread(target=op.main) for op in ops]
 
