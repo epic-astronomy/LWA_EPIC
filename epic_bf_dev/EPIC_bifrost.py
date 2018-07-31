@@ -314,14 +314,13 @@ class CalibrationOp(object):
         pass
 
 class MOFFCorrelatorOp(object):
-    def __init__(self, log, iring, oring, ntime_gulp=2500, core=-1, cpu=False, remove_autocorrs = False, *args, **kwargs):
+    def __init__(self, log, iring, oring, ntime_gulp=2500, core=-1, remove_autocorrs = False, *args, **kwargs):
         self.log = log
         self.iring = iring
         self.oring = oring
         self.ntime_gulp = ntime_gulp
 
         self.core = core
-        self.cpu = cpu        
         self.grid = None
         self.image = None
         self.remove_autocorrs = remove_autocorrs
@@ -463,7 +462,7 @@ class MOFFCorrelatorOp(object):
                     self.grid = bifrost.ndarray(self.grid)
                     self.image = numpy.zeros(shape=(self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
                 self.iring.resize(igulp_size)
-                self.oring.resize(ogulp_size,buffer_factor=20)
+                self.oring.resize(ogulp_size)
 
                 
                 while not self.iring.writing_ended():
@@ -482,184 +481,151 @@ class MOFFCorrelatorOp(object):
                                     ## Fix the type
                                     tdata = bifrost.ndarray(shape=ishape, dtype='ci4', native=False, buffer=idata.ctypes.data)
                                     odata = ospan.data_view(numpy.complex64).reshape(oshape)
-                                    if(self.cpu == True): #CPU
-                                        ## Unpack. 
-                                        try:
-                                            Unpack(tdata, udata)
-                                        except NameError: #If one doesn't exist, then neither does the other.
-                                            udata = bifrost.ndarray(shape=tdata.shape, dtype='cf32', space='system')
-                                            Unpack(tdata, udata)
-                                        ## Phase
-                                        udata *= phases
-                                        
-                                        acdata *= phases
-                                        for time_index in numpy.arange(0,self.ntime_gulp):
-                                            print("TI: %d"%time_index)
 
-                                            for i in numpy.arange(nchan): 
-                                                for j in numpy.arange(2):
-                                                    evectorr = idata[time_index,i,:,j].real
-                                                    evectorc = idata[time_index,i,:,j].imag
-                                                    #t1 = time.time()
-                                                    dotr = numpy.dot(self.antgridmap,evectorr).reshape(GRID_SIZE,GRID_SIZE)
-                                                    doti = numpy.dot(self.antgridmap,evectorc).reshape(GRID_SIZE,GRID_SIZE)
-                                                    #t2 = time.time()
-                                                    #print("DOT TIME: %f"%(t2-t1))
-                                                    self.grid[time_index,i,j,:,:] += dotr + 1J*doti
+                                    time1=time.time()
+                                    tdata = tdata.copy(space='cuda')
+                                    time1a = time.time()
+                                    print("  Input copy time: %f" % (time1a-time1))
                                         
-                                            #FFT
-                                            for i in numpy.arange(nchan):
-                                                for j in numpy.arange(2):
-                                                    self.image[time_index,i,j,:,:] = numpy.fft.fftshift(self.grid[time_index,i,j,:,:])
-                                                    self.image[time_index,i,j,:,:] = numpy.fft.ifft2(self.image[time_index,i,j,:,:])
-                                                    self.image[time_index,i,j,:,:] = numpy.fft.fftshift(self.image[time_index,i,j,:,:])
-                                            odata[...] = self.image
-                                    else: #GPU
-                                        time1=time.time()
-                                        tdata = tdata.copy(space='cuda')
-                                        time1a = time.time()
-                                        print("  Input copy time: %f" % (time1a-time1))
-                                        
-                                        ## Unpack
-                                        try:
-                                            udata = udata.reshape(*tdata.shape)
-                                            Unpack(tdata, udata)
-                                            if self.remove_autocorrs == True:
-                                                acdata = acdata.reshape(*acdata.shape)
-                                                Unpack(tdata, acdata)
-                                        except NameError:
-                                            udata = bifrost.ndarray(shape=tdata.shape, dtype=numpy.complex64, space='cuda')
-                                            Unpack(tdata, udata)
-                                            if self.remove_autocorrs == True:
-                                                acdata = bifrost.ndarray(shape=tdata.shape, dtype=numpy.complex64, space='cuda')
-                                                Unpack(tdata, acdata)
-                                        time1b = time.time()
-                                        print("  Unpack time: %f" % (time1b-time1a))
+                                    ## Unpack
+                                    try:
+                                        udata = udata.reshape(*tdata.shape)
+                                        Unpack(tdata, udata)
+                                        if self.remove_autocorrs == True:
+                                            acdata = acdata.reshape(*acdata.shape)
+                                            Unpack(tdata, acdata)
+                                    except NameError:
+                                        udata = bifrost.ndarray(shape=tdata.shape, dtype=numpy.complex64, space='cuda')
+                                        Unpack(tdata, udata)
+                                        if self.remove_autocorrs == True:
+                                            acdata = bifrost.ndarray(shape=tdata.shape, dtype=numpy.complex64, space='cuda')
+                                            Unpack(tdata, acdata)
+                                    time1b = time.time()
+                                    print("  Unpack time: %f" % (time1b-time1a))
                                             
-                                        ## Phase
-                                        try:
-                                            bifrost.map('a(i,j,k,l) *= b(i,j,k,l)', {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)                                            
-                                        except NameError:
-                                            phases = bifrost.ndarray(phases)
-                                            gphases = phases.copy(space='cuda')
-                                            bifrost.map('a(i,j,k,l) *= b(i,j,k,l)', {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)
-                                        time1c = time.time()
-                                        print("  Phase-up time: %f" % (time1c-time1b))
+                                    ## Phase
+                                    try:
+                                        bifrost.map('a(i,j,k,l) *= b(i,j,k,l)', {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)                                            
+                                    except NameError:
+                                        phases = bifrost.ndarray(phases)
+                                        gphases = phases.copy(space='cuda')
+                                        bifrost.map('a(i,j,k,l) *= b(i,j,k,l)', {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)
+                                    time1c = time.time()
+                                    print("  Phase-up time: %f" % (time1c-time1b))
 
-                                        #acdata = bifrost.ndarray(udata,space='cuda')
-                                        ## Combine stand and pols into standpols
-                                        udata = udata.reshape(self.ntime_gulp,nchan,-1)
-                                        time1d = time.time()
-                                        print("  'udata' Reshape time: %f" % (time1d-time1c))
+                                    #acdata = bifrost.ndarray(udata,space='cuda')
+                                    ## Combine stand and pols into standpols
+                                    udata = udata.reshape(self.ntime_gulp,nchan,-1)
+                                    time1d = time.time()
+                                    print("  'udata' Reshape time: %f" % (time1d-time1c))
                                     
-                                        ## Make sure we have gridding kernel on the GPU
-                                        try:
-                                            bfantgridmap
-                                        except NameError:
-                                            antgrid = numpy.zeros((1,2,GRID_SIZE**2,nstand*npol), dtype=numpy.complex64)
-                                            antgrid[:,0,:,0::2] = self.antgridmap
-                                            antgrid[:,1,:,1::2] = self.antgridmap
-                                            print("Antenna Grid Shapes: ")
-                                            print(numpy.shape(antgrid))
-                                            antgrid = antgrid.reshape(1,2*GRID_SIZE**2,nstand*npol)
-                                            print(numpy.shape(antgrid))
-                                            bfantgridmap = bifrost.ndarray(antgrid)
-                                            bfantgridmap = bfantgridmap.copy(space='cuda')
-                                            bfantgridmap = bfantgridmap.transpose(0,2,1)
-                                        time1e = time.time()
-                                        print("  'bfantgridmap' Check time: %f" % (time1e-time1d))
+                                    ## Make sure we have gridding kernel on the GPU
+                                    try:
+                                        bfantgridmap
+                                    except NameError:
+                                        antgrid = numpy.zeros((1,2,GRID_SIZE**2,nstand*npol), dtype=numpy.complex64)
+                                        antgrid[:,0,:,0::2] = self.antgridmap
+                                        antgrid[:,1,:,1::2] = self.antgridmap
+                                        print("Antenna Grid Shapes: ")
+                                        print(numpy.shape(antgrid))
+                                        antgrid = antgrid.reshape(1,2*GRID_SIZE**2,nstand*npol)
+                                        print(numpy.shape(antgrid))
+                                        bfantgridmap = bifrost.ndarray(antgrid)
+                                        bfantgridmap = bfantgridmap.copy(space='cuda')
+                                        bfantgridmap = bfantgridmap.transpose(0,2,1)
+                                    time1e = time.time()
+                                    print("  'bfantgridmap' Check time: %f" % (time1e-time1d))
 
-                                        ## Make sure we have a place to put the data
-                                        # Gridded Antennas
-                                        try:
-                                            gdata = gdata.reshape(self.ntime_gulp,nchan,2*GRID_SIZE*GRID_SIZE)
-                                        except NameError:
-                                            print((self.ntime_gulp,nchan,2*GRID_SIZE*GRID_SIZE))
-                                            gdata = bifrost.zeros(shape=(self.ntime_gulp,nchan,2*GRID_SIZE*GRID_SIZE),dtype=numpy.complex64, space='cuda')  
-                                        ## Grid the Antennas
-                                        timeg1 = time.time()
-                                        gdata = self.LinAlgObj.matmul(1.0, udata, bfantgridmap, 0.0, gdata)
-                                        timeg2 = time.time()
-                                        print("  LinAlg time: %f"%(timeg2 - timeg1))
+                                    ## Make sure we have a place to put the data
+                                    # Gridded Antennas
+                                    try:
+                                        gdata = gdata.reshape(self.ntime_gulp,nchan,2*GRID_SIZE*GRID_SIZE)
+                                    except NameError:
+                                        print((self.ntime_gulp,nchan,2*GRID_SIZE*GRID_SIZE))
+                                        gdata = bifrost.zeros(shape=(self.ntime_gulp,nchan,2*GRID_SIZE*GRID_SIZE),dtype=numpy.complex64, space='cuda')  
+                                    ## Grid the Antennas
+                                    timeg1 = time.time()
+                                    gdata = self.LinAlgObj.matmul(1.0, udata, bfantgridmap, 0.0, gdata)
+                                    timeg2 = time.time()
+                                    print("  LinAlg time: %f"%(timeg2 - timeg1))
+                                    
+                                    ## Inverse transform
+                                    gdata = gdata.reshape(self.ntime_gulp,nchan,2,GRID_SIZE,GRID_SIZE)
+                                    timefft1 = time.time()
+                                    try:
+                                        bf_fft.execute(gdata,fdata,inverse=True)
+                                    except NameError:
+                                        fdata = bifrost.ndarray(shape=gdata.shape, dtype=numpy.complex64, space='cuda')
+                                        bf_fft = Fft()
+                                        bf_fft.init(gdata,fdata,axes=(3,4))
+                                        bf_fft.execute(gdata,fdata,inverse=True)
+                                    timefft2 = time.time()
+                                    print("  FFT Time: %f"%(timefft2 - timefft1))
 
-                                        
-                                        ## Inverse transform
-                                        gdata = gdata.reshape(self.ntime_gulp,nchan,2,GRID_SIZE,GRID_SIZE)
-                                        timefft1 = time.time()
-                                        try:
-                                            bf_fft.execute(gdata,fdata,inverse=True)
-                                        except NameError:
-                                            fdata = bifrost.ndarray(shape=gdata.shape, dtype=numpy.complex64, space='cuda')
-                                            bf_fft = Fft()
-                                            bf_fft.init(gdata,fdata,axes=(3,4))
-                                            bf_fft.execute(gdata,fdata,inverse=True)
-                                        timefft2 = time.time()
-                                        print("  FFT Time: %f"%(timefft2 - timefft1))
-
-                                        # Normalise FFT Transform
-                                        bifrost.map('a(i,j,k,l,m) = a(i,j,k,l,m) / (b*b)', {'a':fdata, 'b':GRID_SIZE}, axis_names=('i','j','k','l','m'), shape=fdata.shape)
-                                        if self.remove_autocorrs == True:
-                                            time1f = time.time()
+                                    # Normalise FFT Transform
+                                    bifrost.map('a(i,j,k,l,m) = a(i,j,k,l,m) / (b*b)', {'a':fdata, 'b':GRID_SIZE}, axis_names=('i','j','k','l','m'), shape=fdata.shape)
+                                    if self.remove_autocorrs == True:
+                                        time1f = time.time()
                                             
-                                            try:
-                                                bfautocorrmap
-                                            except NameError:
+                                        try:
+                                            bfautocorrmap
+                                        except NameError:
                                             
-                                                autocorrgrid = numpy.zeros((1,4,GRID_SIZE**2,nstand*npol*2), dtype=numpy.complex64)
-                                                autocorrgrid[:,0,:,0::4] = self.autocorrmap
-                                                autocorrgrid[:,1,:,1::4] = self.autocorrmap
-                                                autocorrgrid[:,2,:,2::4] = self.autocorrmap
-                                                autocorrgrid[:,3,:,3::4] = self.autocorrmap
-                                                print("Autocorrelations Shapes: ")
-                                                print(numpy.shape(autocorrgrid))
-                                                autocorrgrid = autocorrgrid.reshape(1,4*GRID_SIZE**2,nstand*npol*2)
-                                                print(numpy.shape(autocorrgrid))
-                                                print(numpy.shape(autocorrgrid.transpose(0,2,1)))
-                                                bfautocorrmap = bifrost.ndarray(autocorrgrid)
-                                                bfautocorrmap = bfautocorrmap.copy(space='cuda')
-                                                bfautocorrmap = bfautocorrmap.transpose(0,2,1)       
+                                            autocorrgrid = numpy.zeros((1,4,GRID_SIZE**2,nstand*npol*2), dtype=numpy.complex64)
+                                            autocorrgrid[:,0,:,0::4] = self.autocorrmap
+                                            autocorrgrid[:,1,:,1::4] = self.autocorrmap
+                                            autocorrgrid[:,2,:,2::4] = self.autocorrmap
+                                            autocorrgrid[:,3,:,3::4] = self.autocorrmap
+                                            print("Autocorrelations Shapes: ")
+                                            print(numpy.shape(autocorrgrid))
+                                            autocorrgrid = autocorrgrid.reshape(1,4*GRID_SIZE**2,nstand*npol*2)
+                                            print(numpy.shape(autocorrgrid))
+                                            print(numpy.shape(autocorrgrid.transpose(0,2,1)))
+                                            bfautocorrmap = bifrost.ndarray(autocorrgrid)
+                                            bfautocorrmap = bfautocorrmap.copy(space='cuda')
+                                            bfautocorrmap = bfautocorrmap.transpose(0,2,1)       
 
-                                            ## Generate the Autocorrelations
-                                            autocorrs = bifrost.zeros(shape=(self.ntime_gulp,nchan,nstand,4),dtype=numpy.complex64,space='cuda')                       
-                                            bifrost.map('a(i,j,k,in) = (b(i,j,k,in) * b(i,j,k,in).conj())', {'a':autocorrs, 'b':acdata,'in':0}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # XX Auto-Correlations
-                                            bifrost.map('a(i,j,k,in) = (b(i,j,k,xn) * b(i,j,k,in).conj())', {'a':autocorrs, 'b':acdata,'in':1,'xn':0}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # XY Auto-Correlations
-                                            bifrost.map('a(i,j,k,in) = (b(i,j,k,yn) * b(i,j,k,xn).conj())', {'a':autocorrs, 'b':acdata,'in':2,'yn':1,'xn':0}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # YX Auto-Correlations 
-                                            bifrost.map('a(i,j,k,in) = (b(i,j,k,yn) * b(i,j,k,yn).conj())', {'a':autocorrs, 'b':acdata,'in':3,'yn':1}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # YY Auto-Correlations
+                                        ## Generate the Autocorrelations
+                                        autocorrs = bifrost.zeros(shape=(self.ntime_gulp,nchan,nstand,4),dtype=numpy.complex64,space='cuda')                       
+                                        bifrost.map('a(i,j,k,in) = (b(i,j,k,in) * b(i,j,k,in).conj())', {'a':autocorrs, 'b':acdata,'in':0}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # XX Auto-Correlations
+                                        bifrost.map('a(i,j,k,in) = (b(i,j,k,xn) * b(i,j,k,in).conj())', {'a':autocorrs, 'b':acdata,'in':1,'xn':0}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # XY Auto-Correlations
+                                        bifrost.map('a(i,j,k,in) = (b(i,j,k,yn) * b(i,j,k,xn).conj())', {'a':autocorrs, 'b':acdata,'in':2,'yn':1,'xn':0}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # YX Auto-Correlations 
+                                        bifrost.map('a(i,j,k,in) = (b(i,j,k,yn) * b(i,j,k,yn).conj())', {'a':autocorrs, 'b':acdata,'in':3,'yn':1}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # YY Auto-Correlations
 
-                                            ## Place to put autocorrelation data
+                                        ## Place to put autocorrelation data
                                                 
-                                            try:
-                                                adata = adata.reshape(self.ntime_gulp,nchan,4*GRID_SIZE**2)
-                                            except NameError:
-                                                print((self.ntime_gulp,nchan,4*GRID_SIZE**2))
-                                                adata = bifrost.zeros(shape=(self.ntime_gulp,nchan,4*GRID_SIZE**2),dtype=numpy.complex64,space='cuda')
+                                        try:
+                                            adata = adata.reshape(self.ntime_gulp,nchan,4*GRID_SIZE**2)
+                                        except NameError:
+                                            print((self.ntime_gulp,nchan,4*GRID_SIZE**2))
+                                            adata = bifrost.zeros(shape=(self.ntime_gulp,nchan,4*GRID_SIZE**2),dtype=numpy.complex64,space='cuda')
                                         
-                                            ## Grid the Autocorrelations
+                                        ## Grid the Autocorrelations
                                         
-                                            autocorrs = autocorrs.reshape(self.ntime_gulp,nchan,-1)
-                                            print(autocorrs.shape)
-                                            adata = self.LinAlgObj.matmul(1.0, autocorrs, bfautocorrmap, 0.0, adata)
-                                            time1g = time.time()
-                                            print("  Auto-corrs LinAlg time: %f" % (time1g-time1f))
-                                            ## Combine the polarizations and output for gridded electric fields.
-                                        time1h = time.time()
-                                        odata[0,:,:,0:2,:,:] = numpy.fft.fftshift(fdata.copy(space='system') , axes=(3,4))/GRID_SIZE**2
-                                        time1i = time.time()
-                                        print("  Shift-n-save time: %f" % (time1i-time1h))
+                                        autocorrs = autocorrs.reshape(self.ntime_gulp,nchan,-1)
+                                        print(autocorrs.shape)
+                                        adata = self.LinAlgObj.matmul(1.0, autocorrs, bfautocorrmap, 0.0, adata)
+                                        time1g = time.time()
+                                        print("  Auto-corrs LinAlg time: %f" % (time1g-time1f))
+                                        ## Combine the polarizations and output for gridded electric fields.
+                                    time1h = time.time()
+                                    odata[0,:,:,0:2,:,:] = fdata
+                                    time1i = time.time()
+                                    print("  Shift-n-save time: %f" % (time1i-time1h))
+                                    
+                                    if self.remove_autocorrs == True:
+                                        ## Output autocorrelations in the same gulp.
+                                        adata = adata.reshape(self.ntime_gulp,nchan,4,GRID_SIZE,GRID_SIZE)
+                                        odata[1,...] = adata
+                                        time1j = time.time()
+                                        print("  Auto-corrs save time: %f" % (time1j-time1i))
+                                        
+                                    time2=time.time()
+                                    print("-> GPU Time Taken: %f"%(time2-time1))
+                                    
+                                    runtime_history.append(time2-time1)
+                                    print("-> Average GPU Time Taken: %f (%i samples)" % (1.0*sum(runtime_history)/len(runtime_history), len(runtime_history)))
 
-                                        if self.remove_autocorrs == True:
-                                            ## Output autocorrelations in the same gulp.
-                                            adata = adata.reshape(self.ntime_gulp,nchan,4,GRID_SIZE,GRID_SIZE)
-                                            odata[1,...] = adata.copy(space='system')
-                                            time1j = time.time()
-                                            print("  Auto-corrs save time: %f" % (time1j-time1i))
-                                            
-                                        time2=time.time()
-                                        print("-> GPU Time Taken: %f"%(time2-time1))
-                                        
-                                        runtime_history.append(time2-time1)
-                                        print("-> Average GPU Time Taken: %f (%i samples)" % (1.0*sum(runtime_history)/len(runtime_history), len(runtime_history)))
-                                        
                                         
 class ImagingOp(object):
     def __init__(self, log, iring, filename, ntime_gulp=100, accumulation_time=1, core=-1, remove_autocorrs = False, *args, **kwargs):
@@ -798,7 +764,6 @@ def main():
     parser.add_argument('-p', '--port', type=int, help= 'F-Engine UDP Stream Port')
     parser.add_argument('-o', '--offline', action='store_true', help = 'Load TBN data from Disk')
     parser.add_argument('-f', '--tbnfile', type=str, help = 'TBN Data Path')
-    parser.add_argument('-c', '--cpuonly', action='store_true', help = 'Runs EPIC Correlator on CPU Only.')
     parser.add_argument('-t', '--nts',type=int, default = 1000, help= 'Number of timestamps per span.')
     parser.add_argument('-u', '--accumulate',type=int, default = 1000, help='How many milliseconds to accumulate an image over.')
     parser.add_argument('-n', '--channels',type=int, default=1, help='How many channels to produce.')
@@ -841,15 +806,11 @@ def main():
             signal.SIGTSTP]:
         signal.signal(sig, handle_signal_terminate)
 
-    fcapture_ring = Ring(name="capture", space="cuda_host")
+
     if args.offline:
         fdomain_ring = Ring(name="fengine", space="cuda_host")
-    #Think flagging/gains should be done on CPU?
-    #calibration_ring = Ring(name="gains", space="cuda")
-    if args.cpuonly:
-        gridandfft_ring = Ring(name="gridandfft")
-    else:
-        gridandfft_ring = Ring(name="gridandfft", space="system")
+        fcapture_ring = Ring(name="capture",space="cuda_host")
+    gridandfft_ring = Ring(name="gridandfft", space="cuda")
     
     ops.append(OfflineCaptureOp(log, fcapture_ring,args.tbnfile))
     ops.append(FDomainOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts, nchan_out=args.channels))
