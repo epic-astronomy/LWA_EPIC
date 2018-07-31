@@ -70,7 +70,7 @@ loc_range_x = numpy.nanmax(locations[:,0]) - numpy.nanmin(locations[:,0])
 loc_range_y = numpy.nanmax(locations[:,1]) - numpy.nanmin(locations[:,1])
 loc_range = max([loc_range_x, loc_range_y])
 print (loc_range_x, loc_range_y, loc_range)
-GRID_SIZE = int(numpy.power(2,numpy.ceil(numpy.log(loc_range/RESOLUTION)/numpy.log(2))+1))
+GRID_SIZE = int(numpy.power(2,numpy.ceil(numpy.log(loc_range/RESOLUTION)/numpy.log(2))+0))
 print(GRID_SIZE)
 
 
@@ -109,6 +109,8 @@ class OfflineCaptureOp(object):
 
     def main(self):
         #bifrost.affinity.set_core(self.core)
+        self.bind_proclog.update({'ncore': 1, 
+                                  'core0': bifrost.affinity.get_core(),})
 
         idf = TBNFile(self.filename)
         cfreq = idf.getInfo('freq1')
@@ -121,7 +123,7 @@ class OfflineCaptureOp(object):
         nstand, npol = data.shape[0]/2, 2
         oshape = (ntime,nstand,npol)
         ogulp_size = ntime*nstand*npol*8		# complex64
-        self.oring.resize(ogulp_size, buffer_factor=10)
+        self.oring.resize(ogulp_size, buffer_factor=5)
         
         self.size_proclog.update({'nseq_per_gulp': ntime})
         
@@ -226,7 +228,7 @@ class FDomainOp(object):
                 ogulp_size = self.ntime_gulp*1*nstand*npol * 1		# ci4
                 oshape = (self.ntime_gulp/nchan,nchan,nstand,npol)
                 #self.iring.resize(igulp_size)
-                self.oring.resize(ogulp_size,buffer_factor=10)
+                self.oring.resize(ogulp_size,buffer_factor=5)
                 
                 # Set the output header
                 ohdr = ihdr.copy()
@@ -325,6 +327,17 @@ class MOFFCorrelatorOp(object):
         self.grid = None
         self.image = None
         self.remove_autocorrs = remove_autocorrs
+        
+        self.bind_proclog = ProcLog(type(self).__name__+"/bind")
+        self.in_proclog   = ProcLog(type(self).__name__+"/in")
+        self.out_proclog  = ProcLog(type(self).__name__+"/out")
+        self.size_proclog = ProcLog(type(self).__name__+"/size")
+        self.sequence_proclog = ProcLog(type(self).__name__+"/sequence0")
+        self.perf_proclog = ProcLog(type(self).__name__+"/perf")
+        
+        self.in_proclog.update( {'nring':1, 'ring0':self.iring.name})
+        self.out_proclog.update({'nring':1, 'ring0':self.oring.name})
+        self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
 
         self.antgridmap = self.make_grid(RESOLUTION,
                                     GRID_SIZE,
@@ -396,23 +409,24 @@ class MOFFCorrelatorOp(object):
             antgrid2d = antgridmap[:,i].reshape(ngrid,ngrid)
             #antgrid2d = numpy.fft.fftshift(antgrid2d)
             antgrid2d = numpy.fft.ifft2(antgrid2d)
-            antgrid2d = numpy.fft.fftshift(antgrid2d)
-            antgrid2d = antgrid2d * antgrid2d.conj()            
+            #antgrid2d = numpy.fft.fftshift(antgrid2d)
+            antgrid2d = antgrid2d * antgrid2d.conj()        
             mat[:,i] = numpy.abs((antgrid2d.reshape(ngrid*ngrid)))
-
-            
             
         return mat
-            
-                       
         
     def main(self):
+        #bifrost.affinity.set_core(self.core)
+        self.bind_proclog.update({'ncore': 1, 
+                                  'core0': bifrost.affinity.get_core(),})
+        
         runtime_history = deque([], 25)
         
         with self.oring.begin_writing() as oring:
             for iseq in self.iring.read(guarantee=True):
-                print("Sequence!")
                 ihdr = json.loads(iseq.header.tostring())
+                
+                self.sequence_proclog.update(ihdr)
                 print('MOFFCorrelatorOp: Config - %s' % ihdr)
                 
                 nchan = ihdr['nchan']
@@ -445,8 +459,7 @@ class MOFFCorrelatorOp(object):
                     delay = a.cable.delay(freq) - a.stand.z / speedOfLight
                     phases[:,:,i,1] = numpy.exp(2j*numpy.pi*freq*delay)
                     phases[:,:,i,1] /= numpy.sqrt(a.cable.gain(freq))
-
-
+                    
                 # Four polarisations as I need autocorrelations for XX,XY,YX,YY
                 # Axes are as follows (Image/Autocorrs, Time, Channel, Polarisation, Image, Image)
                 if self.remove_autocorrs == True:
@@ -466,19 +479,38 @@ class MOFFCorrelatorOp(object):
                 self.oring.resize(ogulp_size)
 
                 
-                while not self.iring.writing_ended():
-                    print("More spans")
+                prev_time = time.time()
+                with oring.begin_sequence(header=ohdr_str) as oseq:
                     iseq_spans = iseq.read(igulp_size)
-                    for ispan in iseq_spans:
-                        if ispan.size < igulp_size:
-                            continue
-                        with oring.begin_sequence(header=ohdr_str) as oseq:
-                            print("New sequence")
+                    while not self.iring.writing_ended():
+                        for ispan in iseq_spans:
+                            if ispan.size < igulp_size:
+                                continue # Ignore final gulp
+                            curr_time = time.time()
+                            acquire_time = curr_time - prev_time
+                            prev_time = curr_time
+                            
                             with oseq.reserve(ogulp_size) as ospan:
-                                    ###### Correlator #######
-                                    ## Setup and load
-                                    idata = ispan.data_view(numpy.uint8).reshape(ishape)
-                                    
+                                curr_time = time.time()
+                                reserve_time = curr_time - prev_time
+                                prev_time = curr_time
+                                
+                                ###### Correlator #######
+                                ## Setup and load
+                                idata = ispan.data_view(numpy.uint8).reshape(ishape)
+                                
+                                ## Fix the type
+                                tdata = bifrost.ndarray(shape=ishape, dtype='ci4', native=False, buffer=idata.ctypes.data)
+                                odata = ospan.data_view(numpy.complex64).reshape(oshape)
+                                if(self.cpu == True): #CPU
+                                    ## Unpack. 
+                                    try:
+                                        Unpack(tdata, udata)
+                                    except NameError: #If one doesn't exist, then neither does the other.
+                                        udata = bifrost.ndarray(shape=tdata.shape, dtype='cf32', space='system')
+                                        Unpack(tdata, udata)
+                                    ## Phase
+                                    udata *= phases
                                     ## Fix the type
                                     tdata = bifrost.ndarray(shape=ishape, dtype='ci4', native=False, buffer=idata.ctypes.data)
                                     odata = ospan.data_view(numpy.complex64).reshape(oshape)
@@ -520,13 +552,21 @@ class MOFFCorrelatorOp(object):
                                     time1d = time.time()
                                     print("  'udata' Reshape time: %f" % (time1d-time1c))
                                     
+                                    acdata *= phases
+                                    for time_index in numpy.arange(0,self.ntime_gulp):
+                                        print("TI: %d"%time_index)
+
+                                        for i in numpy.arange(nchan): 
+                                            for j in numpy.arange(2):
+                                                evectorr = idata[time_index,i,:,j].real
                                     ## Make sure we have gridding kernel on the GPU
                                     try:
                                         bfantgridmap
                                     except NameError:
                                         antgrid = numpy.zeros((1,2,GRID_SIZE**2,nstand*npol), dtype=numpy.complex64)
-                                        antgrid[:,0,:,0::2] = self.antgridmap
-                                        antgrid[:,1,:,1::2] = self.antgridmap
+
+                                        antgrid[:,0,:,0::2] = self.antgridmap / GRID_SIZE**2
+                                        antgrid[:,1,:,1::2] = self.antgridmap / GRID_SIZE**2
                                         print("Antenna Grid Shapes: ")
                                         print(numpy.shape(antgrid))
                                         antgrid = antgrid.reshape(1,2*GRID_SIZE**2,nstand*npol)
@@ -561,17 +601,15 @@ class MOFFCorrelatorOp(object):
                                         bf_fft.init(gdata,fdata,axes=(3,4))
                                         bf_fft.execute(gdata,fdata,inverse=True)
                                     timefft2 = time.time()
-                                    print("  FFT Time: %f"%(timefft2 - timefft1))
-
-                                    # Normalise FFT Transform
-                                    bifrost.map('a(i,j,k,l,m) = a(i,j,k,l,m) / (b*b)', {'a':fdata, 'b':GRID_SIZE}, axis_names=('i','j','k','l','m'), shape=fdata.shape)
+                                    print("  FFT time: %f"%(timefft2 - timefft1))
+                                    
                                     if self.remove_autocorrs == True:
                                         time1f = time.time()
-                                            
+                                        
                                         try:
                                             bfautocorrmap
                                         except NameError:
-                                            
+                                        
                                             autocorrgrid = numpy.zeros((1,4,GRID_SIZE**2,nstand*npol*2), dtype=numpy.complex64)
                                             autocorrgrid[:,0,:,0::4] = self.autocorrmap
                                             autocorrgrid[:,1,:,1::4] = self.autocorrmap
@@ -588,44 +626,52 @@ class MOFFCorrelatorOp(object):
 
                                         ## Generate the Autocorrelations
                                         autocorrs = bifrost.zeros(shape=(self.ntime_gulp,nchan,nstand,4),dtype=numpy.complex64,space='cuda')                       
-                                        bifrost.map('a(i,j,k,in) = (b(i,j,k,in) * b(i,j,k,in).conj())', {'a':autocorrs, 'b':acdata,'in':0}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # XX Auto-Correlations
-                                        bifrost.map('a(i,j,k,in) = (b(i,j,k,xn) * b(i,j,k,in).conj())', {'a':autocorrs, 'b':acdata,'in':1,'xn':0}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # XY Auto-Correlations
-                                        bifrost.map('a(i,j,k,in) = (b(i,j,k,yn) * b(i,j,k,xn).conj())', {'a':autocorrs, 'b':acdata,'in':2,'yn':1,'xn':0}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # YX Auto-Correlations 
-                                        bifrost.map('a(i,j,k,in) = (b(i,j,k,yn) * b(i,j,k,yn).conj())', {'a':autocorrs, 'b':acdata,'in':3,'yn':1}, axis_names=('i','j','k','l'),shape=autocorrs.shape) # YY Auto-Correlations
-
+                                        bifrost.map('a(i,j,k,l) = (b(i,j,k,l/2) * b(i,j,k,l%2).conj())', 
+                                                    {'a':autocorrs, 'b':acdata}, 
+                                                    axis_names=('i','j','k','l'),
+                                                    shape=autocorrs.shape)
+                                        
                                         ## Place to put autocorrelation data
-                                                
                                         try:
                                             adata = adata.reshape(self.ntime_gulp,nchan,4*GRID_SIZE**2)
                                         except NameError:
                                             print((self.ntime_gulp,nchan,4*GRID_SIZE**2))
                                             adata = bifrost.zeros(shape=(self.ntime_gulp,nchan,4*GRID_SIZE**2),dtype=numpy.complex64,space='cuda')
-                                        
+                                    
                                         ## Grid the Autocorrelations
-                                        
+                                    
                                         autocorrs = autocorrs.reshape(self.ntime_gulp,nchan,-1)
                                         print(autocorrs.shape)
                                         adata = self.LinAlgObj.matmul(1.0, autocorrs, bfautocorrmap, 0.0, adata)
                                         time1g = time.time()
                                         print("  Auto-corrs LinAlg time: %f" % (time1g-time1f))
-                                        ## Combine the polarizations and output for gridded electric fields.
+                                        
+                                    ## Output for gridded electric fields.
                                     time1h = time.time()
-                                    odata[0,:,:,0:2,:,:] = fdata
+                                    odata[0,:,:,0:2,:,:] = fdata.copy(space='cuda')
                                     time1i = time.time()
                                     print("  Shift-n-save time: %f" % (time1i-time1h))
                                     
                                     if self.remove_autocorrs == True:
                                         ## Output autocorrelations in the same gulp.
                                         adata = adata.reshape(self.ntime_gulp,nchan,4,GRID_SIZE,GRID_SIZE)
-                                        odata[1,...] = adata
+                                        odata[1,...] = adata.copy(space='cuda')
                                         time1j = time.time()
                                         print("  Auto-corrs save time: %f" % (time1j-time1i))
                                         
+>>>>>>> b7edeb3c638d058af5618909c48bc8e770c5db12
                                     time2=time.time()
                                     print("-> GPU Time Taken: %f"%(time2-time1))
                                     
                                     runtime_history.append(time2-time1)
                                     print("-> Average GPU Time Taken: %f (%i samples)" % (1.0*sum(runtime_history)/len(runtime_history), len(runtime_history)))
+                                                                        
+                            curr_time = time.time()
+                            process_time = curr_time - prev_time
+                            prev_time = curr_time
+                            self.perf_proclog.update({'acquire_time': acquire_time, 
+                                                      'reserve_time': reserve_time, 
+                                                      'process_time': process_time,})
 
 class ImagingOP_GPU(object):
     def __init__(self, log, iring, oring, ntime_gulp, accumulation_time=100, gpu=-1, remove_autocorrs=False, *args, **kwargs):
@@ -753,27 +799,44 @@ class ImagingOP_GPU(object):
 
 
                                
+
+                                        
+
 class ImagingOp(object):
-    def __init__(self, log, iring, filename, ntime_gulp=100, accumulation_time=1, core=-1, remove_autocorrs = False, *args, **kwargs):
+    def __init__(self, log, iring, filename, ntime_gulp=100, accumulation_time=1, core=-1, cpu=False, remove_autocorrs = False, *args, **kwargs):
         self.log = log
         self.iring = iring
         self.filename = filename
         self.ntime_gulp= ntime_gulp
         self.accumulation_time = accumulation_time
         self.core = core
+        self.cpu = cpu
         self.remove_autocorrs = remove_autocorrs
         self.accumulated_image = None
         self.newflag = True
         
+        self.bind_proclog = ProcLog(type(self).__name__+"/bind")
+        self.in_proclog   = ProcLog(type(self).__name__+"/in")
+        self.size_proclog = ProcLog(type(self).__name__+"/size")
+        self.sequence_proclog = ProcLog(type(self).__name__+"/sequence0")
+        self.perf_proclog = ProcLog(type(self).__name__+"/perf")
+        
+        self.in_proclog.update( {'nring':1, 'ring0':self.iring.name})
+        self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
 
     def main(self):
         #bifrost.affinity.set_core(self.core)
+        self.bind_proclog.update({'ncore': 1, 
+                                  'core0': bifrost.affinity.get_core(),})
+        
         accum = 0
         fileid = 1
         for iseq in self.iring.read(guarantee=True):
-            print("New Sequence")
             ihdr = json.loads(iseq.header.tostring())
+            
+            self.sequence_proclog.update(ihdr)
             print('ImagingOp: Config - %s' % ihdr)
+            
             nchan = ihdr['nchan']
             npol = ihdr['npol']
             print("Channel no: %d, Polarisation no: %d"%(nchan,npol))
@@ -784,61 +847,99 @@ class ImagingOp(object):
             else:
                 igulp_size = self.ntime_gulp * nchan * npol * GRID_SIZE * GRID_SIZE * 8
                 ishape = (1,self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE)
-
-
+                
+            prev_time = time.time()
+            iseq_spans = iseq.read(igulp_size)
             while not self.iring.writing_ended():
-                iseq_spans = iseq.read(igulp_size)
-                print("Imaging ISEQ SPAN")
                 for ispan in iseq_spans:
                     if ispan.size < igulp_size:
-                        continue
+                        continue # Ignore final gulp
+                    curr_time = time.time()
+                    acquire_time = curr_time - prev_time
+                    prev_time = curr_time
+                    
                     idata = ispan.data_view(numpy.complex64).reshape(ishape)
-                    idata = idata.astype(numpy.complex128)
-                    #Square
-                    xdata, ydata = idata[0,:,:,0,:,:], idata[0,:,:,1,:,:]
-                    xxdata = numpy.abs(xdata*xdata.conj())
-                    xydata = numpy.abs(xdata*ydata.conj()) \
-                            * numpy.where( numpy.angle(xdata*ydata.conj()) > 0, 1, -1 )
-                    yxdata = numpy.abs(ydata*xdata.conj()) \
-                            * numpy.where( numpy.angle(ydata*xdata.conj()) > 0, 1, -1 )
-                    yydata = numpy.abs(ydata*ydata.conj())
+                    if self.cpu:
+                        idata = idata.astype(numpy.complex128)
+                        #Square
+                        xdata, ydata = idata[0,:,:,0,:,:], idata[0,:,:,1,:,:]
+                        xxdata = numpy.abs(xdata*xdata.conj())
+                        xydata = numpy.abs(xdata*ydata.conj()) \
+                                * numpy.where( numpy.angle(xdata*ydata.conj()) > 0, 1, -1 )
+                        yxdata = numpy.abs(ydata*xdata.conj()) \
+                                * numpy.where( numpy.angle(ydata*xdata.conj()) > 0, 1, -1 )
+                        yydata = numpy.abs(ydata*ydata.conj())
 
 
-                    for ti in numpy.arange(0,self.ntime_gulp):
-                        #print ("Accum: %d"%accum,end='\n')
-                        if self.newflag is True:
+                        for ti in numpy.arange(0,self.ntime_gulp):
+                            #print ("Accum: %d"%accum,end='\n')
+                            if self.newflag is True:
+                            
+                                self.accumulated_image = numpy.zeros(shape=(nchan,npol**2,GRID_SIZE,GRID_SIZE),dtype=numpy.complex128)
+                                self.newflag=False
+                                
+                            #Accumulate
+                            #Subtract auto-correlations.
+                            if self.remove_autocorrs == True:
+                                self.accumulated_image[:,0,:,:] += (xxdata[ti,:,:,:] - numpy.abs(idata[1,ti,:,0,:,:]))
+                                self.accumulated_image[:,1,:,:] += (xydata[ti,:,:,:] - numpy.abs(idata[1,ti,:,1,:,:]))
+                                self.accumulated_image[:,2,:,:] += (yxdata[ti,:,:,:] - numpy.abs(idata[1,ti,:,2,:,:]))
+                                self.accumulated_image[:,3,:,:] += (yydata[ti,:,:,:] - numpy.abs(idata[1,ti,:,3,:,:]))
+                            else:
+                                self.accumulated_image[:,0,:,:] += (xxdata[ti,:,:,:])
+                                self.accumulated_image[:,1,:,:] += (xydata[ti,:,:,:])
+                                self.accumulated_image[:,2,:,:] += (yxdata[ti,:,:,:])
+                                self.accumulated_image[:,3,:,:] += (yydata[ti,:,:,:])
+                                
+                            # Increment
+                            accum += 1
+                    else:
+                        for ti in numpy.arange(0,self.ntime_gulp):
+                            #print ("Accum: %d"%accum,end='\n')
+                            if self.newflag is True:
+                                self.accumulated_image = bifrost.zeros(shape=(nchan,npol**2,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64,space='cuda')
+                                self.newflag=False
+                                
+                            #Accumulate
+                            #Subtract auto-correlations.
+                            if self.remove_autocorrs == True:
+                                bifrost.map('a(i,p,j,k) += b(0,%i,i,p/2,j,k)*b(0,%i,i,p%%2,j,k).conj() - b(1,%i,i,p,j,k)' % (ti, ti, ti), 
+                                            {'a':self.accumulated_image, 'b':idata}, 
+                                            axis_names=('i','p','j','k'), 
+                                            shape=(nchan, 4, GRID_SIZE, GRID_SIZE))
+                            else:
+                                bifrost.map('a(i,p,j,k) += b(0,%i,i,p/2,j,k)*b(0,%i,i,p%%2,j,k).conj()' % (ti, ti), 
+                                            {'a':self.accumulated_image, 'b':idata}, 
+                                            axis_names=('i','p','j','k'), 
+                                            shape=(nchan, 4, GRID_SIZE, GRID_SIZE))
+                                            
+                             # Increment
+                            accum += 1
+                            
+                    #Save and output
+                    if accum >= self.accumulation_time:
+                        image = self.accumulated_image.copy(space='cuda_host')
+                        image = numpy.fft.fftshift(numpy.abs(image), axes=(2,3))
+                        image = numpy.transpose(image, (0,1,3,2))
                         
-                            self.accumulated_image = numpy.zeros(shape=(nchan,npol**2,GRID_SIZE,GRID_SIZE),dtype=numpy.complex128)
-                            self.newflag=False
-                            
-                        #Accumulate
-                        #Subtract auto-correlations.
-                        if self.remove_autocorrs == True:
-                            self.accumulated_image[:,0,:,:] += (xxdata[ti,:,:,:] - numpy.abs(idata[1,ti,:,0,:,:]))
-                            self.accumulated_image[:,1,:,:] += (xydata[ti,:,:,:] - numpy.abs(idata[1,ti,:,1,:,:]))
-                            self.accumulated_image[:,2,:,:] += (yxdata[ti,:,:,:] - numpy.abs(idata[1,ti,:,2,:,:]))
-                            self.accumulated_image[:,3,:,:] += (yydata[ti,:,:,:] - numpy.abs(idata[1,ti,:,3,:,:]))
-                        else:
-                            self.accumulated_image[:,0,:,:] += (xxdata[ti,:,:,:])
-                            self.accumulated_image[:,1,:,:] += (xydata[ti,:,:,:])
-                            self.accumulated_image[:,2,:,:] += (yxdata[ti,:,:,:])
-                            self.accumulated_image[:,3,:,:] += (yydata[ti,:,:,:])
-                            
-                
-                        #Save and output
-                        accum += 1
-                        if accum >= self.accumulation_time:
-                            accum = 0
-                            self.newflag = True
-                            fig = plt.figure(1)
-                            for i in xrange(4):
-                                ax = fig.add_subplot(2, 2, i+1)
-                                ax.imshow(numpy.real(self.accumulated_image[0,i,:,:].T))
-                            #plt.imshow(numpy.real(self.accumulated_image[0,0,:,:].T))
-                            plt.savefig("ImagingOP-%04i.png"%(fileid))
-                            fileid += 1
-                            print("ImagingOP - Image Saved")
-                break
+                        accum = 0
+                        self.newflag = True
+                        fig = plt.figure(1)
+                        for i in xrange(4):
+                            ax = fig.add_subplot(2, 2, i+1)
+                            ax.imshow(image[0,i,:,:])
+                        #plt.imshow(numpy.real(self.accumulated_image[0,0,:,:].T))
+                        plt.savefig("ImagingOP-%04i.png"%(fileid))
+                        fileid += 1
+                        print("ImagingOP - Image Saved")
+                        
+                    curr_time = time.time()
+                    process_time = curr_time - prev_time
+                    prev_time = curr_time
+                    self.perf_proclog.update({'acquire_time': acquire_time, 
+                                              'reserve_time': -1, 
+                                              'process_time': process_time,})
+
 ## TODO:                                 
 class SaveFFTOp(object):
     def __init__(self, log, iring, filename, ntime_gulp=2500, core=-1,*args, **kwargs):
