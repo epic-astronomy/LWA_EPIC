@@ -33,6 +33,9 @@ from bifrost.fft import Fft
 import bifrost
 import bifrost.affinity
 
+from bifrost.device import set_devices_no_spin_cpu as BFNoSpinZone
+BFNoSpinZone()
+
 
 from lsl.common.constants import c as speedOfLight
 from lsl.writer import fitsidi
@@ -420,7 +423,7 @@ class MOFFCorrelatorOp(object):
         self.bind_proclog.update({'ncore': 1, 
                                   'core0': bifrost.affinity.get_core(),})
         
-        runtime_history = deque([], 25)
+        runtime_history = deque([], 50)
         
         with self.oring.begin_writing() as oring:
             for iseq in self.iring.read(guarantee=True):
@@ -956,7 +959,7 @@ class SaveFFTOp(object):
                     numpy.savez(self.filename + "asdasd.npy",data=idata)
                     print("Wrote to disk")
             break
-    print("Save F-Engine Spectra.. done")
+        print("Save F-Engine Spectra.. done")
                 
 
 def main():
