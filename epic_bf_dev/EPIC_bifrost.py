@@ -33,7 +33,7 @@ from bifrost.fft import Fft
 import bifrost
 import bifrost.affinity
 
-from bifrost.device import set_devices_no_spin_cpu as BFNoSpinZone
+from bifrost.device import set_device as BFSetGPU, get_device as BFGetGPU, set_devices_no_spin_cpu as BFNoSpinZone
 BFNoSpinZone()
 
 
@@ -111,7 +111,8 @@ class OfflineCaptureOp(object):
         self.shutdown_event.set()
 
     def main(self):
-        #bifrost.affinity.set_core(self.core)
+        if self.core != -1:
+            bifrost.affinity.set_core(self.core)
         self.bind_proclog.update({'ncore': 1, 
                                   'core0': bifrost.affinity.get_core(),})
 
@@ -188,13 +189,14 @@ class OfflineCaptureOp(object):
 
 
 class FDomainOp(object):
-    def __init__(self, log, iring, oring, ntime_gulp=2500, nchan_out=1, core=-1):
+    def __init__(self, log, iring, oring, ntime_gulp=2500, nchan_out=1, core=-1, gpu=-1):
         self.log = log
         self.iring = iring
         self.oring = oring
         self.ntime_gulp = ntime_gulp
         self.nchan_out = nchan_out
         self.core = core
+        self.gpu = gpu
         
         self.nchan_out = nchan_out
         
@@ -210,9 +212,14 @@ class FDomainOp(object):
         self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
         
     def main(self):
-        #bifrost.affinity.set_core(self.core)
+        if self.core != -1:
+            bifrost.affinity.set_core(self.core)
+        if self.gpu != -1:
+            BFSetGPU(self.gpu)
         self.bind_proclog.update({'ncore': 1, 
-                                'core0': bifrost.affinity.get_core(),})
+                                  'core0': bifrost.affinity.get_core(),
+                                  'ngpu': 1,
+                                  'gpu0': BFGetGPU(),})
         
         with self.oring.begin_writing() as oring:
             for iseq in self.iring.read(guarantee=True):
@@ -320,15 +327,14 @@ class CalibrationOp(object):
         pass
 
 class MOFFCorrelatorOp(object):
-    def __init__(self, log, iring, oring, ntime_gulp=2500, core=-1, remove_autocorrs = False, *args, **kwargs):
+    def __init__(self, log, iring, oring, ntime_gulp=2500, core=-1, gpu=-1, remove_autocorrs = False, *args, **kwargs):
         self.log = log
         self.iring = iring
         self.oring = oring
         self.ntime_gulp = ntime_gulp
 
         self.core = core
-        self.grid = None
-        self.image = None
+        self.gpu = gpu
         self.remove_autocorrs = remove_autocorrs
         
         self.bind_proclog = ProcLog(type(self).__name__+"/bind")
@@ -348,8 +354,10 @@ class MOFFCorrelatorOp(object):
                                     locations).astype(numpy.float)
         if self.remove_autocorrs == True:
             self.autocorrmap = self.make_autocorr_grid(self.antgridmap,GRID_SIZE)
+            
+        if self.gpu != -1:
+            BFSetGPU(self.gpu)
         self.LinAlgObj = LinAlg() # Jayce does this need to be here?
-
 
     def ant_conv(self, ngrid, kernel, pos):
         """ Function to convolve single antenna onto grid
@@ -419,9 +427,14 @@ class MOFFCorrelatorOp(object):
         return mat
         
     def main(self):
-        #bifrost.affinity.set_core(self.core)
+        if self.core != -1:
+            bifrost.affinity.set_core(self.core)
+        if self.gpu != -1:
+            BFSetGPU(self.gpu)
         self.bind_proclog.update({'ncore': 1, 
-                                  'core0': bifrost.affinity.get_core(),})
+                                  'core0': bifrost.affinity.get_core(),
+                                  'ngpu': 1,
+                                  'gpu0': BFGetGPU(),})
         
         runtime_history = deque([], 50)
         
@@ -468,16 +481,9 @@ class MOFFCorrelatorOp(object):
                 if self.remove_autocorrs == True:
                     oshape = (2,self.ntime_gulp,nchan,4,GRID_SIZE,GRID_SIZE)
                     ogulp_size = 2 * self.ntime_gulp * nchan * 4 * GRID_SIZE * GRID_SIZE * 8 #Complex64
-                    self.grid = numpy.zeros(shape=(self.ntime_gulp,nchan,4,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
-                    self.grid = bifrost.ndarray(self.grid)
-                    self.image = numpy.zeros(shape=(self.ntime_gulp,nchan,4,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
-
                 else:
                     oshape = (1,self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE)
                     ogulp_size = self.ntime_gulp * nchan * npol * GRID_SIZE * GRID_SIZE * 8
-                    self.grid = numpy.zeros(shape=(self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
-                    self.grid = bifrost.ndarray(self.grid)
-                    self.image = numpy.zeros(shape=(self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64)
                 self.iring.resize(igulp_size)
                 self.oring.resize(ogulp_size)
 
@@ -524,7 +530,7 @@ class MOFFCorrelatorOp(object):
                                         acdata = bifrost.ndarray(shape=tdata.shape, dtype=numpy.complex64, space='cuda')
                                         Unpack(tdata, acdata)
                                 time1b = time.time()
-                                print("  Unpack time: %f" % (time1b-time1a))
+                                #print("  Unpack time: %f" % (time1b-time1a))
                                 
                                 ## Phase
                                 try:
@@ -564,8 +570,7 @@ class MOFFCorrelatorOp(object):
                                 try:
                                     gdata = gdata.reshape(1,self.ntime_gulp*nchan,2*GRID_SIZE*GRID_SIZE)
                                 except NameError:
-                                    print((self.ntime_gulp,nchan,2*GRID_SIZE*GRID_SIZE))
-                                    gdata = bifrost.zeros(shape=(1,self.ntime_gulp*nchan,2*GRID_SIZE*GRID_SIZE),dtype=numpy.complex64, space='cuda')  
+                                    gdata = bifrost.ndarray(shape=(1,self.ntime_gulp*nchan,2*GRID_SIZE*GRID_SIZE),dtype=numpy.complex64, space='cuda')  
                                 ## Grid the Antennas
                                 timeg1 = time.time()
                                 gdata = self.LinAlgObj.matmul(1.0, udata, bfantgridmap, 0.0, gdata)
@@ -573,15 +578,17 @@ class MOFFCorrelatorOp(object):
                                 print("  LinAlg time: %f"%(timeg2 - timeg1))
                                 
                                 ## Inverse transform
-                                gdata = gdata.reshape(self.ntime_gulp,nchan,2,GRID_SIZE,GRID_SIZE)
+                                gdata = gdata.reshape(self.ntime_gulp*nchan*2,GRID_SIZE,GRID_SIZE)
                                 timefft1 = time.time()
                                 try:
+                                    fdata = fdata.reshape(self.ntime_gulp*nchan*2,GRID_SIZE,GRID_SIZE)
                                     bf_fft.execute(gdata,fdata,inverse=True)
                                 except NameError:
                                     fdata = bifrost.ndarray(shape=gdata.shape, dtype=numpy.complex64, space='cuda')
                                     bf_fft = Fft()
-                                    bf_fft.init(gdata,fdata,axes=(3,4))
+                                    bf_fft.init(gdata,fdata,axes=(1,2))
                                     bf_fft.execute(gdata,fdata,inverse=True)
+                                fdata = fdata.reshape(self.ntime_gulp,nchan,2,GRID_SIZE,GRID_SIZE)
                                 timefft2 = time.time()
                                 print("  FFT time: %f"%(timefft2 - timefft1))
                                 
@@ -618,7 +625,7 @@ class MOFFCorrelatorOp(object):
                                         adata = adata.reshape(self.ntime_gulp,nchan,4*GRID_SIZE**2)
                                     except NameError:
                                         print((self.ntime_gulp,nchan,4*GRID_SIZE**2))
-                                        adata = bifrost.zeros(shape=(self.ntime_gulp,nchan,4*GRID_SIZE**2),dtype=numpy.complex64,space='cuda')
+                                        adata = bifrost.ndarray(shape=(self.ntime_gulp,nchan,4*GRID_SIZE**2),dtype=numpy.complex64,space='cuda')
                                         
                                     ## Grid the Autocorrelations
                                     autocorrs = autocorrs.reshape(self.ntime_gulp,nchan,-1)
@@ -654,17 +661,27 @@ class MOFFCorrelatorOp(object):
                                                           'process_time': process_time,})
 
 class ImagingOP_GPU(object):
-    def __init__(self, log, iring, oring, ntime_gulp, accumulation_time=100, gpu=-1, remove_autocorrs=False, *args, **kwargs):
+    def __init__(self, log, iring, oring, ntime_gulp, accumulation_time=100, core=-1, gpu=-1, remove_autocorrs=False, *args, **kwargs):
         self.log = log
         self.iring = iring
         self.oring = oring
         self.ntime_gulp = ntime_gulp
         self.accumulation_time = accumulation_time
+        self.core = core
+        self.gpu = gpu
         self.remove_autocorrs = remove_autocorrs
         self.accumulated_image = None
         self.newflag = True
          
     def main(self):
+        if self.core != -1:
+            bifrost.affinity.set_core(self.core)
+        if self.gpu != -1:
+            BFSetGPU(self.gpu)
+        self.bind_proclog.update({'ncore': 1, 
+                                  'core0': bifrost.affinity.get_core(),
+                                  'ngpu': 1,
+                                  'gpu0': BFGetGPU(),})
         
         accum = 0
         with self.oring.begin_writing() as oring:
@@ -783,13 +800,14 @@ class ImagingOP_GPU(object):
                                         
 
 class ImagingOp(object):
-    def __init__(self, log, iring, filename, ntime_gulp=100, accumulation_time=1, core=-1, cpu=False, remove_autocorrs = False, *args, **kwargs):
+    def __init__(self, log, iring, filename, ntime_gulp=100, accumulation_time=1, core=-1, gpu=-1, cpu=False, remove_autocorrs = False, *args, **kwargs):
         self.log = log
         self.iring = iring
         self.filename = filename
         self.ntime_gulp= ntime_gulp
         self.accumulation_time = accumulation_time
         self.core = core
+        self.gpu = gpu
         self.cpu = cpu
         self.remove_autocorrs = remove_autocorrs
         self.accumulated_image = None
@@ -805,9 +823,14 @@ class ImagingOp(object):
         self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
 
     def main(self):
-        #bifrost.affinity.set_core(self.core)
+        if self.core != -1:
+            bifrost.affinity.set_core(self.core)
+        if self.gpu != -1:
+            BFSetGPU(self.gpu)
         self.bind_proclog.update({'ncore': 1, 
-                                  'core0': bifrost.affinity.get_core(),})
+                                  'core0': bifrost.affinity.get_core(),
+                                  'ngpu': 1,
+                                  'gpu0': BFGetGPU(),})
         
         accum = 0
         fileid = 1
@@ -1020,11 +1043,11 @@ def main():
     gridandfft_ring = Ring(name="gridandfft", space="cuda")
     image_ring = Ring(name="image", space="system")
     
-    ops.append(OfflineCaptureOp(log, fcapture_ring,args.tbnfile))
-    ops.append(FDomainOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts, nchan_out=args.channels))
-    ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, ntime_gulp=args.nts, remove_autocorrs=args.removeautocorrs))
-    #ops.append(ImagingOP_GPU(log, gridandfft_ring, image_ring, ntime_gulp=args.nts,accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs))
-    ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", ntime_gulp=args.nts, accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs))
+    ops.append(OfflineCaptureOp(log, fcapture_ring,args.tbnfile, core=cores.pop(0)))
+    ops.append(FDomainOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts, nchan_out=args.channels, core=cores.pop(0), gpu=gpus.pop(0)))
+    ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, ntime_gulp=args.nts, remove_autocorrs=args.removeautocorrs, core=cores.pop(0), gpu=gpus.pop(0)))
+    #ops.append(ImagingOP_GPU(log, gridandfft_ring, image_ring, ntime_gulp=args.nts,accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs, core=cores.pop(0), gpu=gpus.pop(0)))
+    ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", ntime_gulp=args.nts, accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs, core=cores.pop(0), gpu=gpus.pop(0)))
 
     threads= [threading.Thread(target=op.main) for op in ops]
 
@@ -1032,10 +1055,14 @@ def main():
         thread.daemon = False
         thread.start()
 
-    while threads[0].is_alive() and not shutdown_event.is_set():
-        time.sleep(0.5)
+    while not shutdown_event.is_set():
+        if threads[0].is_alive():
+            signal.pause()
+        else:
+            break
     for thread in threads:
         thread.join()
+    log.info("Done")
 
 if __name__ == "__main__":
     main()
