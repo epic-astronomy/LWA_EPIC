@@ -942,11 +942,11 @@ class ImagingOp(object):
                         
                         accum = 0
                         self.newflag = True
-                        fig = plt.figure(1)
+                        fig = plt.figure(fileid)
                         for i in xrange(4):
                             ax = fig.add_subplot(2, 2, i+1)
-                            ax.imshow(image[0,i,:,:])
-                            plt.colorbar(cax=ax)
+                            im = ax.imshow(image[0,i,:,:])
+                            fig.colorbar(im,orientation='vertical')
                         #plt.imshow(numpy.real(self.accumulated_image[0,0,:,:].T))
                         plt.savefig("ImagingOP-%04i.png"%(fileid))
                         fileid += 1
