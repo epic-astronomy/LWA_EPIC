@@ -501,12 +501,12 @@ class MOFFCorrelatorOp(object):
                                 ## Fix the type
                                 tdata = bifrost.ndarray(shape=ishape, dtype='ci4', native=False, buffer=idata.ctypes.data)
                                 odata = ospan.data_view(numpy.complex64).reshape(oshape)
-                                    
+                                
                                 time1=time.time()
                                 tdata = tdata.copy(space='cuda')
                                 time1a = time.time()
                                 print("  Input copy time: %f" % (time1a-time1))
-                                    
+                                
                                 ## Unpack
                                 try:
                                     udata = udata.reshape(*tdata.shape)
@@ -522,7 +522,7 @@ class MOFFCorrelatorOp(object):
                                         Unpack(tdata, acdata)
                                 time1b = time.time()
                                 print("  Unpack time: %f" % (time1b-time1a))
-                                            
+                                
                                 ## Phase
                                 try:
                                     bifrost.map('a(i,j,k,l) *= b(i,j,k,l)', {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)                                            
@@ -530,12 +530,11 @@ class MOFFCorrelatorOp(object):
                                     phases = bifrost.ndarray(phases)
                                     gphases = phases.copy(space='cuda')
                                     bifrost.map('a(i,j,k,l) *= b(i,j,k,l)', {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)
-                                    time1c = time.time()
-                                    print("  Phase-up time: %f" % (time1c-time1b))
-
+                                time1c = time.time()
+                                print("  Phase-up time: %f" % (time1c-time1b))
                                 
                                 ## Combine stand and pols into standpols
-                                udata = udata.reshape(self.ntime_gulp,nchan,-1)
+                                udata = udata.reshape(1,self.ntime_gulp*nchan,-1)
                                 time1d = time.time()
                                 print("  'udata' Reshape time: %f" % (time1d-time1c))
                                 
@@ -554,16 +553,16 @@ class MOFFCorrelatorOp(object):
                                     bfantgridmap = bifrost.ndarray(antgrid)
                                     bfantgridmap = bfantgridmap.copy(space='cuda')
                                     bfantgridmap = bfantgridmap.transpose(0,2,1)
-                                    time1e = time.time()
-                                    print("  'bfantgridmap' Check time: %f" % (time1e-time1d))
+                                time1e = time.time()
+                                print("  'bfantgridmap' Check time: %f" % (time1e-time1d))
 
                                 ## Make sure we have a place to put the data
                                 # Gridded Antennas
                                 try:
-                                    gdata = gdata.reshape(self.ntime_gulp,nchan,2*GRID_SIZE*GRID_SIZE)
+                                    gdata = gdata.reshape(1,self.ntime_gulp*nchan,2*GRID_SIZE*GRID_SIZE)
                                 except NameError:
                                     print((self.ntime_gulp,nchan,2*GRID_SIZE*GRID_SIZE))
-                                    gdata = bifrost.zeros(shape=(self.ntime_gulp,nchan,2*GRID_SIZE*GRID_SIZE),dtype=numpy.complex64, space='cuda')  
+                                    gdata = bifrost.zeros(shape=(1,self.ntime_gulp*nchan,2*GRID_SIZE*GRID_SIZE),dtype=numpy.complex64, space='cuda')  
                                 ## Grid the Antennas
                                 timeg1 = time.time()
                                 gdata = self.LinAlgObj.matmul(1.0, udata, bfantgridmap, 0.0, gdata)
@@ -580,16 +579,16 @@ class MOFFCorrelatorOp(object):
                                     bf_fft = Fft()
                                     bf_fft.init(gdata,fdata,axes=(3,4))
                                     bf_fft.execute(gdata,fdata,inverse=True)
-                                    timefft2 = time.time()
-                                    print("  FFT time: %f"%(timefft2 - timefft1))
-                                        
+                                timefft2 = time.time()
+                                print("  FFT time: %f"%(timefft2 - timefft1))
+                                
                                 if self.remove_autocorrs == True:
                                     time1f = time.time()
                                     
                                     try:
                                         bfautocorrmap
                                     except NameError:
-                                            
+                                        
                                         autocorrgrid = numpy.zeros((1,4,GRID_SIZE**2,nstand*npol*2), dtype=numpy.complex64)
                                         autocorrgrid[:,0,:,0::4] = self.autocorrmap
                                         autocorrgrid[:,1,:,1::4] = self.autocorrmap
@@ -610,22 +609,21 @@ class MOFFCorrelatorOp(object):
                                                 {'a':autocorrs, 'b':acdata}, 
                                                     axis_names=('i','j','k','l'),
                                                     shape=autocorrs.shape)
-                                        
+                                    
                                     ## Place to put autocorrelation data
                                     try:
                                         adata = adata.reshape(self.ntime_gulp,nchan,4*GRID_SIZE**2)
                                     except NameError:
                                         print((self.ntime_gulp,nchan,4*GRID_SIZE**2))
                                         adata = bifrost.zeros(shape=(self.ntime_gulp,nchan,4*GRID_SIZE**2),dtype=numpy.complex64,space='cuda')
-                                            
+                                        
                                     ## Grid the Autocorrelations
-                                    
                                     autocorrs = autocorrs.reshape(self.ntime_gulp,nchan,-1)
                                     print(autocorrs.shape)
                                     adata = self.LinAlgObj.matmul(1.0, autocorrs, bfautocorrmap, 0.0, adata)
                                     time1g = time.time()
                                     print("  Auto-corrs LinAlg time: %f" % (time1g-time1f))
-                                        
+                                    
                                 ## Output for gridded electric fields.
                                 time1h = time.time()
                                 odata[0,:,:,0:2,:,:] = fdata.copy(space='cuda')
@@ -638,13 +636,13 @@ class MOFFCorrelatorOp(object):
                                     odata[1,...] = adata.copy(space='cuda')
                                     time1j = time.time()
                                     print("  Auto-corrs save time: %f" % (time1j-time1i))
-                                        
+                                    
                                 time2=time.time()
                                 print("-> GPU Time Taken: %f"%(time2-time1))
-                                    
+                                
                                 runtime_history.append(time2-time1)
                                 print("-> Average GPU Time Taken: %f (%i samples)" % (1.0*sum(runtime_history)/len(runtime_history), len(runtime_history)))
-                                                                        
+                                
                                 curr_time = time.time()
                                 process_time = curr_time - prev_time
                                 prev_time = curr_time
@@ -1022,8 +1020,8 @@ def main():
     ops.append(OfflineCaptureOp(log, fcapture_ring,args.tbnfile))
     ops.append(FDomainOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts, nchan_out=args.channels))
     ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, ntime_gulp=args.nts, remove_autocorrs=args.removeautocorrs))
-    ops.append(ImagingOP_GPU(log, gridandfft_ring, image_ring, ntime_gulp=args.nts,accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs))
-    #ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", ntime_gulp=args.nts, accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs))
+    #ops.append(ImagingOP_GPU(log, gridandfft_ring, image_ring, ntime_gulp=args.nts,accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs))
+    ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", ntime_gulp=args.nts, accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs))
 
     threads= [threading.Thread(target=op.main) for op in ops]
 
