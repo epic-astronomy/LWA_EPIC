@@ -486,7 +486,7 @@ class MOFFCorrelatorOp(object):
                     oshape = (1,self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE)
                     ogulp_size = self.ntime_gulp * nchan * npol * GRID_SIZE * GRID_SIZE * 8
                 self.iring.resize(igulp_size)
-                self.oring.resize(ogulp_size)
+                self.oring.resize(ogulp_size,buffer_factor=5)
 
                 
                 prev_time = time.time()
@@ -805,14 +805,7 @@ class ImagingOP_GPU(object):
                             print("###IMAGING BLOCK###")
                             print("Imaging Op Loop Finished")
                     break
-                                
-                                
-                            
 
-
-                               
-
-                                        
 
 class ImagingOp(object):
     def __init__(self, log, iring, filename, ntime_gulp=100, accumulation_time=1, core=-1, gpu=-1, cpu=False, remove_autocorrs = False, *args, **kwargs):
@@ -875,11 +868,14 @@ class ImagingOp(object):
                     curr_time = time.time()
                     acquire_time = curr_time - prev_time
                     prev_time = curr_time
-                    
+
                     idata = ispan.data_view(numpy.complex64).reshape(ishape)
                     if self.cpu:
+                        
+                        idata = idata.copy(space="system")
                         idata = idata.astype(numpy.complex128)
                         #Square
+                        
                         xdata, ydata = idata[0,:,:,0,:,:], idata[0,:,:,1,:,:]
                         xxdata = numpy.abs(xdata*xdata.conj())
                         xydata = numpy.abs(xdata*ydata.conj()) \
@@ -887,7 +883,7 @@ class ImagingOp(object):
                         yxdata = numpy.abs(ydata*xdata.conj()) \
                                 * numpy.where( numpy.angle(ydata*xdata.conj()) > 0, 1, -1 )
                         yydata = numpy.abs(ydata*ydata.conj())
-
+                        
 
                         for ti in numpy.arange(0,self.ntime_gulp):
                             #print ("Accum: %d"%accum,end='\n')
@@ -912,6 +908,7 @@ class ImagingOp(object):
                             # Increment
                             accum += 1
                     else:
+
                         for ti in numpy.arange(0,self.ntime_gulp):
                             #print ("Accum: %d"%accum,end='\n')
                             if self.newflag is True:
@@ -933,10 +930,12 @@ class ImagingOp(object):
                                             
                              # Increment
                             accum += 1
-                            
                     #Save and output
                     if accum >= self.accumulation_time:
-                        image = self.accumulated_image.copy(space='cuda_host')
+                        if self.cpu == False:
+                            image = self.accumulated_image.copy(space='cuda_host')
+                        else:
+                            image = self.accumulated_image
                         image = numpy.fft.fftshift(numpy.abs(image), axes=(2,3))
                         image = numpy.transpose(image, (0,1,3,2))
                         
@@ -1060,11 +1059,11 @@ def main():
     gridandfft_ring = Ring(name="gridandfft", space="cuda")
     image_ring = Ring(name="image", space="system")
     
-    ops.append(OfflineCaptureOp(log, fcapture_ring,args.tbnfile, core=cores.pop(0)))
-    ops.append(FDomainOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts, nchan_out=args.channels, core=cores.pop(0), gpu=gpus.pop(0)))
-    ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, ntime_gulp=args.nts, remove_autocorrs=args.removeautocorrs, core=cores.pop(0), gpu=gpus.pop(0),benchmark=args.benchmark))
+    ops.append(OfflineCaptureOp(log, fcapture_ring,args.tbnfile))
+    ops.append(FDomainOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts, nchan_out=args.channels, gpu=gpus.pop(0)))
+    ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, ntime_gulp=args.nts, remove_autocorrs=args.removeautocorrs, gpu=gpus.pop(0),benchmark=args.benchmark))
     #ops.append(ImagingOP_GPU(log, gridandfft_ring, image_ring, ntime_gulp=args.nts,accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs, core=cores.pop(0), gpu=gpus.pop(0)))
-    ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", ntime_gulp=args.nts, accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs, core=cores.pop(0), gpu=gpus.pop(0)))
+    ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", ntime_gulp=args.nts, accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs, gpu=gpus.pop(0),cpu=False))
 
     threads= [threading.Thread(target=op.main) for op in ops]
 
