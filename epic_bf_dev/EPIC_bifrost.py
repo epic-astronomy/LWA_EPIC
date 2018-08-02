@@ -120,14 +120,13 @@ class OfflineCaptureOp(object):
         cfreq = idf.getInfo('freq1')
         srate = idf.getInfo('sampleRate')
         tInt, tStart, data = idf.read(0.1, timeInSamples=True)
-        idf.reset()
         
         # Setup the ring metadata and gulp sizes
         ntime = data.shape[1]
         nstand, npol = data.shape[0]/2, 2
         oshape = (ntime,nstand,npol)
         ogulp_size = ntime*nstand*npol*8		# complex64
-        self.oring.resize(ogulp_size, buffer_factor=5)
+        self.oring.resize(ogulp_size, buffer_factor=10)
         
         self.size_proclog.update({'nseq_per_gulp': ntime})
         
@@ -152,7 +151,7 @@ class OfflineCaptureOp(object):
                 while not self.shutdown_event.is_set():
                     ## Get the current section to use
                     try:
-                        tInt, tStart, data = idf.read(0.1, timeInSamples=True)
+                        _, _, next_data = idf.read(0.1, timeInSamples=True)
                     except Exception as e:
                         print("FillerOp: Error - '%s'" % str(e))
                         idf.close()
@@ -179,6 +178,8 @@ class OfflineCaptureOp(object):
                         ## Save
                         odata[...] = idata
                         
+                    data = next_data
+                    
                     curr_time = time.time()
                     process_time = curr_time - prev_time
                     prev_time = curr_time
@@ -851,6 +852,9 @@ class ImagingOp(object):
                 igulp_size = self.ntime_gulp * nchan * npol * GRID_SIZE * GRID_SIZE * 8
                 ishape = (1,self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE)
                 
+            crosspol = bifrost.ndarray(shape=(self.ntime_gulp,nchan,npol**2,GRID_SIZE,GRID_SIZE), dtype=numpy.complex64, space='cuda')
+            accumulated_image = bifrost.ndarray(shape=(1,nchan,npol**2,GRID_SIZE,GRID_SIZE), dtype=numpy.complex64, space='cuda')
+            
             prev_time = time.time()
             iseq_spans = iseq.read(igulp_size)
             while not self.iring.writing_ended():
@@ -897,40 +901,43 @@ class ImagingOp(object):
                             # Increment
                             accum += 1
                     else:
-                        for ti in numpy.arange(0,self.ntime_gulp):
-                            #print ("Accum: %d"%accum,end='\n')
-                            if self.newflag is True:
-                                self.accumulated_image = bifrost.zeros(shape=(nchan,npol**2,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64,space='cuda')
-                                self.newflag=False
+                        #print ("Accum: %d"%accum,end='\n')
+                        if self.newflag is True:
+                            bifrost.map('a(i,j,p,k,l) = Complex<float>(0, 0)', 
+                                        {'a':crosspol,}, 
+                                        axis_names=('i','j', 'p', 'k', 'l'), 
+                                        shape=(self.ntime_gulp, nchan, 4, GRID_SIZE, GRID_SIZE))
+                            self.newflag=False
                                 
-                            #Accumulate
-                            #Subtract auto-correlations.
-                            if self.remove_autocorrs == True:
-                                bifrost.map('a(i,p,j,k) += b(0,%i,i,p/2,j,k)*b(0,%i,i,p%%2,j,k).conj() - b(1,%i,i,p,j,k)' % (ti, ti, ti), 
-                                            {'a':self.accumulated_image, 'b':idata}, 
-                                            axis_names=('i','p','j','k'), 
-                                            shape=(nchan, 4, GRID_SIZE, GRID_SIZE))
-                            else:
-                                bifrost.map('a(i,p,j,k) += b(0,%i,i,p/2,j,k)*b(0,%i,i,p%%2,j,k).conj()' % (ti, ti), 
-                                            {'a':self.accumulated_image, 'b':idata}, 
-                                            axis_names=('i','p','j','k'), 
-                                            shape=(nchan, 4, GRID_SIZE, GRID_SIZE))
-                                            
-                             # Increment
-                            accum += 1
+                        #Accumulate
+                        #Subtract auto-correlations.
+                        if self.remove_autocorrs == True:
+                            bifrost.map('a(i,j,p,k,l) += b(0,i,j,p/2,k,l)*b(0,i,j,p%2,k,l).conj() - b(1,i,j,p,k,l)', 
+                                        {'a':crosspol, 'b':idata}, 
+                                        axis_names=('i','j', 'p', 'k', 'l'), 
+                                        shape=(self.ntime_gulp, nchan, 4, GRID_SIZE, GRID_SIZE))
+                        else:
+                            bifrost.map('a(i,j,p,k,l) += b(0,i,j,p/2,k,l)*b(0,i,j,p%2,k,l).conj()', 
+                                        {'a':crosspol, 'b':idata}, 
+                                        axis_names=('i','j', 'p', 'k', 'l'), 
+                                        shape=(self.ntime_gulp, nchan, 4, GRID_SIZE, GRID_SIZE))
+                                        
+                        # Increment
+                        accum += self.ntime_gulp
                             
                     #Save and output
                     if accum >= self.accumulation_time:
-                        image = self.accumulated_image.copy(space='cuda_host')
-                        image = numpy.fft.fftshift(numpy.abs(image), axes=(2,3))
-                        image = numpy.transpose(image, (0,1,3,2))
+                        bifrost.reduce(crosspol, accumulated_image, op='sum')
+                        image = accumulated_image.copy(space='cuda_host')
+                        image = numpy.fft.fftshift(numpy.abs(image), axes=(3,4))
+                        image = numpy.transpose(image, (0,1,2,4,3))
                         
                         accum = 0
                         self.newflag = True
                         fig = plt.figure(1)
                         for i in xrange(4):
                             ax = fig.add_subplot(2, 2, i+1)
-                            ax.imshow(image[0,i,:,:])
+                            ax.imshow(image[0,0,i,:,:])
                         #plt.imshow(numpy.real(self.accumulated_image[0,0,:,:].T))
                         plt.savefig("ImagingOP-%04i.png"%(fileid))
                         fileid += 1
