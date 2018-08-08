@@ -32,6 +32,7 @@ from bifrost.fft import Fft
 
 import bifrost
 import bifrost.affinity
+from bifrost.ndarray import memset_array
 
 from bifrost.device import set_device as BFSetGPU, get_device as BFGetGPU, set_devices_no_spin_cpu as BFNoSpinZone
 BFNoSpinZone()
@@ -914,10 +915,7 @@ class ImagingOp(object):
                     else:
                         #print ("Accum: %d"%accum,end='\n')
                         if self.newflag is True:
-                            bifrost.map('a(i,j,p,k,l) = Complex<float>(0, 0)', 
-                                        {'a':crosspol,}, 
-                                        axis_names=('i','j', 'p', 'k', 'l'), 
-                                        shape=(self.ntime_gulp, nchan, 4, GRID_SIZE, GRID_SIZE))
+                            memset_array(crosspol, 0)
                             self.newflag=False
                                 
                         #Accumulate
