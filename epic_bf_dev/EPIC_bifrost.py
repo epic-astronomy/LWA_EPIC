@@ -650,7 +650,7 @@ class MOFFCorrelatorOp(object):
                                 ## Output for gridded electric fields.
                                 if self.benchmark == True:
                                     time1h = time.time()
-                                odata[0,:,:,0:2,:,:] = fdata.copy(space='cuda')
+                                odata[0,:,:,0:2,:,:] = fdata
                                 if self.benchmark == True:
                                     time1i = time.time()
                                     print("  Shift-n-save time: %f" % (time1i-time1h))
@@ -658,7 +658,7 @@ class MOFFCorrelatorOp(object):
                                 if self.remove_autocorrs == True:
                                     ## Output autocorrelations in the same gulp.
                                     adata = adata.reshape(self.ntime_gulp,nchan,4,GRID_SIZE,GRID_SIZE)
-                                    odata[1,...] = adata.copy(space='cuda')
+                                    odata[1,...] = adata
                                     time1j = time.time()
                                     print("  Auto-corrs save time: %f" % (time1j-time1i))
 
