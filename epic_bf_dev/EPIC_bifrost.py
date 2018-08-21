@@ -27,7 +27,6 @@ from bifrost.quantize import quantize as Quantize
 from bifrost.reduce import reduce as Reduce 
 from bifrost.proclog import ProcLog
 from bifrost.libbifrost import bf
-from bifrost.linalg import LinAlg
 from bifrost.fft import Fft
 from bifrost.romein import romein_float
 
@@ -364,8 +363,6 @@ class MOFFCorrelatorOp(object):
             
         if self.gpu != -1:
             BFSetGPU(self.gpu)
-        self.LinAlgObj = LinAlg() # Jayce does this need to be here?
-
         
     def main(self):
         if self.core != -1:
@@ -815,7 +812,6 @@ def main():
     ops.append(OfflineCaptureOp(log, fcapture_ring,args.tbnfile))
     ops.append(FDomainOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts, nchan_out=args.channels, gpu=gpus.pop(0)))
     ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, ntime_gulp=args.nts, remove_autocorrs=args.removeautocorrs, gpu=gpus.pop(0),benchmark=args.benchmark))
-    #ops.append(ImagingOP_GPU(log, gridandfft_ring, image_ring, ntime_gulp=args.nts,accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs, core=cores.pop(0), gpu=gpus.pop(0)))
     ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", ntime_gulp=args.nts, accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs, gpu=gpus.pop(0),cpu=False))
 
     threads= [threading.Thread(target=op.main) for op in ops]
