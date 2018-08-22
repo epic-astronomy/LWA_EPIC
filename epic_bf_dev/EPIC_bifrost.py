@@ -1,6 +1,7 @@
 #!/usr/bin/env python
-from __future__ import print_function
 
+## Core Python Includes
+from __future__ import print_function
 import signal
 import logging
 import time
@@ -12,11 +13,15 @@ import argparse
 import numpy
 import time
 from collections import deque
-
 from scipy.fftpack import fft
-
 import matplotlib.pyplot as plt
 
+## Profiling Includes
+import cProfile
+import pstats
+
+
+## Bifrost Includes
 from bifrost.address import Address as BF_Address
 from bifrost.udp_socket import UDPSocket as BF_UDPSocket
 from bifrost.udp_capture import UDPCapture as BF_UDPCapture
@@ -29,15 +34,13 @@ from bifrost.proclog import ProcLog
 from bifrost.libbifrost import bf
 from bifrost.fft import Fft
 from bifrost.romein import romein_float
-
 import bifrost
 import bifrost.affinity
 from bifrost.ndarray import memset_array
-
 from bifrost.device import set_device as BFSetGPU, get_device as BFGetGPU, set_devices_no_spin_cpu as BFNoSpinZone
 BFNoSpinZone()
 
-
+## LWA Software Library Includes
 from lsl.common.constants import c as speedOfLight
 from lsl.writer import fitsidi
 from lsl.reader.ldp import TBNFile
@@ -77,29 +80,55 @@ loc_range_y = numpy.nanmax(locations[:,1]) - numpy.nanmin(locations[:,1])
 loc_range = max([loc_range_x, loc_range_y])
 #print (loc_range_x, loc_range_y, loc_range)
 GRID_SIZE = int(numpy.power(2,numpy.ceil(numpy.log(loc_range/RESOLUTION)/numpy.log(2))+0))
-locations = locations + GRID_SIZE/2
+locations = locations + GRID_SIZE
+locations = locations/RESOLUTION
 #print(GRID_SIZE)
 
 #plt.plot(locations[:,0],locations[:,1],'x')
 #plt.show()
 
-## Antenna Illumination Pattern params:
-# For now just use a square top-hat function..
-## TODO: Do this properly...
-Xmin= -1.5
-Xmax= 1.5
-Ymin= -1.5
-Ymax= 1.5
+
+#### Profiling #####
+
+def enable_thread_profiling():
+    '''Monkey-patch Thread.run to enable global profiling.
+    
+    Each thread creates a local profiler; statistics are pooled
+    to the global stats object on run completion.'''
+    threading.Thread.stats = None
+    thread_run = threading.Thread.run
+  
+    def profile_run(self):
+        self._prof = cProfile.Profile()
+        self._prof.enable()
+        thread_run(self)
+        self._prof.disable()
+    
+        if threading.Thread.stats is None:
+            threading.Thread.stats = pstats.Stats(self._prof)
+        else:
+            threading.Thread.stats.add(self._prof)
+  
+    threading.Thread.run = profile_run
+
+
+def get_thread_stats():
+      stats = getattr(threading.Thread, 'stats', None)
+      if stats is None:
+          raise ValueError, 'Thread profiling was not enabled,'
+      'or no threads finished running.'
+      return stats
 
 
 
 
 class OfflineCaptureOp(object):
-    def __init__(self, log, oring, filename, core=-1):
+    def __init__(self, log, oring, filename, profile=False, core=-1):
         self.log = log
         self.oring = oring
         self.filename = filename
         self.core = core
+        self.profile = profile
 
         self.bind_proclog = ProcLog(type(self).__name__+"/bind")
         self.out_proclog  = ProcLog(type(self).__name__+"/out")
@@ -151,6 +180,8 @@ class OfflineCaptureOp(object):
         with self.oring.begin_writing() as oring:
             with oring.begin_sequence(time_tag=tStart, header=ohdr_str) as oseq:
                 prev_time = time.time()
+                if self.profile:
+                    spani = 0
                 while not self.shutdown_event.is_set():
                     ## Get the current section to use
                     try:
@@ -190,11 +221,16 @@ class OfflineCaptureOp(object):
                     self.perf_proclog.update({'acquire_time': acquire_time, 
                                               'reserve_time': reserve_time, 
                                               'process_time': process_time,})
+                    if self.profile:
+                        spani += 1
+                        if spani >= 10:
+                            sys.exit()
+                            break
         print("FillerOp - Done")
 
 
 class FDomainOp(object):
-    def __init__(self, log, iring, oring, ntime_gulp=2500, nchan_out=1, core=-1, gpu=-1):
+    def __init__(self, log, iring, oring, ntime_gulp=2500, nchan_out=1, profile=False, core=-1, gpu=-1):
         self.log = log
         self.iring = iring
         self.oring = oring
@@ -202,6 +238,7 @@ class FDomainOp(object):
         self.nchan_out = nchan_out
         self.core = core
         self.gpu = gpu
+        self.profile = profile
         
         self.nchan_out = nchan_out
         
@@ -215,6 +252,10 @@ class FDomainOp(object):
         self.in_proclog.update( {'nring':1, 'ring0':self.iring.name})
         self.out_proclog.update({'nring':1, 'ring0':self.oring.name})
         self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
+        self.shutdown_event = threading.Event()
+
+    def shutdown(self):
+        self.shutdown_event.set()
         
     def main(self):
         if self.core != -1:
@@ -262,6 +303,9 @@ class FDomainOp(object):
                             curr_time = time.time()
                             acquire_time = curr_time - prev_time
                             prev_time = curr_time
+
+                            if self.profile:
+                                spani = 0
                             
                             with oseq.reserve(ogulp_size) as ospan:
                                 curr_time = time.time()
@@ -287,6 +331,12 @@ class FDomainOp(object):
                                     
                                 ## Save
                                 odata[...] = qdata.copy(space='cuda_host').view(numpy.int8).reshape(oshape)
+
+                                if self.profile:
+                                    spani += 1
+                                    if spani >= 10:
+                                        sys.exit()
+                                        break
                                 
                             curr_time = time.time()
                             process_time = curr_time - prev_time
@@ -333,7 +383,7 @@ class CalibrationOp(object):
         pass
 
 class MOFFCorrelatorOp(object):
-    def __init__(self, log, iring, oring, ntime_gulp=2500, core=-1, gpu=-1, remove_autocorrs = False, benchmark=False,*args, **kwargs):
+    def __init__(self, log, iring, oring, ntime_gulp=2500, core=-1, gpu=-1, remove_autocorrs = False, benchmark=False, profile=False, *args, **kwargs):
         self.log = log
         self.iring = iring
         self.oring = oring
@@ -343,6 +393,7 @@ class MOFFCorrelatorOp(object):
         self.gpu = gpu
         self.remove_autocorrs = remove_autocorrs
         self.benchmark = benchmark
+        self.profile = profile
         
         self.bind_proclog = ProcLog(type(self).__name__+"/bind")
         self.in_proclog   = ProcLog(type(self).__name__+"/in")
@@ -355,7 +406,7 @@ class MOFFCorrelatorOp(object):
         self.out_proclog.update({'nring':1, 'ring0':self.oring.name})
         self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
 
-        self.antgridmap = bifrost.ndarray(numpy.ones(shape=(3,3),dtype=numpy.complex64),space='cuda')
+        self.antgridmap = bifrost.ndarray(numpy.ones(shape=(1,1),dtype=numpy.complex64),space='cuda')
         self.antgridmap = self.antgridmap.copy(space='cuda',order='C')
         
         if self.remove_autocorrs == True:
@@ -363,6 +414,12 @@ class MOFFCorrelatorOp(object):
             
         if self.gpu != -1:
             BFSetGPU(self.gpu)
+
+        self.shutdown_event = threading.Event()
+        
+    def shutdown(self):
+        self.shutdown_event.set()
+
         
     def main(self):
         if self.core != -1:
@@ -436,9 +493,13 @@ class MOFFCorrelatorOp(object):
                 self.oring.resize(ogulp_size,buffer_factor=1)
                 
                 prev_time = time.time()
-                with oring.begin_sequence(header=ohdr_str) as oseq:
+                with oring.begin_sequence(time_tag=iseq.time_tag,header=ohdr_str) as oseq:
                     iseq_spans = iseq.read(igulp_size)
                     while not self.iring.writing_ended():
+
+                        if self.profile:
+                            spani = 0
+                        
                         for ispan in iseq_spans:
                             if ispan.size < igulp_size:
                                 continue # Ignore final gulp
@@ -447,6 +508,8 @@ class MOFFCorrelatorOp(object):
                             prev_time = curr_time
                             
                             with oseq.reserve(ogulp_size) as ospan:
+                                if self.benchmark == True:
+                                    print(" ------------------ ")
                                 curr_time = time.time()
                                 reserve_time = curr_time - prev_time
                                 prev_time = curr_time
@@ -512,7 +575,7 @@ class MOFFCorrelatorOp(object):
                                     print("  LinAlg time: %f"%(timeg2 - timeg1))
                                 
                                 #Inverse transform
-                                #gdata = gdata.reshape(self.ntime_gulp*nchan*2,GRID_SIZE,GRID_SIZE)
+                               
                                 if self.benchmark == True:
                                     timefft1 = time.time()
                                 try:
@@ -528,11 +591,12 @@ class MOFFCorrelatorOp(object):
                                     timefft2 = time.time()
                                     print("  FFT time: %f"%(timefft2 - timefft1))
 
+                                
                                 #TODO: Autocorrs using Romein??
                                 ## Output for gridded electric fields.
                                 if self.benchmark == True:
                                     time1h = time.time()
-    
+                                #gdata = gdata.reshape(self.ntime_gulp,nchan,2,GRID_SIZE,GRID_SIZE)
                                 odata[0,:,:,0:2,:,:] = fdata
                                 if self.benchmark == True:
                                     time1i = time.time()
@@ -544,17 +608,22 @@ class MOFFCorrelatorOp(object):
                                 
                                     runtime_history.append(time2-time1)
                                     print("-> Average GPU Time Taken: %f (%i samples)" % (1.0*sum(runtime_history)/len(runtime_history), len(runtime_history)))
+                                if self.profile:
+                                    spani += 1
+                                    if spani >= 10:
+                                        sys.exit()
+                                        break
                                 
-                                curr_time = time.time()
-                                process_time = curr_time - prev_time
-                                prev_time = curr_time
-                                self.perf_proclog.update({'acquire_time': acquire_time, 
-                                                              'reserve_time': reserve_time, 
-                                                              'process_time': process_time,})
+                            curr_time = time.time()
+                            process_time = curr_time - prev_time
+                            prev_time = curr_time
+                            self.perf_proclog.update({'acquire_time': acquire_time, 
+                                                      'reserve_time': reserve_time, 
+                                                      'process_time': process_time,})
 
                                 
 class ImagingOp(object):
-    def __init__(self, log, iring, filename, ntime_gulp=100, accumulation_time=1, core=-1, gpu=-1, cpu=False, remove_autocorrs = False, *args, **kwargs):
+    def __init__(self, log, iring, filename, ntime_gulp=100, accumulation_time=1, core=-1, gpu=-1, cpu=False, remove_autocorrs = False, profile=False, *args, **kwargs):
         self.log = log
         self.iring = iring
         self.filename = filename
@@ -566,6 +635,7 @@ class ImagingOp(object):
         self.remove_autocorrs = remove_autocorrs
         self.accumulated_image = None
         self.newflag = True
+        self.profile = profile
         
         self.bind_proclog = ProcLog(type(self).__name__+"/bind")
         self.in_proclog   = ProcLog(type(self).__name__+"/in")
@@ -575,6 +645,12 @@ class ImagingOp(object):
         
         self.in_proclog.update( {'nring':1, 'ring0':self.iring.name})
         self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
+
+        self.shutdown_event = threading.Event()
+        
+    def shutdown(self):
+        self.shutdown_event.set()
+
 
     def main(self):
         if self.core != -1:
@@ -611,13 +687,15 @@ class ImagingOp(object):
             prev_time = time.time()
             iseq_spans = iseq.read(igulp_size)
             while not self.iring.writing_ended():
+                if self.profile:
+                    spani = 0
                 for ispan in iseq_spans:
                     if ispan.size < igulp_size:
                         continue # Ignore final gulp
                     curr_time = time.time()
                     acquire_time = curr_time - prev_time
                     prev_time = curr_time
-
+                    
                     idata = ispan.data_view(numpy.complex64).reshape(ishape)
                     if self.cpu:
                         
@@ -707,6 +785,11 @@ class ImagingOp(object):
                     self.perf_proclog.update({'acquire_time': acquire_time, 
                                               'reserve_time': -1, 
                                               'process_time': process_time,})
+                    if self.profile:
+                        spani += 1
+                        if spani >= 10:
+                            sys.exit()
+                            break
 
 ## TODO:                                 
 class SaveFFTOp(object):
@@ -764,10 +847,15 @@ def main():
     parser.add_argument('-n', '--channels',type=int, default=1, help='How many channels to produce.')
     parser.add_argument('-r', '--removeautocorrs',action='store_true', help = 'Removes Autocorrelations')
     parser.add_argument('-b', '--benchmark', action='store_true',help = 'benchmark gridder')
+    parser.add_argument('-c', '--profile', action='store_true', help = 'Run cProfile on ALL threads. Produces trace for each individual thread.')
 
     args = parser.parse_args()
     # Logging Setup
     # TODO: Set this up properly
+    if args.profile:
+        enable_thread_profiling()
+    
+    
     log = logging.getLogger(__name__)
     logFormat = logging.Formatter('%(asctime)s [%(levelname)-8s] %(message)s',
                             datefmt='%Y-%m-%d %H:%M:%S')
@@ -808,11 +896,12 @@ def main():
         fcapture_ring = Ring(name="capture",space="cuda_host")
     gridandfft_ring = Ring(name="gridandfft", space="cuda")
     image_ring = Ring(name="image", space="system")
+
     
-    ops.append(OfflineCaptureOp(log, fcapture_ring,args.tbnfile))
-    ops.append(FDomainOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts, nchan_out=args.channels, gpu=gpus.pop(0)))
-    ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, ntime_gulp=args.nts, remove_autocorrs=args.removeautocorrs, gpu=gpus.pop(0),benchmark=args.benchmark))
-    ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", ntime_gulp=args.nts, accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs, gpu=gpus.pop(0),cpu=False))
+    ops.append(OfflineCaptureOp(log, fcapture_ring,args.tbnfile,profile=args.profile))
+    ops.append(FDomainOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts, nchan_out=args.channels, gpu=gpus.pop(0), profile=args.profile))
+    ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, ntime_gulp=args.nts, remove_autocorrs=args.removeautocorrs, gpu=gpus.pop(0),benchmark=args.benchmark, profile=args.profile))
+    ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", ntime_gulp=args.nts, accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs, gpu=gpus.pop(0), cpu=False, profile=args.profile))
 
     threads= [threading.Thread(target=op.main) for op in ops]
 
@@ -827,7 +916,16 @@ def main():
             break
     for thread in threads:
         thread.join()
+
+    if args.profile:
+        stats = get_thread_stats()
+        stats.print_stats()
+        stats.dump_stats("EPIC_stats.prof")
+        
     log.info("Done")
+
+
+    
 
 if __name__ == "__main__":
     main()
