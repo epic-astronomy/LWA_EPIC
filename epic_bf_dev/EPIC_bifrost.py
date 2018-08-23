@@ -416,10 +416,7 @@ class MOFFCorrelatorOp(object):
                 locations_y = locations_y.copy(space='cuda',order='C')
                 locations_z = bifrost.ndarray(numpy.zeros(shape=(self.ntime_gulp*nchan*npol*nstand)).astype(numpy.int32),space='cuda')
                 locations_z.reshape(self.ntime_gulp*nchan*npol,nstand)
-                print(locations_x)
-                print(locations_y)
-                print(locations_z.shape)
-                
+                        
                 igulp_size = self.ntime_gulp * nchan * nstand * npol * 1 # ci4
                 ishape = (self.ntime_gulp,nchan,nstand,npol)
                 itshape = (self.ntime_gulp,nchan,npol,nstand)
