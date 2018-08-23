@@ -46,49 +46,7 @@ from lsl.writer import fitsidi
 from lsl.reader.ldp import TBNFile
 from lsl.common.stations import lwasv, parseSSMIF
 
-## TODO: Move this to argparse.
-
-CHAN_BW = 25000	# Hz
-ANTENNAS = lwasv.getAntennas()
-DUMP_TIME = 5	# s
-
-# Build map of where the LWA-SV Stations are.
-## TODO: Make this non-SV specific
-LOCATIONS = lwasv.getStands()
-
-locations = numpy.empty(shape=(0,3))
-
-for stand in LOCATIONS:
-    locations = numpy.vstack((locations,[stand[0],stand[1],stand[2]]))
-locations = numpy.delete(locations, list(range(0,locations.shape[0],2)),axis=0)
-# Mask out the outrigger
-locations[255,:] = 0
-locations[:,1] = locations[:,1]-10.0
-
-#print(locations)
-#locations = locations[0:255,:]
-#locations = locations[0:255,:]
-print ("Max X: %f, Max Y: %f" % (numpy.nanmax(locations[:,0]), numpy.nanmax(locations[:,1])))
-print ("Min X: %f, Min Y: %f" % (numpy.nanmin(locations[:,0]), numpy.nanmin(locations[:,1])))
-#print (numpy.shape(locations))
-
-#for location in locations:
-#    print location
-RESOLUTION = 2.0
-loc_range_x = numpy.nanmax(locations[:,0]) - numpy.nanmin(locations[:,0])
-loc_range_y = numpy.nanmax(locations[:,1]) - numpy.nanmin(locations[:,1])
-loc_range = max([loc_range_x, loc_range_y])
-#print (loc_range_x, loc_range_y, loc_range)
-GRID_SIZE = int(numpy.power(2,numpy.ceil(numpy.log(loc_range/RESOLUTION)/numpy.log(2))+0))
-locations = locations + GRID_SIZE
-locations = locations/RESOLUTION
-#print(GRID_SIZE)
-
-#plt.plot(locations[:,0],locations[:,1],'x')
-#plt.show()
-
-
-#### Profiling #####
+######################## Profiling ############################
 
 def enable_thread_profiling():
     '''Monkey-patch Thread.run to enable global profiling.
@@ -119,16 +77,21 @@ def get_thread_stats():
       'or no threads finished running.'
       return stats
 
+###############################################################
 
+
+
+######################### EPIC ################################
 
 
 class OfflineCaptureOp(object):
-    def __init__(self, log, oring, filename, profile=False, core=-1):
+    def __init__(self, log, oring, filename, chan_bw=25000, profile=False, core=-1):
         self.log = log
         self.oring = oring
         self.filename = filename
         self.core = core
         self.profile = profile
+        self.chan_bw = 25000
 
         self.bind_proclog = ProcLog(type(self).__name__+"/bind")
         self.out_proclog  = ProcLog(type(self).__name__+"/out")
@@ -166,7 +129,7 @@ class OfflineCaptureOp(object):
         ohdr = {}
         ohdr['time_tag'] = tStart
         ohdr['seq0']     = 0
-        ohdr['chan0']    = int((cfreq - srate/2)/CHAN_BW)
+        ohdr['chan0']    = int((cfreq - srate/2)/self.chan_bw)
         ohdr['nchan']    = 1
         ohdr['cfreq']    = cfreq
         ohdr['bw']       = srate
@@ -383,12 +346,16 @@ class CalibrationOp(object):
         pass
 
 class MOFFCorrelatorOp(object):
-    def __init__(self, log, iring, oring, ntime_gulp=2500, core=-1, gpu=-1, remove_autocorrs = False, benchmark=False, profile=False, *args, **kwargs):
+    def __init__(self, log, iring, oring, locations, antennas, grid_size, ntime_gulp=2500, core=-1, gpu=-1, remove_autocorrs = False, benchmark=False, profile=False, *args, **kwargs):
         self.log = log
         self.iring = iring
         self.oring = oring
         self.ntime_gulp = ntime_gulp
-
+        
+        self.locations = locations
+        self.antennas = antennas
+        self.grid_size = grid_size
+        
         self.core = core
         self.gpu = gpu
         self.remove_autocorrs = remove_autocorrs
@@ -410,7 +377,7 @@ class MOFFCorrelatorOp(object):
         self.antgridmap = self.antgridmap.copy(space='cuda',order='C')
         
         if self.remove_autocorrs == True:
-            self.autocorrmap = self.make_autocorr_grid(self.antgridmap,GRID_SIZE)
+            self.autocorrmap = self.make_autocorr_grid(self.antgridmap,self.grid_size)
             
         if self.gpu != -1:
             BFSetGPU(self.gpu)
@@ -441,10 +408,10 @@ class MOFFCorrelatorOp(object):
                 nchan = ihdr['nchan']
                 nstand = ihdr['nstand']
                 npol = ihdr['npol']
-                locations_x = bifrost.ndarray(numpy.tile(locations[:,0],self.ntime_gulp*nchan*npol).astype(numpy.int32),space='cuda')
+                locations_x = bifrost.ndarray(numpy.tile(self.locations[:,0],self.ntime_gulp*nchan*npol).astype(numpy.int32),space='cuda')
                 locations_x = locations_x.reshape(self.ntime_gulp*nchan*npol,nstand)
                 locations_x = locations_x.copy(space='cuda',order='C')
-                locations_y = bifrost.ndarray(numpy.tile(locations[:,1],self.ntime_gulp*nchan*npol).astype(numpy.int32),space='cuda')
+                locations_y = bifrost.ndarray(numpy.tile(self.locations[:,1],self.ntime_gulp*nchan*npol).astype(numpy.int32),space='cuda')
                 locations_y = locations_y.reshape(self.ntime_gulp*nchan*npol,nstand)
                 locations_y = locations_y.copy(space='cuda',order='C')
                 locations_z = bifrost.ndarray(numpy.zeros(shape=(self.ntime_gulp*nchan*npol*nstand)).astype(numpy.int32),space='cuda')
@@ -471,12 +438,12 @@ class MOFFCorrelatorOp(object):
                 freq = numpy.fft.fftfreq(nchan, d=1.0/ihdr['bw']) + ihdr['cfreq']
                 for i in xrange(nstand):
                     ## X
-                    a = ANTENNAS[2*i + 0]  
+                    a = self.antennas[2*i + 0]  
                     delay = a.cable.delay(freq) - a.stand.z / speedOfLight
                     phases[:,:,0,i] = numpy.exp(2j*numpy.pi*freq*delay)
                     phases[:,:,0,i] /= numpy.sqrt(a.cable.gain(freq))
                     ## Y
-                    a = ANTENNAS[2*i + 1]
+                    a = self.antennas[2*i + 1]
                     delay = a.cable.delay(freq) - a.stand.z / speedOfLight
                     phases[:,:,1,i] = numpy.exp(2j*numpy.pi*freq*delay)
                     phases[:,:,1,i] /= numpy.sqrt(a.cable.gain(freq))
@@ -484,11 +451,11 @@ class MOFFCorrelatorOp(object):
                 # Four polarisations as I need autocorrelations for XX,XY,YX,YY
                 # Axes are as follows (Image/Autocorrs, Time, Channel, Polarisation, Image, Image)
                 if self.remove_autocorrs == True:
-                    oshape = (2,self.ntime_gulp,nchan,4,GRID_SIZE,GRID_SIZE)
-                    ogulp_size = 2 * self.ntime_gulp * nchan * 4 * GRID_SIZE * GRID_SIZE * 8 #Complex64
+                    oshape = (2,self.ntime_gulp,nchan,4,self.grid_size,self.grid_size)
+                    ogulp_size = 2 * self.ntime_gulp * nchan * 4 * self.grid_size * self.grid_size * 8 #Complex64
                 else:
-                    oshape = (1,self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE)
-                    ogulp_size = self.ntime_gulp * nchan * npol * GRID_SIZE * GRID_SIZE * 8
+                    oshape = (1,self.ntime_gulp,nchan,npol,self.grid_size,self.grid_size)
+                    ogulp_size = self.ntime_gulp * nchan * npol * self.grid_size * self.grid_size * 8
                 self.iring.resize(igulp_size)
                 self.oring.resize(ogulp_size,buffer_factor=1)
                 
@@ -558,17 +525,17 @@ class MOFFCorrelatorOp(object):
                                 ## Make sure we have a place to put the data
                                 # Gridded Antennas
                                 try:
-                                    gdata = gdata.reshape(self.ntime_gulp*nchan*npol,GRID_SIZE,GRID_SIZE)
+                                    gdata = gdata.reshape(self.ntime_gulp*nchan*npol,self.grid_size,self.grid_size)
                                     gdata = gdata.copy(space='cuda',order='C')
                                 except NameError:
-                                    gdata = bifrost.ndarray(shape=(self.ntime_gulp*nchan*npol,GRID_SIZE,GRID_SIZE),dtype=numpy.complex64, space='cuda')
+                                    gdata = bifrost.ndarray(shape=(self.ntime_gulp*nchan*npol,self.grid_size,self.grid_size),dtype=numpy.complex64, space='cuda')
                                     gdata = gdata.copy(space='cuda',order='C')
                                     
                                 ## Grid the Antennas
                                 if self.benchmark == True:
                                     timeg1 = time.time()
                                 
-                                gdata = romein_float(udata,gdata,self.antgridmap,locations_x,locations_y,locations_z,3,GRID_SIZE,256,self.ntime_gulp*npol*nchan)
+                                gdata = romein_float(udata,gdata,self.antgridmap,locations_x,locations_y,locations_z,3,self.grid_size,256,self.ntime_gulp*npol*nchan)
                                 #gdata = self.LinAlgObj.matmul(1.0, udata, bfantgridmap, 0.0, gdata)
                                 if self.benchmark == True:
                                     timeg2 = time.time()
@@ -579,14 +546,14 @@ class MOFFCorrelatorOp(object):
                                 if self.benchmark == True:
                                     timefft1 = time.time()
                                 try:
-                                    fdata = fdata.reshape(self.ntime_gulp*nchan*2,GRID_SIZE,GRID_SIZE)
+                                    fdata = fdata.reshape(self.ntime_gulp*nchan*2,self.grid_size,self.grid_size)
                                     bf_fft.execute(gdata,fdata,inverse=True)
                                 except NameError:
                                     fdata = bifrost.ndarray(shape=gdata.shape, dtype=numpy.complex64, space='cuda')
                                     bf_fft = Fft()
                                     bf_fft.init(gdata,fdata,axes=(1,2))
                                     bf_fft.execute(gdata,fdata,inverse=True)
-                                fdata = fdata.reshape(self.ntime_gulp,nchan,2,GRID_SIZE,GRID_SIZE)
+                                fdata = fdata.reshape(self.ntime_gulp,nchan,2,self.grid_size,self.grid_size)
                                 if self.benchmark == True:
                                     timefft2 = time.time()
                                     print("  FFT time: %f"%(timefft2 - timefft1))
@@ -596,7 +563,7 @@ class MOFFCorrelatorOp(object):
                                 ## Output for gridded electric fields.
                                 if self.benchmark == True:
                                     time1h = time.time()
-                                #gdata = gdata.reshape(self.ntime_gulp,nchan,2,GRID_SIZE,GRID_SIZE)
+                                #gdata = gdata.reshape(self.ntime_gulp,nchan,2,self.grid_size,self.grid_size)
                                 odata[0,:,:,0:2,:,:] = fdata
                                 if self.benchmark == True:
                                     time1i = time.time()
@@ -623,10 +590,12 @@ class MOFFCorrelatorOp(object):
 
                                 
 class ImagingOp(object):
-    def __init__(self, log, iring, filename, ntime_gulp=100, accumulation_time=1, core=-1, gpu=-1, cpu=False, remove_autocorrs = False, profile=False, *args, **kwargs):
+    def __init__(self, log, iring, filename, grid_size, ntime_gulp=100, accumulation_time=1, core=-1, gpu=-1, cpu=False, remove_autocorrs = False, profile=False, *args, **kwargs):
         self.log = log
         self.iring = iring
         self.filename = filename
+        self.grid_size = grid_size
+        
         self.ntime_gulp= ntime_gulp
         self.accumulation_time = accumulation_time
         self.core = core
@@ -675,14 +644,14 @@ class ImagingOp(object):
             print("Channel no: %d, Polarisation no: %d"%(nchan,npol))
 
             if self.remove_autocorrs == True:
-                igulp_size = 2 * self.ntime_gulp * nchan * npol * GRID_SIZE * GRID_SIZE * 8
-                ishape = (2,self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE)
+                igulp_size = 2 * self.ntime_gulp * nchan * npol * self.grid_size * self.grid_size * 8
+                ishape = (2,self.ntime_gulp,nchan,npol,self.grid_size,self.grid_size)
             else:
-                igulp_size = self.ntime_gulp * nchan * npol * GRID_SIZE * GRID_SIZE * 8
-                ishape = (1,self.ntime_gulp,nchan,npol,GRID_SIZE,GRID_SIZE)
+                igulp_size = self.ntime_gulp * nchan * npol * self.grid_size * self.grid_size * 8
+                ishape = (1,self.ntime_gulp,nchan,npol,self.grid_size,self.grid_size)
                 
-            crosspol = bifrost.ndarray(shape=(self.ntime_gulp,nchan,npol**2,GRID_SIZE,GRID_SIZE), dtype=numpy.complex64, space='cuda')
-            accumulated_image = bifrost.ndarray(shape=(1,nchan,npol**2,GRID_SIZE,GRID_SIZE), dtype=numpy.complex64, space='cuda')
+            crosspol = bifrost.ndarray(shape=(self.ntime_gulp,nchan,npol**2,self.grid_size,self.grid_size), dtype=numpy.complex64, space='cuda')
+            accumulated_image = bifrost.ndarray(shape=(1,nchan,npol**2,self.grid_size,self.grid_size), dtype=numpy.complex64, space='cuda')
             
             prev_time = time.time()
             iseq_spans = iseq.read(igulp_size)
@@ -716,7 +685,7 @@ class ImagingOp(object):
                             #print ("Accum: %d"%accum,end='\n')
                             if self.newflag is True:
                             
-                                self.accumulated_image = numpy.zeros(shape=(nchan,npol**2,GRID_SIZE,GRID_SIZE),dtype=numpy.complex128)
+                                self.accumulated_image = numpy.zeros(shape=(nchan,npol**2,self.grid_size,self.grid_size),dtype=numpy.complex128)
                                 self.newflag=False
                                 
                             #Accumulate
@@ -746,12 +715,12 @@ class ImagingOp(object):
                             bifrost.map('a(i,j,p,k,l) += b(0,i,j,p/2,k,l)*b(0,i,j,p%2,k,l).conj() - b(1,i,j,p,k,l)', 
                                         {'a':crosspol, 'b':idata}, 
                                         axis_names=('i','j', 'p', 'k', 'l'), 
-                                        shape=(self.ntime_gulp, nchan, 4, GRID_SIZE, GRID_SIZE))
+                                        shape=(self.ntime_gulp, nchan, 4, self.grid_size, self.grid_size))
                         else:
                             bifrost.map('a(i,j,p,k,l) += b(0,i,j,p/2,k,l)*b(0,i,j,p%2,k,l).conj()', 
                                         {'a':crosspol, 'b':idata}, 
                                         axis_names=('i','j', 'p', 'k', 'l'), 
-                                        shape=(self.ntime_gulp, nchan, 4, GRID_SIZE, GRID_SIZE))
+                                        shape=(self.ntime_gulp, nchan, 4, self.grid_size, self.grid_size))
                                         
                         # Increment
                         accum += self.ntime_gulp
@@ -761,7 +730,7 @@ class ImagingOp(object):
                         if self.cpu == False:
                             bifrost.reduce(crosspol, accumulated_image, op='sum')
                             image = accumulated_image.copy(space='cuda_host')
-                            image = image.reshape(nchan,npol**2,GRID_SIZE,GRID_SIZE)
+                            image = image.reshape(nchan,npol**2,self.grid_size,self.grid_size)
                         else:
                             image = self.accumulated_image
                         image = numpy.fft.fftshift(numpy.abs(image), axes=(2,3))
@@ -835,19 +804,21 @@ class SaveFFTOp(object):
 
 def main():
 
-    # Main Input: UDP Broadcast RX from F-Engine??
+    # Main Input: UDP Broadcast RX from F-Engine?
 
     parser = argparse.ArgumentParser(description='EPIC Correlator')
-    parser.add_argument('-a', '--addr', type=str, help= 'F-Engine UDP Stream Address')
-    parser.add_argument('-p', '--port', type=int, help= 'F-Engine UDP Stream Port')
-    parser.add_argument('-o', '--offline', action='store_true', help = 'Load TBN data from Disk')
-    parser.add_argument('-f', '--tbnfile', type=str, help = 'TBN Data Path')
-    parser.add_argument('-t', '--nts',type=int, default = 1000, help= 'Number of timestamps per span.')
-    parser.add_argument('-u', '--accumulate',type=int, default = 1000, help='How many milliseconds to accumulate an image over.')
-    parser.add_argument('-n', '--channels',type=int, default=1, help='How many channels to produce.')
-    parser.add_argument('-r', '--removeautocorrs',action='store_true', help = 'Removes Autocorrelations')
-    parser.add_argument('-b', '--benchmark', action='store_true',help = 'benchmark gridder')
-    parser.add_argument('-c', '--profile', action='store_true', help = 'Run cProfile on ALL threads. Produces trace for each individual thread.')
+    parser.add_argument('--addr', type=str, help= 'F-Engine UDP Stream Address')
+    parser.add_argument('--port', type=int, help= 'F-Engine UDP Stream Port')
+    parser.add_argument('--gridsize', type=int, required=True, help = '1-D Grid Size')
+    parser.add_argument('--frequency' , type=float, required=True, help = 'Frequency of channel. Allows correct fourier sampling to be calculated')
+    parser.add_argument('--offline', action='store_true', help = 'Load TBN data from Disk')
+    parser.add_argument('--tbnfile', type=str, help = 'TBN Data Path')
+    parser.add_argument('--nts',type=int, default = 1000, help= 'Number of timestamps per span')
+    parser.add_argument('--accumulate',type=int, default = 1000, help='How many milliseconds to accumulate an image over')
+    parser.add_argument('--channels',type=int, default=1, help='How many channels to produce')
+    parser.add_argument('--removeautocorrs', action='store_true', help = 'Removes Autocorrelations')
+    parser.add_argument('--benchmark', action='store_true',help = 'benchmark gridder')
+    parser.add_argument('--profile', action='store_true', help = 'Run cProfile on ALL threads. Produces trace for each individual thread')
 
     args = parser.parse_args()
     # Logging Setup
@@ -891,20 +862,56 @@ def main():
         signal.signal(sig, handle_signal_terminate)
 
 
+    # Setup Rings
+
     if args.offline:
         fdomain_ring = Ring(name="fengine", space="cuda_host")
         fcapture_ring = Ring(name="capture",space="cuda_host")
     gridandfft_ring = Ring(name="gridandfft", space="cuda")
     image_ring = Ring(name="image", space="system")
 
+
+    # Setup Locations
+    ## TODO: Some sort of switch for other stations?
+    
+    lwasv_antennas = lwasv.getAntennas()
+    lwasv_stands = lwasv.getStands()
+    lwasv_locations = numpy.empty(shape=(0,3))
+    
+    for stand in lwasv_stands:
+        lwasv_locations = numpy.vstack((lwasv_locations,[stand[0],stand[1],stand[2]]))
+        
+    lwasv_locations = numpy.delete(lwasv_locations, list(range(0,lwasv_locations.shape[0],2)),axis=0)
+    chan_wavelength = (speedOfLight/args.frequency)
+    print("Wavelength: %f"%chan_wavelength)
+    sampling_length = chan_wavelength/2
+    lwasv_locations = lwasv_locations / sampling_length #Convert to number of half wavelengths.
+    lwasv_locations[255,:] = 0.0
+
+    # Let our locations be defined on the half closed interval [0,grid_size]
+    lwasv_locations[:,0] += numpy.abs(numpy.min(lwasv_locations[:,0]))
+    lwasv_locations[:,1] += numpy.abs(numpy.min(lwasv_locations[:,1]))
+    range_u = numpy.max(lwasv_locations[:,0]) - numpy.min(lwasv_locations[:,0])
+    range_v = numpy.max(lwasv_locations[:,1]) - numpy.min(lwasv_locations[:,1])    
+    grid_size = int(numpy.power(2,numpy.ceil(numpy.log(max([range_u,range_v])/numpy.log(2))+1)))
+    print("Grid Size: %d"%grid_size)
+
+    #Centre our electric field locations to minimise phase ramps in image. (kinda works)
+    lwasv_locations = lwasv_locations.astype(int)
+    lwasv_locations[:,0] = lwasv_locations[:,0] + (grid_size - numpy.max(lwasv_locations[:,0]))/2
+    lwasv_locations[:,1] = lwasv_locations[:,1] + (grid_size - numpy.max(lwasv_locations[:,0]))/2
+
+    # Setup threads
     
     ops.append(OfflineCaptureOp(log, fcapture_ring,args.tbnfile,profile=args.profile))
     ops.append(FDomainOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts, nchan_out=args.channels, gpu=gpus.pop(0), profile=args.profile))
-    ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, ntime_gulp=args.nts, remove_autocorrs=args.removeautocorrs, gpu=gpus.pop(0),benchmark=args.benchmark, profile=args.profile))
-    ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", ntime_gulp=args.nts, accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs, gpu=gpus.pop(0), cpu=False, profile=args.profile))
+    ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, lwasv_locations, lwasv_antennas, grid_size, ntime_gulp=args.nts, remove_autocorrs=args.removeautocorrs, gpu=gpus.pop(0),benchmark=args.benchmark, profile=args.profile))
+    ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", grid_size, ntime_gulp=args.nts, accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs, gpu=gpus.pop(0), cpu=False, profile=args.profile))
 
     threads= [threading.Thread(target=op.main) for op in ops]
 
+    # Go!
+    
     for thread in threads:
         thread.daemon = False
         thread.start()
@@ -914,6 +921,9 @@ def main():
             signal.pause()
         else:
             break
+        
+    # Wait for threads to finish
+    
     for thread in threads:
         thread.join()
 
@@ -924,8 +934,6 @@ def main():
         
     log.info("Done")
 
-
-    
 
 if __name__ == "__main__":
     main()
