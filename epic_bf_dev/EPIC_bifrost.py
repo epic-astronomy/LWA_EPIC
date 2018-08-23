@@ -734,8 +734,6 @@ class ImagingOp(object):
                         else:
                             image = self.accumulated_image
                         image = numpy.fft.fftshift(numpy.abs(image), axes=(2,3))
-                        image = numpy.transpose(image, (0,1,3,2))
-                        
                         accum = 0
                         self.newflag = True
                         fig = plt.figure(fileid)
