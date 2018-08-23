@@ -524,9 +524,11 @@ class MOFFCorrelatorOp(object):
                                 try:
                                     gdata = gdata.reshape(self.ntime_gulp*nchan*npol,self.grid_size,self.grid_size)
                                     gdata = gdata.copy(space='cuda',order='C')
+                                    memset_array(gdata,0)
                                 except NameError:
                                     gdata = bifrost.ndarray(shape=(self.ntime_gulp*nchan*npol,self.grid_size,self.grid_size),dtype=numpy.complex64, space='cuda')
                                     gdata = gdata.copy(space='cuda',order='C')
+                                    memset_array(gdata,0)
                                     
                                 ## Grid the Antennas
                                 if self.benchmark == True:
@@ -704,6 +706,7 @@ class ImagingOp(object):
                         #print ("Accum: %d"%accum,end='\n')
                         if self.newflag is True:
                             memset_array(crosspol, 0)
+                            memset_array(accumulated_image, 0)
                             self.newflag=False
                                 
                         #Accumulate
