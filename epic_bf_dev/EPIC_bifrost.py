@@ -432,19 +432,20 @@ class MOFFCorrelatorOp(object):
                 ohdr_str = json.dumps(ohdr)
                 
                 #Setup the phasing terms for zenith
-                phases = numpy.zeros(itshape, dtype=numpy.complex64)
+                # Phases are Nchan x Npol x Nstand
+                phases = numpy.zeros((itshape[1], itshape[2], itshape[3]), dtype=numpy.complex64)
                 freq = numpy.fft.fftfreq(nchan, d=1.0/ihdr['bw']) + ihdr['cfreq']
                 for i in xrange(nstand):
                     ## X
                     a = self.antennas[2*i + 0]  
                     delay = a.cable.delay(freq) - a.stand.z / speedOfLight
-                    phases[:,:,0,i] = numpy.exp(2j*numpy.pi*freq*delay)
-                    phases[:,:,0,i] /= numpy.sqrt(a.cable.gain(freq))
+                    phases[:,0,i] = numpy.exp(2j*numpy.pi*freq*delay)
+                    phases[:,0,i] /= numpy.sqrt(a.cable.gain(freq))
                     ## Y
                     a = self.antennas[2*i + 1]
                     delay = a.cable.delay(freq) - a.stand.z / speedOfLight
-                    phases[:,:,1,i] = numpy.exp(2j*numpy.pi*freq*delay)
-                    phases[:,:,1,i] /= numpy.sqrt(a.cable.gain(freq))
+                    phases[:,1,i] = numpy.exp(2j*numpy.pi*freq*delay)
+                    phases[:,1,i] /= numpy.sqrt(a.cable.gain(freq))
                     
                 # Four polarisations as I need autocorrelations for XX,XY,YX,YY
                 # Axes are as follows (Image/Autocorrs, Time, Channel, Polarisation, Image, Image)
@@ -507,17 +508,17 @@ class MOFFCorrelatorOp(object):
                                     time1b = time.time()
                                 ## Phase
                                 try:
-                                    bifrost.map('a(i,j,k,l) *= b(i,j,k,l)', {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)                    
+                                    bifrost.map('a(i,j,k,l) *= b(j,k,l)', {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)
                                 except NameError:
                                     phases = bifrost.ndarray(phases)
                                     gphases = phases.copy(space='cuda')
-                                    bifrost.map('a(i,j,k,l) *= b(i,j,k,l)', {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)
+                                    bifrost.map('a(i,j,k,l) *= b(j,k,l)', {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)
                                     #udata = udata.transpose((0,1,3,2))
                                     #Transpose
                                 if self.benchmark == True:
                                     time1c = time.time()
                                     print("  Phase-up time: %f" % (time1c-time1b))
-                                
+
                                 #Combine stand and pols into standpols
                                 
                                 ## Make sure we have a place to put the data
@@ -530,11 +531,11 @@ class MOFFCorrelatorOp(object):
                                     gdata = bifrost.ndarray(shape=(self.ntime_gulp*nchan*npol,self.grid_size,self.grid_size),dtype=numpy.complex64, space='cuda')
                                     gdata = gdata.copy(space='cuda',order='C')
                                     memset_array(gdata,0)
-                                    
+
                                 ## Grid the Antennas
                                 if self.benchmark == True:
                                     timeg1 = time.time()
-                                
+
                                 gdata = romein_float(udata,gdata,self.antgridmap,locations_x,locations_y,locations_z,3,self.grid_size,256,self.ntime_gulp*npol*nchan)
                                 #gdata = self.LinAlgObj.matmul(1.0, udata, bfantgridmap, 0.0, gdata)
                                 if self.benchmark == True:
