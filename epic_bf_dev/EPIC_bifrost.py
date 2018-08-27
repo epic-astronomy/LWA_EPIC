@@ -373,15 +373,16 @@ class MOFFCorrelatorOp(object):
         self.out_proclog.update({'nring':1, 'ring0':self.oring.name})
         self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
 
-        self.antgridmap = bifrost.ndarray(numpy.ones(shape=(1,1),dtype=numpy.complex64),space='cuda')
+        if self.gpu != -1:
+            BFSetGPU(self.gpu)
+
+        self.ant_extent = 1
+        self.antgridmap = bifrost.ndarray(numpy.ones(shape=(self.ant_extent,self.ant_extent),dtype=numpy.complex64),space='cuda')
         self.antgridmap = self.antgridmap.copy(space='cuda',order='C')
         
         if self.remove_autocorrs == True:
             self.autocorrmap = self.make_autocorr_grid(self.antgridmap,self.grid_size)
             
-        if self.gpu != -1:
-            BFSetGPU(self.gpu)
-
         self.shutdown_event = threading.Event()
         
     def shutdown(self):
