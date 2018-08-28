@@ -609,27 +609,28 @@ class MOFFCorrelatorOp(object):
                                 time1a = time.time()
                                 print("  Input copy time: %f" % (time1a-time1))
 
-                            ## Unpack
-                            try:
-                                udata = udata.reshape(*tdata.shape)
-                                Unpack(tdata, udata)
-                            except NameError:
-                                udata = bifrost.ndarray(shape=tdata.shape, dtype=numpy.complex64, space='cuda')
-                                Unpack(tdata, udata)
+                            ### Unpack
+                            #try:
+                            #    udata = udata.reshape(*tdata.shape)
+                            #    Unpack(tdata, udata)
+                            #except NameError:
+                            #    udata = bifrost.ndarray(shape=tdata.shape, dtype=numpy.complex64, space='cuda')
+                            #    Unpack(tdata, udata)
                             if self.benchmark == True:
                                 time1b = time.time()
-                            ## Phase
+                            ## Unpack and phase
                             try:
-                                bifrost.map('a(i,j,k,l) *= b(j,k,l)', {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)
+                                bifrost.map('a(i,j,k,l) = b(j,k,l)*Complex<float>(c(i,j,k,l).real_imag>>4, (c(i,j,k,l).real_imag<<4)>>4)',               {'a':udata, 'b':gphases, 'c':tdata}, axis_names=('i','j','k','l'), shape=udata.shape)
                             except NameError:
+                                udata = bifrost.ndarray(shape=tdata.shape, dtype=numpy.complex64, space='cuda')
                                 phases = bifrost.ndarray(phases)
                                 gphases = phases.copy(space='cuda')
-                                bifrost.map('a(i,j,k,l) *= b(j,k,l)', {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)
+                                bifrost.map('a(i,j,k,l) = b(j,k,l)*Complex<float>(c(i,j,k,l).real_imag>>4, (c(i,j,k,l).real_imag<<4)>>4)',               {'a':udata, 'b':gphases, 'c':tdata}, axis_names=('i','j','k','l'), shape=udata.shape)
                                 #udata = udata.transpose((0,1,3,2))
                                 #Transpose
                             if self.benchmark == True:
                                 time1c = time.time()
-                                print("  Phase-up time: %f" % (time1c-time1b))
+                                print("  Unpack and phase-up time: %f" % (time1c-time1b))
 
                             ## Make sure we have a place to put the gridded data
                             # Gridded Antennas
@@ -637,9 +638,8 @@ class MOFFCorrelatorOp(object):
                                 gdata = gdata.reshape(self.ntime_gulp*nchan*npol,self.grid_size,self.grid_size)
                                 memset_array(gdata,0)
                             except NameError:
-                                gdata = bifrost.ndarray(shape=(self.ntime_gulp*nchan*npol,self.grid_size,self.grid_size),dtype=numpy.complex64, space='cuda')
-                                memset_array(gdata,0)
-
+                                gdata = bifrost.zeros(shape=(self.ntime_gulp*nchan*npol,self.grid_size,self.grid_size),dtype=numpy.complex64, space='cuda')
+                                
                             ## Grid the Antennas
                             if self.benchmark == True:
                                 timeg1 = time.time()
@@ -649,7 +649,7 @@ class MOFFCorrelatorOp(object):
                             #gdata = self.LinAlgObj.matmul(1.0, udata, bfantgridmap, 0.0, gdata)
                             if self.benchmark == True:
                                 timeg2 = time.time()
-                                print("  LinAlg time: %f"%(timeg2 - timeg1))
+                                print("  Romein time: %f"%(timeg2 - timeg1))
 
                             #Inverse transform
 
@@ -668,22 +668,17 @@ class MOFFCorrelatorOp(object):
                                 timefft2 = time.time()
                                 print("  FFT time: %f"%(timefft2 - timefft1))
 
-                            try:
-                                crosspol = crosspol.reshape(self.ntime_gulp,nchan,npol**2,self.grid_size,self.grid_size)
-                                accumulated_image = accumulated_image.reshape(1,nchan,npol**2,self.grid_size,self.grid_size)
-                            except NameError:
-                                crosspol = bifrost.ndarray(shape=(self.ntime_gulp,nchan,npol**2,self.grid_size,self.grid_size), dtype=numpy.complex64, space='cuda')
-                                accumulated_image = bifrost.ndarray(shape=(1,nchan,npol**2,self.grid_size,self.grid_size), dtype=numpy.complex64, space='cuda')
-
-                                
-
-
                             #print ("Accum: %d"%accum,end='\n')
                             if self.newflag is True:
-                                memset_array(crosspol, 0)
-                                memset_array(accumulated_image, 0)
+                                try:
+                                    memset_array(crosspol, 0)
+                                    memset_array(accumulated_image, 0)
+                                except NameError:
+                                    crosspol = bifrost.zeros(shape=(self.ntime_gulp,nchan,npol**2,self.grid_size,self.grid_size), 
+                                                             dtype=numpy.complex64, space='cuda')
+                                    accumulated_image = bifrost.zeros(shape=(1,nchan,npol**2,self.grid_size,self.grid_size), 
+                                                                      dtype=numpy.complex64, space='cuda')
                                 self.newflag=False
-
 
                             #Accumulate
                             #Subtract auto-correlations.
@@ -691,16 +686,15 @@ class MOFFCorrelatorOp(object):
                                 bifrost.map('a(i,j,p,k,l) += b(0,i,j,p/2,k,l)*b(0,i,j,p%2,k,l).conj() - b(1,i,j,p,k,l)',
                                             {'a':crosspol, 'b':gdata},
                                             axis_names=('i','j', 'p', 'k', 'l'),
-                                            shape=(self.ntime_gulp, nchan, 4, self.grid_size, self.grid_size))
+                                            shape=(self.ntime_gulp, nchan, npol**2, self.grid_size, self.grid_size))
                             else:
-                                bifrost.map('a(i,j,p,k,l) += b(0,i,j,p/2,k,l)*b(0,i,j,p%2,k,l).conj()',
+                                bifrost.map('a(i,j,p,k,l) += b(0,i,j,p/2,k,l)*b(0,i,j,p%2,k,l).conj()', 
                                             {'a':crosspol, 'b':gdata},
                                             axis_names=('i','j', 'p', 'k', 'l'),
-                                            shape=(self.ntime_gulp, nchan, 4, self.grid_size, self.grid_size))
+                                            shape=(self.ntime_gulp, nchan, npol**2, self.grid_size, self.grid_size))
 
 
-
-                             # Increment
+                            # Increment
                             accum += self.ntime_gulp
                             if accum >= self.accumulation_time:
                                 print("Saving image!")
@@ -710,8 +704,7 @@ class MOFFCorrelatorOp(object):
                                     odata[...] = accumulated_image
                                 self.newflag = True
                                 accum = 0
-                                continue
-
+                                
                             #TODO: Autocorrs using Romein??
                             ## Output for gridded electric fields.
                             if self.benchmark == True:
