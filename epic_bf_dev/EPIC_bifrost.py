@@ -556,8 +556,8 @@ class MOFFCorrelatorOp(object):
                 ohdr['sampling_length_y'] = self.sampling_length
                 ohdr['accumulation_time'] = self.accumulation_time
                 ohdr['FS'] = FS
-                ohdr['latitude'] = lwasv.lat * 180. / np.pi
-                ohdr['longitude'] = lwasv.lon * 180. / np.pi
+                ohdr['latitude'] = lwasv.lat * 180. / numpy.pi
+                ohdr['longitude'] = lwasv.lon * 180. / numpy.pi
                 ohdr['telescope'] = 'LWA-SV'
                 ohdr['data_units'] = 'UNCALIB'
                 if ohdr['npol'] == 1:
@@ -567,7 +567,7 @@ class MOFFCorrelatorOp(object):
                 elif ohdr['npol'] == 4:
                     ohdr['pols'] = ['xx', 'xy', 'yx', 'yy']
                 else:
-                    raise ValueError 'Cannot write fits file without knowing polarization list'
+                    raise ValueError('Cannot write fits file without knowing polarization list')
                 ohdr_str = json.dumps(ohdr)
 
                 # Setup the phasing terms for zenith
@@ -831,9 +831,9 @@ class ImagingOp(object):
                     image = numpy.fft.fftshift(numpy.abs(image), axes=(3,4))
 
                     unix_time = time_tag / FS + hdr['accumulation_time'] * 1e-3 * fileid * self.ints_per_file
-                    image_nums = np.arange(fileid * self.ints_per_file, (fileid + 1) * self.ints_per_file)
+                    image_nums = numpy.arange(fileid * self.ints_per_file, (fileid + 1) * self.ints_per_file)
                     filename = 'EPIC_{0:3f}.npz'.format(unix_time)
-                    np.savez(filename, image=image, hdr=ihdr, image_nums=image_nums)
+                    numpy.savez(filename, image=image, hdr=ihdr, image_nums=image_nums)
                     fileid += 1
                     print("ImagingOP - Image Saved")
 
