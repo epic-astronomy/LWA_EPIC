@@ -830,7 +830,7 @@ class ImagingOp(object):
                     image = idata.copy(space='cuda_host')
                     image = numpy.fft.fftshift(numpy.abs(image), axes=(3,4))
 
-                    unix_time = time_tag / FS + hdr['accumulation_time'] * 1e-3 * fileid * self.ints_per_file
+                    unix_time = hdr['time_tag'] / FS + hdr['accumulation_time'] * 1e-3 * fileid * self.ints_per_file
                     image_nums = numpy.arange(fileid * self.ints_per_file, (fileid + 1) * self.ints_per_file)
                     filename = 'EPIC_{0:3f}.npz'.format(unix_time)
                     numpy.savez(filename, image=image, hdr=ihdr, image_nums=image_nums)
