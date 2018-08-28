@@ -655,14 +655,14 @@ class MOFFCorrelatorOp(object):
                             if self.benchmark == True:
                                 timefft1 = time.time()
                             try:
-                                fdata = fdata.reshape(self.ntime_gulp*nchan*npol,self.grid_size,self.grid_size)
-                                bf_fft.execute(gdata,fdata,inverse=True)
+                               
+                                bf_fft.execute(gdata,gdata,inverse=True)
                             except NameError:
-                                fdata = bifrost.ndarray(shape=gdata.shape, dtype=numpy.complex64, space='cuda')
+                               
                                 bf_fft = Fft()
-                                bf_fft.init(gdata,fdata,axes=(1,2))
-                                bf_fft.execute(gdata,fdata,inverse=True)
-                            fdata = fdata.reshape(1,self.ntime_gulp,nchan,npol,self.grid_size,self.grid_size)
+                                bf_fft.init(gdata,gdata,axes=(1,2))
+                                bf_fft.execute(gdata,gdata,inverse=True)
+                            gdata = gdata.reshape(1,self.ntime_gulp,nchan,npol,self.grid_size,self.grid_size)
                             if self.benchmark == True:
                                 timefft2 = time.time()
                                 print("  FFT time: %f"%(timefft2 - timefft1))
@@ -688,12 +688,12 @@ class MOFFCorrelatorOp(object):
                             #Subtract auto-correlations.
                             if self.remove_autocorrs == True:
                                 bifrost.map('a(i,j,p,k,l) += b(0,i,j,p/2,k,l)*b(0,i,j,p%2,k,l).conj() - b(1,i,j,p,k,l)',
-                                            {'a':crosspol, 'b':fdata},
+                                            {'a':crosspol, 'b':gdata},
                                             axis_names=('i','j', 'p', 'k', 'l'),
                                             shape=(self.ntime_gulp, nchan, 4, self.grid_size, self.grid_size))
                             else:
                                 bifrost.map('a(i,j,p,k,l) += b(0,i,j,p/2,k,l)*b(0,i,j,p%2,k,l).conj()',
-                                            {'a':crosspol, 'b':fdata},
+                                            {'a':crosspol, 'b':gdata},
                                             axis_names=('i','j', 'p', 'k', 'l'),
                                             shape=(self.ntime_gulp, nchan, 4, self.grid_size, self.grid_size))
 
