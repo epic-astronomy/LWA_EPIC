@@ -460,16 +460,21 @@ class CalibrationOp(object):
         pass
 
 class MOFFCorrelatorOp(object):
-    def __init__(self, log, iring, oring, locations, antennas, grid_size, ntime_gulp=2500, accumulation_time=10000, core=-1, gpu=-1, remove_autocorrs = False, benchmark=False, profile=False, *args, **kwargs):
+    def __init__(self, log, iring, oring, locations, antennas, grid_size, ntime_gulp=2500,
+                 accumulation_time=10000, core=-1, gpu=-1, remove_autocorrs = False,
+                 benchmark=False, profile=False, sampling_length=0.5, ints_per_file=1,
+                 *args, **kwargs):
         self.log = log
         self.iring = iring
         self.oring = oring
         self.ntime_gulp = ntime_gulp
         self.accumulation_time=accumulation_time
+        self.ints_per_file = ints_per_file
 
         self.locations = locations
         self.antennas = antennas
         self.grid_size = grid_size
+        self.sampling_length = sampling_length
 
         self.core = core
         self.gpu = gpu
@@ -545,7 +550,24 @@ class MOFFCorrelatorOp(object):
         
         
                 ohdr['npol'] = npol**2 # Because of cross multiplying shenanigans
-                ohdr['nchan'] = nchan
+                ohdr['grid_size_x'] = self.grid_size
+                ohdr['grid_size_y'] = self.grid_size
+                ohdr['sampling_length_x'] = self.sampling_length
+                ohdr['sampling_length_y'] = self.sampling_length
+                ohdr['accumulation_time'] = self.accumulation_time
+                ohdr['FS'] = FS
+                ohdr['latitude'] = lwasv.lat * 180. / np.pi
+                ohdr['longitude'] = lwasv.lon * 180. / np.pi
+                ohdr['telescope'] = 'LWA-SV'
+                ohdr['data_units'] = 'UNCALIB'
+                if ohdr['npol'] == 1:
+                    ohdr['pols'] = ['xx']
+                elif ohdr['npol'] == 2:
+                    ohdr['pols'] = ['xx', 'yy']
+                elif ohdr['npol'] == 4:
+                    ohdr['pols'] = ['xx', 'xy', 'yx', 'yy']
+                else:
+                    raise ValueError 'Cannot write fits file without knowing polarization list'
                 ohdr_str = json.dumps(ohdr)
 
                 # Setup the phasing terms for zenith
@@ -894,6 +916,7 @@ def main():
     parser.add_argument('--removeautocorrs', action='store_true', help = 'Removes Autocorrelations')
     parser.add_argument('--benchmark', action='store_true',help = 'benchmark gridder')
     parser.add_argument('--profile', action='store_true', help = 'Run cProfile on ALL threads. Produces trace for each individual thread')
+    parser.add_argument('--ints_per_file', type=int, default=1, help='Number of integrations per output FITS file. Default is 1.')
 
     args = parser.parse_args()
     # Logging Setup
@@ -1003,10 +1026,10 @@ def main():
     ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, lwasv_locations, lwasv_antennas, 
                                 grid_size, ntime_gulp=args.nts, accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs, 
                                 core=cores.pop(0), gpu=gpus.pop(0),benchmark=args.benchmark, 
-                                profile=args.profile))
+                                ints_per_file=args.ints_per_file, profile=args.profile))
     ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", grid_size, 
                          core=cores.pop(0), gpu=gpus.pop(0), cpu=False, 
-                         profile=args.profile))
+                         ints_per_file=args.ints_per_file, profile=args.profile))
 
     threads= [threading.Thread(target=op.main) for op in ops]
 
