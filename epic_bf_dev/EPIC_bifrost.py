@@ -339,8 +339,8 @@ class FEngineCaptureOp(object):
 		timestamp0 = int((self.utc_start - ADP_EPOCH).total_seconds())
 		time_tag0  = timestamp0 * int(FS)
 		time_tag   = time_tag0 + seq0*(int(FS)//int(CHAN_BW))
-		print "++++++++++++++++ seq0     =", seq0
-		print "                 time_tag =", time_tag
+		print("++++++++++++++++ seq0     =", seq0)
+		print("                 time_tag =", time_tag)
 		time_tag_ptr[0] = time_tag
 		hdr = {
 			'time_tag': time_tag,
@@ -355,7 +355,7 @@ class FEngineCaptureOp(object):
 			'complex':  True,
 			'nbit':     4
 		}
-		print "******** CFREQ:", hdr['cfreq']
+		print("******** CFREQ:", hdr['cfreq'])
 		hdr_str = json.dumps(hdr)
 		# TODO: Can't pad with NULL because returned as C-string
 		#hdr_str = json.dumps(hdr).ljust(4096, '\0')
@@ -396,10 +396,10 @@ class DecimationOp(object):
         self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
                 
     def main(self):
-         if self.core != -1:
+        if self.core != -1:
             bifrost.affinity.set_core(self.core)
-         self.bind_proclog.update({'ncore': 1, 
-                                   'core0': bifrost.affinity.get_core(),})
+        self.bind_proclog.update({'ncore': 1, 
+                                  'core0': bifrost.affinity.get_core(),})
          
         with self.oring.begin_writing() as oring:
             for iseq in self.iring.read(guarantee=self.guarantee):
@@ -450,9 +450,9 @@ class DecimationOp(object):
                             curr_time = time.time()
                             process_time = curr_time - prev_time
                             prev_time = curr_time
-                             self.perf_proclog.update({'acquire_time': acquire_time, 
-                                                       'reserve_time': reserve_time, 
-                                                       'process_time': process_time,})
+                            self.perf_proclog.update({'acquire_time': acquire_time, 
+                                                      'reserve_time': reserve_time, 
+                                                      'process_time': process_time,})
 
 class CalibrationOp(object):
     def __init__(self, log, iring, oring, *args, **kwargs):
@@ -1039,7 +1039,7 @@ def main():
 	ops.append(FEngineCaptureOp(log, fmt="chips", sock=isock, ring=fcapture_ring,
 	                            nsrc=16, src0=0, max_payload_size=9000,
 	                            buffer_ntime=args.ntps, slot_ntime=25000, core=cores.pop(0),
-	                            utc_start=utc_start_dt)
+	                            utc_start=utc_start_dt))
         ops.append(DecimationOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts, nchan_out=args.channels, 
                                 core=cores.pop(0)))
     ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, lwasv_locations, lwasv_antennas, 
