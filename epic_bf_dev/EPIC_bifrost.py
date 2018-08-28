@@ -377,12 +377,13 @@ class FEngineCaptureOp(object):
         del capture
 
 class DecimationOp(object):
-    def __init__(self, log, iring, oring, ntime_gulp=2500, nchan_out=1, guarantee=True, core=-1):
+    def __init__(self, log, iring, oring, ntime_gulp=2500, nchan_out=1, npol_out=2, guarantee=True, core=-1):
         self.log = log
         self.iring = iring
         self.oring = oring
         self.ntime_gulp = ntime_gulp
         self.nchan_out = nchan_out
+        self.npol_out = npol_out
         self.guarantee = guarantee
         self.core = core
 
@@ -409,7 +410,7 @@ class DecimationOp(object):
                 
                 self.sequence_proclog.update(ihdr)
                 
-                self.log.info("Decimate: Start of new sequence: %s", str(ihdr))
+                self.log.info("Decimation: Start of new sequence: %s", str(ihdr))
                 
                 nchan  = ihdr['nchan']
                 nstand = ihdr['nstand']
@@ -418,8 +419,8 @@ class DecimationOp(object):
                 
                 igulp_size = self.ntime_gulp*nchan*nstand*npol*1                 # ci4
                 ishape = (self.ntime_gulp,nchan,nstand,npol)
-                ogulp_size = self.ntime_gulp*self.nchan_out*nstand*npol*1        # ci4
-                oshape = (self.ntime_gulp,self.nchan_out,nstand,npol)
+                ogulp_size = self.ntime_gulp*self.nchan_out*nstand*self.npol_out*1        # ci4
+                oshape = (self.ntime_gulp,self.nchan_out,nstand,self.npol_out)
                 self.iring.resize(igulp_size)
                 self.oring.resize(ogulp_size)#, obuf_size)
                 
@@ -446,7 +447,10 @@ class DecimationOp(object):
                             idata = ispan.data_view(numpy.uint8).reshape(ishape)
                             odata = ospan.data_view(numpy.uint8).reshape(oshape)
                             
-                            odata[...] = idata[:,:self.nchan_out,:,:]
+                            sdata = idata[:,:self.nchan_out,:,:]
+                            if self.npol_out != npol:
+                                sdata = sdata[:,:,:,:self.npol]
+                            odata[...] = sdata
                             
                             curr_time = time.time()
                             process_time = curr_time - prev_time
@@ -532,11 +536,14 @@ class MOFFCorrelatorOp(object):
             for iseq in self.iring.read(guarantee=True):
                 ihdr = json.loads(iseq.header.tostring())
                 self.sequence_proclog.update(ihdr)
-                print('MOFFCorrelatorOp: Config - %s' % ihdr)
+                self.log.info('MOFFCorrelatorOp: Config - %s' % ihdr)
                 chan0 = ihdr['chan0']
                 nchan = ihdr['nchan']
                 nstand = ihdr['nstand']
                 npol = ihdr['npol']
+                self.newflag = True
+                accum = 0
+
                 locations_x = bifrost.ndarray(numpy.tile(self.locations[:,0],self.ntime_gulp*nchan*npol).astype(numpy.int32),space='cuda')
                 locations_x = locations_x.reshape(self.ntime_gulp*nchan*npol,nstand)
                 locations_x = locations_x.copy(space='cuda',order='C')
@@ -841,7 +848,7 @@ class ImagingOp(object):
             ihdr = json.loads(iseq.header.tostring())
 
             self.sequence_proclog.update(ihdr)
-            print('ImagingOp: Config - %s' % ihdr)
+            self.log.info('ImagingOp: Config - %s' % ihdr)
 
             nchan = ihdr['nchan']
             npol = ihdr['npol']
