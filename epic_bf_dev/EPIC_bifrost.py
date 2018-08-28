@@ -409,7 +409,7 @@ class DecimationOp(object):
                 
                 self.sequence_proclog.update(ihdr)
                 
-                self.log.info("Decimate: Start of new sequence: %s", str(ihdr))
+                self.log.info("Decimation: Start of new sequence: %s", str(ihdr))
                 
                 nchan  = ihdr['nchan']
                 nstand = ihdr['nstand']
@@ -521,11 +521,14 @@ class MOFFCorrelatorOp(object):
             for iseq in self.iring.read(guarantee=True):
                 ihdr = json.loads(iseq.header.tostring())
                 self.sequence_proclog.update(ihdr)
-                print('MOFFCorrelatorOp: Config - %s' % ihdr)
+                self.log.info('MOFFCorrelatorOp: Config - %s' % ihdr)
                 chan0 = ihdr['chan0']
                 nchan = ihdr['nchan']
                 nstand = ihdr['nstand']
                 npol = ihdr['npol']
+                self.newflag = True
+                accum = 0
+
                 locations_x = bifrost.ndarray(numpy.tile(self.locations[:,0],self.ntime_gulp*nchan*npol).astype(numpy.int32),space='cuda')
                 locations_x = locations_x.reshape(self.ntime_gulp*nchan*npol,nstand)
                 locations_x = locations_x.copy(space='cuda',order='C')
@@ -781,7 +784,7 @@ class ImagingOp(object):
             ihdr = json.loads(iseq.header.tostring())
 
             self.sequence_proclog.update(ihdr)
-            print('ImagingOp: Config - %s' % ihdr)
+            self.log.info('ImagingOp: Config - %s' % ihdr)
 
             nchan = ihdr['nchan']
             npol = ihdr['npol']
