@@ -992,18 +992,19 @@ def main():
                              profile=args.profile))
     else:
         utc_start_dt = datetime.datetime.strptime(args.utcstart, "%Y_%m_%dT%H_%M_%S")
+        # Note: Capture uses Bifrost address+socket objects, while output uses
+	    #         plain Python address+socket objects.
+        iaddr = BF_Address(args.addr, args.port)
+        isock = BF_UDPSocket()
+        isock.bind(iaddr)
+        isock.timeout = 0.5
+ 
         ops.append(FEngineCaptureOp(log, fmt="chips", sock=isock, ring=fcapture_ring,
 	                                nsrc=16, src0=0, max_payload_size=9000,
 	                                buffer_ntime=args.nts, slot_ntime=25000, core=cores.pop(0),
 	                                utc_start=utc_start_dt))
         ops.append(DecimationOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts, nchan_out=args.channels, 
                                 core=cores.pop(0)))
-        # Note: Capture uses Bifrost address+socket objects, while output uses
-	#         plain Python address+socket objects.
-	iaddr = BF_Address(args.addr, args.port)
-	isock = BF_UDPSocket()
-	isock.bind(iaddr)
-	isock.timeout = 0.5
         
 
     ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, lwasv_locations, lwasv_antennas, 
