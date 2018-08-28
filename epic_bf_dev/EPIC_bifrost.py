@@ -591,7 +591,7 @@ class MOFFCorrelatorOp(object):
                 oshape = (1,nchan,npol**2,self.grid_size,self.grid_size)
                 ogulp_size = nchan * npol**2 * self.grid_size * self.grid_size * 8
                 self.iring.resize(igulp_size)
-                self.oring.resize(ogulp_size,buffer_factor=5)
+                self.oring.resize(ogulp_size,buffer_factor=5*self.ints_per_file)
                 prev_time = time.time()
                 with oring.begin_sequence(time_tag=iseq.time_tag,header=ohdr_str) as oseq:
                     iseq_spans = iseq.read(igulp_size)
@@ -760,11 +760,13 @@ class MOFFCorrelatorOp(object):
 
 
 class ImagingOp(object):
-    def __init__(self, log, iring, filename, grid_size, core=-1, gpu=-1, cpu=False, profile=False, *args, **kwargs):
+    def __init__(self, log, iring, filename, grid_size, core=-1, gpu=-1, cpu=False,
+                 profile=False, ints_per_file=1, *args, **kwargs):
         self.log = log
         self.iring = iring
         self.filename = filename
         self.grid_size = grid_size
+        self.ints_per_file = ints_per_file
 
         # TODO: Validate ntime_gulp vs accumulation_time
         self.core = core
@@ -809,8 +811,8 @@ class ImagingOp(object):
             npol = ihdr['npol']
             print("Channel no: %d, Polarisation no: %d"%(nchan,npol))
 
-            igulp_size = nchan * npol * self.grid_size * self.grid_size * 8
-            ishape = (1,nchan,npol,self.grid_size,self.grid_size)
+            igulp_size = self.ints_per_file * nchan * npol * self.grid_size * self.grid_size * 8
+            ishape = (self.ints_per_file,nchan,npol,self.grid_size,self.grid_size)
 
             prev_time = time.time()
             iseq_spans = iseq.read(igulp_size)
