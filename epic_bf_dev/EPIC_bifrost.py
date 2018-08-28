@@ -14,6 +14,8 @@ import numpy
 import time
 from collections import deque
 from scipy.fftpack import fft
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import datetime
 import ctypes
@@ -407,16 +409,15 @@ class DecimationOp(object):
                 
                 self.sequence_proclog.update(ihdr)
                 
-                self.log.info("Reorder: Start of new sequence: %s", str(ihdr))
+                self.log.info("Decimate: Start of new sequence: %s", str(ihdr))
                 
-                nsrc   = ihdr['nsrc']
                 nchan  = ihdr['nchan']
                 nstand = ihdr['nstand']
                 npol   = ihdr['npol']
                 chan0  = ihdr['chan0']
                 
                 igulp_size = self.ntime_gulp*nchan*nstand*npol*1                 # ci4
-                ishape = (self.ntime_gulp,nchan,nsrc,npol)
+                ishape = (self.ntime_gulp,nchan,nstand,npol)
                 ogulp_size = self.ntime_gulp*self.nchan_out*nstand*npol*1        # ci4
                 oshape = (self.ntime_gulp,self.nchan_out,nstand,npol)
                 self.iring.resize(igulp_size)
@@ -424,8 +425,8 @@ class DecimationOp(object):
                 
 		ohdr = ihdr.copy()
 		ohdr['nchan'] = self.nchan_out
-                ohdr['cfreq'] = (chan0 + 0.5*(self.nchan_out-1))*CHAN_BW,
-                ohdr['bw']    = self.nchan_out*CHAN_BW,
+                ohdr['cfreq'] = (chan0 + 0.5*(self.nchan_out-1))*CHAN_BW
+                ohdr['bw']    = self.nchan_out*CHAN_BW
 		ohdr_str = json.dumps(ohdr)
 		
 		prev_time = time.time()
@@ -547,7 +548,7 @@ class MOFFCorrelatorOp(object):
                 # Setup the phasing terms for zenith
                 # Phases are Nchan x Npol x Nstand
                 phases = numpy.zeros((itshape[1], itshape[2], itshape[3]), dtype=numpy.complex64)
-                freq = numpy.fft.fftfreq(nchan, d=1.0/ihdr['bw']) + ihdr['cfreq']
+                freq = numpy.arange(nchan)*CHAN_BW + ihdr['cfreq']
                 for i in xrange(nstand):
                     ## X
                     a = self.antennas[2*i + 0]
@@ -926,7 +927,7 @@ def main():
     parser = argparse.ArgumentParser(description='EPIC Correlator')
     parser.add_argument('--addr', type=str, default = "p5p1", help= 'F-Engine UDP Stream Address')
     parser.add_argument('--port', type=int, default = 4015, help= 'F-Engine UDP Stream Port')
-    parser.add_arugment('--utcstart', type=str, default = '1970_1_1T0_0_0', help= 'F-Engine UDP Stream Start Time')
+    parser.add_argument('--utcstart', type=str, default = '1970_1_1T0_0_0', help= 'F-Engine UDP Stream Start Time')
     parser.add_argument('--gridsize', type=int, required=True, help = '1-D Grid Size')
     parser.add_argument('--frequency' , type=float, required=True, help = 'Frequency of channel. Allows correct fourier sampling to be calculated')
     parser.add_argument('--offline', action='store_true', help = 'Load TBN data from Disk')
@@ -1031,14 +1032,14 @@ def main():
         
         # Note: Capture uses Bifrost address+socket objects, while output uses
 	#         plain Python address+socket objects.
-	iaddr = BF_Address(iaddr, iport)
+	iaddr = BF_Address(args.addr, args.port)
 	isock = BF_UDPSocket()
 	isock.bind(iaddr)
 	isock.timeout = 0.5
         
 	ops.append(FEngineCaptureOp(log, fmt="chips", sock=isock, ring=fcapture_ring,
 	                            nsrc=16, src0=0, max_payload_size=9000,
-	                            buffer_ntime=args.ntps, slot_ntime=25000, core=cores.pop(0),
+	                            buffer_ntime=args.nts, slot_ntime=25000, core=cores.pop(0),
 	                            utc_start=utc_start_dt))
         ops.append(DecimationOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts, nchan_out=args.channels, 
                                 core=cores.pop(0)))
