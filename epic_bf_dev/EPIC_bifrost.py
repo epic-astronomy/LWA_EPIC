@@ -570,7 +570,7 @@ class MOFFCorrelatorOp(object):
                     oshape = (1,self.ntime_gulp,nchan,npol,self.grid_size,self.grid_size)
                     ogulp_size = self.ntime_gulp * nchan * npol * self.grid_size * self.grid_size * 8
                 self.iring.resize(igulp_size)
-                self.oring.resize(ogulp_size,buffer_factor=1)
+                self.oring.resize(ogulp_size,buffer_factor=5)
 
                 prev_time = time.time()
                 with oring.begin_sequence(time_tag=iseq.time_tag,header=ohdr_str) as oseq:
@@ -844,12 +844,12 @@ class ImagingOp(object):
                     if accum >= self.accumulation_time:
                         if self.cpu == False:
                             bifrost.reduce(crosspol, accumulated_image, op='sum')
-                            try:
-                                # image = image.reshape(1,nchan,npol**2,self.grid_size,self.grid_size)
-                                bifrost.memory.memcpy(image, accumulated_image)
-                                # image = image.reshape(nchan,npol**2,self.grid_size,self.grid_size)
-                            except NameError:
-                                image = accumulated_image.copy(space='cuda_host')
+                            #try:
+                            #    # image = image.reshape(1,nchan,npol**2,self.grid_size,self.grid_size)
+                            #    bifrost.memory.memcpy(image, accumulated_image)
+                            #    # image = image.reshape(nchan,npol**2,self.grid_size,self.grid_size)
+                            #except NameError:
+                            image = accumulated_image.copy(space='cuda_host')
                                 # image = image.reshape(nchan,npol**2,self.grid_size,self.grid_size)
                         else:
                             image = self.accumulated_image
