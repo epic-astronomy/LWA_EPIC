@@ -745,13 +745,12 @@ class MOFFCorrelatorOp(object):
 
 
 class ImagingOp(object):
-    def __init__(self, log, iring, filename, grid_size, ntime_gulp=100, core=-1, gpu=-1, cpu=False, profile=False, *args, **kwargs):
+    def __init__(self, log, iring, filename, grid_size, core=-1, gpu=-1, cpu=False, profile=False, *args, **kwargs):
         self.log = log
         self.iring = iring
         self.filename = filename
         self.grid_size = grid_size
 
-        self.ntime_gulp= ntime_gulp
         # TODO: Validate ntime_gulp vs accumulation_time
         self.core = core
         self.gpu = gpu
@@ -765,7 +764,7 @@ class ImagingOp(object):
         self.perf_proclog = ProcLog(type(self).__name__+"/perf")
 
         self.in_proclog.update( {'nring':1, 'ring0':self.iring.name})
-        self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
+        self.size_proclog.update({'nseq_per_gulp': 1})
 
         self.shutdown_event = threading.Event()
 
@@ -1009,11 +1008,10 @@ def main():
         
 
     ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, lwasv_locations, lwasv_antennas, 
-                                grid_size, ntime_gulp=args.nts, remove_autocorrs=args.removeautocorrs, 
+                                grid_size, ntime_gulp=args.nts, accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs, 
                                 core=cores.pop(0), gpu=gpus.pop(0),benchmark=args.benchmark, 
                                 profile=args.profile))
-    ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", grid_size, ntime_gulp=args.nts, 
-                         accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs, 
+    ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", grid_size, 
                          core=cores.pop(0), gpu=gpus.pop(0), cpu=False, 
                          profile=args.profile))
 
