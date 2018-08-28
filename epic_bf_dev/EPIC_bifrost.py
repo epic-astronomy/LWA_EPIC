@@ -14,18 +14,20 @@ import numpy
 import time
 from collections import deque
 from scipy.fftpack import fft
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import datetime
+import ctypes
 
 ## Profiling Includes
 import cProfile
 import pstats
 
-
 ## Bifrost Includes
 from bifrost.address import Address as BF_Address
 from bifrost.udp_socket import UDPSocket as BF_UDPSocket
 from bifrost.udp_capture import UDPCapture as BF_UDPCapture
-from bifrost.udp_transmit import UDPTransmit as BF_UDPTransmit
 from bifrost.ring import Ring
 from bifrost.unpack import unpack as Unpack
 from bifrost.quantize import quantize as Quantize
@@ -36,7 +38,8 @@ from bifrost.fft import Fft
 from bifrost.romein import romein_float
 import bifrost
 import bifrost.affinity
-from bifrost.ndarray import memset_array
+from bifrost.libbifrost import bf
+from bifrost.ndarray import memset_array, copy_array
 from bifrost.device import set_device as BFSetGPU, get_device as BFGetGPU, set_devices_no_spin_cpu as BFNoSpinZone
 BFNoSpinZone()
 
@@ -314,6 +317,10 @@ class FDomainOp(object):
 
 ## For when we don't need to care about doing the F-Engine ourself.
 ## TODO: Implement this come implementation time...
+FS = 196.0e6
+CHAN_BW = 25.0e3
+ADP_EPOCH = datetime.datetime(1970, 1, 1)
+
 class FEngineCaptureOp(object):
     '''
     Receives Fourier Spectra from LWA FPGA
@@ -322,24 +329,131 @@ class FEngineCaptureOp(object):
         self.log = log
         self.args = args
         self.kwargs = kwargs
-
+        self.utc_start = self.kwargs['utc_start']
+        del self.kwargs['utc_start']
         self.shutdown_event = threading.Event()
 
     def shutdown(self):
         self.shutdown_event.set()
 
-    def seq_callback(self):
-        #What do I need to do to the data?
-        pass
+    def seq_callback(self, seq0, chan0, nchan, nsrc,
+	                 time_tag_ptr, hdr_ptr, hdr_size_ptr):
+		timestamp0 = int((self.utc_start - ADP_EPOCH).total_seconds())
+		time_tag0  = timestamp0 * int(FS)
+		time_tag   = time_tag0 + seq0*(int(FS)//int(CHAN_BW))
+		print("++++++++++++++++ seq0     =", seq0)
+		print("                 time_tag =", time_tag)
+		time_tag_ptr[0] = time_tag
+		hdr = {
+			'time_tag': time_tag,
+			'seq0':     seq0, 
+			'chan0':    chan0,
+			'nchan':    nchan,
+			'cfreq':    (chan0 + 0.5*(nchan-1))*CHAN_BW,
+			'bw':       nchan*CHAN_BW,
+			'nstand':   nsrc*16,
+			#'stand0':   src0*16, # TODO: Pass src0 to the callback too(?)
+			'npol':     2,
+			'complex':  True,
+			'nbit':     4
+		}
+		print("******** CFREQ:", hdr['cfreq'])
+		hdr_str = json.dumps(hdr)
+		# TODO: Can't pad with NULL because returned as C-string
+		#hdr_str = json.dumps(hdr).ljust(4096, '\0')
+		#hdr_str = json.dumps(hdr).ljust(4096, ' ')
+		self.header_buf = ctypes.create_string_buffer(hdr_str)
+		hdr_ptr[0]      = ctypes.cast(self.header_buf, ctypes.c_void_p)
+		hdr_size_ptr[0] = len(hdr_str)
+		return 0
 
     def main(self):
         seq_callback = bf.BFudpcapture_sequence_callback(self.seq_callback)
-        with UDPCapture(*self.args,
+        with BF_UDPCapture(*self.args,
                         sequence_callback=seq_callback,
                         **self.kwargs) as capture:
             while not self.shutdown_event.is_set():
                 status = capture.recv()
         del capture
+
+class DecimationOp(object):
+    def __init__(self, log, iring, oring, ntime_gulp=2500, nchan_out=1, guarantee=True, core=-1):
+        self.log = log
+        self.iring = iring
+        self.oring = oring
+        self.ntime_gulp = ntime_gulp
+        self.nchan_out = nchan_out
+        self.guarantee = guarantee
+        self.core = core
+
+        self.bind_proclog = ProcLog(type(self).__name__+"/bind")
+        self.in_proclog   = ProcLog(type(self).__name__+"/in")
+        self.out_proclog  = ProcLog(type(self).__name__+"/out")
+        self.size_proclog = ProcLog(type(self).__name__+"/size")
+        self.sequence_proclog = ProcLog(type(self).__name__+"/sequence0")
+        self.perf_proclog = ProcLog(type(self).__name__+"/perf")
+        
+        self.in_proclog.update(  {'nring':1, 'ring0':self.iring.name})
+        self.out_proclog.update( {'nring':1, 'ring0':self.oring.name})
+        self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
+                
+    def main(self):
+        if self.core != -1:
+            bifrost.affinity.set_core(self.core)
+        self.bind_proclog.update({'ncore': 1, 
+                                  'core0': bifrost.affinity.get_core(),})
+         
+        with self.oring.begin_writing() as oring:
+            for iseq in self.iring.read(guarantee=self.guarantee):
+                ihdr = json.loads(iseq.header.tostring())
+                
+                self.sequence_proclog.update(ihdr)
+                
+                self.log.info("Decimate: Start of new sequence: %s", str(ihdr))
+                
+                nchan  = ihdr['nchan']
+                nstand = ihdr['nstand']
+                npol   = ihdr['npol']
+                chan0  = ihdr['chan0']
+                
+                igulp_size = self.ntime_gulp*nchan*nstand*npol*1                 # ci4
+                ishape = (self.ntime_gulp,nchan,nstand,npol)
+                ogulp_size = self.ntime_gulp*self.nchan_out*nstand*npol*1        # ci4
+                oshape = (self.ntime_gulp,self.nchan_out,nstand,npol)
+                self.iring.resize(igulp_size)
+                self.oring.resize(ogulp_size)#, obuf_size)
+                
+		ohdr = ihdr.copy()
+		ohdr['nchan'] = self.nchan_out
+                ohdr['cfreq'] = (chan0 + 0.5*(self.nchan_out-1))*CHAN_BW
+                ohdr['bw']    = self.nchan_out*CHAN_BW
+		ohdr_str = json.dumps(ohdr)
+		
+		prev_time = time.time()
+		with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
+		    for ispan in iseq.read(igulp_size):
+		        if ispan.size < igulp_size:
+                            continue # Ignore final gulp
+                        curr_time = time.time()
+                        acquire_time = curr_time - prev_time
+                        prev_time = curr_time
+                        
+                        with oseq.reserve(ogulp_size) as ospan:
+                            curr_time = time.time()
+                            reserve_time = curr_time - prev_time
+                            prev_time = curr_time
+                            
+                            idata = ispan.data_view(numpy.uint8).reshape(ishape)
+                            odata = ospan.data_view(numpy.uint8).reshape(oshape)
+                            
+                            odata[...] = idata[:,:self.nchan_out,:,:]
+                            
+                            curr_time = time.time()
+                            process_time = curr_time - prev_time
+                            prev_time = curr_time
+                            self.perf_proclog.update({'acquire_time': acquire_time, 
+                                                      'reserve_time': reserve_time, 
+                                                      'process_time': process_time,})
 
 class CalibrationOp(object):
     def __init__(self, log, iring, oring, *args, **kwargs):
@@ -436,7 +550,7 @@ class MOFFCorrelatorOp(object):
                 # Setup the phasing terms for zenith
                 # Phases are Nchan x Npol x Nstand
                 phases = numpy.zeros((itshape[1], itshape[2], itshape[3]), dtype=numpy.complex64)
-                freq = numpy.fft.fftfreq(nchan, d=1.0/ihdr['bw']) + ihdr['cfreq']
+                freq = numpy.arange(nchan)*CHAN_BW + ihdr['cfreq']
                 for i in xrange(nstand):
                     ## X
                     a = self.antennas[2*i + 0]
@@ -454,8 +568,7 @@ class MOFFCorrelatorOp(object):
                 oshape = (1,nchan,npol**2,self.grid_size,self.grid_size)
                 ogulp_size = nchan * npol**2 * self.grid_size * self.grid_size * 8
                 self.iring.resize(igulp_size)
-                self.oring.resize(ogulp_size,buffer_factor=100)
-
+                self.oring.resize(ogulp_size,buffer_factor=5)
                 prev_time = time.time()
                 with oring.begin_sequence(time_tag=iseq.time_tag,header=ohdr_str) as oseq:
                     iseq_spans = iseq.read(igulp_size)
@@ -697,7 +810,6 @@ class ImagingOp(object):
                     prev_time = curr_time
 
                     idata = ispan.data_view(numpy.complex64).reshape(ishape)
-                    print("Got image!")
                     image = idata.copy(space='cuda_host')
                     # try:
                     #     # image = image.reshape(1,nchan,npol**2,self.grid_size,self.grid_size)
@@ -707,8 +819,6 @@ class ImagingOp(object):
                     #     image = idata.copy(space='cuda_host')
                     #     # image = image.reshape(nchan,npol**2,self.grid_size,self.grid_size)
                     image = numpy.fft.fftshift(numpy.abs(image), axes=(3,4))
-                        
-                        
                     fig = plt.figure(fileid)
                     for i in xrange(4):
                         ax = fig.add_subplot(2, 2, i+1)
@@ -778,8 +888,9 @@ def main():
     # Main Input: UDP Broadcast RX from F-Engine?
 
     parser = argparse.ArgumentParser(description='EPIC Correlator')
-    parser.add_argument('--addr', type=str, help= 'F-Engine UDP Stream Address')
-    parser.add_argument('--port', type=int, help= 'F-Engine UDP Stream Port')
+    parser.add_argument('--addr', type=str, default = "p5p1", help= 'F-Engine UDP Stream Address')
+    parser.add_argument('--port', type=int, default = 4015, help= 'F-Engine UDP Stream Port')
+    parser.add_argument('--utcstart', type=str, default = '1970_1_1T0_0_0', help= 'F-Engine UDP Stream Start Time')
     parser.add_argument('--gridsize', type=int, required=True, help = '1-D Grid Size')
     parser.add_argument('--frequency' , type=float, required=True, help = 'Frequency of channel. Allows correct fourier sampling to be calculated')
     parser.add_argument('--offline', action='store_true', help = 'Load TBN data from Disk')
@@ -808,8 +919,8 @@ def main():
     log.setLevel(logging.DEBUG)
 
     # Setup the cores and GPUs to use
-    cores = [0, 1, 2, 3, 4, 5, 6, 7]
-    gpus  = [0, 0, 0, 0, 0, 0, 0, 0]
+    cores = [0, 2, 3, 4, 5, 6, 7]
+    gpus  = [0, 0, 0, 0, 0, 0, 0]
 
     # Setup the signal handling
     ops = []
@@ -835,9 +946,8 @@ def main():
 
     # Setup Rings
 
-    if args.offline:
-        fdomain_ring = Ring(name="fengine", space="cuda_host")
-        fcapture_ring = Ring(name="capture",space="cuda_host")
+    fcapture_ring = Ring(name="capture",space="cuda_host")
+    fdomain_ring = Ring(name="fengine", space="cuda_host")
     gridandfft_ring = Ring(name="gridandfft", space="cuda")
     image_ring = Ring(name="image", space="system")
 
@@ -874,10 +984,36 @@ def main():
 
     # Setup threads
 
-    ops.append(OfflineCaptureOp(log, fcapture_ring,args.tbnfile,profile=args.profile))
-    ops.append(FDomainOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts, nchan_out=args.channels, gpu=gpus.pop(0), profile=args.profile))
-    ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, lwasv_locations, lwasv_antennas, grid_size, ntime_gulp=args.nts, accumulation_time=args.accumulate,remove_autocorrs=args.removeautocorrs, gpu=gpus.pop(0),benchmark=args.benchmark, profile=args.profile))
-    ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", grid_size, ntime_gulp=args.nts, gpu=gpus.pop(0), cpu=False, profile=args.profile))
+    if args.offline:
+        ops.append(OfflineCaptureOp(log, fcapture_ring, args.tbnfile, 
+                                    core=cores.pop(0), profile=args.profile))
+        ops.append(FDomainOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts, 
+                             nchan_out=args.channels, core=cores.pop(0), gpu=gpus.pop(0), 
+                             profile=args.profile))
+    else:
+        utc_start_dt = datetime.datetime.strptime(args.utcstart, "%Y_%m_%dT%H_%M_%S")
+        ops.append(FEngineCaptureOp(log, fmt="chips", sock=isock, ring=fcapture_ring,
+	                                nsrc=16, src0=0, max_payload_size=9000,
+	                                buffer_ntime=args.nts, slot_ntime=25000, core=cores.pop(0),
+	                                utc_start=utc_start_dt))
+        ops.append(DecimationOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts, nchan_out=args.channels, 
+                                core=cores.pop(0)))
+        # Note: Capture uses Bifrost address+socket objects, while output uses
+	#         plain Python address+socket objects.
+	iaddr = BF_Address(args.addr, args.port)
+	isock = BF_UDPSocket()
+	isock.bind(iaddr)
+	isock.timeout = 0.5
+        
+
+    ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, lwasv_locations, lwasv_antennas, 
+                                grid_size, ntime_gulp=args.nts, remove_autocorrs=args.removeautocorrs, 
+                                core=cores.pop(0), gpu=gpus.pop(0),benchmark=args.benchmark, 
+                                profile=args.profile))
+    ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", grid_size, ntime_gulp=args.nts, 
+                         accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs, 
+                         core=cores.pop(0), gpu=gpus.pop(0), cpu=False, 
+                         profile=args.profile))
 
     threads= [threading.Thread(target=op.main) for op in ops]
 
