@@ -522,6 +522,7 @@ class MOFFCorrelatorOp(object):
                 ihdr = json.loads(iseq.header.tostring())
                 self.sequence_proclog.update(ihdr)
                 print('MOFFCorrelatorOp: Config - %s' % ihdr)
+                chan0 = ihdr['chan0']
                 nchan = ihdr['nchan']
                 nstand = ihdr['nstand']
                 npol = ihdr['npol']
@@ -550,7 +551,7 @@ class MOFFCorrelatorOp(object):
                 # Setup the phasing terms for zenith
                 # Phases are Nchan x Npol x Nstand
                 phases = numpy.zeros((itshape[1], itshape[2], itshape[3]), dtype=numpy.complex64)
-                freq = numpy.arange(nchan)*CHAN_BW + ihdr['cfreq']
+                freq = (chan0 + numpy.arange(nchan))*CHAN_BW
                 for i in xrange(nstand):
                     ## X
                     a = self.antennas[2*i + 0]
