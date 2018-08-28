@@ -956,8 +956,8 @@ def main():
     log.setLevel(logging.DEBUG)
 
     # Setup the cores and GPUs to use
-    cores = [0, 1, 2, 3, 4, 5, 6, 7]
-    gpus  = [0, 0, 0, 0, 0, 0, 0, 0]
+    cores = [0, 2, 3, 4, 5, 6, 7]
+    gpus  = [0, 0, 0, 0, 0, 0, 0]
 
     # Setup the signal handling
     ops = []
