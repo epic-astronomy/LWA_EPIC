@@ -864,6 +864,8 @@ class ImagingOp(object):
                         #plt.imshow(numpy.real(self.accumulated_image[0,0,:,:].T))
                         plt.savefig("ImagingOP-%04i.png"%(fileid))
                         fileid += 1
+                        plt.close(fig)
+                        del(fig)
                         print("ImagingOP - Image Saved")
 
                     curr_time = time.time()
