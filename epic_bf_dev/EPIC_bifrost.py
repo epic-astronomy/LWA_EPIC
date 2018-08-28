@@ -39,7 +39,7 @@ from bifrost.romein import romein_float
 import bifrost
 import bifrost.affinity
 from bifrost.libbifrost import bf
-from bifrost.ndarray import memset_array
+from bifrost.ndarray import memset_array, copy_array
 from bifrost.device import set_device as BFSetGPU, get_device as BFGetGPU, set_devices_no_spin_cpu as BFNoSpinZone
 BFNoSpinZone()
 
@@ -844,22 +844,22 @@ class ImagingOp(object):
                     if accum >= self.accumulation_time:
                         if self.cpu == False:
                             bifrost.reduce(crosspol, accumulated_image, op='sum')
-                            #try:
-                            #    # image = image.reshape(1,nchan,npol**2,self.grid_size,self.grid_size)
-                            #    bifrost.memory.memcpy(image, accumulated_image)
-                            #    # image = image.reshape(nchan,npol**2,self.grid_size,self.grid_size)
-                            #except NameError:
-                            image = accumulated_image.copy(space='cuda_host')
+                            try:
+                                # image = image.reshape(1,nchan,npol**2,self.grid_size,self.grid_size)
+                                copy_array(image, accumulated_image)
+                                # image = image.reshape(nchan,npol**2,self.grid_size,self.grid_size)
+                            except NameError:
+                                image = accumulated_image.copy(space='cuda_host')
                                 # image = image.reshape(nchan,npol**2,self.grid_size,self.grid_size)
                         else:
                             image = self.accumulated_image
-                        image = numpy.fft.fftshift(numpy.abs(image), axes=(3,4))
+                        image = numpy.fft.fftshift(image, axes=(3,4))
                         accum = 0
                         self.newflag = True
                         fig = plt.figure(fileid)
                         for i in xrange(4):
                             ax = fig.add_subplot(2, 2, i+1)
-                            im = ax.imshow(image[0,0,i,:,:])
+                            im = ax.imshow(numpy.abs(image[0,0,i,:,:]))
                             fig.colorbar(im,orientation='vertical')
                         #plt.imshow(numpy.real(self.accumulated_image[0,0,:,:].T))
                         plt.savefig("ImagingOP-%04i.png"%(fileid))
