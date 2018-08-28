@@ -695,7 +695,7 @@ class MOFFCorrelatorOp(object):
 
 
                             # Increment
-                            accum += self.ntime_gulp
+                            accum += 1e3 * self.ntime_gulp / CHAN_BW
                             if accum >= self.accumulation_time:
                                 print("Saving image!")
                                 bifrost.reduce(crosspol, accumulated_image, op='sum')
