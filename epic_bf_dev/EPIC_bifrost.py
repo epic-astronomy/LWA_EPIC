@@ -460,7 +460,21 @@ class CalibrationOp(object):
         pass
 
 class MOFFCorrelatorOp(object):
-    def __init__(self, log, iring, oring, locations, antennas, grid_size, ntime_gulp=2500, accumulation_time=10000, core=-1, gpu=-1, remove_autocorrs = False, benchmark=False, profile=False, *args, **kwargs):
+    def __init__(self,
+                 log,
+                 iring,
+                 oring,
+                 locations,
+                 antennas,
+                 grid_size,
+                 ntime_gulp=2500,
+                 accumulation_time=10000,
+                 core=-1, gpu=-1,
+                 remove_autocorrs = False,
+                 benchmark=False,
+                 profile=False,
+                 *args,
+                 **kwargs):
         self.log = log
         self.iring = iring
         self.oring = oring
@@ -495,9 +509,6 @@ class MOFFCorrelatorOp(object):
         self.ant_extent = 1
         self.antgridmap = bifrost.ndarray(numpy.ones(shape=(self.ant_extent,self.ant_extent),dtype=numpy.complex64),space='cuda')
         self.antgridmap = self.antgridmap.copy(space='cuda',order='C')
-
-        if self.remove_autocorrs == True:
-            self.autocorrmap = self.make_autocorr_grid(self.antgridmap,self.grid_size)
 
         self.shutdown_event = threading.Event()
 
@@ -620,12 +631,14 @@ class MOFFCorrelatorOp(object):
                                 time1b = time.time()
                             ## Unpack and phase
                             try:
-                                bifrost.map('a(i,j,k,l) = b(j,k,l)*Complex<float>(c(i,j,k,l).real_imag>>4, (c(i,j,k,l).real_imag<<4)>>4)',               {'a':udata, 'b':gphases, 'c':tdata}, axis_names=('i','j','k','l'), shape=udata.shape)
+                                bifrost.map('a(i,j,k,l) = b(j,k,l)*Complex<float>(c(i,j,k,l).real_imag>>4, (c(i,j,k,l).real_imag<<4)>>4)',
+                                            {'a':udata, 'b':gphases, 'c':tdata}, axis_names=('i','j','k','l'), shape=udata.shape)
                             except NameError:
                                 udata = bifrost.ndarray(shape=tdata.shape, dtype=numpy.complex64, space='cuda')
                                 phases = bifrost.ndarray(phases)
                                 gphases = phases.copy(space='cuda')
-                                bifrost.map('a(i,j,k,l) = b(j,k,l)*Complex<float>(c(i,j,k,l).real_imag>>4, (c(i,j,k,l).real_imag<<4)>>4)',               {'a':udata, 'b':gphases, 'c':tdata}, axis_names=('i','j','k','l'), shape=udata.shape)
+                                bifrost.map('a(i,j,k,l) = b(j,k,l)*Complex<float>(c(i,j,k,l).real_imag>>4, (c(i,j,k,l).real_imag<<4)>>4)',
+                                            {'a':udata, 'b':gphases, 'c':tdata}, axis_names=('i','j','k','l'), shape=udata.shape)
                                 #udata = udata.transpose((0,1,3,2))
                                 #Transpose
                             if self.benchmark == True:
@@ -680,27 +693,74 @@ class MOFFCorrelatorOp(object):
                                                                       dtype=numpy.complex64, space='cuda')
                                 self.newflag=False
 
-                            #Accumulate
-                            #Subtract auto-correlations.
+
+                            
                             if self.remove_autocorrs == True:
-                                bifrost.map('a(i,j,p,k,l) += b(0,i,j,p/2,k,l)*b(0,i,j,p%2,k,l).conj() - b(1,i,j,p,k,l)',
-                                            {'a':crosspol, 'b':gdata},
-                                            axis_names=('i','j', 'p', 'k', 'l'),
-                                            shape=(self.ntime_gulp, nchan, npol**2, self.grid_size, self.grid_size))
-                            else:
-                                bifrost.map('a(i,j,p,k,l) += b(0,i,j,p/2,k,l)*b(0,i,j,p%2,k,l).conj()', 
-                                            {'a':crosspol, 'b':gdata},
-                                            axis_names=('i','j', 'p', 'k', 'l'),
-                                            shape=(self.ntime_gulp, nchan, npol**2, self.grid_size, self.grid_size))
+
+                                ##Setup everything for the autocorrelation calculation.
+                                try:
+                                    # If one isn't allocated, then none of them are.
+                                    autocorrs = autocorrs.reshape(self.ntime_gulp,nchan,npol**2,nstand)
+                                except NameError:
+                                    autocorrs = bifrost.ndarray(shape=(self.ntime_gulp,nchan,npol**2,nstand),dtype=numpy.complex64, space='cuda')
+                                    autocorrs_av = bifrost.zeros(shape=(1,nchan,npol**2,nstand), dtype=numpy.complex64, space='cuda')
+                                    autocorr_g = bifrost.zeros(shape=(nchan*npol**2,self.grid_size,self.grid_size), dtype=numpy.complex64, space='cuda')
+                                    autocorr_lx = bifrost.ndarray(shape=(nchan*npol**2*nstand),dtype=numpy.int32,space='cuda')
+                                    autocorr_ly = bifrost.ndarray(shape=(nchan*npol**2*nstand),dtype=numpy.int32,space='cuda')
+                                    autocorr_lz = bifrost.ndarray(shape=(nchan*npol**2*nstand),dtype=numpy.int32,space='cuda')
+                                    autocorr_il = bifrost.ndarray(numpy.ones(shape=(1,1),dtype=numpy.complex64),space='cuda')
+                                    autocorr_il = autocorr_il.copy(space='cuda')
+
+                                    memset_array(autocorr_lx,self.grid_size/2)
+                                    memset_array(autocorr_ly,self.grid_size/2)
+                                    memset_array(autocorr_lz,0)
+                                    
+                                # Cross multiply to calculate autocorrs
+                                bifrost.map('a(i,j,k,l) += (b(i,j,k/2,l) * b(i,j,k%2,l).conj())',
+                                            {'a':autocorrs, 'b':udata,'t':self.ntime_gulp},
+                                            axis_names=('i','j','k','l'),
+                                            shape=(self.ntime_gulp,nchan,npol**2,nstand))
+                                
+                                
+                            bifrost.map('a(i,j,p,k,l) += b(0,i,j,p/2,k,l)*b(0,i,j,p%2,k,l).conj()', 
+                                        {'a':crosspol, 'b':gdata},
+                                        axis_names=('i','j', 'p', 'k', 'l'),
+                                        shape=(self.ntime_gulp, nchan, npol**2, self.grid_size, self.grid_size))
 
 
                             # Increment
                             accum += self.ntime_gulp
                             if accum >= self.accumulation_time:
-                                print("Saving image!")
+
                                 bifrost.reduce(crosspol, accumulated_image, op='sum')
+                                if self.remove_autocorrs == True:
+                                    # Reduce along time axis.
+                                    bifrost.reduce(autocorrs, autocorrs_av, op='sum')
+                                    # Grid the autocorrelations.
+                                    autocorr_g = romein_float(autocorrs_av,autocorr_g,autocorr_il,autocorr_lx,autocorr_ly,autocorr_lz,1,self.grid_size,nstand,nchan*npol**2)
+                                    # Inverse FFT
+                                    try:
+                                        ac_fft.execute(autocorr_g,autocorr_g,inverse=True)
+                                    except NameError:
+                                        ac_fft = Fft()
+                                        ac_fft.init(autocorr_g,autocorr_g,axes=(1,2))
+                                        ac_fft.execute(autocorr_g,autocorr_g,inverse=True)
+
+                                    accumulated_image = accumulated_image.reshape(nchan,npol**2,self.grid_size, self.grid_size)
+                                    autocorr_g = autocorr_g.reshape(nchan,npol**2,self.grid_size, self.grid_size)
+                                    bifrost.map('a(i,j,k,l) -= b(i,j,k,l)',
+                                                {'a':accumulated_image, 'b':autocorr_g},
+                                                axis_names=('i','j','k','l'),
+                                                shape=(nchan,npol**2,self.grid_size, self.grid_size))
+                                    
+                                    memset_array(autocorrs,0)
+                                    memset_array(autocorrs_av,0)
+                                    memset_array(autocorr_g,0)
+                               
+                                
                                 with oseq.reserve(ogulp_size) as ospan:
                                     odata = ospan.data_view(numpy.complex64).reshape(oshape)
+                                    accumulated_image = accumulated_image.reshape(oshape)
                                     odata[...] = accumulated_image
                                 self.newflag = True
                                 accum = 0
