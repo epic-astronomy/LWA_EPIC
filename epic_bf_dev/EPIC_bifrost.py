@@ -459,6 +459,83 @@ class DecimationOp(object):
                                                       'reserve_time': reserve_time, 
                                                       'process_time': process_time,})
 
+class TransposeOp(object):
+    def __init__(self, log, iring, oring, ntime_gulp=2500, guarantee=True, core=-1):
+        self.log = log
+        self.iring = iring
+        self.oring = oring
+        self.ntime_gulp = ntime_gulp
+        self.guarantee = guarantee
+        self.core = core
+
+        self.bind_proclog = ProcLog(type(self).__name__+"/bind")
+        self.in_proclog   = ProcLog(type(self).__name__+"/in")
+        self.out_proclog  = ProcLog(type(self).__name__+"/out")
+        self.size_proclog = ProcLog(type(self).__name__+"/size")
+        self.sequence_proclog = ProcLog(type(self).__name__+"/sequence0")
+        self.perf_proclog = ProcLog(type(self).__name__+"/perf")
+        
+        self.in_proclog.update(  {'nring':1, 'ring0':self.iring.name})
+        self.out_proclog.update( {'nring':1, 'ring0':self.oring.name})
+        self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
+                
+    def main(self):
+        if self.core != -1:
+            bifrost.affinity.set_core(self.core)
+        self.bind_proclog.update({'ncore': 1, 
+                                  'core0': bifrost.affinity.get_core(),})
+         
+        with self.oring.begin_writing() as oring:
+            for iseq in self.iring.read(guarantee=self.guarantee):
+                ihdr = json.loads(iseq.header.tostring())
+                
+                self.sequence_proclog.update(ihdr)
+                
+                self.log.info("Transpose: Start of new sequence: %s", str(ihdr))
+                
+                nchan  = ihdr['nchan']
+                nstand = ihdr['nstand']
+                npol   = ihdr['npol']
+                chan0  = ihdr['chan0']
+                
+                igulp_size = self.ntime_gulp*nchan*nstand*npol*1                 # ci4
+                ishape = (self.ntime_gulp,nchan,nstand,npol)
+                ogulp_size = self.ntime_gulp*nchan*npol*nstand*1        # ci4
+                oshape = (self.ntime_gulp,nchan,npol,nstand)
+                self.iring.resize(igulp_size)
+                self.oring.resize(ogulp_size)#, obuf_size)
+                
+		ohdr = ihdr.copy()
+                ohdr['order'] = 'time,chan,pol,stand'
+		ohdr_str = json.dumps(ohdr)
+		
+		prev_time = time.time()
+		with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
+		    for ispan in iseq.read(igulp_size):
+		        if ispan.size < igulp_size:
+                            continue # Ignore final gulp
+                        curr_time = time.time()
+                        acquire_time = curr_time - prev_time
+                        prev_time = curr_time
+                        
+                        with oseq.reserve(ogulp_size) as ospan:
+                            curr_time = time.time()
+                            reserve_time = curr_time - prev_time
+                            prev_time = curr_time
+                            
+                            idata = ispan.data_view(numpy.uint8).reshape(ishape)
+                            odata = ospan.data_view(numpy.uint8).reshape(oshape)
+                            
+                            idata = idata.transpose(0,1,3,2)
+                            odata[...] = idata.copy()
+                            
+                            curr_time = time.time()
+                            process_time = curr_time - prev_time
+                            prev_time = curr_time
+                            self.perf_proclog.update({'acquire_time': acquire_time, 
+                                                      'reserve_time': reserve_time, 
+                                                      'process_time': process_time,})
+
 class CalibrationOp(object):
     def __init__(self, log, iring, oring, *args, **kwargs):
         pass
@@ -554,7 +631,6 @@ class MOFFCorrelatorOp(object):
                 locations_z.reshape(self.ntime_gulp*nchan*npol,nstand)
 
                 igulp_size = self.ntime_gulp * nchan * nstand * npol * 1 # ci4
-                ishape = (self.ntime_gulp,nchan,nstand,npol)
                 itshape = (self.ntime_gulp,nchan,npol,nstand) 
 
                 
@@ -612,9 +688,7 @@ class MOFFCorrelatorOp(object):
 
                             ###### Correlator #######
                             ## Setup and load
-                            idata = ispan.data_view(numpy.uint8).reshape(ishape)
-                            idata = idata.transpose((0,1,3,2))
-                            idata = idata.copy(order='C')
+                            idata = ispan.data_view(numpy.uint8).reshape(itshape)
                             ## Fix the type
                             tdata = bifrost.ndarray(shape=itshape, dtype='ci4', native=False, buffer=idata.ctypes.data)
 
@@ -1008,6 +1082,7 @@ def main():
 
     fcapture_ring = Ring(name="capture",space="cuda_host")
     fdomain_ring = Ring(name="fengine", space="cuda_host")
+    transpose_ring = Ring(name="transpose", space="cuda_host")
     gridandfft_ring = Ring(name="gridandfft", space="cuda")
     image_ring = Ring(name="image", space="system")
 
@@ -1066,8 +1141,9 @@ def main():
         ops.append(DecimationOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts, nchan_out=args.channels, 
                                 core=cores.pop(0)))
         
-
-    ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, lwasv_locations, lwasv_antennas, 
+    ops.append(TransposeOp(log, fdomain_ring, transpose_ring, ntime_gulp=args.nts, 
+                                core=cores.pop(0)))
+    ops.append(MOFFCorrelatorOp(log, transpose_ring, gridandfft_ring, lwasv_locations, lwasv_antennas, 
                                 grid_size, ntime_gulp=args.nts, accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs, 
                                 core=cores.pop(0), gpu=gpus.pop(0),benchmark=args.benchmark, 
                                 profile=args.profile))
