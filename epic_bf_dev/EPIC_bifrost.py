@@ -357,7 +357,7 @@ class FEngineCaptureOp(object):
             #'stand0':   src0*16, # TODO: Pass src0 to the callback too(?)
             'npol':     2,
             'complex':  True,
-            'nbit':     4
+            'nbit':     4,
             'axes':     'time,chan,stand,pol'
         }
         print("******** CFREQ:", hdr['cfreq'])
@@ -438,30 +438,30 @@ class DecimationOp(object):
         with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
             for ispan in iseq.read(igulp_size):
                 if ispan.size < igulp_size:
-                            continue # Ignore final gulp
-                        curr_time = time.time()
-                        acquire_time = curr_time - prev_time
-                        prev_time = curr_time
-                        
-                        with oseq.reserve(ogulp_size) as ospan:
-                            curr_time = time.time()
-                            reserve_time = curr_time - prev_time
-                            prev_time = curr_time
-                            
-                            idata = ispan.data_view(numpy.uint8).reshape(ishape)
-                            odata = ospan.data_view(numpy.uint8).reshape(oshape)
-                            
-                            sdata = idata[:,:self.nchan_out,:,:]
-                            if self.npol_out != npol:
-                                sdata = sdata[:,:,:,:self.npol]
-                            odata[...] = sdata
-                            
-                            curr_time = time.time()
-                            process_time = curr_time - prev_time
-                            prev_time = curr_time
-                            self.perf_proclog.update({'acquire_time': acquire_time, 
-                                                      'reserve_time': reserve_time, 
-                                                      'process_time': process_time,})
+                    continue # Ignore final gulp
+                curr_time = time.time()
+                acquire_time = curr_time - prev_time
+                prev_time = curr_time
+                
+                with oseq.reserve(ogulp_size) as ospan:
+                    curr_time = time.time()
+                    reserve_time = curr_time - prev_time
+                    prev_time = curr_time
+                    
+                    idata = ispan.data_view(numpy.uint8).reshape(ishape)
+                    odata = ospan.data_view(numpy.uint8).reshape(oshape)
+                    
+                    sdata = idata[:,:self.nchan_out,:,:]
+                    if self.npol_out != npol:
+                        sdata = sdata[:,:,:,:self.npol]
+                    odata[...] = sdata
+                    
+                    curr_time = time.time()
+                    process_time = curr_time - prev_time
+                    prev_time = curr_time
+                    self.perf_proclog.update({'acquire_time': acquire_time, 
+                                              'reserve_time': reserve_time, 
+                                              'process_time': process_time,})
 
 class TransposeOp(object):
     def __init__(self, log, iring, oring, ntime_gulp=2500, guarantee=True, core=-1):
@@ -517,28 +517,28 @@ class TransposeOp(object):
         with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
             for ispan in iseq.read(igulp_size):
                 if ispan.size < igulp_size:
-                            continue # Ignore final gulp
-                        curr_time = time.time()
-                        acquire_time = curr_time - prev_time
-                        prev_time = curr_time
-                        
-                        with oseq.reserve(ogulp_size) as ospan:
-                            curr_time = time.time()
-                            reserve_time = curr_time - prev_time
-                            prev_time = curr_time
-                            
-                            idata = ispan.data_view(numpy.uint8).reshape(ishape)
-                            odata = ospan.data_view(numpy.uint8).reshape(oshape)
-                            
-                            idata = idata.transpose(0,1,3,2)
-                            odata[...] = idata.copy()
-                            
-                            curr_time = time.time()
-                            process_time = curr_time - prev_time
-                            prev_time = curr_time
-                            self.perf_proclog.update({'acquire_time': acquire_time, 
-                                                      'reserve_time': reserve_time, 
-                                                      'process_time': process_time,})
+                    continue # Ignore final gulp
+                curr_time = time.time()
+                acquire_time = curr_time - prev_time
+                prev_time = curr_time
+                
+                with oseq.reserve(ogulp_size) as ospan:
+                    curr_time = time.time()
+                    reserve_time = curr_time - prev_time
+                    prev_time = curr_time
+                    
+                    idata = ispan.data_view(numpy.uint8).reshape(ishape)
+                    odata = ospan.data_view(numpy.uint8).reshape(oshape)
+                    
+                    idata = idata.transpose(0,1,3,2)
+                    odata[...] = idata.copy()
+                    
+                    curr_time = time.time()
+                    process_time = curr_time - prev_time
+                    prev_time = curr_time
+                    self.perf_proclog.update({'acquire_time': acquire_time, 
+                                              'reserve_time': reserve_time, 
+                                              'process_time': process_time,})
 
 class CalibrationOp(object):
     def __init__(self, log, iring, oring, *args, **kwargs):
@@ -1037,7 +1037,7 @@ def main():
     parser.add_argument('--nts',type=int, default = 1000, help= 'Number of timestamps per span')
     parser.add_argument('--accumulate',type=int, default = 1000, help='How many milliseconds to accumulate an image over')
     parser.add_argument('--channels',type=int, default=1, help='How many channels to produce')
-    parser.add_arguemnt('--singlepol', action='store_true', help = 'Process only X pol. in online mode')
+    parser.add_argument('--singlepol', action='store_true', help = 'Process only X pol. in online mode')
     parser.add_argument('--removeautocorrs', action='store_true', help = 'Removes Autocorrelations')
     parser.add_argument('--benchmark', action='store_true',help = 'benchmark gridder')
     parser.add_argument('--profile', action='store_true', help = 'Run cProfile on ALL threads. Produces trace for each individual thread')
