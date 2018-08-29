@@ -978,6 +978,7 @@ class ImagingOp(object):
                     nints += 1
                     if nints >= self.ints_per_file:
                         image = numpy.fft.fftshift(image, axes=(3, 4))
+                        image = image[:, :, :, ::-1, :]
                         unix_time = (ihdr['time_tag'] / FS + ihdr['accumulation_time']
                                      * 1e-3 * fileid * self.ints_per_file)
                         image_nums = numpy.arange(fileid * self.ints_per_file, (fileid + 1) * self.ints_per_file)
