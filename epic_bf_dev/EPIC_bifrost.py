@@ -446,7 +446,7 @@ class DecimationOp(object):
                             
                             idata = ispan.data_view(numpy.uint8).reshape(ishape)
                             odata = ospan.data_view(numpy.uint8).reshape(oshape)
-                            
+
                             sdata = idata[:,:self.nchan_out,:,:]
                             if self.npol_out != npol:
                                 sdata = sdata[:,:,:,:self.npol]
@@ -543,7 +543,6 @@ class MOFFCorrelatorOp(object):
                 npol = ihdr['npol']
                 self.newflag = True
                 accum = 0
-
                 locations_x = bifrost.ndarray(numpy.tile(self.locations[:,0],self.ntime_gulp*nchan*npol).astype(numpy.int32),space='cuda')
                 locations_x = locations_x.reshape(self.ntime_gulp*nchan*npol,nstand)
                 locations_x = locations_x.copy(space='cuda',order='C')
@@ -691,8 +690,11 @@ class MOFFCorrelatorOp(object):
                             #print ("Accum: %d"%accum,end='\n')
                             if self.newflag is True:
                                 try:
+                                    crosspol = crosspol.reshape(self.ntime_gulp,nchan,npol**2,self.grid_size,self.grid_size)
+                                    accumulated_image = accumulated_image.reshape(1,nchan,npol**2,self.grid_size,self.grid_size)
                                     memset_array(crosspol, 0)
                                     memset_array(accumulated_image, 0)
+                                    
                                 except NameError:
                                     crosspol = bifrost.zeros(shape=(self.ntime_gulp,nchan,npol**2,self.grid_size,self.grid_size), 
                                                              dtype=numpy.complex64, space='cuda')
@@ -708,27 +710,24 @@ class MOFFCorrelatorOp(object):
                                 try:
                                     # If one isn't allocated, then none of them are.
                                     autocorrs = autocorrs.reshape(self.ntime_gulp,nchan,npol**2,nstand)
+                                    autocorr_g = autocorr_g.reshape(nchan*npol**2,self.grid_size,self.grid_size)
                                 except NameError:
                                     autocorrs = bifrost.ndarray(shape=(self.ntime_gulp,nchan,npol**2,nstand),dtype=numpy.complex64, space='cuda')
                                     autocorrs_av = bifrost.zeros(shape=(1,nchan,npol**2,nstand), dtype=numpy.complex64, space='cuda')
                                     autocorr_g = bifrost.zeros(shape=(nchan*npol**2,self.grid_size,self.grid_size), dtype=numpy.complex64, space='cuda')
-                                    autocorr_lx = bifrost.ndarray(shape=(nchan*npol**2*nstand),dtype=numpy.int32,space='cuda')
-                                    autocorr_ly = bifrost.ndarray(shape=(nchan*npol**2*nstand),dtype=numpy.int32,space='cuda')
-                                    autocorr_lz = bifrost.ndarray(shape=(nchan*npol**2*nstand),dtype=numpy.int32,space='cuda')
+                                    autocorr_lx = bifrost.ndarray(numpy.zeros(shape=(nchan*npol**2*nstand),dtype=numpy.int32),space='cuda')
+                                    autocorr_ly = bifrost.ndarray(numpy.zeros(shape=(nchan*npol**2*nstand),dtype=numpy.int32),space='cuda')
+                                    autocorr_lz = bifrost.zeros(shape=(nchan*npol**2*nstand),dtype=numpy.int32,space='cuda')
                                     autocorr_il = bifrost.ndarray(numpy.ones(shape=(1,1),dtype=numpy.complex64),space='cuda')
                                     autocorr_il = autocorr_il.copy(space='cuda')
 
-                                    memset_array(autocorr_lx,self.grid_size/2)
-                                    memset_array(autocorr_ly,self.grid_size/2)
-                                    memset_array(autocorr_lz,0)
                                     
                                 # Cross multiply to calculate autocorrs
                                 bifrost.map('a(i,j,k,l) += (b(i,j,k/2,l) * b(i,j,k%2,l).conj())',
                                             {'a':autocorrs, 'b':udata,'t':self.ntime_gulp},
                                             axis_names=('i','j','k','l'),
                                             shape=(self.ntime_gulp,nchan,npol**2,nstand))
-                                
-                                
+                            
                             bifrost.map('a(i,j,p,k,l) += b(0,i,j,p/2,k,l)*b(0,i,j,p%2,k,l).conj()', 
                                         {'a':crosspol, 'b':gdata},
                                         axis_names=('i','j', 'p', 'k', 'l'),
@@ -742,16 +741,17 @@ class MOFFCorrelatorOp(object):
                                 bifrost.reduce(crosspol, accumulated_image, op='sum')
                                 if self.remove_autocorrs == True:
                                     # Reduce along time axis.
-                                    bifrost.reduce(autocorrs, autocorrs_av, op='sum')
+                                    bifrost.reduce(autocorrs, autocorrs_av, op='sum')                        
                                     # Grid the autocorrelations.
                                     autocorr_g = romein_float(autocorrs_av,autocorr_g,autocorr_il,autocorr_lx,autocorr_ly,autocorr_lz,1,self.grid_size,nstand,nchan*npol**2)
-                                    # Inverse FFT
+            
+                                    #Inverse FFT
                                     try:
-                                        ac_fft.execute(autocorr_g,autocorr_g,inverse=True)
+                                       ac_fft.execute(autocorr_g,autocorr_g,inverse=True)
                                     except NameError:
-                                        ac_fft = Fft()
-                                        ac_fft.init(autocorr_g,autocorr_g,axes=(1,2))
-                                        ac_fft.execute(autocorr_g,autocorr_g,inverse=True)
+                                       ac_fft = Fft()
+                                       ac_fft.init(autocorr_g,autocorr_g,axes=(1,2))
+                                       ac_fft.execute(autocorr_g,autocorr_g,inverse=True)
 
                                     accumulated_image = accumulated_image.reshape(nchan,npol**2,self.grid_size, self.grid_size)
                                     autocorr_g = autocorr_g.reshape(nchan,npol**2,self.grid_size, self.grid_size)
@@ -760,18 +760,24 @@ class MOFFCorrelatorOp(object):
                                                 axis_names=('i','j','k','l'),
                                                 shape=(nchan,npol**2,self.grid_size, self.grid_size))
                                     
-                                    memset_array(autocorrs,0)
-                                    memset_array(autocorrs_av,0)
-                                    memset_array(autocorr_g,0)
+                                    
+                                    
+                                    
                                
                                 
                                 with oseq.reserve(ogulp_size) as ospan:
                                     odata = ospan.data_view(numpy.complex64).reshape(oshape)
                                     accumulated_image = accumulated_image.reshape(oshape)
+                                    autocorr_g = autocorr_g.reshape(oshape)
                                     odata[...] = accumulated_image
+                                    
                                 self.newflag = True
                                 accum = 0
-                                
+
+                                if self.remove_autocorrs == True:
+                                    memset_array(autocorr_g,0)
+                                    memset_array(autocorrs,0)
+                                    memset_array(autocorrs_av,0)
                             #TODO: Autocorrs using Romein??
                             ## Output for gridded electric fields.
                             if self.benchmark == True:
@@ -848,7 +854,7 @@ class ImagingOp(object):
             ihdr = json.loads(iseq.header.tostring())
 
             self.sequence_proclog.update(ihdr)
-            self.log.info('ImagingOp: Config - %s' % ihdr)
+            print('ImagingOp: Config - %s' % ihdr)
 
             nchan = ihdr['nchan']
             npol = ihdr['npol']
