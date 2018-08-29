@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 from epic import data_interface as DI
 import argparse
 import numpy as np
