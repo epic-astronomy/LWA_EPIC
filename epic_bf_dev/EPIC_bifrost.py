@@ -687,10 +687,7 @@ class MOFFCorrelatorOp(object):
                             
                             if self.benchmark == True:
                                 print(" ------------------ ")
-                            curr_time = time.time()
-                            reserve_time = curr_time - prev_time
-                            prev_time = curr_time
-
+                                
                             ###### Correlator #######
                             ## Setup and load
                             idata = ispan.data_view(numpy.uint8).reshape(itshape)
@@ -816,6 +813,11 @@ class MOFFCorrelatorOp(object):
 
                             # Increment
                             accum += self.ntime_gulp
+                            
+                            curr_time = time.time()
+                            process_time = curr_time - prev_time
+                            prev_time = curr_time
+                            
                             if accum >= self.accumulation_time:
 
                                 bifrost.reduce(crosspol, accumulated_image, op='sum')
@@ -851,6 +853,10 @@ class MOFFCorrelatorOp(object):
                                 self.newflag = True
                                 accum = 0
                                 
+                            curr_time = time.time()
+                            reserve_time = curr_time - prev_time
+                            prev_time = curr_time
+
                             #TODO: Autocorrs using Romein??
                             ## Output for gridded electric fields.
                             if self.benchmark == True:
@@ -875,9 +881,6 @@ class MOFFCorrelatorOp(object):
                                     sys.exit()
                                     break
 
-                            curr_time = time.time()
-                            process_time = curr_time - prev_time
-                            prev_time = curr_time
                             self.perf_proclog.update({'acquire_time': acquire_time,
                                                       'reserve_time': reserve_time,
                                                       'process_time': process_time,})
