@@ -453,7 +453,7 @@ class DecimationOp(object):
                             
                             sdata = idata[:,:self.nchan_out,:,:]
                             if self.npol_out != npol:
-                                sdata = sdata[:,:,:,:self.npol]
+                                sdata = sdata[:,:,:,:self.npol_out]
                             odata[...] = sdata
                             
                             curr_time = time.time()
@@ -959,7 +959,7 @@ class ImagingOp(object):
                     #     # image = image.reshape(nchan,npol**2,self.grid_size,self.grid_size)
                     image = numpy.fft.fftshift(numpy.abs(image), axes=(3,4))
                     fig = plt.figure(fileid)
-                    for i in xrange(4):
+                    for i in xrange(npol):
                         ax = fig.add_subplot(2, 2, i+1)
                         im = ax.imshow(image[0,0,i,:,:])
                         fig.colorbar(im,orientation='vertical')
