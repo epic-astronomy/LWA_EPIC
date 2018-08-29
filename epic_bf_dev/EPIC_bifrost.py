@@ -656,11 +656,12 @@ class MOFFCorrelatorOp(object):
                     delay = a.cable.delay(freq) - a.stand.z / speedOfLight
                     phases[:,0,i] = numpy.exp(2j*numpy.pi*freq*delay)
                     phases[:,0,i] /= numpy.sqrt(a.cable.gain(freq))
-                    ## Y
-                    a = self.antennas[2*i + 1]
-                    delay = a.cable.delay(freq) - a.stand.z / speedOfLight
-                    phases[:,1,i] = numpy.exp(2j*numpy.pi*freq*delay)
-                    phases[:,1,i] /= numpy.sqrt(a.cable.gain(freq))
+                    if npol == 2:
+                        ## Y
+                        a = self.antennas[2*i + 1]
+                        delay = a.cable.delay(freq) - a.stand.z / speedOfLight
+                        phases[:,1,i] = numpy.exp(2j*numpy.pi*freq*delay)
+                        phases[:,1,i] /= numpy.sqrt(a.cable.gain(freq))
 
                 
 
