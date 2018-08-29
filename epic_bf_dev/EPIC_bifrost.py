@@ -1128,6 +1128,7 @@ def main():
     chan_wavelength = (speedOfLight/args.frequency)
     print("Wavelength: %f"%chan_wavelength)
     sampling_length = chan_wavelength/2
+    sampling_length_lambda = sampling_length / chan_wavelength  # In wavelengths
     lwasv_locations = lwasv_locations / sampling_length #Convert to number of half wavelengths.
     lwasv_locations[255,:] = 0.0
 
@@ -1176,7 +1177,7 @@ def main():
     ops.append(MOFFCorrelatorOp(log, transpose_ring, gridandfft_ring, lwasv_locations, lwasv_antennas,
                                 grid_size, ntime_gulp=args.nts, accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs,
                                 core=cores.pop(0), gpu=gpus.pop(0),benchmark=args.benchmark,
-                                sampling_length=sampling_length, profile=args.profile))
+                                sampling_length=sampling_length_lambda, profile=args.profile))
     ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", grid_size,
                          core=cores.pop(0), gpu=gpus.pop(0), cpu=False,
                          ints_per_file=args.ints_per_file, profile=args.profile))
