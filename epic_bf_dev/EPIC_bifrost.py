@@ -429,6 +429,7 @@ class DecimationOp(object):
                 
         ohdr = ihdr.copy()
         ohdr['nchan'] = self.nchan_out
+        ohdr['npol']  = self.npol_out
         ohdr['cfreq'] = (chan0 + 0.5*(self.nchan_out-1))*CHAN_BW
         ohdr['bw']    = self.nchan_out*CHAN_BW
         ohdr_str = json.dumps(ohdr)
@@ -1035,6 +1036,7 @@ def main():
     parser.add_argument('--nts',type=int, default = 1000, help= 'Number of timestamps per span')
     parser.add_argument('--accumulate',type=int, default = 1000, help='How many milliseconds to accumulate an image over')
     parser.add_argument('--channels',type=int, default=1, help='How many channels to produce')
+    parser.add_arguemnt('--singlepol', action='store_true', help = 'Process only X pol. in online mode')
     parser.add_argument('--removeautocorrs', action='store_true', help = 'Removes Autocorrelations')
     parser.add_argument('--benchmark', action='store_true',help = 'benchmark gridder')
     parser.add_argument('--profile', action='store_true', help = 'Run cProfile on ALL threads. Produces trace for each individual thread')
@@ -1129,7 +1131,9 @@ def main():
                              nchan_out=args.channels, core=cores.pop(0), gpu=gpus.pop(0), 
                              profile=args.profile))
     else:
+        # It would be great is we could pull this from ADP MCS...
         utc_start_dt = datetime.datetime.strptime(args.utcstart, "%Y_%m_%dT%H_%M_%S")
+        
         # Note: Capture uses Bifrost address+socket objects, while output uses
         #         plain Python address+socket objects.
         iaddr = BF_Address(args.addr, args.port)
@@ -1141,7 +1145,8 @@ def main():
                                     nsrc=16, src0=0, max_payload_size=9000,
                                     buffer_ntime=args.nts, slot_ntime=25000, core=cores.pop(0),
                                     utc_start=utc_start_dt))
-        ops.append(DecimationOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts, nchan_out=args.channels, 
+        ops.append(DecimationOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts, 
+                                nchan_out=args.channels, npol_out=1 if args.singlepol else 2,
                                 core=cores.pop(0)))
         
     ops.append(TransposeOp(log, fdomain_ring, transpose_ring, ntime_gulp=args.nts, 
