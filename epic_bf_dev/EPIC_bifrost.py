@@ -348,7 +348,7 @@ class FEngineCaptureOp(object):
         time_tag_ptr[0] = time_tag
         hdr = {
             'time_tag': time_tag,
-            'seq0':     seq0, 
+            'seq0':     seq0,
             'chan0':    chan0,
             'nchan':    nchan,
             'cfreq':    (chan0 + 0.5*(nchan-1))*CHAN_BW,
@@ -412,28 +412,28 @@ class DecimationOp(object):
                 ihdr = json.loads(iseq.header.tostring())
 
                 self.sequence_proclog.update(ihdr)
-                
+
                 self.log.info("Decimation: Start of new sequence: %s", str(ihdr))
-                
+
                 nchan  = ihdr['nchan']
                 nstand = ihdr['nstand']
                 npol   = ihdr['npol']
                 chan0  = ihdr['chan0']
-                
+
                 igulp_size = self.ntime_gulp*nchan*nstand*npol*1                     # ci4
                 ishape = (self.ntime_gulp,nchan,nstand,npol)
                 ogulp_size = self.ntime_gulp*self.nchan_out*nstand*self.npol_out*1   # ci4
                 oshape = (self.ntime_gulp,self.nchan_out,nstand,self.npol_out)
                 self.iring.resize(igulp_size)
                 self.oring.resize(ogulp_size)#, obuf_size)
-                
+
                 ohdr = ihdr.copy()
                 ohdr['nchan'] = self.nchan_out
                 ohdr['npol']  = self.npol_out
                 ohdr['cfreq'] = (chan0 + 0.5*(self.nchan_out-1))*CHAN_BW
                 ohdr['bw']    = self.nchan_out*CHAN_BW
                 ohdr_str = json.dumps(ohdr)
-                
+
                 prev_time = time.time()
                 with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
                     for ispan in iseq.read(igulp_size):
@@ -455,12 +455,12 @@ class DecimationOp(object):
                             if self.npol_out != npol:
                                 sdata = sdata[:,:,:,:self.npol_out]
                             odata[...] = sdata
-                            
+
                             curr_time = time.time()
                             process_time = curr_time - prev_time
                             prev_time = curr_time
-                            self.perf_proclog.update({'acquire_time': acquire_time, 
-                                                      'reserve_time': reserve_time, 
+                            self.perf_proclog.update({'acquire_time': acquire_time,
+                                                      'reserve_time': reserve_time,
                                                       'process_time': process_time,})
 
 class TransposeOp(object):
@@ -478,41 +478,41 @@ class TransposeOp(object):
         self.size_proclog = ProcLog(type(self).__name__+"/size")
         self.sequence_proclog = ProcLog(type(self).__name__+"/sequence0")
         self.perf_proclog = ProcLog(type(self).__name__+"/perf")
-        
+
         self.in_proclog.update(  {'nring':1, 'ring0':self.iring.name})
         self.out_proclog.update( {'nring':1, 'ring0':self.oring.name})
         self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
-                
+
     def main(self):
         if self.core != -1:
             bifrost.affinity.set_core(self.core)
-        self.bind_proclog.update({'ncore': 1, 
+        self.bind_proclog.update({'ncore': 1,
                                   'core0': bifrost.affinity.get_core(),})
-         
+
         with self.oring.begin_writing() as oring:
             for iseq in self.iring.read(guarantee=self.guarantee):
                 ihdr = json.loads(iseq.header.tostring())
-                
+
                 self.sequence_proclog.update(ihdr)
-                
+
                 self.log.info("Transpose: Start of new sequence: %s", str(ihdr))
-                
+
                 nchan  = ihdr['nchan']
                 nstand = ihdr['nstand']
                 npol   = ihdr['npol']
                 chan0  = ihdr['chan0']
-                
+
                 igulp_size = self.ntime_gulp*nchan*nstand*npol*1        # ci4
                 ishape = (self.ntime_gulp,nchan,nstand,npol)
                 ogulp_size = self.ntime_gulp*nchan*npol*nstand*1        # ci4
                 oshape = (self.ntime_gulp,nchan,npol,nstand)
                 self.iring.resize(igulp_size)
                 self.oring.resize(ogulp_size)#, obuf_size)
-                
+
                 ohdr = ihdr.copy()
                 ohdr['axes'] = 'time,chan,pol,stand'
                 ohdr_str = json.dumps(ohdr)
-                
+
                 prev_time = time.time()
                 with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
                     for ispan in iseq.read(igulp_size):
@@ -521,18 +521,18 @@ class TransposeOp(object):
                         curr_time = time.time()
                         acquire_time = curr_time - prev_time
                         prev_time = curr_time
-                        
+
                         with oseq.reserve(ogulp_size) as ospan:
                             curr_time = time.time()
                             reserve_time = curr_time - prev_time
                             prev_time = curr_time
-                            
+
                             idata = ispan.data_view(numpy.uint8).reshape(ishape)
                             odata = ospan.data_view(numpy.uint8).reshape(oshape)
-                            
+
                             idata = idata.transpose(0,1,3,2)
                             odata[...] = idata.copy()
-                            
+
                             curr_time = time.time()
                             process_time = curr_time - prev_time
                             prev_time = curr_time
@@ -624,7 +624,7 @@ class MOFFCorrelatorOp(object):
                 locations_z.reshape(self.ntime_gulp*nchan*npol,nstand)
 
                 igulp_size = self.ntime_gulp * nchan * nstand * npol * 1 # ci4
-                itshape = (self.ntime_gulp,nchan,npol,nstand) 
+                itshape = (self.ntime_gulp,nchan,npol,nstand)
 
 
                 ohdr = ihdr.copy()
@@ -693,7 +693,7 @@ class MOFFCorrelatorOp(object):
 
                             if self.benchmark == True:
                                 print(" ------------------ ")
-                                
+
                             ###### Correlator #######
                             ## Setup and load
                             idata = ispan.data_view(numpy.uint8).reshape(itshape)
@@ -777,7 +777,7 @@ class MOFFCorrelatorOp(object):
                                     accumulated_image = accumulated_image.reshape(1,nchan,npol**2,self.grid_size,self.grid_size)
                                     memset_array(crosspol, 0)
                                     memset_array(accumulated_image, 0)
-                                    
+
                                 except NameError:
                                     crosspol = bifrost.zeros(shape=(self.ntime_gulp,nchan,npol**2,self.grid_size,self.grid_size),
                                                              dtype=numpy.complex64, space='cuda')
@@ -786,7 +786,7 @@ class MOFFCorrelatorOp(object):
                                 self.newflag=False
 
 
-                            
+
                             if self.remove_autocorrs == True:
 
                                 ##Setup everything for the autocorrelation calculation.
@@ -804,14 +804,14 @@ class MOFFCorrelatorOp(object):
                                     autocorr_il = bifrost.ndarray(numpy.ones(shape=(1,1),dtype=numpy.complex64),space='cuda')
                                     autocorr_il = autocorr_il.copy(space='cuda')
 
-                                    
+
                                 # Cross multiply to calculate autocorrs
                                 bifrost.map('a(i,j,k,l) += (b(i,j,k/2,l) * b(i,j,k%2,l).conj())',
                                             {'a':autocorrs, 'b':udata,'t':self.ntime_gulp},
                                             axis_names=('i','j','k','l'),
                                             shape=(self.ntime_gulp,nchan,npol**2,nstand))
-                            
-                            bifrost.map('a(i,j,p,k,l) += b(0,i,j,p/2,k,l)*b(0,i,j,p%2,k,l).conj()', 
+
+                            bifrost.map('a(i,j,p,k,l) += b(0,i,j,p/2,k,l)*b(0,i,j,p%2,k,l).conj()',
                                         {'a':crosspol, 'b':gdata},
                                         axis_names=('i','j', 'p', 'k', 'l'),
                                         shape=(self.ntime_gulp, nchan, npol**2, self.grid_size, self.grid_size))
@@ -819,20 +819,20 @@ class MOFFCorrelatorOp(object):
 
                             # Increment
                             accum += 1e3 * self.ntime_gulp / CHAN_BW
-                            
+
                             curr_time = time.time()
                             process_time = curr_time - prev_time
                             prev_time = curr_time
-                            
+
                             if accum >= self.accumulation_time:
 
                                 bifrost.reduce(crosspol, accumulated_image, op='sum')
                                 if self.remove_autocorrs == True:
                                     # Reduce along time axis.
-                                    bifrost.reduce(autocorrs, autocorrs_av, op='sum')                        
+                                    bifrost.reduce(autocorrs, autocorrs_av, op='sum')
                                     # Grid the autocorrelations.
                                     autocorr_g = romein_float(autocorrs_av,autocorr_g,autocorr_il,autocorr_lx,autocorr_ly,autocorr_lz,1,self.grid_size,nstand,nchan*npol**2)
-            
+
                                     #Inverse FFT
                                     try:
                                        ac_fft.execute(autocorr_g,autocorr_g,inverse=True)
@@ -847,18 +847,18 @@ class MOFFCorrelatorOp(object):
                                                 {'a':accumulated_image, 'b':autocorr_g},
                                                 axis_names=('i','j','k','l'),
                                                 shape=(nchan,npol**2,self.grid_size, self.grid_size))
-                                    
-                                    
-                                    
-                                    
-                               
-                                
+
+
+
+
+
+
                                 with oseq.reserve(ogulp_size) as ospan:
                                     odata = ospan.data_view(numpy.complex64).reshape(oshape)
                                     accumulated_image = accumulated_image.reshape(oshape)
                                     autocorr_g = autocorr_g.reshape(oshape)
                                     odata[...] = accumulated_image
-                                    
+
                                 self.newflag = True
                                 accum = 0
 
@@ -868,7 +868,7 @@ class MOFFCorrelatorOp(object):
                                     memset_array(autocorrs,0)
                                     memset_array(autocorrs_av,0)
 
-                                
+
                             curr_time = time.time()
                             reserve_time = curr_time - prev_time
                             prev_time = curr_time
@@ -1155,7 +1155,7 @@ def main():
     else:
         # It would be great is we could pull this from ADP MCS...
         utc_start_dt = datetime.datetime.strptime(args.utcstart, "%Y_%m_%dT%H_%M_%S")
-        
+
         # Note: Capture uses Bifrost address+socket objects, while output uses
         #         plain Python address+socket objects.
         iaddr = BF_Address(args.addr, args.port)
@@ -1167,16 +1167,16 @@ def main():
                                     nsrc=16, src0=0, max_payload_size=9000,
                                     buffer_ntime=args.nts, slot_ntime=25000, core=cores.pop(0),
                                     utc_start=utc_start_dt))
-        ops.append(DecimationOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts, 
+        ops.append(DecimationOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts,
                                 nchan_out=args.channels, npol_out=1 if args.singlepol else 2,
                                 core=cores.pop(0)))
-        
-    ops.append(TransposeOp(log, fdomain_ring, transpose_ring, ntime_gulp=args.nts, 
+
+    ops.append(TransposeOp(log, fdomain_ring, transpose_ring, ntime_gulp=args.nts,
                                 core=cores.pop(0)))
-    ops.append(MOFFCorrelatorOp(log, transpose_ring, gridandfft_ring, lwasv_locations, lwasv_antennas, 
-                                grid_size, ntime_gulp=args.nts, accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs, 
-                                core=cores.pop(0), gpu=gpus.pop(0),benchmark=args.benchmark, 
-                                profile=args.profile))
+    ops.append(MOFFCorrelatorOp(log, transpose_ring, gridandfft_ring, lwasv_locations, lwasv_antennas,
+                                grid_size, ntime_gulp=args.nts, accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs,
+                                core=cores.pop(0), gpu=gpus.pop(0),benchmark=args.benchmark,
+                                sampling_length=sampling_length, profile=args.profile))
     ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", grid_size,
                          core=cores.pop(0), gpu=gpus.pop(0), cpu=False,
                          ints_per_file=args.ints_per_file, profile=args.profile))
