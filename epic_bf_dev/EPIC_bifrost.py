@@ -427,41 +427,41 @@ class DecimationOp(object):
                 self.iring.resize(igulp_size)
                 self.oring.resize(ogulp_size)#, obuf_size)
                 
-        ohdr = ihdr.copy()
-        ohdr['nchan'] = self.nchan_out
-        ohdr['npol']  = self.npol_out
-        ohdr['cfreq'] = (chan0 + 0.5*(self.nchan_out-1))*CHAN_BW
-        ohdr['bw']    = self.nchan_out*CHAN_BW
-        ohdr_str = json.dumps(ohdr)
-        
-        prev_time = time.time()
-        with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
-            for ispan in iseq.read(igulp_size):
-                if ispan.size < igulp_size:
-                    continue # Ignore final gulp
-                curr_time = time.time()
-                acquire_time = curr_time - prev_time
-                prev_time = curr_time
+                ohdr = ihdr.copy()
+                ohdr['nchan'] = self.nchan_out
+                ohdr['npol']  = self.npol_out
+                ohdr['cfreq'] = (chan0 + 0.5*(self.nchan_out-1))*CHAN_BW
+                ohdr['bw']    = self.nchan_out*CHAN_BW
+                ohdr_str = json.dumps(ohdr)
                 
-                with oseq.reserve(ogulp_size) as ospan:
-                    curr_time = time.time()
-                    reserve_time = curr_time - prev_time
-                    prev_time = curr_time
-                    
-                    idata = ispan.data_view(numpy.uint8).reshape(ishape)
-                    odata = ospan.data_view(numpy.uint8).reshape(oshape)
-                    
-                    sdata = idata[:,:self.nchan_out,:,:]
-                    if self.npol_out != npol:
-                        sdata = sdata[:,:,:,:self.npol]
-                    odata[...] = sdata
-                    
-                    curr_time = time.time()
-                    process_time = curr_time - prev_time
-                    prev_time = curr_time
-                    self.perf_proclog.update({'acquire_time': acquire_time, 
-                                              'reserve_time': reserve_time, 
-                                              'process_time': process_time,})
+                prev_time = time.time()
+                with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
+                    for ispan in iseq.read(igulp_size):
+                        if ispan.size < igulp_size:
+                            continue # Ignore final gulp
+                        curr_time = time.time()
+                        acquire_time = curr_time - prev_time
+                        prev_time = curr_time
+                        
+                        with oseq.reserve(ogulp_size) as ospan:
+                            curr_time = time.time()
+                            reserve_time = curr_time - prev_time
+                            prev_time = curr_time
+                            
+                            idata = ispan.data_view(numpy.uint8).reshape(ishape)
+                            odata = ospan.data_view(numpy.uint8).reshape(oshape)
+                            
+                            sdata = idata[:,:self.nchan_out,:,:]
+                            if self.npol_out != npol:
+                                sdata = sdata[:,:,:,:self.npol]
+                            odata[...] = sdata
+                            
+                            curr_time = time.time()
+                            process_time = curr_time - prev_time
+                            prev_time = curr_time
+                            self.perf_proclog.update({'acquire_time': acquire_time, 
+                                                      'reserve_time': reserve_time, 
+                                                      'process_time': process_time,})
 
 class TransposeOp(object):
     def __init__(self, log, iring, oring, ntime_gulp=2500, guarantee=True, core=-1):
@@ -509,36 +509,36 @@ class TransposeOp(object):
                 self.iring.resize(igulp_size)
                 self.oring.resize(ogulp_size)#, obuf_size)
                 
-        ohdr = ihdr.copy()
-        ohdr['axes'] = 'time,chan,pol,stand'
-        ohdr_str = json.dumps(ohdr)
-        
-        prev_time = time.time()
-        with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
-            for ispan in iseq.read(igulp_size):
-                if ispan.size < igulp_size:
-                    continue # Ignore final gulp
-                curr_time = time.time()
-                acquire_time = curr_time - prev_time
-                prev_time = curr_time
+                ohdr = ihdr.copy()
+                ohdr['axes'] = 'time,chan,pol,stand'
+                ohdr_str = json.dumps(ohdr)
                 
-                with oseq.reserve(ogulp_size) as ospan:
-                    curr_time = time.time()
-                    reserve_time = curr_time - prev_time
-                    prev_time = curr_time
-                    
-                    idata = ispan.data_view(numpy.uint8).reshape(ishape)
-                    odata = ospan.data_view(numpy.uint8).reshape(oshape)
-                    
-                    idata = idata.transpose(0,1,3,2)
-                    odata[...] = idata.copy()
-                    
-                    curr_time = time.time()
-                    process_time = curr_time - prev_time
-                    prev_time = curr_time
-                    self.perf_proclog.update({'acquire_time': acquire_time, 
-                                              'reserve_time': reserve_time, 
-                                              'process_time': process_time,})
+                prev_time = time.time()
+                with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
+                    for ispan in iseq.read(igulp_size):
+                        if ispan.size < igulp_size:
+                            continue # Ignore final gulp
+                        curr_time = time.time()
+                        acquire_time = curr_time - prev_time
+                        prev_time = curr_time
+                        
+                        with oseq.reserve(ogulp_size) as ospan:
+                            curr_time = time.time()
+                            reserve_time = curr_time - prev_time
+                            prev_time = curr_time
+                            
+                            idata = ispan.data_view(numpy.uint8).reshape(ishape)
+                            odata = ospan.data_view(numpy.uint8).reshape(oshape)
+                            
+                            idata = idata.transpose(0,1,3,2)
+                            odata[...] = idata.copy()
+                            
+                            curr_time = time.time()
+                            process_time = curr_time - prev_time
+                            prev_time = curr_time
+                            self.perf_proclog.update({'acquire_time': acquire_time, 
+                                                      'reserve_time': reserve_time, 
+                                                      'process_time': process_time,})
 
 class CalibrationOp(object):
     def __init__(self, log, iring, oring, *args, **kwargs):
