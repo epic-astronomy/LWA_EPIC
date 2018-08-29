@@ -11,4 +11,4 @@ args = a.parse_args()
 for f in args.files:
     d = np.load(f)
     of = f[:-3] + 'fits'
-    epic2fits(of, d['image'], np.ravel(d['hdr'])[0], d['image_nums'])
+    DI.epic2fits(of, d['image'], np.ravel(d['hdr'])[0], d['image_nums'])
