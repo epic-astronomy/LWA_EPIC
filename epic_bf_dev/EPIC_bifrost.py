@@ -462,14 +462,13 @@ class CalibrationOp(object):
 class MOFFCorrelatorOp(object):
     def __init__(self, log, iring, oring, locations, antennas, grid_size, ntime_gulp=2500,
                  accumulation_time=10000, core=-1, gpu=-1, remove_autocorrs = False,
-                 benchmark=False, profile=False, sampling_length=0.5, ints_per_file=1,
+                 benchmark=False, profile=False, sampling_length=0.5,
                  *args, **kwargs):
         self.log = log
         self.iring = iring
         self.oring = oring
         self.ntime_gulp = ntime_gulp
         self.accumulation_time=accumulation_time
-        self.ints_per_file = ints_per_file
 
         self.locations = locations
         self.antennas = antennas
@@ -591,7 +590,7 @@ class MOFFCorrelatorOp(object):
                 oshape = (1,nchan,npol**2,self.grid_size,self.grid_size)
                 ogulp_size = nchan * npol**2 * self.grid_size * self.grid_size * 8
                 self.iring.resize(igulp_size)
-                self.oring.resize(ogulp_size,buffer_factor=5*self.ints_per_file)
+                self.oring.resize(ogulp_size,buffer_factor=5)
                 prev_time = time.time()
                 with oring.begin_sequence(time_tag=iseq.time_tag,header=ohdr_str) as oseq:
                     iseq_spans = iseq.read(igulp_size)
@@ -811,11 +810,13 @@ class ImagingOp(object):
             npol = ihdr['npol']
             print("Channel no: %d, Polarisation no: %d"%(nchan,npol))
 
-            igulp_size = self.ints_per_file * nchan * npol * self.grid_size * self.grid_size * 8
-            ishape = (self.ints_per_file,nchan,npol,self.grid_size,self.grid_size)
+            igulp_size = nchan * npol * self.grid_size * self.grid_size * 8
+            ishape = (nchan,npol,self.grid_size,self.grid_size)
+            image = []
 
             prev_time = time.time()
             iseq_spans = iseq.read(igulp_size)
+            nints = 0
             while not self.iring.writing_ended():
                 if self.profile:
                     spani = 0
@@ -827,16 +828,20 @@ class ImagingOp(object):
                     prev_time = curr_time
 
                     idata = ispan.data_view(numpy.complex64).reshape(ishape)
-                    image = idata.copy(space='cuda_host')
-                    image = numpy.fft.fftshift(numpy.abs(image), axes=(3,4))
-
-                    unix_time = (ihdr['time_tag'] / FS + ihdr['accumulation_time']
-                                 * 1e-3 * fileid * self.ints_per_file)
-                    image_nums = numpy.arange(fileid * self.ints_per_file, (fileid + 1) * self.ints_per_file)
-                    filename = 'EPIC_{0:3f}.npz'.format(unix_time)
-                    numpy.savez(filename, image=image, hdr=ihdr, image_nums=image_nums)
-                    fileid += 1
-                    print("ImagingOP - Image Saved")
+                    itemp = idata.copy(space='cuda_host')
+                    image.append(itemp)
+                    nints += 1
+                    if nints >= self.ints_per_file:
+                        image = numpy.fft.fftshift(image, axes=(3, 4))
+                        unix_time = (ihdr['time_tag'] / FS + ihdr['accumulation_time']
+                                     * 1e-3 * fileid * self.ints_per_file)
+                        image_nums = numpy.arange(fileid * self.ints_per_file, (fileid + 1) * self.ints_per_file)
+                        filename = 'EPIC_{0:3f}.npz'.format(unix_time)
+                        numpy.savez(filename, image=image, hdr=ihdr, image_nums=image_nums)
+                        image = []
+                        nints = 0
+                        fileid += 1
+                        print("ImagingOP - Image Saved")
 
                     curr_time = time.time()
                     process_time = curr_time - prev_time
@@ -1020,7 +1025,7 @@ def main():
     ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, lwasv_locations, lwasv_antennas,
                                 grid_size, ntime_gulp=args.nts, accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs,
                                 core=cores.pop(0), gpu=gpus.pop(0),benchmark=args.benchmark,
-                                ints_per_file=args.ints_per_file, profile=args.profile))
+                                profile=args.profile))
     ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", grid_size,
                          core=cores.pop(0), gpu=gpus.pop(0), cpu=False,
                          ints_per_file=args.ints_per_file, profile=args.profile))
