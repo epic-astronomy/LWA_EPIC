@@ -45,9 +45,12 @@ for f in files:
             x, y = np.meshgrid(y_ind, x_ind)
             r2 = (x - p0[0][0])**2 + (y - p0[0][1])**2
         inds = np.where(r2 <= args.npix**2)
+        ind_real = np.ix_(np.array([0]), np.arange(hdu.header['NAXIS4']),
+                          np.arange(hdu.header['NAXIS3']), np.array(inds[1]), np.array(inds[0]))
+        ind_imag = np.ix_(np.array([1]), np.arange(hdu.header['NAXIS4']),
+                          np.arange(hdu.header['NAXIS3']), np.array(inds[1]), np.array(inds[0]))
         # Value should have dimensions Npol, Nfreq
-        value = np.nanmean(hdu.data[0, :, :, inds[1], inds[0]]
-                           + 1j * hdu.data[1, :, :, inds[1], inds[0]], axis=(2, 3))
+        value = np.nanmean(hdu.data[ind_real] + 1j * hdu.data[ind_imag], axis=(0, 3, 4))
         lightcurve.append(value)
 
 times = np.array(times)
