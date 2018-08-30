@@ -634,6 +634,7 @@ class MOFFCorrelatorOp(object):
                 ohdr['npol'] = npol**2 # Because of cross multiplying shenanigans
                 ohdr['grid_size_x'] = self.grid_size
                 ohdr['grid_size_y'] = self.grid_size
+                ohdr['axes'] = 'time,chan,pol,gridy,gridx'
                 ohdr['sampling_length_x'] = self.sampling_length
                 ohdr['sampling_length_y'] = self.sampling_length
                 ohdr['accumulation_time'] = self.accumulation_time
@@ -679,6 +680,7 @@ class MOFFCorrelatorOp(object):
                 with oring.begin_sequence(time_tag=iseq.time_tag,header=ohdr_str) as oseq:
                     iseq_spans = iseq.read(igulp_size)
                     while not self.iring.writing_ended():
+                        reset_sequence = False
 
                         if self.profile:
                             spani = 0
@@ -856,7 +858,6 @@ class MOFFCorrelatorOp(object):
                                 with oseq.reserve(ogulp_size) as ospan:
                                     odata = ospan.data_view(numpy.complex64).reshape(oshape)
                                     accumulated_image = accumulated_image.reshape(oshape)
-                                    autocorr_g = autocorr_g.reshape(oshape)
                                     odata[...] = accumulated_image
 
                                 self.newflag = True
@@ -864,6 +865,7 @@ class MOFFCorrelatorOp(object):
 
 
                                 if self.remove_autocorrs == True:
+                                    autocorr_g = autocorr_g.reshape(oshape)
                                     memset_array(autocorr_g,0)
                                     memset_array(autocorrs,0)
                                     memset_array(autocorrs_av,0)
@@ -881,11 +883,7 @@ class MOFFCorrelatorOp(object):
                             #gdata = gdata.reshape(self.ntime_gulp,nchan,2,self.grid_size,self.grid_size)
                             # image/autos, time, chan, pol, gridx, grid.
                             #accumulated_image = accumulated_image.reshape(oshape)
-
-                            if self.benchmark == True:
-                                time1i = time.time()
-                                print("  Shift-n-save time: %f" % (time1i-time1h))
-
+                            
                             if self.benchmark == True:
                                 time2=time.time()
                                 print("-> GPU Time Taken: %f"%(time2-time1))
@@ -901,6 +899,10 @@ class MOFFCorrelatorOp(object):
                             self.perf_proclog.update({'acquire_time': acquire_time,
                                                       'reserve_time': reserve_time,
                                                       'process_time': process_time,})
+
+                        # Reset to move on to the next input sequence?
+                        if not reset_sequence:
+                            break
 
 
 class ImagingOp(object):
@@ -949,7 +951,7 @@ class ImagingOp(object):
             ihdr = json.loads(iseq.header.tostring())
 
             self.sequence_proclog.update(ihdr)
-            print('ImagingOp: Config - %s' % ihdr)
+            self.log.info('ImagingOp: Config - %s' % ihdr)
 
             nchan = ihdr['nchan']
             npol = ihdr['npol']
@@ -962,44 +964,45 @@ class ImagingOp(object):
             prev_time = time.time()
             iseq_spans = iseq.read(igulp_size)
             nints = 0
-            while not self.iring.writing_ended():
+            
+            if self.profile:
+                spani = 0
+
+            for ispan in iseq_spans:
+                if ispan.size < igulp_size:
+                    continue # Ignore final gulp
+                curr_time = time.time()
+                acquire_time = curr_time - prev_time
+                prev_time = curr_time
+
+                idata = ispan.data_view(numpy.complex64).reshape(ishape)
+                itemp = idata.copy(space='cuda_host')
+                image.append(itemp)
+                nints += 1
+                if nints >= self.ints_per_file:
+                    image = numpy.fft.fftshift(image, axes=(3, 4))
+                    image = image[:, :, :, ::-1, :]
+                    unix_time = (ihdr['time_tag'] / FS + ihdr['accumulation_time']
+                                 * 1e-3 * fileid * self.ints_per_file)
+                    image_nums = numpy.arange(fileid * self.ints_per_file, (fileid + 1) * self.ints_per_file)
+                    filename = 'EPIC_{0:3f}.npz'.format(unix_time)
+                    numpy.savez(filename, image=image, hdr=ihdr, image_nums=image_nums)
+                    image = []
+                    nints = 0
+                    fileid += 1
+                    print("ImagingOP - Image Saved")
+
+                curr_time = time.time()
+                process_time = curr_time - prev_time
+                prev_time = curr_time
+                self.perf_proclog.update({'acquire_time': acquire_time,
+                                          'reserve_time': -1,
+                                          'process_time': process_time,})
                 if self.profile:
-                    spani = 0
-                for ispan in iseq_spans:
-                    if ispan.size < igulp_size:
-                        continue # Ignore final gulp
-                    curr_time = time.time()
-                    acquire_time = curr_time - prev_time
-                    prev_time = curr_time
-
-                    idata = ispan.data_view(numpy.complex64).reshape(ishape)
-                    itemp = idata.copy(space='cuda_host')
-                    image.append(itemp)
-                    nints += 1
-                    if nints >= self.ints_per_file:
-                        image = numpy.fft.fftshift(image, axes=(3, 4))
-                        image = image[:, :, :, ::-1, :]
-                        unix_time = (ihdr['time_tag'] / FS + ihdr['accumulation_time']
-                                     * 1e-3 * fileid * self.ints_per_file)
-                        image_nums = numpy.arange(fileid * self.ints_per_file, (fileid + 1) * self.ints_per_file)
-                        filename = 'EPIC_{0:3f}.npz'.format(unix_time)
-                        numpy.savez(filename, image=image, hdr=ihdr, image_nums=image_nums)
-                        image = []
-                        nints = 0
-                        fileid += 1
-                        print("ImagingOP - Image Saved")
-
-                    curr_time = time.time()
-                    process_time = curr_time - prev_time
-                    prev_time = curr_time
-                    self.perf_proclog.update({'acquire_time': acquire_time,
-                                              'reserve_time': -1,
-                                              'process_time': process_time,})
-                    if self.profile:
-                        spani += 1
-                        if spani >= 10:
-                            sys.exit()
-                            break
+                    spani += 1
+                    if spani >= 10:
+                        sys.exit()
+                        break
 
 ## TODO:
 class SaveFFTOp(object):
