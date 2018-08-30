@@ -680,6 +680,7 @@ class MOFFCorrelatorOp(object):
                 with oring.begin_sequence(time_tag=iseq.time_tag,header=ohdr_str) as oseq:
                     iseq_spans = iseq.read(igulp_size)
                     while not self.iring.writing_ended():
+                        reset_sequence = False
 
                         if self.profile:
                             spani = 0
@@ -899,6 +900,10 @@ class MOFFCorrelatorOp(object):
                                                       'reserve_time': reserve_time,
                                                       'process_time': process_time,})
 
+                        # Reset to move on to the next input sequence?
+                        if not reset_sequence:
+                            break
+
 
 class ImagingOp(object):
     def __init__(self, log, iring, filename, grid_size, core=-1, gpu=-1, cpu=False,
@@ -946,7 +951,7 @@ class ImagingOp(object):
             ihdr = json.loads(iseq.header.tostring())
 
             self.sequence_proclog.update(ihdr)
-            print('ImagingOp: Config - %s' % ihdr)
+            self.log.info('ImagingOp: Config - %s' % ihdr)
 
             nchan = ihdr['nchan']
             npol = ihdr['npol']
@@ -959,44 +964,45 @@ class ImagingOp(object):
             prev_time = time.time()
             iseq_spans = iseq.read(igulp_size)
             nints = 0
-            while not self.iring.writing_ended():
+            
+            if self.profile:
+                spani = 0
+
+            for ispan in iseq_spans:
+                if ispan.size < igulp_size:
+                    continue # Ignore final gulp
+                curr_time = time.time()
+                acquire_time = curr_time - prev_time
+                prev_time = curr_time
+
+                idata = ispan.data_view(numpy.complex64).reshape(ishape)
+                itemp = idata.copy(space='cuda_host')
+                image.append(itemp)
+                nints += 1
+                if nints >= self.ints_per_file:
+                    image = numpy.fft.fftshift(image, axes=(3, 4))
+                    image = image[:, :, :, ::-1, :]
+                    unix_time = (ihdr['time_tag'] / FS + ihdr['accumulation_time']
+                                 * 1e-3 * fileid * self.ints_per_file)
+                    image_nums = numpy.arange(fileid * self.ints_per_file, (fileid + 1) * self.ints_per_file)
+                    filename = 'EPIC_{0:3f}.npz'.format(unix_time)
+                    numpy.savez(filename, image=image, hdr=ihdr, image_nums=image_nums)
+                    image = []
+                    nints = 0
+                    fileid += 1
+                    print("ImagingOP - Image Saved")
+
+                curr_time = time.time()
+                process_time = curr_time - prev_time
+                prev_time = curr_time
+                self.perf_proclog.update({'acquire_time': acquire_time,
+                                          'reserve_time': -1,
+                                          'process_time': process_time,})
                 if self.profile:
-                    spani = 0
-                for ispan in iseq_spans:
-                    if ispan.size < igulp_size:
-                        continue # Ignore final gulp
-                    curr_time = time.time()
-                    acquire_time = curr_time - prev_time
-                    prev_time = curr_time
-
-                    idata = ispan.data_view(numpy.complex64).reshape(ishape)
-                    itemp = idata.copy(space='cuda_host')
-                    image.append(itemp)
-                    nints += 1
-                    if nints >= self.ints_per_file:
-                        image = numpy.fft.fftshift(image, axes=(3, 4))
-                        image = image[:, :, :, ::-1, :]
-                        unix_time = (ihdr['time_tag'] / FS + ihdr['accumulation_time']
-                                     * 1e-3 * fileid * self.ints_per_file)
-                        image_nums = numpy.arange(fileid * self.ints_per_file, (fileid + 1) * self.ints_per_file)
-                        filename = 'EPIC_{0:3f}.npz'.format(unix_time)
-                        numpy.savez(filename, image=image, hdr=ihdr, image_nums=image_nums)
-                        image = []
-                        nints = 0
-                        fileid += 1
-                        print("ImagingOP - Image Saved")
-
-                    curr_time = time.time()
-                    process_time = curr_time - prev_time
-                    prev_time = curr_time
-                    self.perf_proclog.update({'acquire_time': acquire_time,
-                                              'reserve_time': -1,
-                                              'process_time': process_time,})
-                    if self.profile:
-                        spani += 1
-                        if spani >= 10:
-                            sys.exit()
-                            break
+                    spani += 1
+                    if spani >= 10:
+                        sys.exit()
+                        break
 
 ## TODO:
 class SaveFFTOp(object):
