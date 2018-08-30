@@ -22,7 +22,7 @@ a.add_argument('files', metavar='files', type=str, nargs='*', default=[],
                help='*.fits files to search for object.')
 args = a.parse_args()
 
-files = sort(args.files)
+files = sorted(args.files)
 
 target = SkyCoord(ra=args.ra, dec=args.dec, equinox=args.equinox, unit=(u.hourangle, u.deg), frame='fk5')
 loc = np.array([[target.ra.deg, target.dec.deg, 0, 0, 0]])
@@ -31,6 +31,7 @@ lightcurve = []
 times = []
 
 for f in files:
+    print('working on ' + f)
     hdulist = fits.open(f)
     for hdu in hdulist[1:]:
         times.append(hdu.header['DATETIME'])
