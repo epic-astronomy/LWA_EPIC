@@ -38,7 +38,7 @@ for f in files:
         w_obj = wcs.WCS(hdu.header)
         p0 = w_obj.all_world2pix(loc, 0)
         try:
-            r2 = (x - p0[0])**2 + (y - p0[1])**2
+            r2 = (x - p0[0][0])**2 + (y - p0[0][1])**2
         except NameError:
             x_ind = np.arange(hdu.header['NAXIS1'])
             y_ind = np.arange(hdu.header['NAXIS2'])
