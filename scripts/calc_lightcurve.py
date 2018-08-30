@@ -16,6 +16,8 @@ a.add_argument('--equinox', metavar='equinox', type=str, default='J2000',
                help='Equinox for sky coordinates. Default is "J2000".')
 a.add_argument('--npix', metavar='npix', type=float, default=0,
                help='Radius around central pixel to average, in units of pixels.')
+a.add_argument('--outfile', metavar='outfile', type=str, default='lightcurve.npz',
+               help='Output filename, default is lightcurve.npz')
 a.add_argument('files', metavar='files', type=str, nargs='*', default=[],
                help='*.fits files to search for object.')
 args = a.parse_args()
@@ -46,3 +48,7 @@ for f in files:
         value = np.nanmean(hdu.data[0, :, :, inds[1], inds[0]]
                            + 1j * hdu.data[1, :, :, inds[1], inds[0]], axis=(2, 3))
         lightcurve.append(value)
+
+times = np.array(times)
+lightcurve = np.array(lightcurve)
+np.savez(args.outfile, times=times, lightcurve=lightcurve)
