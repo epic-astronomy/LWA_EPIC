@@ -634,6 +634,7 @@ class MOFFCorrelatorOp(object):
                 ohdr['npol'] = npol**2 # Because of cross multiplying shenanigans
                 ohdr['grid_size_x'] = self.grid_size
                 ohdr['grid_size_y'] = self.grid_size
+                ohdr['axes'] = 'time,chan,pol,gridy,gridx'
                 ohdr['sampling_length_x'] = self.sampling_length
                 ohdr['sampling_length_y'] = self.sampling_length
                 ohdr['accumulation_time'] = self.accumulation_time
@@ -856,7 +857,6 @@ class MOFFCorrelatorOp(object):
                                 with oseq.reserve(ogulp_size) as ospan:
                                     odata = ospan.data_view(numpy.complex64).reshape(oshape)
                                     accumulated_image = accumulated_image.reshape(oshape)
-                                    autocorr_g = autocorr_g.reshape(oshape)
                                     odata[...] = accumulated_image
 
                                 self.newflag = True
@@ -864,6 +864,7 @@ class MOFFCorrelatorOp(object):
 
 
                                 if self.remove_autocorrs == True:
+                                    autocorr_g = autocorr_g.reshape(oshape)
                                     memset_array(autocorr_g,0)
                                     memset_array(autocorrs,0)
                                     memset_array(autocorrs_av,0)
@@ -881,11 +882,7 @@ class MOFFCorrelatorOp(object):
                             #gdata = gdata.reshape(self.ntime_gulp,nchan,2,self.grid_size,self.grid_size)
                             # image/autos, time, chan, pol, gridx, grid.
                             #accumulated_image = accumulated_image.reshape(oshape)
-
-                            if self.benchmark == True:
-                                time1i = time.time()
-                                print("  Shift-n-save time: %f" % (time1i-time1h))
-
+                            
                             if self.benchmark == True:
                                 time2=time.time()
                                 print("-> GPU Time Taken: %f"%(time2-time1))
