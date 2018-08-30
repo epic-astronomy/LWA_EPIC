@@ -43,7 +43,7 @@ for f in files:
             x_ind = np.arange(hdu.header['NAXIS1'])
             y_ind = np.arange(hdu.header['NAXIS2'])
             x, y = np.meshgrid(y_ind, x_ind)
-            r2 = (x - p0[0])**2 + (y - p0[1])**2
+            r2 = (x - p0[0][0])**2 + (y - p0[0][1])**2
         inds = np.where(r2 <= args.npix**2)
         # Value should have dimensions Npol, Nfreq
         value = np.nanmean(hdu.data[0, :, :, inds[1], inds[0]]
