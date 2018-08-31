@@ -671,7 +671,6 @@ class MOFFCorrelatorOp(object):
                         phases[:,1,i] /= numpy.sqrt(a.cable.gain(freq))
 
 
-
                 oshape = (1,nchan,npol**2,self.grid_size,self.grid_size)
                 ogulp_size = nchan * npol**2 * self.grid_size * self.grid_size * 8
                 self.iring.resize(igulp_size)
@@ -711,25 +710,24 @@ class MOFFCorrelatorOp(object):
                                 time1a = time.time()
                                 print("  Input copy time: %f" % (time1a-time1))
 
-                            ### Unpack
-                            #try:
-                            #    udata = udata.reshape(*tdata.shape)
-                            #    Unpack(tdata, udata)
-                            #except NameError:
-                            #    udata = bifrost.ndarray(shape=tdata.shape, dtype=numpy.complex64, space='cuda')
-                            #    Unpack(tdata, udata)
-                            if self.benchmark == True:
-                                time1b = time.time()
-                            ## Unpack and phase
+                            ## Unpack
                             try:
-                                bifrost.map('a(i,j,k,l) = b(j,k,l)*Complex<float>(c(i,j,k,l).real_imag>>4, (c(i,j,k,l).real_imag<<4)>>4)',
-                                            {'a':udata, 'b':gphases, 'c':tdata}, axis_names=('i','j','k','l'), shape=udata.shape)
+                                udata = udata.reshape(*tdata.shape)
+                                Unpack(tdata, udata)
                             except NameError:
                                 udata = bifrost.ndarray(shape=tdata.shape, dtype=numpy.complex64, space='cuda')
+                                Unpack(tdata, udata)
+                            if self.benchmark == True:
+                                time1b = time.time()
+                            ## Phase
+                            try:
+                                bifrost.map('a(i,j,k,l) *= b(j,k,l)',
+                                            {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)
+                            except NameError:
                                 phases = bifrost.ndarray(phases)
                                 gphases = phases.copy(space='cuda')
-                                bifrost.map('a(i,j,k,l) = b(j,k,l)*Complex<float>(c(i,j,k,l).real_imag>>4, (c(i,j,k,l).real_imag<<4)>>4)',
-                                            {'a':udata, 'b':gphases, 'c':tdata}, axis_names=('i','j','k','l'), shape=udata.shape)
+                                bifrost.map('a(i,j,k,l) *= b(j,k,l)',
+                                            {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)
                                 #udata = udata.transpose((0,1,3,2))
                                 #Transpose
                             if self.benchmark == True:
