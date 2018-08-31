@@ -669,6 +669,10 @@ class MOFFCorrelatorOp(object):
                         delay = a.cable.delay(freq) - a.stand.z / speedOfLight
                         phases[:,1,i] = numpy.exp(2j*numpy.pi*freq*delay)
                         phases[:,1,i] /= numpy.sqrt(a.cable.gain(freq))
+                    ## Explicit outrigger masking - we probably want to do
+                    ## away with this at some point
+                    if a.stand.id == 256:
+                        phases[:,:,i] = 0.0
 
 
                 oshape = (1,nchan,npol**2,self.grid_size,self.grid_size)
@@ -732,7 +736,7 @@ class MOFFCorrelatorOp(object):
                                 #Transpose
                             if self.benchmark == True:
                                 time1c = time.time()
-                                print("  Unpack and phase-up time: %f" % (time1c-time1b))
+                                print("  Unpack and phase-up time: %f" % (time1c-time1a))
 
                             ## Make sure we have a place to put the gridded data
                             # Gridded Antennas
