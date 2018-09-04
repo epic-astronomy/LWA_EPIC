@@ -908,7 +908,7 @@ class MOFFCorrelatorOp(object):
                             break
 
 
-class ImagingOp(object):
+class SaveOp(object):
     def __init__(self, log, iring, filename, grid_size, core=-1, gpu=-1, cpu=False,
                  profile=False, ints_per_file=1, *args, **kwargs):
         self.log = log
@@ -954,7 +954,7 @@ class ImagingOp(object):
             ihdr = json.loads(iseq.header.tostring())
 
             self.sequence_proclog.update(ihdr)
-            self.log.info('ImagingOp: Config - %s' % ihdr)
+            self.log.info('SaveOp: Config - %s' % ihdr)
 
             nchan = ihdr['nchan']
             npol = ihdr['npol']
@@ -993,7 +993,7 @@ class ImagingOp(object):
                     image = []
                     nints = 0
                     fileid += 1
-                    print("ImagingOP - Image Saved")
+                    print("SaveOp - Image Saved")
 
                 curr_time = time.time()
                 process_time = curr_time - prev_time
@@ -1185,7 +1185,7 @@ def main():
                                 grid_size, ntime_gulp=args.nts, accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs,
                                 core=cores.pop(0), gpu=gpus.pop(0),benchmark=args.benchmark,
                                 sampling_length=sampling_length_lambda, profile=args.profile))
-    ops.append(ImagingOp(log, gridandfft_ring, "EPIC_", grid_size,
+    ops.append(SaveOp(log, gridandfft_ring, "EPIC_", grid_size,
                          core=cores.pop(0), gpu=gpus.pop(0), cpu=False,
                          ints_per_file=args.ints_per_file, profile=args.profile))
 
