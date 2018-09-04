@@ -35,6 +35,7 @@ from bifrost.reduce import reduce as Reduce
 from bifrost.proclog import ProcLog
 from bifrost.libbifrost import bf
 from bifrost.fft import Fft
+from bifrost.fft_shift import fft_shift_2d
 from bifrost.romein import romein_float
 import bifrost
 import bifrost.affinity
@@ -802,11 +803,10 @@ class MOFFCorrelatorOp(object):
                                     autocorrs = bifrost.ndarray(shape=(self.ntime_gulp,nchan,npol**2,nstand),dtype=numpy.complex64, space='cuda')
                                     autocorrs_av = bifrost.zeros(shape=(1,nchan,npol**2,nstand), dtype=numpy.complex64, space='cuda')
                                     autocorr_g = bifrost.zeros(shape=(nchan*npol**2,self.grid_size,self.grid_size), dtype=numpy.complex64, space='cuda')
-                                    autocorr_lx = bifrost.ndarray(numpy.zeros(shape=(nchan*npol**2*nstand),dtype=numpy.int32),space='cuda')
-                                    autocorr_ly = bifrost.ndarray(numpy.zeros(shape=(nchan*npol**2*nstand),dtype=numpy.int32),space='cuda')
+                                    autocorr_lx = bifrost.ndarray(numpy.ones(shape=(nchan*npol**2*nstand),dtype=numpy.int32)*self.grid_size/2,space='cuda')
+                                    autocorr_ly = bifrost.ndarray(numpy.ones(shape=(nchan*npol**2*nstand),dtype=numpy.int32)*self.grid_size/2,space='cuda')
                                     autocorr_lz = bifrost.zeros(shape=(nchan*npol**2*nstand),dtype=numpy.int32,space='cuda')
-                                    autocorr_il = bifrost.ndarray(numpy.ones(shape=(1,1),dtype=numpy.complex64),space='cuda')
-                                    autocorr_il = autocorr_il.copy(space='cuda')
+                                    autocorr_il = bifrost.ndarray(numpy.ones(shape=(self.ant_extent,self.ant_extent),dtype=numpy.complex64),space='cuda')
 
 
                                 # Cross multiply to calculate autocorrs
@@ -823,7 +823,6 @@ class MOFFCorrelatorOp(object):
 
                             # Increment
                             accum += 1e3 * self.ntime_gulp / CHAN_BW
-
                             curr_time = time.time()
                             process_time = curr_time - prev_time
                             prev_time = curr_time
@@ -835,15 +834,17 @@ class MOFFCorrelatorOp(object):
                                     # Reduce along time axis.
                                     bifrost.reduce(autocorrs, autocorrs_av, op='sum')
                                     # Grid the autocorrelations.
-                                    autocorr_g = romein_float(autocorrs_av,autocorr_g,autocorr_il,autocorr_lx,autocorr_ly,autocorr_lz,1,self.grid_size,nstand,nchan*npol**2)
+                                    autocorr_g = romein_float(autocorrs_av,autocorr_g,autocorr_il,autocorr_lx,autocorr_ly,autocorr_lz,self.ant_extent,self.grid_size,nstand,nchan*npol**2)
 
                                     #Inverse FFT
-                                    try:
-                                       ac_fft.execute(autocorr_g,autocorr_g,inverse=True)
+                                    try: 
+                                        autocorr_g = fft_shift_2d(autocorr_g, self.grid_size, nchan*npol**2)
+                                        ac_fft.execute(autocorr_g,autocorr_g,inverse=True)
                                     except NameError:
-                                       ac_fft = Fft()
-                                       ac_fft.init(autocorr_g,autocorr_g,axes=(1,2))
-                                       ac_fft.execute(autocorr_g,autocorr_g,inverse=True)
+                                         ac_fft = Fft()
+                                         ac_fft.init(autocorr_g,autocorr_g,axes=(1,2))
+                                         autocorr_g = fft_shift_2d(autocorr_g, self.grid_size, nchan*npol**2)
+                                         ac_fft.execute(autocorr_g,autocorr_g,inverse=True)
 
                                     accumulated_image = accumulated_image.reshape(nchan,npol**2,self.grid_size, self.grid_size)
                                     autocorr_g = autocorr_g.reshape(nchan,npol**2,self.grid_size, self.grid_size)
