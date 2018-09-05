@@ -883,7 +883,7 @@ class MOFFCorrelatorOp(object):
                                     autocorr_g = romein_float(autocorrs_av,autocorr_g,autocorr_il,autocorr_lx,autocorr_ly,autocorr_lz,self.ant_extent,self.grid_size,nstand,nchan*npol**2)
 
                                     #Inverse FFT
-                                    try: 
+                                    try:
                                         autocorr_g = fft_shift_2d(autocorr_g, self.grid_size, nchan*npol**2)
                                         ac_fft.execute(autocorr_g,autocorr_g,inverse=True)
                                     except NameError:
@@ -932,7 +932,7 @@ class MOFFCorrelatorOp(object):
                             #gdata = gdata.reshape(self.ntime_gulp,nchan,2,self.grid_size,self.grid_size)
                             # image/autos, time, chan, pol, gridx, grid.
                             #accumulated_image = accumulated_image.reshape(oshape)
-                            
+
                             if self.benchmark == True:
                                 time2=time.time()
                                 print("-> GPU Time Taken: %f"%(time2-time1))
@@ -956,12 +956,13 @@ class MOFFCorrelatorOp(object):
 
 class SaveOp(object):
     def __init__(self, log, iring, filename, grid_size, core=-1, gpu=-1, cpu=False,
-                 profile=False, ints_per_file=1, *args, **kwargs):
+                 profile=False, ints_per_file=1, out_dir='', *args, **kwargs):
         self.log = log
         self.iring = iring
         self.filename = filename
         self.grid_size = grid_size
         self.ints_per_file = ints_per_file
+        self.out_dir = out_dir
 
         # TODO: Validate ntime_gulp vs accumulation_time
         self.core = core
@@ -1013,7 +1014,7 @@ class SaveOp(object):
             prev_time = time.time()
             iseq_spans = iseq.read(igulp_size)
             nints = 0
-            
+
             if self.profile:
                 spani = 0
 
@@ -1034,7 +1035,7 @@ class SaveOp(object):
                     unix_time = (ihdr['time_tag'] / FS + ihdr['accumulation_time']
                                  * 1e-3 * fileid * self.ints_per_file)
                     image_nums = numpy.arange(fileid * self.ints_per_file, (fileid + 1) * self.ints_per_file)
-                    filename = 'EPIC_{0:3f}.npz'.format(unix_time)
+                    filename = os.path.join(self.out_dir, 'EPIC_{0:3f}.npz'.format(unix_time))
                     numpy.savez(filename, image=image, hdr=ihdr, image_nums=image_nums)
                     image = []
                     nints = 0
@@ -1114,12 +1115,17 @@ def main():
     parser.add_argument('--benchmark', action='store_true',help = 'benchmark gridder')
     parser.add_argument('--profile', action='store_true', help = 'Run cProfile on ALL threads. Produces trace for each individual thread')
     parser.add_argument('--ints_per_file', type=int, default=1, help='Number of integrations per output FITS file. Default is 1.')
+    parser.add_argument('--out_dir', type=str, default='', help='Directory for output files. Default is current directory.')
 
     args = parser.parse_args()
     # Logging Setup
     # TODO: Set this up properly
     if args.profile:
         enable_thread_profiling()
+
+    if not os.path.isdir(args.out_dir):
+        print('Output directory does not exist. Defaulting to current directory.')
+        args.out_dir = ''
 
 
     log = logging.getLogger(__name__)
@@ -1218,8 +1224,10 @@ def main():
     ops.append(MOFFCorrelatorOp(log, transpose_ring, gridandfft_ring, lx, ly, lz, lwasv_antennas,
                                 gs, ntime_gulp=args.nts, accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs,
                                 core=cores.pop(0), gpu=gpus.pop(0),benchmark=args.benchmark,
+
                                 sampling_length=sll, profile=args.profile))
-    ops.append(SaveOp(log, gridandfft_ring, "EPIC_", gs,
+    ops.append(SaveOp(log, gridandfft_ring, "EPIC_", grid_size, out_dir=args.out_dir
+
                          core=cores.pop(0), gpu=gpus.pop(0), cpu=False,
                          ints_per_file=args.ints_per_file, profile=args.profile))
 
