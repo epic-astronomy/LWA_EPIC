@@ -1003,6 +1003,7 @@ class SaveOp(object):
             self.sequence_proclog.update(ihdr)
             self.log.info('SaveOp: Config - %s' % ihdr)
 
+            cfreq = ihdr['cfreq']
             nchan = ihdr['nchan']
             npol = ihdr['npol']
             print("Channel no: %d, Polarisation no: %d"%(nchan,npol))
@@ -1035,7 +1036,7 @@ class SaveOp(object):
                     unix_time = (ihdr['time_tag'] / FS + ihdr['accumulation_time']
                                  * 1e-3 * fileid * self.ints_per_file)
                     image_nums = numpy.arange(fileid * self.ints_per_file, (fileid + 1) * self.ints_per_file)
-                    filename = os.path.join(self.out_dir, 'EPIC_{0:3f}.npz'.format(unix_time))
+                    filename = os.path.join(self.out_dir, 'EPIC_{0:3f}_{1:0.3f}MHz.npz'.format(unix_time, cfreq/1e6))
                     numpy.savez(filename, image=image, hdr=ihdr, image_nums=image_nums)
                     image = []
                     nints = 0
