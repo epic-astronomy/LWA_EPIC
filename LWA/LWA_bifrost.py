@@ -84,6 +84,56 @@ def get_thread_stats():
 ###############################################################
 
 
+################ Frequency-Dependent Locations ################
+
+def GenerateLocations(lsl_locs, frequencies, ntime, nchan, npol):
+    
+    chan_wavelengths = speedOfLight/frequencies
+    sample_grid = chan_wavelengths/2    
+    sll = sample_grid[0] / chan_wavelengths[0]
+    lsl_locs = lsl_locs.T
+    lsl_locs = lsl_locs.copy()
+
+    lsl_locsf = numpy.zeros(shape=(3,npol,nchan,lsl_locs.shape[1]))
+    for l in numpy.arange(3):
+        for i in numpy.arange(nchan):
+            lsl_locsf[l,:,i,:] = lsl_locs[l,:]/sample_grid[i]
+
+            # I'm sure there's a more numpy way of doing this.
+            for p in numpy.arange(npol):
+                lsl_locsf[l,p,i,:] -= numpy.min(lsl_locsf[l,p,i,:])
+
+
+    
+    #Calculate grid size needed
+    range_u = numpy.max(lsl_locsf[0,...]) - numpy.min(lsl_locsf[0,...])
+    range_v = numpy.max(lsl_locsf[0,...]) - numpy.min(lsl_locsf[0,...])
+    grid_size = int(numpy.power(2,numpy.ceil(numpy.log(max([range_u,range_v])/numpy.log(2))+1)))
+    print("Grid Size: %d"%grid_size)
+
+    # Centre locations slightly
+    for l in numpy.arange(3):
+        for i in numpy.arange(nchan):
+            for p in numpy.arange(npol):
+                lsl_locsf[l,p,i,:] += (grid_size - numpy.max(lsl_locsf[l,p,i,:]))/2
+                
+
+
+    # Tile them for ntime
+    
+    locx = numpy.tile(lsl_locsf[0,...],(ntime,1,1,1))
+    locy = numpy.tile(lsl_locsf[1,...],(ntime,1,1,1))
+    locz = numpy.tile(lsl_locsf[2,...],(ntime,1,1,1))
+
+    return grid_size, locx, locy, locz, sll
+    
+    
+
+    
+    
+
+
+###############################################################
 
 ######################### EPIC ################################
 
@@ -546,7 +596,7 @@ class CalibrationOp(object):
         pass
 
 class MOFFCorrelatorOp(object):
-    def __init__(self, log, iring, oring, locations, antennas, grid_size, ntime_gulp=2500,
+    def __init__(self, log, iring, oring, lx, ly, lz, antennas, grid_size, ntime_gulp=2500,
                  accumulation_time=10000, core=-1, gpu=-1, remove_autocorrs = False,
                  benchmark=False, profile=False, sampling_length=0.5,
                  *args, **kwargs):
@@ -556,7 +606,7 @@ class MOFFCorrelatorOp(object):
         self.ntime_gulp = ntime_gulp
         self.accumulation_time=accumulation_time
 
-        self.locations = locations
+        
         self.antennas = antennas
         self.grid_size = grid_size
         self.sampling_length = sampling_length
@@ -567,6 +617,10 @@ class MOFFCorrelatorOp(object):
         self.benchmark = benchmark
         self.newflag = True
         self.profile = profile
+
+        self.lx = bifrost.ndarray(lx.astype(numpy.int32),space='cuda')
+        self.ly = bifrost.ndarray(ly.astype(numpy.int32),space='cuda')
+        self.lz = bifrost.ndarray(lz.astype(numpy.int32),space='cuda')
 
         self.bind_proclog = ProcLog(type(self).__name__+"/bind")
         self.in_proclog   = ProcLog(type(self).__name__+"/in")
@@ -615,15 +669,7 @@ class MOFFCorrelatorOp(object):
                 npol = ihdr['npol']
                 self.newflag = True
                 accum = 0
-                locations_x = bifrost.ndarray(numpy.tile(self.locations[:,0],self.ntime_gulp*nchan*npol).astype(numpy.int32),space='cuda')
-                locations_x = locations_x.reshape(self.ntime_gulp*nchan*npol,nstand)
-                locations_x = locations_x.copy(space='cuda',order='C')
-                locations_y = bifrost.ndarray(numpy.tile(self.locations[:,1],self.ntime_gulp*nchan*npol).astype(numpy.int32),space='cuda')
-                locations_y = locations_y.reshape(self.ntime_gulp*nchan*npol,nstand)
-                locations_y = locations_y.copy(space='cuda',order='C')
-                locations_z = bifrost.ndarray(numpy.zeros(shape=(self.ntime_gulp*nchan*npol*nstand)).astype(numpy.int32),space='cuda')
-                locations_z.reshape(self.ntime_gulp*nchan*npol,nstand)
-
+                
                 igulp_size = self.ntime_gulp * nchan * nstand * npol * 1 # ci4
                 itshape = (self.ntime_gulp,nchan,npol,nstand)
 
@@ -752,7 +798,7 @@ class MOFFCorrelatorOp(object):
                                 timeg1 = time.time()
 
 
-                            gdata = romein_float(udata,gdata,self.antgridmap,locations_x,locations_y,locations_z,self.ant_extent,self.grid_size,nstand,self.ntime_gulp*npol*nchan)
+                            gdata = romein_float(udata,gdata,self.antgridmap,self.lx,self.ly,self.lz,self.ant_extent,self.grid_size,nstand,self.ntime_gulp*npol*nchan)
                             #gdata = self.LinAlgObj.matmul(1.0, udata, bfantgridmap, 0.0, gdata)
                             if self.benchmark == True:
                                 timeg2 = time.time()
@@ -1007,7 +1053,6 @@ class SaveOp(object):
                         sys.exit()
                         break
 
-## TODO:
 class SaveFFTOp(object):
     def __init__(self, log, iring, filename, ntime_gulp=2500, core=-1,*args, **kwargs):
         self.log = log
@@ -1130,28 +1175,17 @@ def main():
 
     for stand in lwasv_stands:
         lwasv_locations = numpy.vstack((lwasv_locations,[stand[0],stand[1],stand[2]]))
-
     lwasv_locations = numpy.delete(lwasv_locations, list(range(0,lwasv_locations.shape[0],2)),axis=0)
-    chan_wavelength = (speedOfLight/args.frequency)
-    print("Wavelength: %f"%chan_wavelength)
-    sampling_length = chan_wavelength/2
-    sampling_length_lambda = sampling_length / chan_wavelength  # In wavelengths
-    lwasv_locations = lwasv_locations / sampling_length #Convert to number of half wavelengths.
+    frequencies = numpy.zeros(shape=(args.channels))
+
+    for i in numpy.arange(args.channels):
+        frequencies[i] = args.frequency - i * CHAN_BW
+    frequencies = frequencies[::-1]
     lwasv_locations[255,:] = 0.0
-
-    # Let our locations be defined on the half closed interval [0,grid_size]
-    lwasv_locations[:,0] -= numpy.min(lwasv_locations[:,0])
-    lwasv_locations[:,1] -= numpy.min(lwasv_locations[:,1])
-    range_u = numpy.max(lwasv_locations[:,0]) - numpy.min(lwasv_locations[:,0])
-    range_v = numpy.max(lwasv_locations[:,1]) - numpy.min(lwasv_locations[:,1])
-    grid_size = int(numpy.power(2,numpy.ceil(numpy.log(max([range_u,range_v])/numpy.log(2))+1)))
-    print("Grid Size: %d"%grid_size)
-
-    #Centre our electric field locations to minimise phase ramps in image. (kinda works)
-    lwasv_locations = lwasv_locations.astype(int)
-    lwasv_locations[:,0] = lwasv_locations[:,0] + (grid_size - numpy.max(lwasv_locations[:,0]))/2
-    lwasv_locations[:,1] = lwasv_locations[:,1] + (grid_size - numpy.max(lwasv_locations[:,0]))/2
-
+    
+    
+    gs, lx, ly, lz, sll = GenerateLocations(lwasv_locations,frequencies,args.nts,args.channels, 1 if args.singlepol else 2)
+    
     # Setup threads
 
     if args.offline:
@@ -1181,11 +1215,11 @@ def main():
 
     ops.append(TransposeOp(log, fdomain_ring, transpose_ring, ntime_gulp=args.nts,
                                 core=cores.pop(0)))
-    ops.append(MOFFCorrelatorOp(log, transpose_ring, gridandfft_ring, lwasv_locations, lwasv_antennas,
-                                grid_size, ntime_gulp=args.nts, accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs,
+    ops.append(MOFFCorrelatorOp(log, transpose_ring, gridandfft_ring, lx, ly, lz, lwasv_antennas,
+                                gs, ntime_gulp=args.nts, accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs,
                                 core=cores.pop(0), gpu=gpus.pop(0),benchmark=args.benchmark,
-                                sampling_length=sampling_length_lambda, profile=args.profile))
-    ops.append(SaveOp(log, gridandfft_ring, "EPIC_", grid_size,
+                                sampling_length=sll, profile=args.profile))
+    ops.append(SaveOp(log, gridandfft_ring, "EPIC_", gs,
                          core=cores.pop(0), gpu=gpus.pop(0), cpu=False,
                          ints_per_file=args.ints_per_file, profile=args.profile))
 
