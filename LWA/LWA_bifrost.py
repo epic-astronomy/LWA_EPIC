@@ -1224,10 +1224,8 @@ def main():
     ops.append(MOFFCorrelatorOp(log, transpose_ring, gridandfft_ring, lx, ly, lz, lwasv_antennas,
                                 gs, ntime_gulp=args.nts, accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs,
                                 core=cores.pop(0), gpu=gpus.pop(0),benchmark=args.benchmark,
-
                                 sampling_length=sll, profile=args.profile))
-    ops.append(SaveOp(log, gridandfft_ring, "EPIC_", grid_size, out_dir=args.out_dir
-
+    ops.append(SaveOp(log, gridandfft_ring, "EPIC_", gs, out_dir=args.out_dir,
                          core=cores.pop(0), gpu=gpus.pop(0), cpu=False,
                          ints_per_file=args.ints_per_file, profile=args.profile))
 
