@@ -869,10 +869,7 @@ class MOFFCorrelatorOp(object):
 
                             # Increment
                             accum += 1e3 * self.ntime_gulp / CHAN_BW
-                            curr_time = time.time()
-                            process_time = curr_time - prev_time
-                            prev_time = curr_time
-
+                            
                             if accum >= self.accumulation_time:
 
                                 bifrost.reduce(crosspol, accumulated_image, op='sum')
@@ -903,28 +900,36 @@ class MOFFCorrelatorOp(object):
 
 
 
-
+                                curr_time = time.time()
+                                process_time = curr_time - prev_time
+                                prev_time = curr_time
+                                
                                 with oseq.reserve(ogulp_size) as ospan:
                                     odata = ospan.data_view(numpy.complex64).reshape(oshape)
                                     accumulated_image = accumulated_image.reshape(oshape)
                                     odata[...] = accumulated_image
-
+                                    
+                                curr_time = time.time()
+                                reserve_time = curr_time - prev_time
+                                prev_time = curr_time
+                                
                                 self.newflag = True
                                 accum = 0
-
 
                                 if self.remove_autocorrs == True:
                                     autocorr_g = autocorr_g.reshape(oshape)
                                     memset_array(autocorr_g,0)
                                     memset_array(autocorrs,0)
                                     memset_array(autocorrs_av,0)
-
+                                    
+                            else:
+                                process_time = 0.0
+                                reserve_time = 0.0
 
                             curr_time = time.time()
-                            reserve_time = curr_time - prev_time
+                            process_time += curr_time - prev_time
                             prev_time = curr_time
-
-
+                            
                             #TODO: Autocorrs using Romein??
                             ## Output for gridded electric fields.
                             if self.benchmark == True:
