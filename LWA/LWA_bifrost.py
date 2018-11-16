@@ -1112,6 +1112,8 @@ class SaveOp(object):
     def main(self):
         global TRIGGER_ACTIVE
         
+        MAX_HISTORY = 5
+        
         if self.core != -1:
             bifrost.affinity.set_core(self.core)
         if self.gpu != -1:
@@ -1137,7 +1139,8 @@ class SaveOp(object):
             igulp_size = nchan * npol * self.grid_size * self.grid_size * 8
             ishape = (nchan,npol,self.grid_size,self.grid_size)
             image = []
-
+            image_history = deque([], MAX_HISTORY)
+            
             prev_time = time.time()
             iseq_spans = iseq.read(igulp_size)
             nints = 0
@@ -1166,12 +1169,15 @@ class SaveOp(object):
                     image_nums = numpy.arange(fileid * self.ints_per_file, (fileid + 1) * self.ints_per_file)
                     filename = os.path.join(self.out_dir, 'EPIC_{0:3f}_{1:0.3f}MHz.npz'.format(unix_time, cfreq/1e6))
                     
+                    image_history.append( (filename, image, ihdr, image_nums) )
+                    
                     if TRIGGER_ACTIVE.is_set() or not self.triggering:
                         if dump_counter == 0:
-                            dump_counter = 20
+                            dump_counter = 20 + MAX_HISTORY
                         elif dump_counter == 1:
                             TRIGGER_ACTIVE.clear()
-                        numpy.savez(filename, image=image, hdr=ihdr, image_nums=image_nums)
+                        cfilename, cimage, chdr, cimage_nums = image_history.popleft()
+                        numpy.savez(cfilename, image=cimage, hdr=chdr, image_nums=cimage_nums)
                         print("SaveOp - Image Saved")
                         dump_counter -= 1
                         
