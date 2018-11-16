@@ -50,6 +50,10 @@ from lsl.writer import fitsidi
 from lsl.reader.ldp import TBNFile
 from lsl.common.stations import lwasv, parseSSMIF
 
+#################### Trigger Processing #######################
+
+TRIGGER_ACTIVE = threading.Event()
+
 ######################## Profiling ############################
 
 def enable_thread_profiling():
@@ -974,15 +978,106 @@ class MOFFCorrelatorOp(object):
                             break
 
 
+class TriggerOp(object):
+    def __init__(self, log, iring, grid_size, ints_per_analysis=1, threshold=6.0, 
+                 core=-1, gpu=-1, *args, **kwargs):
+        self.log = log
+        self.iring = iring
+        self.grid_size = grid_size
+        self.ints_per_file = ints_per_analysis
+        self.threshold = threshold
+
+        self.core = core
+        self.gpu = gpu
+        
+        self.bind_proclog = ProcLog(type(self).__name__+"/bind")
+        self.in_proclog   = ProcLog(type(self).__name__+"/in")
+        self.size_proclog = ProcLog(type(self).__name__+"/size")
+        self.sequence_proclog = ProcLog(type(self).__name__+"/sequence0")
+        self.perf_proclog = ProcLog(type(self).__name__+"/perf")
+
+        self.in_proclog.update( {'nring':1, 'ring0':self.iring.name})
+        self.size_proclog.update({'nseq_per_gulp': 1})
+
+        self.shutdown_event = threading.Event()
+
+    def shutdown(self):
+        self.shutdown_event.set()
+
+    def main(self):
+        global TRIGGER_ACTIVE
+        
+        MAX_HISTORY = 10
+        
+        if self.core != -1:
+            bifrost.affinity.set_core(self.core)
+        if self.gpu != -1:
+            BFSetGPU(self.gpu)
+        self.bind_proclog.update({'ncore': 1,
+                                  'core0': bifrost.affinity.get_core(),
+                                  'ngpu': 1,
+                                  'gpu0': BFGetGPU(),})
+
+
+        for iseq in self.iring.read(guarantee=True):
+            ihdr = json.loads(iseq.header.tostring())
+
+            self.sequence_proclog.update(ihdr)
+            self.log.info('TriggerOp: Config - %s' % ihdr)
+
+            cfreq = ihdr['cfreq']
+            nchan = ihdr['nchan']
+            npol = ihdr['npol']
+            print("Channel no: %d, Polarisation no: %d"%(nchan,npol))
+
+            igulp_size = nchan * npol * self.grid_size * self.grid_size * 8
+            ishape = (nchan,npol,self.grid_size,self.grid_size)
+            image = []
+            image_history = deque([], MAX_HISTORY)
+
+            prev_time = time.time()
+            iseq_spans = iseq.read(igulp_size)
+            nints = 0
+            
+            for ispan in iseq_spans:
+                if ispan.size < igulp_size:
+                    continue # Ignore final gulp
+                curr_time = time.time()
+                acquire_time = curr_time - prev_time
+                prev_time = curr_time
+                
+                idata = ispan.data_view(numpy.complex64).reshape(ishape)
+                itemp = idata.copy(space='cuda_host')
+                image.append(itemp)
+                nints += 1
+                if nints >= self.ints_per_file:
+                    image = numpy.fft.fftshift(image, axes=(3, 4))
+                    image = image[:, :, :, ::-1, :]
+                    image = image[:,:,0,:,:].sum(axis=0).sum(axis=0)
+                    
+                    if len(image_history) == MAX_HISTORY:
+                        image_background = numpy.mean(image_history, axis=0)
+                        image_diff = image - image_background
+                        peak, mid, rms = image_diff.max(), image_diff.mean(), image_diff.std()
+                        print('-->', peak, mid, rms, '@', (peak-mid)/rms)
+                        if (peak-mid) > self.threshold*rms:
+                            print("Trigger Set at %f" % ((peak-mid)/rms,))
+                            TRIGGER_ACTIVE.set()
+                            
+                    image_history.append( image )
+                    image = []
+                    nints = 0
+
 class SaveOp(object):
     def __init__(self, log, iring, filename, grid_size, core=-1, gpu=-1, cpu=False,
-                 profile=False, ints_per_file=1, out_dir='', *args, **kwargs):
+                 profile=False, ints_per_file=1, out_dir='', triggering=False, *args, **kwargs):
         self.log = log
         self.iring = iring
         self.filename = filename
         self.grid_size = grid_size
         self.ints_per_file = ints_per_file
         self.out_dir = out_dir
+        self.triggering = triggering
 
         # TODO: Validate ntime_gulp vs accumulation_time
         self.core = core
@@ -1004,8 +1099,9 @@ class SaveOp(object):
     def shutdown(self):
         self.shutdown_event.set()
 
-
     def main(self):
+        global TRIGGER_ACTIVE
+        
         if self.core != -1:
             bifrost.affinity.set_core(self.core)
         if self.gpu != -1:
@@ -1035,6 +1131,8 @@ class SaveOp(object):
             prev_time = time.time()
             iseq_spans = iseq.read(igulp_size)
             nints = 0
+            
+            dump_counter = 0
 
             if self.profile:
                 spani = 0
@@ -1045,7 +1143,7 @@ class SaveOp(object):
                 curr_time = time.time()
                 acquire_time = curr_time - prev_time
                 prev_time = curr_time
-
+                
                 idata = ispan.data_view(numpy.complex64).reshape(ishape)
                 itemp = idata.copy(space='cuda_host')
                 image.append(itemp)
@@ -1054,15 +1152,23 @@ class SaveOp(object):
                     image = numpy.fft.fftshift(image, axes=(3, 4))
                     image = image[:, :, :, ::-1, :]
                     unix_time = (ihdr['time_tag'] / FS + ihdr['accumulation_time']
-                                 * 1e-3 * fileid * self.ints_per_file)
+                                * 1e-3 * fileid * self.ints_per_file)
                     image_nums = numpy.arange(fileid * self.ints_per_file, (fileid + 1) * self.ints_per_file)
                     filename = os.path.join(self.out_dir, 'EPIC_{0:3f}_{1:0.3f}MHz.npz'.format(unix_time, cfreq/1e6))
-                    numpy.savez(filename, image=image, hdr=ihdr, image_nums=image_nums)
+                    
+                    if TRIGGER_ACTIVE.is_set() or not self.triggering:
+                        if dump_counter == 0:
+                            dump_counter = 20
+                        elif dump_counter == 1:
+                            TRIGGER_ACTIVE.clear()
+                        numpy.savez(filename, image=image, hdr=ihdr, image_nums=image_nums)
+                        print("SaveOp - Image Saved")
+                        dump_counter -= 1
+                        
                     image = []
                     nints = 0
                     fileid += 1
-                    print("SaveOp - Image Saved")
-
+                    
                 curr_time = time.time()
                 process_time = curr_time - prev_time
                 prev_time = curr_time
@@ -1137,6 +1243,8 @@ def main():
     parser.add_argument('--profile', action='store_true', help = 'Run cProfile on ALL threads. Produces trace for each individual thread')
     parser.add_argument('--ints_per_file', type=int, default=1, help='Number of integrations per output FITS file. Default is 1.')
     parser.add_argument('--out_dir', type=str, default='', help='Directory for output files. Default is current directory.')
+    parser.add_argument('--triggering', action='store_true', help='Enable self-triggering')
+    parser.add_argument('--threshold', type=float, default=8.0, help='Self-triggering threshold')
 
     args = parser.parse_args()
     # Logging Setup
@@ -1234,9 +1342,14 @@ def main():
                                 remove_autocorrs=args.removeautocorrs,
                                 core=cores.pop(0), gpu=gpus.pop(0),benchmark=args.benchmark,
                                 profile=args.profile))
+    if args.triggering:
+        ops.append(TriggerOp(log, gridandfft_ring, args.imagesize, 
+                             core=cores.pop(0), gpu=gpus.pop(0), 
+                             ints_per_analysis=args.ints_per_file, threshold=args.threshold))
     ops.append(SaveOp(log, gridandfft_ring, "EPIC_", args.imagesize, out_dir=args.out_dir,
                          core=cores.pop(0), gpu=gpus.pop(0), cpu=False,
-                         ints_per_file=args.ints_per_file, profile=args.profile))
+                         ints_per_file=args.ints_per_file, triggering=args.triggering, 
+                         profile=args.profile))
 
     threads= [threading.Thread(target=op.main) for op in ops]
 
