@@ -86,10 +86,11 @@ def get_thread_stats():
 
 ################ Frequency-Dependent Locations ################
 
-def GenerateLocations(lsl_locs, frequencies, ntime, nchan, npol):
+def GenerateLocations(lsl_locs, frequencies, ntime, nchan, npol, grid_size=64, grid_resolution=20/60.):
     
+    delta = (2*grid_size*numpy.sin(numpy.pi*grid_resolution/360))**-1
     chan_wavelengths = speedOfLight/frequencies
-    sample_grid = chan_wavelengths/2    
+    sample_grid = chan_wavelengths*delta    
     sll = sample_grid[0] / chan_wavelengths[0]
     lsl_locs = lsl_locs.T
     lsl_locs = lsl_locs.copy()
@@ -108,9 +109,7 @@ def GenerateLocations(lsl_locs, frequencies, ntime, nchan, npol):
     #Calculate grid size needed
     range_u = numpy.max(lsl_locsf[0,...]) - numpy.min(lsl_locsf[0,...])
     range_v = numpy.max(lsl_locsf[0,...]) - numpy.min(lsl_locsf[0,...])
-    grid_size = int(numpy.power(2,numpy.ceil(numpy.log(max([range_u,range_v])/numpy.log(2))+1)))
-    print("Grid Size: %d"%grid_size)
-
+    
     # Centre locations slightly
     for l in numpy.arange(3):
         for i in numpy.arange(nchan):
@@ -125,7 +124,7 @@ def GenerateLocations(lsl_locs, frequencies, ntime, nchan, npol):
     locy = numpy.tile(lsl_locsf[1,...],(ntime,1,1,1))
     locz = numpy.tile(lsl_locsf[2,...],(ntime,1,1,1))
 
-    return grid_size, locx, locy, locz, sll
+    return delta, locx, locy, locz, sll
     
     
 
@@ -596,9 +595,9 @@ class CalibrationOp(object):
         pass
 
 class MOFFCorrelatorOp(object):
-    def __init__(self, log, iring, oring, lx, ly, lz, antennas, grid_size, ntime_gulp=2500,
-                 accumulation_time=10000, core=-1, gpu=-1, remove_autocorrs = False,
-                 benchmark=False, profile=False, sampling_length=0.5,
+    def __init__(self, log, iring, oring, antennas, grid_size, grid_resolution, 
+                 ntime_gulp=2500, accumulation_time=10000, core=-1, gpu=-1, 
+                 remove_autocorrs = False, benchmark=False, profile=False, 
                  *args, **kwargs):
         self.log = log
         self.iring = iring
@@ -606,22 +605,24 @@ class MOFFCorrelatorOp(object):
         self.ntime_gulp = ntime_gulp
         self.accumulation_time=accumulation_time
 
-        
         self.antennas = antennas
+        locations = numpy.empty(shape=(0,3))
+        for ant in self.antennas:
+            locations = numpy.vstack((locations,[ant.stand[0],ant.stand[1],ant.stand[2]]))
+        locations = numpy.delete(locations, list(range(0,locations.shape[0],2)),axis=0)
+        locations[255,:] = 0.0
+        self.locations = locations
+        
         self.grid_size = grid_size
-        self.sampling_length = sampling_length
-
+        self.grid_resolution  = grid_resolution
+        
         self.core = core
         self.gpu = gpu
         self.remove_autocorrs = remove_autocorrs
         self.benchmark = benchmark
         self.newflag = True
         self.profile = profile
-
-        self.lx = bifrost.ndarray(lx.astype(numpy.int32),space='cuda')
-        self.ly = bifrost.ndarray(ly.astype(numpy.int32),space='cuda')
-        self.lz = bifrost.ndarray(lz.astype(numpy.int32),space='cuda')
-
+        
         self.bind_proclog = ProcLog(type(self).__name__+"/bind")
         self.in_proclog   = ProcLog(type(self).__name__+"/in")
         self.out_proclog  = ProcLog(type(self).__name__+"/out")
@@ -635,7 +636,7 @@ class MOFFCorrelatorOp(object):
 
         if self.gpu != -1:
             BFSetGPU(self.gpu)
-
+            
         self.ant_extent = 1
         self.antgridmap = bifrost.ndarray(numpy.ones(shape=(self.ant_extent,self.ant_extent),dtype=numpy.complex64),space='cuda')
         self.antgridmap = self.antgridmap.copy(space='cuda',order='C')
@@ -672,7 +673,22 @@ class MOFFCorrelatorOp(object):
                 
                 igulp_size = self.ntime_gulp * nchan * nstand * npol * 1 # ci4
                 itshape = (self.ntime_gulp,nchan,npol,nstand)
-
+                
+                
+                freq = (chan0 + numpy.arange(nchan))*CHAN_BW
+                sampling_length, lx, ly, lz, sll = GenerateLocations(self.locations, freq, 
+                                                                     self.ntime_gulp, nchan, npol, 
+                                                                     grid_size=self.grid_size,
+                                                                     grid_resolution=self.grid_resolution)
+                try:
+                    copy_array(self.lx, bifrost.ndarray(lx.astype(numpy.int32)))
+                    copy_array(self.ly, bifrost.ndarray(ly.astype(numpy.int32)))
+                    copy_array(self.lz, bifrost.ndarray(lz.astype(numpy.int32)))
+                except AttributeError:
+                    self.lx = bifrost.ndarray(lx.astype(numpy.int32), space='cuda')
+                    self.ly = bifrost.ndarray(ly.astype(numpy.int32), space='cuda')
+                    self.lz = bifrost.ndarray(lz.astype(numpy.int32), space='cuda')
+    
 
                 ohdr = ihdr.copy()
                 ohdr['nbit'] = 64
@@ -682,8 +698,8 @@ class MOFFCorrelatorOp(object):
                 ohdr['grid_size_x'] = self.grid_size
                 ohdr['grid_size_y'] = self.grid_size
                 ohdr['axes'] = 'time,chan,pol,gridy,gridx'
-                ohdr['sampling_length_x'] = self.sampling_length
-                ohdr['sampling_length_y'] = self.sampling_length
+                ohdr['sampling_length_x'] = sampling_length
+                ohdr['sampling_length_y'] = sampling_length
                 ohdr['accumulation_time'] = self.accumulation_time
                 ohdr['FS'] = FS
                 ohdr['latitude'] = lwasv.lat * 180. / numpy.pi
@@ -703,7 +719,6 @@ class MOFFCorrelatorOp(object):
                 # Setup the phasing terms for zenith
                 # Phases are Nchan x Npol x Nstand
                 phases = numpy.zeros((itshape[1], itshape[2], itshape[3]), dtype=numpy.complex64)
-                freq = (chan0 + numpy.arange(nchan))*CHAN_BW
                 for i in xrange(nstand):
                     ## X
                     a = self.antennas[2*i + 0]
@@ -1109,8 +1124,8 @@ def main():
     parser.add_argument('--addr', type=str, default = "p5p1", help= 'F-Engine UDP Stream Address')
     parser.add_argument('--port', type=int, default = 4015, help= 'F-Engine UDP Stream Port')
     parser.add_argument('--utcstart', type=str, default = '1970_1_1T0_0_0', help= 'F-Engine UDP Stream Start Time')
-    parser.add_argument('--gridsize', type=int, required=True, help = '1-D Grid Size')
-    parser.add_argument('--frequency' , type=float, required=True, help = 'Frequency of channel. Allows correct fourier sampling to be calculated')
+    parser.add_argument('--imagesize', type=int, default = 64, help = '1-D Image Size')
+    parser.add_argument('--imageres', type=float, default = 1.79057, help = 'Image pixel size in degrees')
     parser.add_argument('--offline', action='store_true', help = 'Load TBN data from Disk')
     parser.add_argument('--tbnfile', type=str, help = 'TBN Data Path')
     parser.add_argument('--nts',type=int, default = 1000, help= 'Number of timestamps per span')
@@ -1178,25 +1193,11 @@ def main():
     image_ring = Ring(name="image", space="system")
 
 
-    # Setup Locations
+    # Setup Antennas
     ## TODO: Some sort of switch for other stations?
 
     lwasv_antennas = lwasv.getAntennas()
     lwasv_stands = lwasv.getStands()
-    lwasv_locations = numpy.empty(shape=(0,3))
-
-    for stand in lwasv_stands:
-        lwasv_locations = numpy.vstack((lwasv_locations,[stand[0],stand[1],stand[2]]))
-    lwasv_locations = numpy.delete(lwasv_locations, list(range(0,lwasv_locations.shape[0],2)),axis=0)
-    frequencies = numpy.zeros(shape=(args.channels))
-
-    for i in numpy.arange(args.channels):
-        frequencies[i] = args.frequency - i * CHAN_BW
-    frequencies = frequencies[::-1]
-    lwasv_locations[255,:] = 0.0
-    
-    
-    gs, lx, ly, lz, sll = GenerateLocations(lwasv_locations,frequencies,args.nts,args.channels, 1 if args.singlepol else 2)
     
     # Setup threads
 
@@ -1227,11 +1228,13 @@ def main():
 
     ops.append(TransposeOp(log, fdomain_ring, transpose_ring, ntime_gulp=args.nts,
                                 core=cores.pop(0)))
-    ops.append(MOFFCorrelatorOp(log, transpose_ring, gridandfft_ring, lx, ly, lz, lwasv_antennas,
-                                gs, ntime_gulp=args.nts, accumulation_time=args.accumulate, remove_autocorrs=args.removeautocorrs,
+    ops.append(MOFFCorrelatorOp(log, transpose_ring, gridandfft_ring, lwasv_antennas,
+                                args.imagesize, args.imageres, ntime_gulp=args.nts, 
+                                accumulation_time=args.accumulate, 
+                                remove_autocorrs=args.removeautocorrs,
                                 core=cores.pop(0), gpu=gpus.pop(0),benchmark=args.benchmark,
-                                sampling_length=sll, profile=args.profile))
-    ops.append(SaveOp(log, gridandfft_ring, "EPIC_", gs, out_dir=args.out_dir,
+                                profile=args.profile))
+    ops.append(SaveOp(log, gridandfft_ring, "EPIC_", args.imagesize, out_dir=args.out_dir,
                          core=cores.pop(0), gpu=gpus.pop(0), cpu=False,
                          ints_per_file=args.ints_per_file, profile=args.profile))
 
