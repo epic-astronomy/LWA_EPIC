@@ -1017,11 +1017,11 @@ class TriggerOp(object):
                                   'core0': bifrost.affinity.get_core(),
                                   'ngpu': 1,
                                   'gpu0': BFGetGPU(),})
-
-
+        
         for iseq in self.iring.read(guarantee=True):
             ihdr = json.loads(iseq.header.tostring())
-
+            fileid = 0
+            
             self.sequence_proclog.update(ihdr)
             self.log.info('TriggerOp: Config - %s' % ihdr)
 
@@ -1053,20 +1053,30 @@ class TriggerOp(object):
                 if nints >= self.ints_per_file:
                     image = numpy.fft.fftshift(image, axes=(3, 4))
                     image = image[:, :, :, ::-1, :]
-                    image = image[:,:,0,:,:].sum(axis=0).sum(axis=0)
+                    ## NOTE:  This just uses the first polarization (XX) for now.
+                    ##        In the future we probably want to use Stokes I (if
+                    ##        possible) to beat the noise down a little.
+                    image = image[:,:,0,:,:].real.sum(axis=0).sum(axis=0)
+                    unix_time = (ihdr['time_tag'] / FS + ihdr['accumulation_time']
+                                * 1e-3 * fileid * self.ints_per_file)
                     
                     if len(image_history) == MAX_HISTORY:
+                        ## The transient detection is based on a differencing the
+                        ## current image (image) with a moving average of the last
+                        ## N images (image_background).  This is roughly like what
+                        ## is done at LWA1/LWA-SV to find events in the LASI images.
                         image_background = numpy.mean(image_history, axis=0)
                         image_diff = image - image_background
                         peak, mid, rms = image_diff.max(), image_diff.mean(), image_diff.std()
                         print('-->', peak, mid, rms, '@', (peak-mid)/rms)
                         if (peak-mid) > self.threshold*rms:
-                            print("Trigger Set at %f" % ((peak-mid)/rms,))
+                            print("Trigger Set at %.3f with S/N %f" % (unix_time, (peak-mid)/rms,))
                             TRIGGER_ACTIVE.set()
                             
                     image_history.append( image )
                     image = []
                     nints = 0
+                    fileid += 1
 
 class SaveOp(object):
     def __init__(self, log, iring, filename, grid_size, core=-1, gpu=-1, cpu=False,
@@ -1112,10 +1122,10 @@ class SaveOp(object):
                                   'gpu0': BFGetGPU(),})
 
 
-        fileid = 0
         for iseq in self.iring.read(guarantee=True):
             ihdr = json.loads(iseq.header.tostring())
-
+            fileid = 0
+            
             self.sequence_proclog.update(ihdr)
             self.log.info('SaveOp: Config - %s' % ihdr)
 
