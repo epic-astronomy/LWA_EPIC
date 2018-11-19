@@ -1061,7 +1061,7 @@ class TriggerOp(object):
                         ## current image (image) with a moving average of the last
                         ## N images (image_background).  This is roughly like what
                         ## is done at LWA1/LWA-SV to find events in the LASI images.
-                        image_background = numpy.mean(image_history, axis=0)
+                        image_background = numpy.median(image_history, axis=0)
                         image_diff = image - image_background
                         ## NOTE:  This currently ignores the fact that the sky does
                         ##        not occupy the whole image.
