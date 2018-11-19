@@ -1121,7 +1121,8 @@ class SaveOp(object):
                                   'ngpu': 1,
                                   'gpu0': BFGetGPU(),})
 
-
+        image_history = deque([], MAX_HISTORY)
+        
         for iseq in self.iring.read(guarantee=True):
             ihdr = json.loads(iseq.header.tostring())
             fileid = 0
@@ -1137,7 +1138,6 @@ class SaveOp(object):
             igulp_size = nchan * npol * self.grid_size * self.grid_size * 8
             ishape = (nchan,npol,self.grid_size,self.grid_size)
             image = []
-            image_history = deque([], MAX_HISTORY)
             
             prev_time = time.time()
             iseq_spans = iseq.read(igulp_size)
