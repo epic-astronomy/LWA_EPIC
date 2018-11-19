@@ -739,8 +739,12 @@ class MOFFCorrelatorOp(object):
                     ## away with this at some point
                     if a.stand.id == 256:
                         phases[:,:,i] = 0.0
-
-
+                phases = bifrost.ndarray(phases)
+                try:
+                    copy_array(gphases, phases)
+                except NameError:
+                    gphases = phases.copy(space='cuda')
+                    
                 oshape = (1,nchan,npol**2,self.grid_size,self.grid_size)
                 ogulp_size = nchan * npol**2 * self.grid_size * self.grid_size * 8
                 self.iring.resize(igulp_size)
@@ -790,16 +794,8 @@ class MOFFCorrelatorOp(object):
                             if self.benchmark == True:
                                 time1b = time.time()
                             ## Phase
-                            try:
-                                bifrost.map('a(i,j,k,l) *= b(j,k,l)',
-                                            {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)
-                            except NameError:
-                                phases = bifrost.ndarray(phases)
-                                gphases = phases.copy(space='cuda')
-                                bifrost.map('a(i,j,k,l) *= b(j,k,l)',
-                                            {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)
-                                #udata = udata.transpose((0,1,3,2))
-                                #Transpose
+                            bifrost.map('a(i,j,k,l) *= b(j,k,l)',
+                                        {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)
                             if self.benchmark == True:
                                 time1c = time.time()
                                 print("  Unpack and phase-up time: %f" % (time1c-time1a))
