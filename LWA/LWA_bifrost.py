@@ -975,13 +975,13 @@ class MOFFCorrelatorOp(object):
 
 
 class TriggerOp(object):
-    def __init__(self, log, iring, grid_size, ints_per_analysis=1, threshold=6.0, 
+    def __init__(self, log, iring, ints_per_analysis=1, threshold=6.0, elevation_limit=20.0, 
                  core=-1, gpu=-1, *args, **kwargs):
         self.log = log
         self.iring = iring
-        self.grid_size = grid_size
         self.ints_per_file = ints_per_analysis
         self.threshold = threshold
+        self.elevation_limit = elevation_limit*numpy.pi/180.0
 
         self.core = core
         self.gpu = gpu
@@ -1021,13 +1021,25 @@ class TriggerOp(object):
             self.sequence_proclog.update(ihdr)
             self.log.info('TriggerOp: Config - %s' % ihdr)
 
-            cfreq = ihdr['cfreq']
-            nchan = ihdr['nchan']
-            npol = ihdr['npol']
-            print("Channel no: %d, Polarisation no: %d"%(nchan,npol))
-
-            igulp_size = nchan * npol * self.grid_size * self.grid_size * 8
-            ishape = (nchan,npol,self.grid_size,self.grid_size)
+            cfreq             = ihdr['cfreq']
+            nchan             = ihdr['nchan']
+            npol              = ihdr['npol']
+            grid_size_x       = ihdr['grid_size_x']
+            grid_size_y       = ihdr['grid_size_y']
+            grid_size         = max([grid_size_x, grid_size_y])
+            sampling_length_x = ihdr['sampling_length_x']
+            sampling_length_y = ihdr['sampling_length_y']
+            sampling_length   = max([sampling_length_x, sampling_length_y])
+            print("Channel no: %d, Polarisation no: %d, Grid no: %d, Sampling: %.3f"%(nchan,npol,grid_size,sampling_length))
+            
+            x, y = numpy.arange(grid_size_x), numpy.arange(grid_size_y)
+            x, y = numpy.meshgrid(x, y)
+            rho = numpy.sqrt((x-grid_size_x/2)**2 + (y-grid_size_y/2)**2)
+            mask = numpy.where(rho <= grid_size*sampling_length*numpy.cos(self.elevation_limit), 
+                               False, True)
+            
+            igulp_size = nchan * npol * grid_size_x * grid_size_y * 8
+            ishape = (nchan,npol,grid_size_x,grid_size_y)
             image = []
             image_history = deque([], MAX_HISTORY)
 
@@ -1062,9 +1074,7 @@ class TriggerOp(object):
                         ## N images (image_background).  This is roughly like what
                         ## is done at LWA1/LWA-SV to find events in the LASI images.
                         image_background = numpy.median(image_history, axis=0)
-                        image_diff = image - image_background
-                        ## NOTE:  This currently ignores the fact that the sky does
-                        ##        not occupy the whole image.
+                        image_diff = numpy.ma.array(image - image_background, mask=mask)
                         peak, mid, rms = image_diff.max(), image_diff.mean(), image_diff.std()
                         print('-->', peak, mid, rms, '@', (peak-mid)/rms)
                         if (peak-mid) > self.threshold*rms:
@@ -1077,12 +1087,11 @@ class TriggerOp(object):
                     fileid += 1
 
 class SaveOp(object):
-    def __init__(self, log, iring, filename, grid_size, core=-1, gpu=-1, cpu=False,
+    def __init__(self, log, iring, filename, core=-1, gpu=-1, cpu=False,
                  profile=False, ints_per_file=1, out_dir='', triggering=False, *args, **kwargs):
         self.log = log
         self.iring = iring
         self.filename = filename
-        self.grid_size = grid_size
         self.ints_per_file = ints_per_file
         self.out_dir = out_dir
         self.triggering = triggering
@@ -1133,10 +1142,13 @@ class SaveOp(object):
             cfreq = ihdr['cfreq']
             nchan = ihdr['nchan']
             npol = ihdr['npol']
-            print("Channel no: %d, Polarisation no: %d"%(nchan,npol))
+            grid_size_x       = ihdr['grid_size_x']
+            grid_size_y       = ihdr['grid_size_y']
+            grid_size         = max([grid_size_x, grid_size_y])
+            print("Channel no: %d, Polarisation no: %d, Grid no: %d"%(nchan,npol,grid_size))
 
-            igulp_size = nchan * npol * self.grid_size * self.grid_size * 8
-            ishape = (nchan,npol,self.grid_size,self.grid_size)
+            igulp_size = nchan * npol * grid_size_x * grid_size_y * 8
+            ishape = (nchan,npol,grid_size_x,grid_size_y)
             image = []
             
             prev_time = time.time()
@@ -1240,26 +1252,34 @@ def main():
 
     # Main Input: UDP Broadcast RX from F-Engine?
 
-    parser = argparse.ArgumentParser(description='EPIC Correlator')
-    parser.add_argument('--addr', type=str, default = "p5p1", help= 'F-Engine UDP Stream Address')
-    parser.add_argument('--port', type=int, default = 4015, help= 'F-Engine UDP Stream Port')
-    parser.add_argument('--utcstart', type=str, default = '1970_1_1T0_0_0', help= 'F-Engine UDP Stream Start Time')
-    parser.add_argument('--imagesize', type=int, default = 64, help = '1-D Image Size')
-    parser.add_argument('--imageres', type=float, default = 1.79057, help = 'Image pixel size in degrees')
-    parser.add_argument('--offline', action='store_true', help = 'Load TBN data from Disk')
-    parser.add_argument('--tbnfile', type=str, help = 'TBN Data Path')
-    parser.add_argument('--nts',type=int, default = 1000, help= 'Number of timestamps per span')
-    parser.add_argument('--accumulate',type=int, default = 1000, help='How many milliseconds to accumulate an image over')
-    parser.add_argument('--channels',type=int, default=1, help='How many channels to produce')
-    parser.add_argument('--singlepol', action='store_true', help = 'Process only X pol. in online mode')
-    parser.add_argument('--removeautocorrs', action='store_true', help = 'Removes Autocorrelations')
-    parser.add_argument('--benchmark', action='store_true',help = 'benchmark gridder')
-    parser.add_argument('--profile', action='store_true', help = 'Run cProfile on ALL threads. Produces trace for each individual thread')
-    parser.add_argument('--ints_per_file', type=int, default=1, help='Number of integrations per output FITS file. Default is 1.')
-    parser.add_argument('--out_dir', type=str, default='', help='Directory for output files. Default is current directory.')
-    parser.add_argument('--triggering', action='store_true', help='Enable self-triggering')
-    parser.add_argument('--threshold', type=float, default=8.0, help='Self-triggering threshold')
-
+    parser = argparse.ArgumentParser(description='EPIC Correlator', 
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    group1 = parser.add_argument_group('Online Data Processing')
+    group1.add_argument('--addr', type=str, default = "p5p1", help= 'F-Engine UDP Stream Address')
+    group1.add_argument('--port', type=int, default = 4015, help= 'F-Engine UDP Stream Port')
+    group1.add_argument('--utcstart', type=str, default = '1970_1_1T0_0_0', help= 'F-Engine UDP Stream Start Time')
+    group2 = parser.add_argument_group('Offline Data Processing')
+    group2.add_argument('--offline', action='store_true', help = 'Load TBN data from Disk')
+    group2.add_argument('--tbnfile', type=str, help = 'TBN Data Path')
+    group3 = parser.add_argument_group('Processing Options')
+    group3.add_argument('--imagesize', type=int, default = 64, help = '1-D Image Size')
+    group3.add_argument('--imageres', type=float, default = 1.79057, help = 'Image pixel size in degrees')
+    group3.add_argument('--nts',type=int, default = 1000, help= 'Number of timestamps per span')
+    group3.add_argument('--accumulate',type=int, default = 1000, help='How many milliseconds to accumulate an image over')
+    group3.add_argument('--channels',type=int, default=1, help='How many channels to produce')
+    group3.add_argument('--singlepol', action='store_true', help = 'Process only X pol. in online mode')
+    group3.add_argument('--removeautocorrs', action='store_true', help = 'Removes Autocorrelations')
+    group4 = parser.add_argument_group('Output')
+    group4.add_argument('--ints_per_file', type=int, default=1, help='Number of integrations per output FITS file.')
+    group4.add_argument('--out_dir', type=str, default='.', help='Directory for output files. Default is current directory.')
+    group5 = parser.add_argument_group('Self Triggering')
+    group5.add_argument('--triggering', action='store_true', help='Enable self-triggering')
+    group5.add_argument('--threshold', type=float, default=8.0, help='Self-triggering threshold')
+    group5.add_argument('--elevation-limit', type=float, default=20.0, help='Self-trigger minimum elevation limit in degrees')
+    group6 = parser.add_argument_group('Benchmarking')
+    group6.add_argument('--benchmark', action='store_true',help = 'benchmark gridder')
+    group6.add_argument('--profile', action='store_true', help = 'Run cProfile on ALL threads. Produces trace for each individual thread')
+    
     args = parser.parse_args()
     # Logging Setup
     # TODO: Set this up properly
@@ -1268,7 +1288,7 @@ def main():
 
     if not os.path.isdir(args.out_dir):
         print('Output directory does not exist. Defaulting to current directory.')
-        args.out_dir = ''
+        args.out_dir = '.'
 
 
     log = logging.getLogger(__name__)
@@ -1357,10 +1377,10 @@ def main():
                                 core=cores.pop(0), gpu=gpus.pop(0),benchmark=args.benchmark,
                                 profile=args.profile))
     if args.triggering:
-        ops.append(TriggerOp(log, gridandfft_ring, args.imagesize, 
-                             core=cores.pop(0), gpu=gpus.pop(0), 
-                             ints_per_analysis=args.ints_per_file, threshold=args.threshold))
-    ops.append(SaveOp(log, gridandfft_ring, "EPIC_", args.imagesize, out_dir=args.out_dir,
+        ops.append(TriggerOp(log, gridandfft_ring, core=cores.pop(0), gpu=gpus.pop(0), 
+                             ints_per_analysis=args.ints_per_file, threshold=args.threshold, 
+                             elevation_limit=max([0, args.elevation_limit])))
+    ops.append(SaveOp(log, gridandfft_ring, "EPIC_", out_dir=args.out_dir,
                          core=cores.pop(0), gpu=gpus.pop(0), cpu=False,
                          ints_per_file=args.ints_per_file, triggering=args.triggering, 
                          profile=args.profile))
