@@ -1379,7 +1379,7 @@ def main():
     if args.triggering:
         ops.append(TriggerOp(log, gridandfft_ring, core=cores.pop(0), gpu=gpus.pop(0), 
                              ints_per_analysis=args.ints_per_file, threshold=args.threshold, 
-                             elevation_limit=max([0, args.elevation_limit])))
+                             elevation_limit=max([0.0, args.elevation_limit])))
     ops.append(SaveOp(log, gridandfft_ring, "EPIC_", out_dir=args.out_dir,
                          core=cores.pop(0), gpu=gpus.pop(0), cpu=False,
                          ints_per_file=args.ints_per_file, triggering=args.triggering, 
