@@ -36,7 +36,7 @@ from bifrost.proclog import ProcLog
 from bifrost.libbifrost import bf
 from bifrost.fft import Fft
 from bifrost.fft_shift import fft_shift_2d
-from bifrost.romein import romein_float
+from bifrost.romein import Romein
 import bifrost
 import bifrost.affinity
 from bifrost.libbifrost import bf
@@ -49,6 +49,10 @@ from lsl.common.constants import c as speedOfLight
 from lsl.writer import fitsidi
 from lsl.reader.ldp import TBNFile
 from lsl.common.stations import lwasv, parseSSMIF
+
+#################### Trigger Processing #######################
+
+TRIGGER_ACTIVE = threading.Event()
 
 ######################## Profiling ############################
 
@@ -115,14 +119,17 @@ def GenerateLocations(lsl_locs, frequencies, ntime, nchan, npol, grid_size=64, g
         for i in numpy.arange(nchan):
             for p in numpy.arange(npol):
                 lsl_locsf[l,p,i,:] += (grid_size - numpy.max(lsl_locsf[l,p,i,:]))/2
+                
 
-    # Tile them for ntime
-    
+
+    # Tile them for ntime...
     locx = numpy.tile(lsl_locsf[0,...],(ntime,1,1,1))
     locy = numpy.tile(lsl_locsf[1,...],(ntime,1,1,1))
     locz = numpy.tile(lsl_locsf[2,...],(ntime,1,1,1))
+    # .. and then stick them all into one large array
+    locc = numpy.concatenate([[locx,], [locy,], [locz,]]).transpose(1,3,2,4,0).copy()
 
-    return delta, locx, locy, locz, sll
+    return delta, locc, sll
     
     
 
@@ -631,14 +638,9 @@ class MOFFCorrelatorOp(object):
         self.in_proclog.update( {'nring':1, 'ring0':self.iring.name})
         self.out_proclog.update({'nring':1, 'ring0':self.oring.name})
         self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
-
-        if self.gpu != -1:
-            BFSetGPU(self.gpu)
-            
+        
         self.ant_extent = 1
-        self.antgridmap = bifrost.ndarray(numpy.ones(shape=(self.ant_extent,self.ant_extent),dtype=numpy.complex64),space='cuda')
-        self.antgridmap = self.antgridmap.copy(space='cuda',order='C')
-
+        
         self.shutdown_event = threading.Event()
 
     def shutdown(self):
@@ -674,20 +676,21 @@ class MOFFCorrelatorOp(object):
                 
                 
                 freq = (chan0 + numpy.arange(nchan))*CHAN_BW
-                sampling_length, lx, ly, lz, sll = GenerateLocations(self.locations, freq, 
-                                                                     self.ntime_gulp, nchan, npol, 
-                                                                     grid_size=self.grid_size,
-                                                                     grid_resolution=self.grid_resolution)
+                sampling_length, locs, sll = GenerateLocations(self.locations, freq, 
+                                                               self.ntime_gulp, nchan, npol, 
+                                                               grid_size=self.grid_size,
+                                                               grid_resolution=self.grid_resolution)
                 try:
-                    copy_array(self.lx, bifrost.ndarray(lx.astype(numpy.int32)))
-                    copy_array(self.ly, bifrost.ndarray(ly.astype(numpy.int32)))
-                    copy_array(self.lz, bifrost.ndarray(lz.astype(numpy.int32)))
+                    copy_array(self.locs, bifrost.ndarray(locs.astype(numpy.int32)))
                 except AttributeError:
-                    self.lx = bifrost.ndarray(lx.astype(numpy.int32), space='cuda')
-                    self.ly = bifrost.ndarray(ly.astype(numpy.int32), space='cuda')
-                    self.lz = bifrost.ndarray(lz.astype(numpy.int32), space='cuda')
-    
-
+                    self.locs = bifrost.ndarray(locs.astype(numpy.int32), space='cuda')
+                    
+                # Make sure we have convolution kernels to work with.  If not, set them up
+                try:
+                    self.kernels
+                except AttributeError:
+                    self.kernels = bifrost.ndarray(numpy.ones(shape=(self.ntime_gulp,nchan,npol,nstand,self.ant_extent,self.ant_extent),dtype=numpy.complex64),space='cuda')
+                    
                 ohdr = ihdr.copy()
                 ohdr['nbit'] = 64
 
@@ -797,17 +800,23 @@ class MOFFCorrelatorOp(object):
                             ## Make sure we have a place to put the gridded data
                             # Gridded Antennas
                             try:
-                                gdata = gdata.reshape(self.ntime_gulp*nchan*npol,self.grid_size,self.grid_size)
+                                gdata = gdata.reshape(self.ntime_gulp,nchan,npol,self.grid_size,self.grid_size)
                                 memset_array(gdata,0)
                             except NameError:
-                                gdata = bifrost.zeros(shape=(self.ntime_gulp*nchan*npol,self.grid_size,self.grid_size),dtype=numpy.complex64, space='cuda')
+                                gdata = bifrost.zeros(shape=(self.ntime_gulp,nchan,npol,self.grid_size,self.grid_size),dtype=numpy.complex64, space='cuda')
 
                             ## Grid the Antennas
                             if self.benchmark == True:
                                 timeg1 = time.time()
 
 
-                            gdata = romein_float(udata,gdata,self.antgridmap,self.lx,self.ly,self.lz,self.ant_extent,self.grid_size,nstand,self.ntime_gulp*npol*nchan)
+                            try:
+                                bf_romein.execute(udata, gdata)
+                            except NameError:
+                                bf_romein = Romein()
+                                bf_romein.init(self.locs, self.kernels, self.grid_size, polmajor=True)
+                                bf_romein.execute(udata, gdata)
+                            gdata = gdata.reshape(self.ntime_gulp*nchan*npol,self.grid_size,self.grid_size)
                             #gdata = self.LinAlgObj.matmul(1.0, udata, bfantgridmap, 0.0, gdata)
                             if self.benchmark == True:
                                 timeg2 = time.time()
@@ -857,11 +866,9 @@ class MOFFCorrelatorOp(object):
                                 except NameError:
                                     autocorrs = bifrost.ndarray(shape=(self.ntime_gulp,nchan,npol**2,nstand),dtype=numpy.complex64, space='cuda')
                                     autocorrs_av = bifrost.zeros(shape=(1,nchan,npol**2,nstand), dtype=numpy.complex64, space='cuda')
-                                    autocorr_g = bifrost.zeros(shape=(nchan*npol**2,self.grid_size,self.grid_size), dtype=numpy.complex64, space='cuda')
-                                    autocorr_lx = bifrost.ndarray(numpy.ones(shape=(nchan*npol**2*nstand),dtype=numpy.int32)*self.grid_size/2,space='cuda')
-                                    autocorr_ly = bifrost.ndarray(numpy.ones(shape=(nchan*npol**2*nstand),dtype=numpy.int32)*self.grid_size/2,space='cuda')
-                                    autocorr_lz = bifrost.zeros(shape=(nchan*npol**2*nstand),dtype=numpy.int32,space='cuda')
-                                    autocorr_il = bifrost.ndarray(numpy.ones(shape=(self.ant_extent,self.ant_extent),dtype=numpy.complex64),space='cuda')
+                                    autocorr_g = bifrost.zeros(shape=(1,nchan,npol**2,self.grid_size,self.grid_size), dtype=numpy.complex64, space='cuda')
+                                    autocorr_lo = bifrost.ndarray(numpy.ones(shape=(1,nchan,npol**2,nstand,3),dtype=numpy.int32)*self.grid_size/2,space='cuda')
+                                    autocorr_il = bifrost.ndarray(numpy.ones(shape=(1,nchan,npol**2,self.ant_extent,self.ant_extent),dtype=numpy.complex64),space='cuda')
 
 
                                 # Cross multiply to calculate autocorrs
@@ -886,8 +893,15 @@ class MOFFCorrelatorOp(object):
                                     # Reduce along time axis.
                                     bifrost.reduce(autocorrs, autocorrs_av, op='sum')
                                     # Grid the autocorrelations.
-                                    autocorr_g = romein_float(autocorrs_av,autocorr_g,autocorr_il,autocorr_lx,autocorr_ly,autocorr_lz,self.ant_extent,self.grid_size,nstand,nchan*npol**2)
-
+                                    autocorr_g = autocorr_g.reshape(1,nchan,npol**2,self.grid_size, self.grid_size)
+                                    try:
+                                        bf_romein_autocorr.execute(autocorrs_av, autocorr_g)
+                                    except NameError:
+                                        bf_romein_autocorr = Romein()
+                                        bf_romein_autocorr.init(autocorr_lo, autocorr_il, self.grid_size, polmajor=True)
+                                        bf_romein_autocorr.execute(autocorrs_av, autocorr_g)
+                                    autocorr_g = autocorr_g.reshape(1*nchan*npol**2,self.grid_size,self.grid_size)
+                                    #autocorr_g = romein_float(autocorrs_av,autocorr_g,autocorr_il,autocorr_lx,autocorr_ly,autocorr_lz,self.ant_extent,self.grid_size,nstand,nchan*npol**2)
                                     #Inverse FFT
                                     try:
                                         autocorr_g = fft_shift_2d(autocorr_g, self.grid_size, nchan*npol**2)
@@ -968,15 +982,127 @@ class MOFFCorrelatorOp(object):
                             break
 
 
+class TriggerOp(object):
+    def __init__(self, log, iring, ints_per_analysis=1, threshold=6.0, elevation_limit=20.0, 
+                 core=-1, gpu=-1, *args, **kwargs):
+        self.log = log
+        self.iring = iring
+        self.ints_per_file = ints_per_analysis
+        self.threshold = threshold
+        self.elevation_limit = elevation_limit*numpy.pi/180.0
+
+        self.core = core
+        self.gpu = gpu
+        
+        self.bind_proclog = ProcLog(type(self).__name__+"/bind")
+        self.in_proclog   = ProcLog(type(self).__name__+"/in")
+        self.size_proclog = ProcLog(type(self).__name__+"/size")
+        self.sequence_proclog = ProcLog(type(self).__name__+"/sequence0")
+        self.perf_proclog = ProcLog(type(self).__name__+"/perf")
+
+        self.in_proclog.update( {'nring':1, 'ring0':self.iring.name})
+        self.size_proclog.update({'nseq_per_gulp': 1})
+
+        self.shutdown_event = threading.Event()
+
+    def shutdown(self):
+        self.shutdown_event.set()
+
+    def main(self):
+        global TRIGGER_ACTIVE
+        
+        MAX_HISTORY = 10
+        
+        if self.core != -1:
+            bifrost.affinity.set_core(self.core)
+        if self.gpu != -1:
+            BFSetGPU(self.gpu)
+        self.bind_proclog.update({'ncore': 1,
+                                  'core0': bifrost.affinity.get_core(),
+                                  'ngpu': 1,
+                                  'gpu0': BFGetGPU(),})
+        
+        for iseq in self.iring.read(guarantee=True):
+            ihdr = json.loads(iseq.header.tostring())
+            fileid = 0
+            
+            self.sequence_proclog.update(ihdr)
+            self.log.info('TriggerOp: Config - %s' % ihdr)
+
+            cfreq             = ihdr['cfreq']
+            nchan             = ihdr['nchan']
+            npol              = ihdr['npol']
+            grid_size_x       = ihdr['grid_size_x']
+            grid_size_y       = ihdr['grid_size_y']
+            grid_size         = max([grid_size_x, grid_size_y])
+            sampling_length_x = ihdr['sampling_length_x']
+            sampling_length_y = ihdr['sampling_length_y']
+            sampling_length   = max([sampling_length_x, sampling_length_y])
+            print("Channel no: %d, Polarisation no: %d, Grid no: %d, Sampling: %.3f"%(nchan,npol,grid_size,sampling_length))
+            
+            x, y = numpy.arange(grid_size_x), numpy.arange(grid_size_y)
+            x, y = numpy.meshgrid(x, y)
+            rho = numpy.sqrt((x-grid_size_x/2)**2 + (y-grid_size_y/2)**2)
+            mask = numpy.where(rho <= grid_size*sampling_length*numpy.cos(self.elevation_limit), 
+                               False, True)
+            
+            igulp_size = nchan * npol * grid_size_x * grid_size_y * 8
+            ishape = (nchan,npol,grid_size_x,grid_size_y)
+            image = []
+            image_history = deque([], MAX_HISTORY)
+
+            prev_time = time.time()
+            iseq_spans = iseq.read(igulp_size)
+            nints = 0
+            
+            for ispan in iseq_spans:
+                if ispan.size < igulp_size:
+                    continue # Ignore final gulp
+                curr_time = time.time()
+                acquire_time = curr_time - prev_time
+                prev_time = curr_time
+                
+                idata = ispan.data_view(numpy.complex64).reshape(ishape)
+                itemp = idata.copy(space='cuda_host')
+                image.append(itemp)
+                nints += 1
+                if nints >= self.ints_per_file:
+                    image = numpy.fft.fftshift(image, axes=(3, 4))
+                    image = image[:, :, :, ::-1, :]
+                    ## NOTE:  This just uses the first polarization (XX) for now.
+                    ##        In the future we probably want to use Stokes I (if
+                    ##        possible) to beat the noise down a little.
+                    image = image[:,:,0,:,:].real.sum(axis=0).sum(axis=0)
+                    unix_time = (ihdr['time_tag'] / FS + ihdr['accumulation_time']
+                                * 1e-3 * fileid * self.ints_per_file)
+                    
+                    if len(image_history) == MAX_HISTORY:
+                        ## The transient detection is based on a differencing the
+                        ## current image (image) with a moving average of the last
+                        ## N images (image_background).  This is roughly like what
+                        ## is done at LWA1/LWA-SV to find events in the LASI images.
+                        image_background = numpy.median(image_history, axis=0)
+                        image_diff = numpy.ma.array(image - image_background, mask=mask)
+                        peak, mid, rms = image_diff.max(), image_diff.mean(), image_diff.std()
+                        print('-->', peak, mid, rms, '@', (peak-mid)/rms)
+                        if (peak-mid) > self.threshold*rms:
+                            print("Trigger Set at %.3f with S/N %f" % (unix_time, (peak-mid)/rms,))
+                            TRIGGER_ACTIVE.set()
+                            
+                    image_history.append( image )
+                    image = []
+                    nints = 0
+                    fileid += 1
+
 class SaveOp(object):
-    def __init__(self, log, iring, filename, grid_size, core=-1, gpu=-1, cpu=False,
-                 profile=False, ints_per_file=1, out_dir='', *args, **kwargs):
+    def __init__(self, log, iring, filename, core=-1, gpu=-1, cpu=False,
+                 profile=False, ints_per_file=1, out_dir='', triggering=False, *args, **kwargs):
         self.log = log
         self.iring = iring
         self.filename = filename
-        self.grid_size = grid_size
         self.ints_per_file = ints_per_file
         self.out_dir = out_dir
+        self.triggering = triggering
 
         # TODO: Validate ntime_gulp vs accumulation_time
         self.core = core
@@ -998,8 +1124,11 @@ class SaveOp(object):
     def shutdown(self):
         self.shutdown_event.set()
 
-
     def main(self):
+        global TRIGGER_ACTIVE
+        
+        MAX_HISTORY = 5
+        
         if self.core != -1:
             bifrost.affinity.set_core(self.core)
         if self.gpu != -1:
@@ -1009,26 +1138,32 @@ class SaveOp(object):
                                   'ngpu': 1,
                                   'gpu0': BFGetGPU(),})
 
-
-        fileid = 0
+        image_history = deque([], MAX_HISTORY)
+        
         for iseq in self.iring.read(guarantee=True):
             ihdr = json.loads(iseq.header.tostring())
-
+            fileid = 0
+            
             self.sequence_proclog.update(ihdr)
             self.log.info('SaveOp: Config - %s' % ihdr)
 
             cfreq = ihdr['cfreq']
             nchan = ihdr['nchan']
             npol = ihdr['npol']
-            print("Channel no: %d, Polarisation no: %d"%(nchan,npol))
+            grid_size_x       = ihdr['grid_size_x']
+            grid_size_y       = ihdr['grid_size_y']
+            grid_size         = max([grid_size_x, grid_size_y])
+            print("Channel no: %d, Polarisation no: %d, Grid no: %d"%(nchan,npol,grid_size))
 
-            igulp_size = nchan * npol * self.grid_size * self.grid_size * 8
-            ishape = (nchan,npol,self.grid_size,self.grid_size)
+            igulp_size = nchan * npol * grid_size_x * grid_size_y * 8
+            ishape = (nchan,npol,grid_size_x,grid_size_y)
             image = []
-
+            
             prev_time = time.time()
             iseq_spans = iseq.read(igulp_size)
             nints = 0
+            
+            dump_counter = 0
 
             if self.profile:
                 spani = 0
@@ -1039,7 +1174,7 @@ class SaveOp(object):
                 curr_time = time.time()
                 acquire_time = curr_time - prev_time
                 prev_time = curr_time
-
+                
                 idata = ispan.data_view(numpy.complex64).reshape(ishape)
                 itemp = idata.copy(space='cuda_host')
                 image.append(itemp)
@@ -1048,15 +1183,26 @@ class SaveOp(object):
                     image = numpy.fft.fftshift(image, axes=(3, 4))
                     image = image[:, :, :, ::-1, :]
                     unix_time = (ihdr['time_tag'] / FS + ihdr['accumulation_time']
-                                 * 1e-3 * fileid * self.ints_per_file)
+                                * 1e-3 * fileid * self.ints_per_file)
                     image_nums = numpy.arange(fileid * self.ints_per_file, (fileid + 1) * self.ints_per_file)
                     filename = os.path.join(self.out_dir, 'EPIC_{0:3f}_{1:0.3f}MHz.npz'.format(unix_time, cfreq/1e6))
-                    numpy.savez(filename, image=image, hdr=ihdr, image_nums=image_nums)
+                    
+                    image_history.append( (filename, image, ihdr, image_nums) )
+                    
+                    if TRIGGER_ACTIVE.is_set() or not self.triggering:
+                        if dump_counter == 0:
+                            dump_counter = 20 + MAX_HISTORY
+                        elif dump_counter == 1:
+                            TRIGGER_ACTIVE.clear()
+                        cfilename, cimage, chdr, cimage_nums = image_history.popleft()
+                        numpy.savez(cfilename, image=cimage, hdr=chdr, image_nums=cimage_nums)
+                        print("SaveOp - Image Saved")
+                        dump_counter -= 1
+                        
                     image = []
                     nints = 0
                     fileid += 1
-                    print("SaveOp - Image Saved")
-
+                    
                 curr_time = time.time()
                 process_time = curr_time - prev_time
                 prev_time = curr_time
@@ -1114,24 +1260,34 @@ def main():
 
     # Main Input: UDP Broadcast RX from F-Engine?
 
-    parser = argparse.ArgumentParser(description='EPIC Correlator')
-    parser.add_argument('--addr', type=str, default = "p5p1", help= 'F-Engine UDP Stream Address')
-    parser.add_argument('--port', type=int, default = 4015, help= 'F-Engine UDP Stream Port')
-    parser.add_argument('--utcstart', type=str, default = '1970_1_1T0_0_0', help= 'F-Engine UDP Stream Start Time')
-    parser.add_argument('--imagesize', type=int, default = 64, help = '1-D Image Size')
-    parser.add_argument('--imageres', type=float, default = 1.79057, help = 'Image pixel size in degrees')
-    parser.add_argument('--offline', action='store_true', help = 'Load TBN data from Disk')
-    parser.add_argument('--tbnfile', type=str, help = 'TBN Data Path')
-    parser.add_argument('--nts',type=int, default = 1000, help= 'Number of timestamps per span')
-    parser.add_argument('--accumulate',type=int, default = 1000, help='How many milliseconds to accumulate an image over')
-    parser.add_argument('--channels',type=int, default=1, help='How many channels to produce')
-    parser.add_argument('--singlepol', action='store_true', help = 'Process only X pol. in online mode')
-    parser.add_argument('--removeautocorrs', action='store_true', help = 'Removes Autocorrelations')
-    parser.add_argument('--benchmark', action='store_true',help = 'benchmark gridder')
-    parser.add_argument('--profile', action='store_true', help = 'Run cProfile on ALL threads. Produces trace for each individual thread')
-    parser.add_argument('--ints_per_file', type=int, default=1, help='Number of integrations per output FITS file. Default is 1.')
-    parser.add_argument('--out_dir', type=str, default='', help='Directory for output files. Default is current directory.')
-
+    parser = argparse.ArgumentParser(description='EPIC Correlator', 
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    group1 = parser.add_argument_group('Online Data Processing')
+    group1.add_argument('--addr', type=str, default = "p5p1", help= 'F-Engine UDP Stream Address')
+    group1.add_argument('--port', type=int, default = 4015, help= 'F-Engine UDP Stream Port')
+    group1.add_argument('--utcstart', type=str, default = '1970_1_1T0_0_0', help= 'F-Engine UDP Stream Start Time')
+    group2 = parser.add_argument_group('Offline Data Processing')
+    group2.add_argument('--offline', action='store_true', help = 'Load TBN data from Disk')
+    group2.add_argument('--tbnfile', type=str, help = 'TBN Data Path')
+    group3 = parser.add_argument_group('Processing Options')
+    group3.add_argument('--imagesize', type=int, default = 64, help = '1-D Image Size')
+    group3.add_argument('--imageres', type=float, default = 1.79057, help = 'Image pixel size in degrees')
+    group3.add_argument('--nts',type=int, default = 1000, help= 'Number of timestamps per span')
+    group3.add_argument('--accumulate',type=int, default = 1000, help='How many milliseconds to accumulate an image over')
+    group3.add_argument('--channels',type=int, default=1, help='How many channels to produce')
+    group3.add_argument('--singlepol', action='store_true', help = 'Process only X pol. in online mode')
+    group3.add_argument('--removeautocorrs', action='store_true', help = 'Removes Autocorrelations')
+    group4 = parser.add_argument_group('Output')
+    group4.add_argument('--ints_per_file', type=int, default=1, help='Number of integrations per output FITS file.')
+    group4.add_argument('--out_dir', type=str, default='.', help='Directory for output files. Default is current directory.')
+    group5 = parser.add_argument_group('Self Triggering')
+    group5.add_argument('--triggering', action='store_true', help='Enable self-triggering')
+    group5.add_argument('--threshold', type=float, default=8.0, help='Self-triggering threshold')
+    group5.add_argument('--elevation-limit', type=float, default=20.0, help='Self-trigger minimum elevation limit in degrees')
+    group6 = parser.add_argument_group('Benchmarking')
+    group6.add_argument('--benchmark', action='store_true',help = 'benchmark gridder')
+    group6.add_argument('--profile', action='store_true', help = 'Run cProfile on ALL threads. Produces trace for each individual thread')
+    
     args = parser.parse_args()
     # Logging Setup
     # TODO: Set this up properly
@@ -1140,7 +1296,7 @@ def main():
 
     if not os.path.isdir(args.out_dir):
         print('Output directory does not exist. Defaulting to current directory.')
-        args.out_dir = ''
+        args.out_dir = '.'
 
 
     log = logging.getLogger(__name__)
@@ -1228,9 +1384,14 @@ def main():
                                 remove_autocorrs=args.removeautocorrs,
                                 core=cores.pop(0), gpu=gpus.pop(0),benchmark=args.benchmark,
                                 profile=args.profile))
-    ops.append(SaveOp(log, gridandfft_ring, "EPIC_", args.imagesize, out_dir=args.out_dir,
+    if args.triggering:
+        ops.append(TriggerOp(log, gridandfft_ring, core=cores.pop(0), gpu=gpus.pop(0), 
+                             ints_per_analysis=args.ints_per_file, threshold=args.threshold, 
+                             elevation_limit=max([0.0, args.elevation_limit])))
+    ops.append(SaveOp(log, gridandfft_ring, "EPIC_", out_dir=args.out_dir,
                          core=cores.pop(0), gpu=gpus.pop(0), cpu=False,
-                         ints_per_file=args.ints_per_file, profile=args.profile))
+                         ints_per_file=args.ints_per_file, triggering=args.triggering, 
+                         profile=args.profile))
 
     threads= [threading.Thread(target=op.main) for op in ops]
 
