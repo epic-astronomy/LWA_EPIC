@@ -47,7 +47,7 @@ BFNoSpinZone()
 ## LWA Software Library Includes
 from lsl.common.constants import c as speedOfLight
 from lsl.writer import fitsidi
-from lsl.reader.ldp import TBNFile
+from lsl.reader.ldp import TBNFile, TBFFile
 from lsl.common.stations import lwasv, parseSSMIF
 
 #################### Trigger Processing #######################
@@ -141,7 +141,7 @@ def GenerateLocations(lsl_locs, frequencies, ntime, nchan, npol, grid_size=64, g
 ######################### EPIC ################################
 
 
-class OfflineCaptureOp(object):
+class TBNOfflineCaptureOp(object):
     def __init__(self, log, oring, filename, chan_bw=25000, profile=False, core=-1):
         self.log = log
         self.oring = oring
@@ -208,7 +208,7 @@ class OfflineCaptureOp(object):
                     try:
                         _, _, next_data = idf.read(0.1, timeInSamples=True)
                     except Exception as e:
-                        print("FillerOp: Error - '%s'" % str(e))
+                        print("TBNFillerOp: Error - '%s'" % str(e))
                         idf.close()
                         self.shutdown()
                         break
@@ -247,7 +247,7 @@ class OfflineCaptureOp(object):
                         if spani >= 10:
                             sys.exit()
                             break
-        print("FillerOp - Done")
+        print("TBNFillerOp - Done")
 
 
 class FDomainOp(object):
@@ -370,6 +370,124 @@ class FDomainOp(object):
         print("FDomainOp - Done")
 
 
+class TBFOfflineCaptureOp(object):
+    def __init__(self, log, oring, filename, chan_bw=25000, profile=False, core=-1):
+        self.log = log
+        self.oring = oring
+        self.filename = filename
+        self.core = core
+        self.profile = profile
+        self.chan_bw = 25000
+
+        self.bind_proclog = ProcLog(type(self).__name__+"/bind")
+        self.out_proclog  = ProcLog(type(self).__name__+"/out")
+        self.size_proclog = ProcLog(type(self).__name__+"/size")
+        self.sequence_proclog = ProcLog(type(self).__name__+"/sequence0")
+        self.perf_proclog = ProcLog(type(self).__name__+"/perf")
+        self.out_proclog.update({'nring':1, 'ring0':self.oring.name})
+
+        self.shutdown_event = threading.Event()
+
+    def shutdown(self):
+        self.shutdown_event.set()
+
+    def main(self):
+        if self.core != -1:
+            bifrost.affinity.set_core(self.core)
+        self.bind_proclog.update({'ncore': 1,
+                                  'core0': bifrost.affinity.get_core(),})
+
+        idf = TBFFile(self.filename)
+        srate = idf.getInfo('sampleRate')
+        chans = numpy.round(idf.getInfo('freq1') / srate).astype(numpy.int32)
+        chan0 = int(chans[0])
+        nchan = len(chans)
+        tInt, tStart, data = idf.read(0.1, timeInSamples=True)
+        
+        # Setup the ring metadata and gulp sizes
+        ntime = data.shape[2]
+        nstand, npol = data.shape[0]/2, 2
+        oshape = (ntime,nchan,nstand,npol)
+        ogulp_size = ntime*nchan*nstand*npol*1        # ci4
+        self.oring.resize(ogulp_size)
+
+        self.size_proclog.update({'nseq_per_gulp': ntime})
+
+        # Build the initial ring header
+        ohdr = {}
+        ohdr['time_tag'] = tStart
+        ohdr['seq0']     = 0
+        ohdr['chan0']    = chan0
+        ohdr['nchan']    = nchan
+        ohdr['cfreq']    = (chan0 + 0.5*(nchan-1))*srate
+        ohdr['bw']       = srate*nchan
+        ohdr['nstand']   = nstand
+        ohdr['npol']     = npol
+        ohdr['nbit']     = 4
+        ohdr['complex']  = True
+        ohdr['axes']     = 'time,chan,stand,pol'
+        ohdr_str = json.dumps(ohdr)
+
+        ## Fill the ring using the same data over and over again
+        with self.oring.begin_writing() as oring:
+            with oring.begin_sequence(time_tag=tStart, header=ohdr_str) as oseq:
+                prev_time = time.time()
+                if self.profile:
+                    spani = 0
+                while not self.shutdown_event.is_set():
+                    ## Get the current section to use
+                    try:
+                        _, _, next_data = idf.read(0.1, timeInSamples=True)
+                    except Exception as e:
+                        print("TBFFillerOp: Error - '%s'" % str(e))
+                        idf.close()
+                        self.shutdown()
+                        break
+
+                    curr_time = time.time()
+                    acquire_time = curr_time - prev_time
+                    prev_time = curr_time
+
+                    with oseq.reserve(ogulp_size) as ospan:
+                        curr_time = time.time()
+                        reserve_time = curr_time - prev_time
+                        prev_time = curr_time
+
+                        ## Setup and load
+                        idata = data
+
+                        odata = ospan.data_view(numpy.int8).reshape(oshape)
+
+                        ## Transpose and reshape to time by channel by stand by pol
+                        idata = idata.transpose((2,1,0))
+                        idata = idata.reshape((ntime,nchan,nstand,npol))
+                        idata = idata.copy()
+                        
+                        ## Quantization
+                        try:
+                            Quantize(idata, qdata, scale=1./numpy.sqrt(nchan))
+                        except NameError:
+                            qdata = bifrost.ndarray(shape=idata.shape, native=False, dtype='ci4')
+                            Quantize(idata, qdata, scale=1.0)
+                            
+                        ## Save
+                        odata[...] = qdata.copy(space='cuda_host').view(numpy.int8).reshape(oshape)
+                        
+                    data = next_data
+
+                    curr_time = time.time()
+                    process_time = curr_time - prev_time
+                    prev_time = curr_time
+                    self.perf_proclog.update({'acquire_time': acquire_time,
+                                              'reserve_time': reserve_time,
+                                              'process_time': process_time,})
+                    if self.profile:
+                        spani += 1
+                        if spani >= 10:
+                            sys.exit()
+                            break
+        print("TBFFillerOp - Done")
+
 
 ## For when we don't need to care about doing the F-Engine ourself.
 ## TODO: Implement this come implementation time...
@@ -432,6 +550,7 @@ class FEngineCaptureOp(object):
             while not self.shutdown_event.is_set():
                 status = capture.recv()
         del capture
+
 
 class DecimationOp(object):
     def __init__(self, log, iring, oring, ntime_gulp=2500, nchan_out=1, npol_out=2, guarantee=True, core=-1):
@@ -1261,6 +1380,7 @@ def main():
     group2 = parser.add_argument_group('Offline Data Processing')
     group2.add_argument('--offline', action='store_true', help = 'Load TBN data from Disk')
     group2.add_argument('--tbnfile', type=str, help = 'TBN Data Path')
+    group2.add_argument('--tbffile', type=str, help = 'TBF Data Path')
     group3 = parser.add_argument_group('Processing Options')
     group3.add_argument('--imagesize', type=int, default = 64, help = '1-D Image Size')
     group3.add_argument('--imageres', type=float, default = 1.79057, help = 'Image pixel size in degrees')
@@ -1344,11 +1464,20 @@ def main():
     # Setup threads
 
     if args.offline:
-        ops.append(OfflineCaptureOp(log, fcapture_ring, args.tbnfile,
-                                    core=cores.pop(0), profile=args.profile))
-        ops.append(FDomainOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts,
-                             nchan_out=args.channels, core=cores.pop(0), gpu=gpus.pop(0),
-                             profile=args.profile))
+        if args.tbnfile is not None:
+            ops.append(TBNOfflineCaptureOp(log, fcapture_ring, args.tbnfile,
+                                           core=cores.pop(0), profile=args.profile))
+            ops.append(FDomainOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts,
+                                 nchan_out=args.channels, core=cores.pop(0), gpu=gpus.pop(0),
+                                 profile=args.profile))
+        elif args.tbffile is not None:
+            ops.append(TBFOfflineCaptureOp(log, fcapture_ring, args.tbffile,
+                                           core=cores.pop(0), profile=args.profile))
+            ops.append(DecimationOp(log, fcapture_ring, fdomain_ring, ntime_gulp=args.nts,
+                                nchan_out=args.channels, npol_out=1 if args.singlepol else 2,
+                                core=cores.pop(0)))
+        else:
+            raise parser.error("--offline set but no file provided via --tbnfile or --tbffile")
     else:
         # It would be great is we could pull this from ADP MCS...
         utc_start_dt = datetime.datetime.strptime(args.utcstart, "%Y_%m_%dT%H_%M_%S")
