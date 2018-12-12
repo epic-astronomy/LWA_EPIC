@@ -868,7 +868,7 @@ class MOFFCorrelatorOp(object):
                                     autocorrs_av = bifrost.zeros(shape=(1,nchan,npol**2,nstand), dtype=numpy.complex64, space='cuda')
                                     autocorr_g = bifrost.zeros(shape=(1,nchan,npol**2,self.grid_size,self.grid_size), dtype=numpy.complex64, space='cuda')
                                     autocorr_lo = bifrost.ndarray(numpy.ones(shape=(1,nchan,npol**2,nstand,3),dtype=numpy.int32)*self.grid_size/2,space='cuda')
-                                    autocorr_il = bifrost.ndarray(numpy.ones(shape=(1,nchan,npol**2,self.ant_extent,self.ant_extent),dtype=numpy.complex64),space='cuda')
+                                    autocorr_il = bifrost.ndarray(numpy.ones(shape=(1,nchan,npol**2,nstand,self.ant_extent,self.ant_extent),dtype=numpy.complex64),space='cuda')
 
 
                                 # Cross multiply to calculate autocorrs
