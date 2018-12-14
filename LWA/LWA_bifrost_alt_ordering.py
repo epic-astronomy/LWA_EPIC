@@ -803,12 +803,6 @@ class MOFFCorrelatorOp(object):
                 except AttributeError:
                     self.locs = bifrost.ndarray(locs.astype(numpy.int32), space='cuda')
                     
-                # Make sure we have convolution kernels to work with.  If not, set them up
-                try:
-                    self.kernels
-                except AttributeError:
-                    self.kernels = bifrost.ndarray(numpy.ones(shape=(self.ntime_gulp,nchan,nstand,npol,self.ant_extent,self.ant_extent),dtype=numpy.complex64),space='cuda')
-                    
                 ohdr = ihdr.copy()
                 ohdr['nbit'] = 64
 
@@ -835,25 +829,26 @@ class MOFFCorrelatorOp(object):
                     raise ValueError('Cannot write fits file without knowing polarization list')
                 ohdr_str = json.dumps(ohdr)
 
-                # Setup the phasing terms for zenith
-                # Phases are Nchan x Npol x Nstand
-                phases = numpy.zeros((itshape[1], itshape[2], itshape[3]), dtype=numpy.complex64)
+                # Setup the kernels to include phasing terms for zenith
+                # Phases are Ntime x Nchan x Nstand x Npol x extent x extent
+                phases = numpy.zeros((self.ntime_gulp,nchan,nstand,npol,self.ant_extent,self.ant_extent), dtype=numpy.complex64)
                 for i in xrange(nstand):
                     ## X
                     a = self.antennas[2*i + 0]
                     delay = a.cable.delay(freq) - a.stand.z / speedOfLight
-                    phases[:,i,0] = numpy.exp(2j*numpy.pi*freq*delay)
-                    phases[:,i,0] /= numpy.sqrt(a.cable.gain(freq))
+                    phases[:,:,i,0,:,:] = numpy.exp(2j*numpy.pi*freq*delay)
+                    phases[:,:,i,0,:,:] /= numpy.sqrt(a.cable.gain(freq))
                     if npol == 2:
                         ## Y
                         a = self.antennas[2*i + 1]
                         delay = a.cable.delay(freq) - a.stand.z / speedOfLight
-                        phases[:,i,1] = numpy.exp(2j*numpy.pi*freq*delay)
-                        phases[:,i,1] /= numpy.sqrt(a.cable.gain(freq))
+                        phases[:,:,i,1,:,:] = numpy.exp(2j*numpy.pi*freq*delay)
+                        phases[:,:,i,1,:,:] /= numpy.sqrt(a.cable.gain(freq))
                     ## Explicit outrigger masking - we probably want to do
                     ## away with this at some point
                     if a.stand.id == 256:
-                        phases[:,i,:] = 0.0
+                        phases[:,:,i,:,:,:] = 0.0
+                phases = phases.conj()
                 phases = bifrost.ndarray(phases)
                 try:
                     copy_array(gphases, phases)
@@ -900,17 +895,18 @@ class MOFFCorrelatorOp(object):
                                 print("  Input copy time: %f" % (time1a-time1))
 
                             ## Unpack
-                            try:
-                                udata = udata.reshape(*tdata.shape)
-                                Unpack(tdata, udata)
-                            except NameError:
-                                udata = bifrost.ndarray(shape=tdata.shape, dtype=numpy.complex64, space='cuda')
-                                Unpack(tdata, udata)
+                            #try:
+                            #    udata = udata.reshape(*tdata.shape)
+                            #    Unpack(tdata, udata)
+                            #except NameError:
+                            #    udata = bifrost.ndarray(shape=tdata.shape, dtype=numpy.complex64, space='cuda')
+                            #    Unpack(tdata, udata)
+                            udata = tdata
                             if self.benchmark == True:
                                 time1b = time.time()
-                            ## Phase
-                            bifrost.map('a(i,j,k,l) *= b(j,k,l)',
-                                        {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)
+                            ### Phase
+                            #bifrost.map('a(i,j,k,l) *= b(j,k,l)',
+                            #            {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)
                             if self.benchmark == True:
                                 time1c = time.time()
                                 print("  Unpack and phase-up time: %f" % (time1c-time1a))
@@ -932,7 +928,7 @@ class MOFFCorrelatorOp(object):
                                 bf_romein.execute(udata, gdata)
                             except NameError:
                                 bf_romein = Romein()
-                                bf_romein.init(self.locs, self.kernels, self.grid_size, polmajor=False)
+                                bf_romein.init(self.locs, gphases, self.grid_size, polmajor=False)
                                 bf_romein.execute(udata, gdata)
                             gdata = gdata.reshape(self.ntime_gulp*nchan*npol,self.grid_size,self.grid_size)
                             #gdata = self.LinAlgObj.matmul(1.0, udata, bfantgridmap, 0.0, gdata)
