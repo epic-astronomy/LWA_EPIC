@@ -127,7 +127,7 @@ def GenerateLocations(lsl_locs, frequencies, ntime, nchan, npol, grid_size=64, g
     locy = numpy.tile(lsl_locsf[1,...],(ntime,1,1,1))
     locz = numpy.tile(lsl_locsf[2,...],(ntime,1,1,1))
     # .. and then stick them all into one large array
-    locc = numpy.concatenate([[locx,], [locy,], [locz,]]).transpose(1,3,4,2,0).copy()
+    locc = numpy.concatenate([[locx,], [locy,], [locz,]]).transpose(0,1,3,4,2).copy()
 
     return delta, locc, sll
     
