@@ -836,14 +836,16 @@ class MOFFCorrelatorOp(object):
                     ## X
                     a = self.antennas[2*i + 0]
                     delay = a.cable.delay(freq) - a.stand.z / speedOfLight
-                    phases[:,:,0,i,:,:] = numpy.exp(2j*numpy.pi*freq*delay)
-                    phases[:,:,0,i,:,:] /= numpy.sqrt(a.cable.gain(freq))
+                    for j in xrange(nchan):
+                        phases[:,j,0,i,:,:] = numpy.exp(2j*numpy.pi*freq[j]*delay[j])
+                        phases[:,j,0,i,:,:] /= numpy.sqrt(a.cable.gain(freq[j]))
                     if npol == 2:
                         ## Y
                         a = self.antennas[2*i + 1]
                         delay = a.cable.delay(freq) - a.stand.z / speedOfLight
-                        phases[:,:,1,i,:,:] = numpy.exp(2j*numpy.pi*freq*delay)
-                        phases[:,:,1,i,:,:] /= numpy.sqrt(a.cable.gain(freq))
+                        for j in xrange(nchan):
+                            phases[:,j,1,i,:,:] = numpy.exp(2j*numpy.pi*freq[j]*delay[j])
+                            phases[:,j,1,i,:,:] /= numpy.sqrt(a.cable.gain(freq[j]))
                     ## Explicit outrigger masking - we probably want to do
                     ## away with this at some point
                     if a.stand.id == 256:
