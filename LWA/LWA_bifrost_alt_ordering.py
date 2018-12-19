@@ -831,6 +831,7 @@ class MOFFCorrelatorOp(object):
 
                 # Setup the kernels to include phasing terms for zenith
                 # Phases are Ntime x Nchan x Nstand x Npol x extent x extent
+                freq.shape += (1,1)
                 phases = numpy.zeros((self.ntime_gulp,nchan,nstand,npol,self.ant_extent,self.ant_extent), dtype=numpy.complex64)
                 for i in xrange(nstand):
                     ## X

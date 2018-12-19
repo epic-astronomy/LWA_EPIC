@@ -831,21 +831,20 @@ class MOFFCorrelatorOp(object):
 
                 # Setup the kernels to include phasing terms for zenith
                 # Phases are Ntime x Nchan x Npol x Nstand x extent x extent
+                freq.shape += (1,1)
                 phases = numpy.zeros((self.ntime_gulp,nchan,npol,nstand,self.ant_extent,self.ant_extent), dtype=numpy.complex64)
                 for i in xrange(nstand):
                     ## X
                     a = self.antennas[2*i + 0]
                     delay = a.cable.delay(freq) - a.stand.z / speedOfLight
-                    for j in xrange(nchan):
-                        phases[:,j,0,i,:,:] = numpy.exp(2j*numpy.pi*freq[j]*delay[j])
-                        phases[:,j,0,i,:,:] /= numpy.sqrt(a.cable.gain(freq[j]))
+                    phases[:,:,0,i,:,:] = numpy.exp(2j*numpy.pi*freq*delay)
+                    phases[:,:,0,i,:,:] /= numpy.sqrt(a.cable.gain(freq))
                     if npol == 2:
                         ## Y
                         a = self.antennas[2*i + 1]
                         delay = a.cable.delay(freq) - a.stand.z / speedOfLight
-                        for j in xrange(nchan):
-                            phases[:,j,1,i,:,:] = numpy.exp(2j*numpy.pi*freq[j]*delay[j])
-                            phases[:,j,1,i,:,:] /= numpy.sqrt(a.cable.gain(freq[j]))
+                        phases[:,:,1,i,:,:] = numpy.exp(2j*numpy.pi*freq*delay)
+                        phases[:,:,1,i,:,:] /= numpy.sqrt(a.cable.gain(freq))
                     ## Explicit outrigger masking - we probably want to do
                     ## away with this at some point
                     if a.stand.id == 256:
