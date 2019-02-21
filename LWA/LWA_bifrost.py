@@ -895,14 +895,13 @@ class MOFFCorrelatorOp(object):
                                 time1a = time.time()
                                 print("  Input copy time: %f" % (time1a-time1))
 
-                            ## Unpack
-                            #try:
-                            #    udata = udata.reshape(*tdata.shape)
-                            #    Unpack(tdata, udata)
-                            #except NameError:
-                            #    udata = bifrost.ndarray(shape=tdata.shape, dtype=numpy.complex64, space='cuda')
-                            #    Unpack(tdata, udata)
-                            udata = tdata
+                            # Unpack
+                            try:
+                                udata = udata.reshape(*tdata.shape)
+                                Unpack(tdata, udata)
+                            except NameError:
+                                udata = bifrost.ndarray(shape=tdata.shape, dtype=numpy.complex64, space='cuda')
+                                Unpack(tdata, udata)
                             if self.benchmark == True:
                                 time1b = time.time()
                             ### Phase
@@ -992,11 +991,21 @@ class MOFFCorrelatorOp(object):
                                             axis_names=('i','j','k','l'),
                                             shape=(self.ntime_gulp,nchan,npol**2,nstand))
 
-                            bifrost.map('a(i,j,p,k,l) += b(0,i,j,p/2,k,l)*b(0,i,j,p%2,k,l).conj()',
+                            #bifrost.map('a(i,j,p,k,l) += b(0,i,j,p/2,k,l)*b(0,i,j,p%2,k,l).conj()',
+                            #            {'a':crosspol, 'b':gdata},
+                            #            axis_names=('i','j', 'p', 'k', 'l'),
+                            #            shape=(self.ntime_gulp, nchan, npol**2, self.grid_size, self.grid_size))
+                            crosspol = crosspol.reshape(self.ntime_gulp*nchan, npol**2, self.grid_size*self.grid_size)
+                            gdata = gdata.reshape(self.ntime_gulp*nchan, npol, self.grid_size*self.grid_size)
+                            bifrost.map("""a(i,0,j) += b(i,0,j).mag2();
+                                           a(i,1,j) = cfcmaf(b(i,1,j), b(i,0,j), a(i,1,j));
+                                           a(i,2,j) = a(i,1,j).conj();
+                                           a(i,3,j) += b(i,1,j).mag2();""",
                                         {'a':crosspol, 'b':gdata},
-                                        axis_names=('i','j', 'p', 'k', 'l'),
-                                        shape=(self.ntime_gulp, nchan, npol**2, self.grid_size, self.grid_size))
-
+                                        axis_names=('i','j'),
+                                        shape=(self.ntime_gulp*nchan, self.grid_size*self.grid_size))
+                            crosspol = crosspol.reshape(self.ntime_gulp, nchan, npol**2, self.grid_size, self.grid_size)
+                            gdata = gdata.reshape(1, self.ntime_gulp, nchan, npol, self.grid_size, self.grid_size)
 
                             # Increment
                             accum += 1e3 * self.ntime_gulp / CHAN_BW
