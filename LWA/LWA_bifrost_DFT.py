@@ -90,27 +90,31 @@ def get_thread_stats():
 
 ############### Direct Fourier Transform Matrix ###############
 
-def form_dft_matrix(lmn_vector, antenna_location, antenna_phases):
+def form_dft_matrix(lmn_vector,
+                    antenna_location,
+                    antenna_phases,
+                    nchan,
+                    npol,
+                    nstand):
 
     # lm_matrix, shape = [...,2] , where the last dimension is an l/m pair.    
     # print(lm_vector.shape)
     # print(n_vector.shape)
     # print(antenna_location.shape)
     lmn_vector[:,2] = 1.0 - numpy.sqrt(1.0 - lmn_vector[:,0]**2 - lmn_vector[:,1]**2)
-    print(lmn_vector.shape)
-    dft_matrix = numpy.zeros(shape=(antenna_phases.shape[0],lmn_vector.shape[0],antenna_location.shape[3]),dtype=numpy.complex64)
-
+    dft_matrix = numpy.zeros(shape=(nchan, npol,lmn_vector.shape[0],nstand),dtype=numpy.complex64)
     # DFT phase factors
     for i in numpy.arange(antenna_location.shape[3]):
         ant_uvw = antenna_location[0,0,:,i]
             # Both polarisations are at the same physical location, only phases differ.
-        dft_matrix[:,:,i] = numpy.exp(2j*numpy.pi*(numpy.dot(lmn_vector,ant_uvw)))
+        dft_matrix[:,:,:,i] = numpy.exp(2j*numpy.pi*(numpy.dot(lmn_vector,ant_uvw)))
 
     # Can put the antenna phases in as well because maths
 
-    for i in numpy.arange(dft_matrix.shape[1]):
-        for p in numpy.arange(antenna_phases.shape[0]):
-            dft_matrix[p,i,:] *= antenna_phases[p,:]
+    for i in numpy.arange(dft_matrix.shape[2]):
+        for p in numpy.arange(npol):
+            for c in numpy.arange(nchan):
+                dft_matrix[c,p,i,:] *= antenna_phases[c,p,:]
                           
     
 
@@ -1262,20 +1266,21 @@ class MOFF_DFT_CorrelatorOp(object):
 
                 # Setup the kernels to include phasing terms for zenith
                 # Phases are Nchan x Npol x Nstand
-                freq.shape += (1,1)
-                phases = numpy.zeros((npol,nstand), dtype=numpy.complex64)
+                #freq.shape += (1,)
+                
+                phases = numpy.zeros((nchan,npol,nstand), dtype=numpy.complex64)
                 for i in xrange(nstand):
                     ## X
                     a = self.antennas[2*i + 0]
                     delay = a.cable.delay(freq) - a.stand.z / speedOfLight
-                    phases[0,i] = numpy.exp(2j*numpy.pi*freq*delay)
-                    phases[0,i] /= numpy.sqrt(a.cable.gain(freq))
+                    phases[:,0,i] = numpy.exp(2j*numpy.pi*freq*delay)
+                    phases[:,0,i] /= numpy.sqrt(a.cable.gain(freq))
                     if npol == 2:
                         ## Y
                         a = self.antennas[2*i + 1]
                         delay = a.cable.delay(freq) - a.stand.z / speedOfLight
-                        phases[1,i] = numpy.exp(2j*numpy.pi*freq*delay)
-                        phases[1,i] /= numpy.sqrt(a.cable.gain(freq))
+                        phases[:,1,i] = numpy.exp(2j*numpy.pi*freq*delay)
+                        phases[:,1,i] /= numpy.sqrt(a.cable.gain(freq))
                         ## Explicit outrigger masking - we probably want to do
                         ## away with this at some point                     if a.stand.id == 256:                         phases[:,i] = 0.0
                                  # nj()
@@ -1284,20 +1289,18 @@ class MOFF_DFT_CorrelatorOp(object):
                 # Setup DFT Transform Matrix
 
                 lm_matrix = numpy.zeros(shape=(self.skymodes1d,self.skymodes1d,3))
-                print(locs[:,0,:,0])
                 lm_step=2.0/self.skymodes1d
                 for i in numpy.arange(lm_matrix.shape[0]):
                     for j in numpy.arange(lm_matrix.shape[0]):
                         lm_matrix[i,j] = numpy.asarray([i*lm_step-1.0,j*lm_step-1.0,0.0])
                         lm_vector = lm_matrix.reshape((self.skymodes,3))
-                self.dftm = bifrost.ndarray(form_dft_matrix(lm_vector, locs, phases))
+                self.dftm = bifrost.ndarray(form_dft_matrix(lm_vector, locs, phases, nchan, npol, nstand))
                 
                 #self.dftm = bifrost.ndarray(numpy.tile(self.dftm[numpy.newaxis,:],(nchan,1,1,1)))
                 dftm_cu = self.dftm.copy(space='cuda')
                 #sys.exit(1)
                 
                 oshape = (nchan,npol**2,self.skymodes,1)
-                print(oshape)
                 ogulp_size = nchan * npol**2 * self.skymodes * 8
                 self.iring.resize(igulp_size)
                 self.oring.resize(ogulp_size,buffer_factor=5)
@@ -1388,15 +1391,8 @@ class MOFF_DFT_CorrelatorOp(object):
                             accum += 1e3 * self.ntime_gulp / CHAN_BW
                             
                             if accum >= self.accumulation_time:
-                                print("Outputting Image to Save Operation")
-                                # gdatas = gdatas.copy(space='system')
-                                # gdatass = gdatas.transpose((3,0,1,2))
-                                # print(gdatass.shape)
-                                # gdatass = gdatass.copy()
-                                # #gdatass = gdatass[0,:,:,:]
-                                # gdatass = gdatass.copy(space='cuda')
+
                                 bifrost.reduce(gdatas, accumulated_image, op='sum')
-                                # gdatas= gdatas.copy(space='cuda')
 
                                 curr_time = time.time()
                                 process_time = curr_time - prev_time
