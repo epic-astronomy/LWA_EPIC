@@ -90,25 +90,21 @@ def get_thread_stats():
 
 ############### Direct Fourier Transform Matrix ###############
 
-def form_dft_matrix(lm_vector, antenna_location, antenna_phases):
+def form_dft_matrix(lmn_vector, antenna_location, antenna_phases):
 
     # lm_matrix, shape = [...,2] , where the last dimension is an l/m pair.    
-    n_vector = numpy.sqrt(1.0 - lm_vector[:,0]**2 - lm_vector[:,1]**2) - 1.0
     # print(lm_vector.shape)
     # print(n_vector.shape)
     # print(antenna_location.shape)
-    lmn_vector = numpy.concatenate((lm_vector,n_vector[:,numpy.newaxis]),1)
-
-    dft_matrix = numpy.zeros(shape=(antenna_phases.shape[0],lm_vector.shape[0],antenna_location.shape[3]),dtype=numpy.complex64)
+    lmn_vector[:,2] = 1.0 - numpy.sqrt(1.0 - lmn_vector[:,0]**2 - lmn_vector[:,1]**2)
+    print(lmn_vector.shape)
+    dft_matrix = numpy.zeros(shape=(antenna_phases.shape[0],lmn_vector.shape[0],antenna_location.shape[3]),dtype=numpy.complex64)
 
     # DFT phase factors
     for i in numpy.arange(antenna_location.shape[3]):
         ant_uvw = antenna_location[0,0,:,i]
-        #print(ant_uvw.shape)
-
-        # Both polarisations are at the same physical location, only phases differ.
-        for p in numpy.arange(antenna_phases.shape[0]):
-            dft_matrix[p,:,i] = numpy.exp(-2j*(numpy.dot(lmn_vector,ant_uvw)))
+            # Both polarisations are at the same physical location, only phases differ.
+        dft_matrix[:,:,i] = numpy.exp(2j*numpy.pi*(numpy.dot(lmn_vector,ant_uvw)))
 
     # Can put the antenna phases in as well because maths
 
@@ -118,7 +114,7 @@ def form_dft_matrix(lm_vector, antenna_location, antenna_phases):
                           
     
 
-    return dft_matrix
+    return dft_matrix/antenna_location.shape[3]
     
 
 ##############################################################
@@ -127,14 +123,13 @@ def form_dft_matrix(lm_vector, antenna_location, antenna_phases):
 
 def Generate_DFT_Locations(lsl_locs, frequencies, ntime, nchan, npol):
 
-    lsl_locs = lsl_locs.T.copy()
+    lsl_locs = lsl_locs.T
+    lsl_locs = lsl_locs.copy()
     chan_wavelengths = speedOfLight/frequencies
-
-    dft_locs = numpy.zeros(shape=(npol,nchan,3,lsl_locs.shape[1]))
+    dft_locs = numpy.zeros(shape=(nchan,npol,3,lsl_locs.shape[1]))
     for j in numpy.arange(npol):
         for i in numpy.arange(nchan):
-            dft_locs[j,i,:,:] = lsl_locs/chan_wavelengths[i]
-
+            dft_locs[i,j,:,:] = lsl_locs/chan_wavelengths[i]
     return dft_locs
 
 def GenerateLocations(lsl_locs, frequencies, ntime, nchan, npol, grid_size=64, grid_resolution=20/60.):
@@ -145,17 +140,13 @@ def GenerateLocations(lsl_locs, frequencies, ntime, nchan, npol, grid_size=64, g
     sll = sample_grid[0] / chan_wavelengths[0]
     lsl_locs = lsl_locs.T
     lsl_locs = lsl_locs.copy()
-
     lsl_locsf = numpy.zeros(shape=(3,npol,nchan,lsl_locs.shape[1]))
     for l in numpy.arange(3):
         for i in numpy.arange(nchan):
             lsl_locsf[l,:,i,:] = lsl_locs[l,:]/sample_grid[i]
-
             # I'm sure there's a more numpy way of doing this.
             for p in numpy.arange(npol):
                 lsl_locsf[l,p,i,:] -= numpy.min(lsl_locsf[l,p,i,:])
-
-
     
     #Calculate grid size needed
     range_u = numpy.max(lsl_locsf[0,...]) - numpy.min(lsl_locsf[0,...])
@@ -166,8 +157,6 @@ def GenerateLocations(lsl_locs, frequencies, ntime, nchan, npol, grid_size=64, g
         for i in numpy.arange(nchan):
             for p in numpy.arange(npol):
                 lsl_locsf[l,p,i,:] += (grid_size - numpy.max(lsl_locsf[l,p,i,:]))/2
-                
-
 
     # Tile them for ntime...
     locx = numpy.tile(lsl_locsf[0,...],(ntime,1,1,1))
@@ -970,7 +959,6 @@ class MOFFCorrelatorOp(object):
                             if self.benchmark == True:
                                 timeg1 = time.time()
 
-
                             try:
                                 bf_romein.execute(udata, gdata)
                             except NameError:
@@ -1157,7 +1145,7 @@ class MOFFCorrelatorOp(object):
 # This makes use of the DFT as a linear operator, and the high locality
 # of a matrix multiplication to form sky images with perfect wide field correction.
 class MOFF_DFT_CorrelatorOp(object):
-    def __init__(self, log, iring, oring, antennas,
+    def __init__(self, log, iring, oring, antennas, skymodes=64,
                  ntime_gulp=2500, accumulation_time=10000, core=-1, gpu=-1, 
                  benchmark=False, profile=False, 
                  *args, **kwargs):
@@ -1174,7 +1162,7 @@ class MOFF_DFT_CorrelatorOp(object):
         for ant in self.antennas:
             locations = numpy.vstack((locations,[ant.stand[0],ant.stand[1],ant.stand[2]]))
         locations = numpy.delete(locations, list(range(0,locations.shape[0],2)),axis=0)
-        locations[255,:] = 0.0
+        #locations[255,:] = 0.0
         self.locations = locations
 
         #LinAlg
@@ -1183,7 +1171,8 @@ class MOFF_DFT_CorrelatorOp(object):
         
         # Setup Direct Fourier Transform Matrix
         self.dftm = None
-        self.skymodes = 32**2
+        self.skymodes1d = skymodes
+        self.skymodes = skymodes**2
         self.core = core
         self.gpu = gpu
         self.benchmark = benchmark
@@ -1241,7 +1230,6 @@ class MOFF_DFT_CorrelatorOp(object):
                 locs = Generate_DFT_Locations(self.locations, freq, 
                                               self.ntime_gulp, nchan, npol)
 
-                
                 try:
                     copy_array(self.locs, bifrost.ndarray(locs.astype(numpy.int32)))
                 except AttributeError:
@@ -1252,9 +1240,9 @@ class MOFF_DFT_CorrelatorOp(object):
 
 
                 ohdr['npol'] = npol**2 # Because of cross multiplying shenanigans
-                ohdr['skymodes'] = 32**2
-                ohdr['grid_size_x'] = 32
-                ohdr['grid_size_y'] = 32
+                ohdr['skymodes'] = self.skymodes
+                ohdr['grid_size_x'] = self.skymodes1d
+                ohdr['grid_size_y'] = self.skymodes1d
                 ohdr['axes'] = 'time,chan,pol,gridy,gridx'
                 ohdr['accumulation_time'] = self.accumulation_time
                 ohdr['FS'] = FS
@@ -1273,7 +1261,7 @@ class MOFF_DFT_CorrelatorOp(object):
                 ohdr_str = json.dumps(ohdr)
 
                 # Setup the kernels to include phasing terms for zenith
-                # Phases are Ntime x Nchan x Npol x Nstand x extent x extent
+                # Phases are Nchan x Npol x Nstand
                 freq.shape += (1,1)
                 phases = numpy.zeros((npol,nstand), dtype=numpy.complex64)
                 for i in xrange(nstand):
@@ -1288,27 +1276,28 @@ class MOFF_DFT_CorrelatorOp(object):
                         delay = a.cable.delay(freq) - a.stand.z / speedOfLight
                         phases[1,i] = numpy.exp(2j*numpy.pi*freq*delay)
                         phases[1,i] /= numpy.sqrt(a.cable.gain(freq))
-                phases = phases.conj()
+                        ## Explicit outrigger masking - we probably want to do
+                        ## away with this at some point                     if a.stand.id == 256:                         phases[:,i] = 0.0
+                                 # nj()
                 phases = bifrost.ndarray(phases)
-
 
                 # Setup DFT Transform Matrix
 
-                lm_matrix = numpy.zeros(shape=(32,32,2))
-                
-                lm_step=2.0/32.0
+                lm_matrix = numpy.zeros(shape=(self.skymodes1d,self.skymodes1d,3))
+                print(locs[:,0,:,0])
+                lm_step=2.0/self.skymodes1d
                 for i in numpy.arange(lm_matrix.shape[0]):
                     for j in numpy.arange(lm_matrix.shape[0]):
-                        lm_matrix[i,j] = numpy.asarray([i*lm_step-1.0,j*lm_step-1.0])
-
-                        lm_vector = lm_matrix.reshape((32*32,2))
-                self.dftm = form_dft_matrix(lm_vector, locs, phases)
-                self.dftm = bifrost.ndarray(numpy.tile(self.dftm[numpy.newaxis,:],(nchan,1,1,1)))
-                print(self.dftm.shape)
+                        lm_matrix[i,j] = numpy.asarray([i*lm_step-1.0,j*lm_step-1.0,0.0])
+                        lm_vector = lm_matrix.reshape((self.skymodes,3))
+                self.dftm = bifrost.ndarray(form_dft_matrix(lm_vector, locs, phases))
+                
+                #self.dftm = bifrost.ndarray(numpy.tile(self.dftm[numpy.newaxis,:],(nchan,1,1,1)))
                 dftm_cu = self.dftm.copy(space='cuda')
                 #sys.exit(1)
                 
-                oshape = (1,nchan,npol**2,self.skymodes)
+                oshape = (nchan,npol**2,self.skymodes,1)
+                print(oshape)
                 ogulp_size = nchan * npol**2 * self.skymodes * 8
                 self.iring.resize(igulp_size)
                 self.oring.resize(ogulp_size,buffer_factor=5)
@@ -1340,14 +1329,12 @@ class MOFF_DFT_CorrelatorOp(object):
                             
                             if self.benchmark == True:
                                 time1=time.time()
-                            tdata = tdata.transpose((1,2,3,0)).copy()
+                            tdata = tdata.transpose((1,2,3,0))
                             tdata = tdata.reshape(nchan*npol,nstand,self.ntime_gulp)
+                            tdata = tdata.copy()
+#                            tdata = tdata.reshape(nchan,npol,nstand,self.ntime_gulp)
 
                             tdata = tdata.copy(space='cuda')
-                            if self.benchmark == True:
-                                time1a = time.time()
-                                print("  Input copy time: %f" % (time1a-time1))
-
                             # Unpack
                             try:
                                 udata = udata.reshape(*tdata.shape)
@@ -1360,19 +1347,17 @@ class MOFF_DFT_CorrelatorOp(object):
                             ### Phase
                             #bifrost.map('a(i,j,k,l) *= b(j,k,l)',
                             #            {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)
-                            if self.benchmark == True:
-                                time1c = time.time()
-                                print("  Unpack and phase-up time: %f" % (time1c-time1a))
-
 
                             dftm_cu = dftm_cu.reshape(nchan*npol,self.skymodes,nstand)
                             
                             # Perform DFT Matrix Multiplication
                             try:
                                 gdata = gdata.reshape(nchan*npol,self.skymodes,self.ntime_gulp)
+                                memset_array(data,0)
                                 gdata = self.LinAlgObj.matmul(1.0,dftm_cu,udata,0.0,gdata)
                             except NameError:
                                 gdata = bifrost.zeros(shape=(nchan*npol,self.skymodes,self.ntime_gulp),dtype=numpy.complex64,space='cuda')
+                                memset_array(gdata,0)
                                 gdata = self.LinAlgObj.matmul(1.0,dftm_cu,udata,0.0,gdata)
 
                             gdata = gdata.reshape(1,nchan,npol,self.skymodes,self.ntime_gulp)
@@ -1381,13 +1366,13 @@ class MOFF_DFT_CorrelatorOp(object):
                             if self.newflag is True:
                                 try:
                                     gdatas = gdatas.reshape(nchan,npol**2,self.skymodes,self.ntime_gulp)
-                                    accumulated_image = accumulated_image.reshape(1,nchan,npol**2,self.skymodes)
+                                    accumulated_image = accumulated_image.reshape(nchan,npol**2,self.skymodes,1)
                                     memset_array(gdatas, 0)
                                     memset_array(accumulated_image, 0)
 
                                 except NameError:
                                     gdatas = bifrost.zeros(shape=(nchan,npol**2,self.skymodes,self.ntime_gulp),dtype=numpy.complex64,space='cuda')
-                                    accumulated_image = bifrost.zeros(shape=(1,nchan,npol**2,self.skymodes),dtype=numpy.complex64,space='cuda')
+                                    accumulated_image = bifrost.zeros(shape=(nchan,npol**2,self.skymodes,1),dtype=numpy.complex64,space='cuda')
                                 self.newflag=False
                                               
                             bifrost.map('a(i,j,k,l) += (b(0,i,j/2,k,l) * b(0,i,j%2,k,l).conj())',
@@ -1404,11 +1389,14 @@ class MOFF_DFT_CorrelatorOp(object):
                             
                             if accum >= self.accumulation_time:
                                 print("Outputting Image to Save Operation")
-                                gdatas = gdatas.copy(space='system')
-                                gdatass = gdatas.transpose((3,0,1,2)).copy()
-                                gdatass = gdatass.copy(space='cuda')
-                                bifrost.reduce(gdatass, accumulated_image, op='sum')
-                                gdatas= gdatas.copy(space='cuda')
+                                # gdatas = gdatas.copy(space='system')
+                                # gdatass = gdatas.transpose((3,0,1,2))
+                                # print(gdatass.shape)
+                                # gdatass = gdatass.copy()
+                                # #gdatass = gdatass[0,:,:,:]
+                                # gdatass = gdatass.copy(space='cuda')
+                                bifrost.reduce(gdatas, accumulated_image, op='sum')
+                                # gdatas= gdatas.copy(space='cuda')
 
                                 curr_time = time.time()
                                 process_time = curr_time - prev_time
@@ -1417,6 +1405,8 @@ class MOFF_DFT_CorrelatorOp(object):
                                 with oseq.reserve(ogulp_size) as ospan:
                                     odata = ospan.data_view(numpy.complex64).reshape(oshape)
                                     accumulated_image = accumulated_image.reshape(oshape)
+                                    #gdatass = gdatass.reshape(oshape)
+                                    #odata[...] = gdatass
                                     odata[...] = accumulated_image
                                     
                                 curr_time = time.time()
@@ -1434,14 +1424,6 @@ class MOFF_DFT_CorrelatorOp(object):
                             process_time += curr_time - prev_time
                             prev_time = curr_time
                             
-                            #TODO: Autocorrs using Romein??
-                            ## Output for gridded electric fields.
-                            if self.benchmark == True:
-                                time1h = time.time()
-                            #gdata = gdata.reshape(self.ntime_gulp,nchan,2,self.grid_size,self.grid_size)
-                            # image/autos, time, chan, pol, gridx, grid.
-                            #accumulated_image = accumulated_image.reshape(oshape)
-
                             if self.benchmark == True:
                                 time2=time.time()
                                 print("-> GPU Time Taken: %f"%(time2-time1))
@@ -1876,7 +1858,7 @@ def main():
     group3.add_argument('--accumulate',type=int, default = 1000, help='How many milliseconds to accumulate an image over')
     group4 = parser.add_argument_group('Correlation Options')
     group4.add_argument('--dftcorrelation', action='store_true', help = 'Use a Direct Fourier Transform to form images')
-    
+    group4.add_argument('--dft_skymodes_1D', type=int, default=64, help = 'How many pixels to simulate per full-sky image using a dft')
     group3.add_argument('--channels',type=int, default=1, help='How many channels to produce')
     group3.add_argument('--singlepol', action='store_true', help = 'Process only X pol. in online mode')
     group3.add_argument('--removeautocorrs', action='store_true', help = 'Removes Autocorrelations')
@@ -1991,7 +1973,7 @@ def main():
     ops.append(TransposeOp(log, fdomain_ring, transpose_ring, ntime_gulp=args.nts,
                                 core=cores.pop(0)))
     if args.dftcorrelation:
-        ops.append(MOFF_DFT_CorrelatorOp(log, transpose_ring, gridandfft_ring, lwasv_antennas,
+        ops.append(MOFF_DFT_CorrelatorOp(log, transpose_ring, gridandfft_ring, lwasv_antennas,skymodes=args.dft_skymodes_1D,
                                          ntime_gulp=args.nts, accumulation_time=args.accumulate, 
                                          core=cores.pop(0), gpu=gpus.pop(0), benchmark=args.benchmark,
                                          profile=args.profile))
