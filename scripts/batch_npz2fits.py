@@ -9,6 +9,6 @@ a.add_argument('files', metavar='files', type=str, nargs='*', default=[],
 args = a.parse_args()
 
 for f in args.files:
-    d = np.load(f)
+    d = np.load(f, allow_pickle=True)
     of = f[:-3] + 'fits'
     DI.epic2fits(of, d['image'], np.ravel(d['hdr'])[0], d['image_nums'])
