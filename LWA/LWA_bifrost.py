@@ -991,21 +991,21 @@ class MOFFCorrelatorOp(object):
                                             axis_names=('i','j','k','l'),
                                             shape=(self.ntime_gulp,nchan,npol**2,nstand))
 
-                            #bifrost.map('a(i,j,p,k,l) += b(0,i,j,p/2,k,l)*b(0,i,j,p%2,k,l).conj()',
-                            #            {'a':crosspol, 'b':gdata},
-                            #            axis_names=('i','j', 'p', 'k', 'l'),
-                            #            shape=(self.ntime_gulp, nchan, npol**2, self.grid_size, self.grid_size))
-                            crosspol = crosspol.reshape(self.ntime_gulp*nchan, npol**2, self.grid_size*self.grid_size)
-                            gdata = gdata.reshape(self.ntime_gulp*nchan, npol, self.grid_size*self.grid_size)
-                            bifrost.map("""a(i,0,j) += b(i,0,j).mag2();
-                                           a(i,1,j) = cfcmaf(b(i,1,j), b(i,0,j), a(i,1,j));
-                                           a(i,2,j) = a(i,1,j).conj();
-                                           a(i,3,j) += b(i,1,j).mag2();""",
+                            bifrost.map('a(i,j,p,k,l) += b(0,i,j,p/2,k,l)*b(0,i,j,p%2,k,l).conj()',
                                         {'a':crosspol, 'b':gdata},
-                                        axis_names=('i','j'),
-                                        shape=(self.ntime_gulp*nchan, self.grid_size*self.grid_size))
-                            crosspol = crosspol.reshape(self.ntime_gulp, nchan, npol**2, self.grid_size, self.grid_size)
-                            gdata = gdata.reshape(1, self.ntime_gulp, nchan, npol, self.grid_size, self.grid_size)
+                                        axis_names=('i','j', 'p', 'k', 'l'),
+                                        shape=(self.ntime_gulp, nchan, npol**2, self.grid_size, self.grid_size))
+                            #crosspol = crosspol.reshape(self.ntime_gulp*nchan, npol**2, self.grid_size*self.grid_size)
+                            #gdata = gdata.reshape(self.ntime_gulp*nchan, npol, self.grid_size*self.grid_size)
+                            #bifrost.map("""a(i,0,j) += b(i,0,j).mag2();
+                            #               a(i,1,j) = cfcmaf(b(i,1,j), b(i,0,j), a(i,1,j));
+                            #               a(i,2,j) = a(i,1,j).conj();
+                            #               a(i,3,j) += b(i,1,j).mag2();""",
+                            #            {'a':crosspol, 'b':gdata},
+                            #            axis_names=('i','j'),
+                            #            shape=(self.ntime_gulp*nchan, self.grid_size*self.grid_size))
+                            #crosspol = crosspol.reshape(self.ntime_gulp, nchan, npol**2, self.grid_size, self.grid_size)
+                            #gdata = gdata.reshape(1, self.ntime_gulp, nchan, npol, self.grid_size, self.grid_size)
 
                             # Increment
                             accum += 1e3 * self.ntime_gulp / CHAN_BW
