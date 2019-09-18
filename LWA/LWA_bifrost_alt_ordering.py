@@ -839,12 +839,18 @@ class MOFFCorrelatorOp(object):
                     delay = a.cable.delay(freq) - a.stand.z / speedOfLight
                     phases[:,:,i,0,:,:] = numpy.exp(2j*numpy.pi*freq*delay)
                     phases[:,:,i,0,:,:] /= numpy.sqrt(a.cable.gain(freq))
+                    if a.getStatus() < 33:
+                        ### Mask out a known bad or suspect antenna
+                        phases[:,:,i,0,:,:] = 0.0
                     if npol == 2:
                         ## Y
                         a = self.antennas[2*i + 1]
                         delay = a.cable.delay(freq) - a.stand.z / speedOfLight
                         phases[:,:,i,1,:,:] = numpy.exp(2j*numpy.pi*freq*delay)
                         phases[:,:,i,1,:,:] /= numpy.sqrt(a.cable.gain(freq))
+                        if a.getStatus() < 33:
+                            ### Mask out a known bad or suspect antenna
+                            phases[:,:,i,1,:,:] = 0.0
                     ## Explicit outrigger masking - we probably want to do
                     ## away with this at some point
                     if a.stand.id == 256:
