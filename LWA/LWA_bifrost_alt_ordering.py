@@ -127,7 +127,7 @@ def GenerateLocations(lsl_locs, frequencies, ntime, nchan, npol, grid_size=64, g
     locy = numpy.tile(lsl_locsf[1,...],(ntime,1,1,1))
     locz = numpy.tile(lsl_locsf[2,...],(ntime,1,1,1))
     # .. and then stick them all into one large array
-    locc = numpy.concatenate([[locx,], [locy,], [locz,]]).transpose(0,1,3,2,4).copy()
+    locc = numpy.concatenate([[locx,], [locy,], [locz,]]).transpose(0,1,3,4,2).copy()
 
     return delta, locc, sll
     
@@ -790,7 +790,7 @@ class MOFFCorrelatorOp(object):
                 accum = 0
                 
                 igulp_size = self.ntime_gulp * nchan * nstand * npol * 1 # ci4
-                itshape = (self.ntime_gulp,nchan,npol,nstand)
+                itshape = (self.ntime_gulp,nchan,nstand,npol)
                 
                 
                 freq = (chan0 + numpy.arange(nchan))*CHAN_BW
@@ -830,29 +830,29 @@ class MOFFCorrelatorOp(object):
                 ohdr_str = json.dumps(ohdr)
 
                 # Setup the kernels to include phasing terms for zenith
-                # Phases are Ntime x Nchan x Npol x Nstand x extent x extent
+                # Phases are Ntime x Nchan x Nstand x Npol x extent x extent
                 freq.shape += (1,1)
-                phases = numpy.zeros((self.ntime_gulp,nchan,npol,nstand,self.ant_extent,self.ant_extent), dtype=numpy.complex64)
+                phases = numpy.zeros((self.ntime_gulp,nchan,nstand,npol,self.ant_extent,self.ant_extent), dtype=numpy.complex64)
                 for i in xrange(nstand):
                     ## X
                     a = self.antennas[2*i + 0]
                     delay = a.cable.delay(freq) - a.stand.z / speedOfLight
-                    phases[:,:,0,i,:,:] = numpy.exp(2j*numpy.pi*freq*delay)
-                    phases[:,:,0,i,:,:] /= numpy.sqrt(a.cable.gain(freq))
+                    phases[:,:,i,0,:,:] = numpy.exp(2j*numpy.pi*freq*delay)
+                    phases[:,:,i,0,:,:] /= numpy.sqrt(a.cable.gain(freq))
                     if npol == 2:
                         ## Y
                         a = self.antennas[2*i + 1]
                         delay = a.cable.delay(freq) - a.stand.z / speedOfLight
-                        phases[:,:,1,i,:,:] = numpy.exp(2j*numpy.pi*freq*delay)
-                        phases[:,:,1,i,:,:] /= numpy.sqrt(a.cable.gain(freq))
+                        phases[:,:,i,1,:,:] = numpy.exp(2j*numpy.pi*freq*delay)
+                        phases[:,:,i,1,:,:] /= numpy.sqrt(a.cable.gain(freq))
                     ## Explicit bad and suspect antenna masking - this will
                     ## mask an entire stand if either pol is bad
                     if self.antennas[2*i + 0].getStatus() < 33 or self.antennas[2*i + 1].getStatus() < 33:
-                        phases[:,:,:,i,:,:] = 0.0
+                        phases[:,:,i,:,:,:] = 0.0
                     ## Explicit outrigger masking - we probably want to do
                     ## away with this at some point
                     if a.stand.id == 256:
-                        phases[:,:,:,i,:,:] = 0.0
+                        phases[:,:,i,:,:,:] = 0.0
                 phases = phases.conj()
                 phases = bifrost.ndarray(phases)
                 try:
@@ -899,13 +899,14 @@ class MOFFCorrelatorOp(object):
                                 time1a = time.time()
                                 print("  Input copy time: %f" % (time1a-time1))
 
-                            # Unpack
-                            try:
-                                udata = udata.reshape(*tdata.shape)
-                                Unpack(tdata, udata)
-                            except NameError:
-                                udata = bifrost.ndarray(shape=tdata.shape, dtype=numpy.complex64, space='cuda')
-                                Unpack(tdata, udata)
+                            ## Unpack
+                            #try:
+                            #    udata = udata.reshape(*tdata.shape)
+                            #    Unpack(tdata, udata)
+                            #except NameError:
+                            #    udata = bifrost.ndarray(shape=tdata.shape, dtype=numpy.complex64, space='cuda')
+                            #    Unpack(tdata, udata)
+                            udata = tdata
                             if self.benchmark == True:
                                 time1b = time.time()
                             ### Phase
@@ -932,7 +933,7 @@ class MOFFCorrelatorOp(object):
                                 bf_romein.execute(udata, gdata)
                             except NameError:
                                 bf_romein = Romein()
-                                bf_romein.init(self.locs, gphases, self.grid_size, polmajor=True)
+                                bf_romein.init(self.locs, gphases, self.grid_size, polmajor=False)
                                 bf_romein.execute(udata, gdata)
                             gdata = gdata.reshape(self.ntime_gulp*nchan*npol,self.grid_size,self.grid_size)
                             #gdata = self.LinAlgObj.matmul(1.0, udata, bfantgridmap, 0.0, gdata)
@@ -979,26 +980,27 @@ class MOFFCorrelatorOp(object):
                                 ##Setup everything for the autocorrelation calculation.
                                 try:
                                     # If one isn't allocated, then none of them are.
-                                    autocorrs = autocorrs.reshape(self.ntime_gulp,nchan,npol**2,nstand)
+                                    autocorrs = autocorrs.reshape(self.ntime_gulp,nchan,nstand,npol**2)
                                     autocorr_g = autocorr_g.reshape(nchan*npol**2,self.grid_size,self.grid_size)
                                 except NameError:
-                                    autocorrs = bifrost.ndarray(shape=(self.ntime_gulp,nchan,npol**2,nstand),dtype=numpy.complex64, space='cuda')
-                                    autocorrs_av = bifrost.zeros(shape=(1,nchan,npol**2,nstand), dtype=numpy.complex64, space='cuda')
+                                    autocorrs = bifrost.ndarray(shape=(self.ntime_gulp,nchan,nstand,npol**2),dtype=numpy.complex64, space='cuda')
+                                    autocorrs_av = bifrost.zeros(shape=(1,nchan,nstand,npol**2), dtype=numpy.complex64, space='cuda')
                                     autocorr_g = bifrost.zeros(shape=(1,nchan,npol**2,self.grid_size,self.grid_size), dtype=numpy.complex64, space='cuda')
-                                    autocorr_lo = bifrost.ndarray(numpy.ones(shape=(3,1,nchan,npol**2,nstand),dtype=numpy.int32)*self.grid_size/2,space='cuda')
-                                    autocorr_il = bifrost.ndarray(numpy.ones(shape=(1,nchan,npol**2,nstand,self.ant_extent,self.ant_extent),dtype=numpy.complex64),space='cuda')
+                                    autocorr_lo = bifrost.ndarray(numpy.ones(shape=(3,1,nchan,nstand,npol**2),dtype=numpy.int32)*self.grid_size/2,space='cuda')
+                                    autocorr_il = bifrost.ndarray(numpy.ones(shape=(1,nchan,nstand,npol**2,self.ant_extent,self.ant_extent),dtype=numpy.complex64),space='cuda')
 
 
                                 # Cross multiply to calculate autocorrs
-                                bifrost.map('a(i,j,k,l) += (b(i,j,k/2,l) * b(i,j,k%2,l).conj())',
+                                bifrost.map('a(i,j,k,l) += (b(i,j,k,l/2) * b(i,j,k,l%2).conj())',
                                             {'a':autocorrs, 'b':udata,'t':self.ntime_gulp},
                                             axis_names=('i','j','k','l'),
-                                            shape=(self.ntime_gulp,nchan,npol**2,nstand))
+                                            shape=(self.ntime_gulp,nchan,nstand,npol**2))
 
                             bifrost.map('a(i,j,p,k,l) += b(0,i,j,p/2,k,l)*b(0,i,j,p%2,k,l).conj()',
                                         {'a':crosspol, 'b':gdata},
                                         axis_names=('i','j', 'p', 'k', 'l'),
                                         shape=(self.ntime_gulp, nchan, npol**2, self.grid_size, self.grid_size))
+
 
                             # Increment
                             accum += 1e3 * self.ntime_gulp / CHAN_BW
@@ -1015,7 +1017,7 @@ class MOFFCorrelatorOp(object):
                                         bf_romein_autocorr.execute(autocorrs_av, autocorr_g)
                                     except NameError:
                                         bf_romein_autocorr = Romein()
-                                        bf_romein_autocorr.init(autocorr_lo, autocorr_il, self.grid_size, polmajor=True)
+                                        bf_romein_autocorr.init(autocorr_lo, autocorr_il, self.grid_size, polmajor=False)
                                         bf_romein_autocorr.execute(autocorrs_av, autocorr_g)
                                     autocorr_g = autocorr_g.reshape(1*nchan*npol**2,self.grid_size,self.grid_size)
                                     #autocorr_g = romein_float(autocorrs_av,autocorr_g,autocorr_il,autocorr_lx,autocorr_ly,autocorr_lz,self.ant_extent,self.grid_size,nstand,nchan*npol**2)
@@ -1503,9 +1505,9 @@ def main():
                                 nchan_out=args.channels, npol_out=1 if args.singlepol else 2,
                                 core=cores.pop(0)))
 
-    ops.append(TransposeOp(log, fdomain_ring, transpose_ring, ntime_gulp=args.nts,
-                                core=cores.pop(0)))
-    ops.append(MOFFCorrelatorOp(log, transpose_ring, gridandfft_ring, lwasv_antennas,
+    ##ops.append(TransposeOp(log, fdomain_ring, transpose_ring, ntime_gulp=args.nts,
+    ##                            core=cores.pop(0)))
+    ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, lwasv_antennas,
                                 args.imagesize, args.imageres, ntime_gulp=args.nts, 
                                 accumulation_time=args.accumulate, 
                                 remove_autocorrs=args.removeautocorrs,
