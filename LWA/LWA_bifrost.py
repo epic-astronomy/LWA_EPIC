@@ -35,7 +35,6 @@ from bifrost.reduce import reduce as Reduce
 from bifrost.proclog import ProcLog
 from bifrost.libbifrost import bf
 from bifrost.fft import Fft
-from bifrost.fft_shift import fft_shift_2d
 from bifrost.romein import Romein
 import bifrost
 import bifrost.affinity
@@ -991,7 +990,7 @@ class MOFFCorrelatorOp(object):
 
                                 # Cross multiply to calculate autocorrs
                                 bifrost.map('a(i,j,k,l) += (b(i,j,k/2,l) * b(i,j,k%2,l).conj())',
-                                            {'a':autocorrs, 'b':udata,'t':self.ntime_gulp},
+                                            {'a':autocorrs, 'b':udata},
                                             axis_names=('i','j','k','l'),
                                             shape=(self.ntime_gulp,nchan,npol**2,nstand))
 
@@ -1004,10 +1003,11 @@ class MOFFCorrelatorOp(object):
                             accum += 1e3 * self.ntime_gulp / CHAN_BW
                             
                             if accum >= self.accumulation_time:
-
+                                
                                 bifrost.reduce(crosspol, accumulated_image, op='sum')
                                 if self.remove_autocorrs == True:
                                     # Reduce along time axis.
+                                    print("Calculating autocorrs!")
                                     bifrost.reduce(autocorrs, autocorrs_av, op='sum')
                                     # Grid the autocorrelations.
                                     autocorr_g = autocorr_g.reshape(1,nchan,npol**2,self.grid_size, self.grid_size)
@@ -1020,13 +1020,11 @@ class MOFFCorrelatorOp(object):
                                     autocorr_g = autocorr_g.reshape(1*nchan*npol**2,self.grid_size,self.grid_size)
                                     #autocorr_g = romein_float(autocorrs_av,autocorr_g,autocorr_il,autocorr_lx,autocorr_ly,autocorr_lz,self.ant_extent,self.grid_size,nstand,nchan*npol**2)
                                     #Inverse FFT
-                                    try:
-                                        autocorr_g = fft_shift_2d(autocorr_g, self.grid_size, nchan*npol**2)
+                                    try:                                        
                                         ac_fft.execute(autocorr_g,autocorr_g,inverse=True)
                                     except NameError:
                                          ac_fft = Fft()
-                                         ac_fft.init(autocorr_g,autocorr_g,axes=(1,2))
-                                         autocorr_g = fft_shift_2d(autocorr_g, self.grid_size, nchan*npol**2)
+                                         ac_fft.init(autocorr_g,autocorr_g,axes=(1,2),apply_fftshift=True)
                                          ac_fft.execute(autocorr_g,autocorr_g,inverse=True)
 
                                     accumulated_image = accumulated_image.reshape(nchan,npol**2,self.grid_size, self.grid_size)
