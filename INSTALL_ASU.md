@@ -52,3 +52,5 @@ If you want to install and test multiple bifrost branches, it is encouraged to u
 
 # EPIC
 https://github.com/epic-astronomy/epic
+
+TODO: Finish EPIC install instructions.
