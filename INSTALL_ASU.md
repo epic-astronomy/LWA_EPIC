@@ -25,9 +25,8 @@ Until some pull requests are merged, we need to use a hybrid of two bifrost fork
 ```
 $ cd ~/src
 $ git clone https://github.com/ledatelescope/bifrost.git -b plugin-wrapper bifrost
-$ git clone https://github.com/KentJames/bifrost.git -b optim_romein bifrost_jkent
-$ cd bifrost  # work inside the LEDA bifrost
-$ cp ~/src/bifrost_jkent/src/romein.cu src/
+$ cd bifrost 
+$ git merge master  # merge in the lastest master to get work from James Kent's fork
 $ cp /data4/jdowell/CodeSafe/bifrost/src/proclog.cpp src/  # Make multi-user installation work
 ```
 (The `proclog.ccp` file referenced above is also in this repository, `LWA_EPIC/config/ASU_proclog.cpp`, so you can copy from there in case anything ever happens to the one on `/data4/`.)
