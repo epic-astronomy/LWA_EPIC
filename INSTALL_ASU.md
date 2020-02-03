@@ -2,14 +2,21 @@
 
 Start with the general [Enterprise new user setup](https://docs.google.com/document/d/1DOoiYEZd15KMw4KNSIkaGnph2aARI4n77cEuQHiOJqs/edit), and do the steps up to and including anaconda installation. When you create your environment, **be sure to use python 2**, not 3 as is the default. Give an appropriate name to the conda environment. Below we use `epic` as the example.
 
+
 After the installation of anaconda do the following
 ```
 $ user=`whoami`
 $ env=epic
  $ conda create -n ${env} python=2.7
+```
+It is advised to install the dependencies of LSL before attempting a `pip install`. While pip generally is good about grabbing package dependencies, the configuration of some packages requires dependencies to be installed before pip can check if the dependencies are installed.
+
+While not explicitly mentioned, lsl depends on `astropy` for fits I/O. Inclusion of astropy is not a mistake.
+
+To install dependencies for lsl excute the following lines. This may not be necessay depending on your environment but will help smooth the install.
+```
 $ conda activate ${env}
-$ conda install ipython
-$ python -m ipykernel install --user --name ${env} --display-name ${env}
+$ conda install aipy scipy numpy fftw astropy healpy ephem pytz matplotlib
 $ pip install lsl
 ```
 
