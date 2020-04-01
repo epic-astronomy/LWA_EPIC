@@ -49,7 +49,7 @@ BFNoSpinZone()
 from lsl.common.constants import c as speedOfLight
 from lsl.writer import fitsidi
 from lsl.reader.ldp import TBNFile, TBFFile
-from lsl.common.stations import lwasv, parseSSMIF
+from lsl.common.stations import lwasv, parse_ssmif
 
 #################### Trigger Processing #######################
 
@@ -210,9 +210,9 @@ class TBNOfflineCaptureOp(object):
                                   'core0': bifrost.affinity.get_core(),})
 
         idf = TBNFile(self.filename)
-        cfreq = idf.getInfo('freq1')
-        srate = idf.getInfo('sampleRate')
-        tInt, tStart, data = idf.read(0.1, timeInSamples=True)
+        cfreq = idf.get_info('freq1')
+        srate = idf.get_info('sample_rate')
+        tInt, tStart, data = idf.read(0.1, time_in_samples=True)
 
         # Setup the ring metadata and gulp sizes
         ntime = data.shape[1]
@@ -247,7 +247,7 @@ class TBNOfflineCaptureOp(object):
                 while not self.shutdown_event.is_set():
                     ## Get the current section to use
                     try:
-                        _, _, next_data = idf.read(0.1, timeInSamples=True)
+                        _, _, next_data = idf.read(0.1, time_in_samples=True)
                     except Exception as e:
                         print("TBNFillerOp: Error - '%s'" % str(e))
                         idf.close()
@@ -439,11 +439,11 @@ class TBFOfflineCaptureOp(object):
                                   'core0': bifrost.affinity.get_core(),})
 
         idf = TBFFile(self.filename)
-        srate = idf.getInfo('sampleRate')
-        chans = numpy.round(idf.getInfo('freq1') / srate).astype(numpy.int32)
+        srate = idf.get_info('sample_rate')
+        chans = numpy.round(idf.get_info('freq1') / srate).astype(numpy.int32)
         chan0 = int(chans[0])
         nchan = len(chans)
-        tInt, tStart, data = idf.read(0.1, timeInSamples=True)
+        tInt, tStart, data = idf.read(0.1, time_in_samples=True)
         
         # Setup the ring metadata and gulp sizes
         ntime = data.shape[2]
@@ -478,7 +478,7 @@ class TBFOfflineCaptureOp(object):
                 while not self.shutdown_event.is_set():
                     ## Get the current section to use
                     try:
-                        _, _, next_data = idf.read(0.1, timeInSamples=True)
+                        _, _, next_data = idf.read(0.1, time_in_samples=True)
                     except Exception as e:
                         print("TBFFillerOp: Error - '%s'" % str(e))
                         idf.close()
@@ -1933,7 +1933,7 @@ def main():
     # Setup Antennas
     ## TODO: Some sort of switch for other stations?
 
-    lwasv_antennas = lwasv.getAntennas()
+    lwasv_antennas = lwasv.antennas
     lwasv_stands = lwasv.getStands()
     
     # Setup threads
