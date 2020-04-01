@@ -1091,6 +1091,7 @@ class MOFFCorrelatorOp(object):
                                     odata = ospan.data_view(numpy.complex64).reshape(oshape)
                                     accumulated_image = accumulated_image.reshape(oshape)
                                     odata[...] = accumulated_image
+                                    bifrost.device.stream_synchronize()
                                     
                                 curr_time = time.time()
                                 reserve_time = curr_time - prev_time
