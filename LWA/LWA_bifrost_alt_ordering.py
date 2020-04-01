@@ -1422,6 +1422,9 @@ def main():
         print('Output directory does not exist. Defaulting to current directory.')
         args.out_dir = '.'
 
+    if args.removeautocorrs:
+        raise NotImplementedError('Removing autocorrelations is not yet properly'
+                                  + ' implemented.')
 
     log = logging.getLogger(__name__)
     logFormat = logging.Formatter('%(asctime)s [%(levelname)-8s] %(message)s',
