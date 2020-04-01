@@ -804,8 +804,14 @@ class MOFFCorrelatorOp(object):
                     
                 ohdr = ihdr.copy()
                 ohdr['nbit'] = 64
-
-
+                
+                ms_per_gulp = 1e3 * self.ntime_gulp / CHAN_BW
+                new_accumulation_time = numpy.ceil(self.accumulation_time / ms_per_gulp)*ms_per_gulp
+                if new_accumulation_time != self.accumulation_time:
+                    self.log.warning("Adjusting accumulation time from %.3f ms to %.3f ms", 
+                                     self.accumulation_time, new_accumulation_time)
+                    self.accumulation_time = new_accumulation_time
+                    
                 ohdr['npol'] = npol**2 # Because of cross multiplying shenanigans
                 ohdr['grid_size_x'] = self.grid_size
                 ohdr['grid_size_y'] = self.grid_size
@@ -1047,6 +1053,7 @@ class MOFFCorrelatorOp(object):
                                     odata = ospan.data_view(numpy.complex64).reshape(oshape)
                                     accumulated_image = accumulated_image.reshape(oshape)
                                     odata[...] = accumulated_image
+                                    bifrost.device.stream_synchronize()
                                     
                                 curr_time = time.time()
                                 reserve_time = curr_time - prev_time
