@@ -14,11 +14,13 @@ import numpy
 import time
 from collections import deque
 from scipy.fftpack import fft
+from scipy.special import pro_ang1 #Anti-aliasing function
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import datetime
 import ctypes
+
 
 ## Profiling Includes
 import cProfile
@@ -48,6 +50,7 @@ from lsl.common.constants import c as speedOfLight
 from lsl.writer import fitsidi
 from lsl.reader.ldp import TBNFile, TBFFile
 from lsl.common.stations import lwasv, parseSSMIF
+
 
 #################### Trigger Processing #######################
 
@@ -86,6 +89,45 @@ def get_thread_stats():
 
 ###############################################################
 
+#################### Anti-Aliasing ############################
+
+# Adapted from SKA crocodile repo
+def generate_pswf(grid_size, support,m=0):
+    '''
+    Generates a PSWF anti aliasing function in image space. 
+    '''
+    half_grid_size = grid_size // 2
+    if grid_size % 2 == 0:
+        coords = numpy.mgrid[-half_grid_size:half_grid_size] / grid_size
+    else:
+        coords = numpy.mgrid[-half_grid_size:half_grid_size+1] / grid_size
+    coords_scale_factor = 2 - 1/grid_size/4
+    
+    return pro_ang1(m,m, support, coords_scale_factor * coords)[0]
+
+def generate_oversampled_aa_kernel(pswf, oversample, size=None):
+
+    N = pswf.shape[0]
+    if size is None: size = N
+
+    pad_size = N*oversample
+    if pad_size == N:
+        padded_pswf = pswf
+    else:
+        pad = [(pad_size//2-N//2, (pad_size+1)//2-(N+1)//2)]
+        padded_pswf = numpy.pad(pswf, pad, mode='constant', constant_values=0.0)
+
+    aa_kernel = numpy.fft.fftshift(numpy.fft.fft(numpy.fft.ifftshift(padded_pswf)))
+
+    # The fiddly bit: extracting the oversampled kernel
+    aas = aa_kernel.shape[0]
+    result = numpy.empty((oversample,size),dtype=complex)
+    for x in range(oversample):
+        xof = aas//2 - oversample*(size//2) + x
+        result[x] = aa_kernel[xof: xof+oversample*size : oversample]
+    return result
+
+###############################################################
 
 ################ Frequency-Dependent Locations ################
 
