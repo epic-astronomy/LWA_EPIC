@@ -57,7 +57,11 @@ $ make install INSTALL_LIB_DIR="/home/${user}/src/anaconda/envs/${env}/lib" INST
 ### Testing multiple branches
 If you want to install and test multiple bifrost branches, it is encouraged to use different conda environments. Check the environment variables of the install directory to properly link with the libraries.
 
-# EPIC
-https://github.com/epic-astronomy/epic
-
-TODO: Finish EPIC install instructions.
+# Test Run
+Remember to check that you are logged onto intrepid and in your environment.
+```
+$ cd ~/src/LWA_EPIC/scripts
+$ python LWA_bifrost.py --offline --tbnfile=/data5/LWA_SV_data/data_raw/TBN/Jupiter/058161_000086727 --imagesize 64 --imageres 1.79057 --nts 512 --channels 4 --accumulate 50 --ints_per_file 40
+```
+This will generate a series of `.npz` files with example images. Have a look at them
+to be sure they look like the sky!
