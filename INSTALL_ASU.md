@@ -16,22 +16,23 @@ While not explicitly mentioned, lsl depends on `astropy` for fits I/O. Inclusion
 To install dependencies for lsl excute the following lines. This may not be necessay depending on your environment but will help smooth the install.
 ```
 $ conda activate ${env}
+$ conda config --add channels conda-forge
 $ conda install aipy scipy numpy fftw astropy healpy ephem pytz matplotlib
 $ pip install lsl
 ```
 
 # Bifrost
-Until some pull requests are merged, we need to use a hybrid of two bifrost forks.
 ```
 $ cd ~/src
-$ git clone https://github.com/ledatelescope/bifrost.git -b plugin-wrapper bifrost
+$ git clone https://github.com/epic-astronomy/bifrost.git
 $ cd bifrost 
-$ git merge master  # merge in the lastest master to get work from James Kent's fork
+# For development work, you will want to checkout the appropriate branch. For example:
+$ git checkout plugin-wrapper
 $ cp /data4/jdowell/CodeSafe/bifrost/src/proclog.cpp src/  # Make multi-user installation work
 ```
 (The `proclog.ccp` file referenced above is also in this repository, `LWA_EPIC/config/ASU_proclog.cpp`, so you can copy from there in case anything ever happens to the one on `/data4/`.)
 
-Check `README.md` to install dependencies (do this in your epic env).
+Check `README.md` to install dependencies (do this in your epic env, *not* with sudo as the README indicates).
 Always check that the ctypesgen is the latest as mentioned in the README.md
 ```
 $ pip install numpy contextlib2 pint git+https://github.com/olsonse/ctypesgen.git@9bd2d249aa4011c6383a10890ec6f203d7b7990f
@@ -44,7 +45,7 @@ $ conda install matplotlib=2.2.3
 
 Now we need to actually install bifrost. First set up configuration for intrepid. Copy the file `LWA_EPIC/config/ASU_user.mk` from this repository to your bifrost directory:
 ```
-$ cp ~/src/LWA_EPIC/config/ASU_user.mk ~/bifrost/user.mk
+$ cp ~/src/LWA_EPIC/config/ASU_user.mk ~/src/bifrost/user.mk
 ```
 
 Finally, install (note **this must be done on intrepid with your environment activated**):
