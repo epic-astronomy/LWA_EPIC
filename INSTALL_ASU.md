@@ -60,7 +60,7 @@ If you want to install and test multiple bifrost branches, it is encouraged to u
 # Test Run
 Remember to check that you are logged onto intrepid and in your environment.
 ```
-$ cd ~/src/LWA_EPIC/scripts
+$ cd ~/src/LWA_EPIC/LWA
 $ python LWA_bifrost.py --offline --tbnfile=/data5/LWA_SV_data/data_raw/TBN/Jupiter/058161_000086727 --imagesize 64 --imageres 1.79057 --nts 512 --channels 4 --accumulate 50 --ints_per_file 40
 ```
 This will generate a series of `.npz` files with example images. Have a look at them
