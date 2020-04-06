@@ -791,7 +791,7 @@ class CalibrationOp(object):
 class MOFFCorrelatorOp(object):
     def __init__(self, log, iring, oring, antennas, grid_size, grid_resolution, 
                  ntime_gulp=2500, accumulation_time=10000, core=-1, gpu=-1, 
-                 remove_autocorrs = False, benchmark=False, profile=False, 
+                 remove_autocorrs = False, benchmark=False, profile=False, aa_extent=1,
                  *args, **kwargs):
         self.log = log
         self.iring = iring
@@ -828,7 +828,7 @@ class MOFFCorrelatorOp(object):
         self.out_proclog.update({'nring':1, 'ring0':self.oring.name})
         self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
         
-        self.ant_extent = 4
+        self.ant_extent = aa_extent
         # This will change when/if we incorporate antenna gain patterns.
         # Will need to convolve AA kernel and Power pattern kernel.
         self.aa_extent = self.ant_extent
@@ -969,8 +969,6 @@ class MOFFCorrelatorOp(object):
                     phases = phases * aa_kerns
 
                 phases = bifrost.ndarray(phases)
-
-
                 
                 try:
                     copy_array(gphases, phases)
@@ -1509,6 +1507,7 @@ def main():
     group3.add_argument('--imageres', type=float, default = 1.79057, help = 'Image pixel size in degrees')
     group3.add_argument('--nts',type=int, default = 1000, help= 'Number of timestamps per span')
     group3.add_argument('--accumulate',type=int, default = 1000, help='How many milliseconds to accumulate an image over')
+    group3.add_argument('--aasize',type=int,default = 1, help= 'Size of Anti-Aliasing Kernel. <4 is advised')
     group3.add_argument('--channels',type=int, default=1, help='How many channels to produce')
     group3.add_argument('--singlepol', action='store_true', help = 'Process only X pol. in online mode')
     group3.add_argument('--removeautocorrs', action='store_true', help = 'Removes Autocorrelations')
@@ -1627,7 +1626,7 @@ def main():
                                 accumulation_time=args.accumulate, 
                                 remove_autocorrs=args.removeautocorrs,
                                 core=cores.pop(0), gpu=gpus.pop(0),benchmark=args.benchmark,
-                                profile=args.profile))
+                                profile=args.profile,aa_extent=args.aasize))
     if args.triggering:
         ops.append(TriggerOp(log, gridandfft_ring, core=cores.pop(0), gpu=gpus.pop(0), 
                              ints_per_analysis=args.ints_per_file, threshold=args.threshold, 
