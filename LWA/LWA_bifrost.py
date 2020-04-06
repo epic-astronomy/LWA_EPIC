@@ -893,9 +893,9 @@ class MOFFCorrelatorOp(object):
                     locs_x_ov = numpy.floor(self.aa_oversampling * ((locs_x % 1)/2 + 0.5)).astype(int)
                     locs_y_ov = numpy.floor(self.aa_oversampling * ((locs_y % 1)/2 + 0.5)).astype(int)
 
-                    aa_kerns = numpy.transpose(aaf_grid_2d[:,:,locs_x_ov,locs_y_ov],(2,3,4,0,1)).copy()
+                    aa_kerns = numpy.transpose(aaf_grid_2d[:,:,locs_y_ov,locs_x_ov],(2,3,4,0,1)).copy()
                     aa_kerns = numpy.tile(aa_kerns,(self.ntime_gulp,1,1,1,1,1)).astype(numpy.complex64)
-                
+                    
                 try:
                     copy_array(self.locs, bifrost.ndarray(locs.astype(numpy.int32)))
                 except AttributeError:
