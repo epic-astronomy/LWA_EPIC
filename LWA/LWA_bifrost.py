@@ -828,7 +828,13 @@ class MOFFCorrelatorOp(object):
         self.out_proclog.update({'nring':1, 'ring0':self.oring.name})
         self.size_proclog.update({'nseq_per_gulp': self.ntime_gulp})
         
-        self.ant_extent = 1
+        self.ant_extent = 4
+        # This will change when/if we incorporate antenna gain patterns.
+        # Will need to convolve AA kernel and Power pattern kernel.
+        self.aa_extent = self.ant_extent
+        
+        
+        self.aa_oversampling = 16
         
         self.shutdown_event = threading.Event()
 
@@ -869,6 +875,30 @@ class MOFFCorrelatorOp(object):
                                                                self.ntime_gulp, nchan, npol, 
                                                                grid_size=self.grid_size,
                                                                grid_resolution=self.grid_resolution)
+                # Setup Anti-Aliasing for each Antenna.
+                # Assume same AaF for all polarisations
+                if(self.aa_extent > 1):
+                
+                    aaf = generate_pswf(self.grid_size,self.aa_extent,0)
+                    aaf_grid = generate_oversampled_aa_kernel(aaf,oversample=self.aa_oversampling,size=self.aa_extent)
+                    # aaf_grid is in the shape of (Oversampled,Grid Point).
+                    aaf_grid_rs = aaf_grid.T.reshape(aaf_grid.shape[0]*aaf_grid.shape[1])
+                    aaf_grid_2d = numpy.outer(aaf_grid_rs,aaf_grid_rs).reshape(self.aa_extent,
+                                                                           self.aa_oversampling,
+                                                                           self.aa_extent,
+                                                                           self.aa_oversampling)
+                    aaf_grid_2d = numpy.transpose(aaf_grid_2d,(0,2,1,3))                    
+                    locs_x = locs[0,0,:,:,:]
+                    locs_y = locs[1,0,:,:,:]
+
+                    # Calculate the oversampling values of the antenna locations
+                    #locs_x_ov = (locs_x % 1) * self.aa_oversampling // 2 + self.aa_oversampling //2
+                    locs_x_ov = numpy.floor(self.aa_oversampling * ((locs_x % 1)/2 + 0.5)).astype(int)
+                    locs_y_ov = numpy.floor(self.aa_oversampling * ((locs_y % 1)/2 + 0.5)).astype(int)
+
+                    aa_kerns = numpy.transpose(aaf_grid_2d[:,:,locs_x_ov,locs_y_ov],(2,3,4,0,1)).copy()
+                    aa_kerns = numpy.tile(aa_kerns,(self.ntime_gulp,1,1,1,1,1)).astype(numpy.complex64)
+                
                 try:
                     copy_array(self.locs, bifrost.ndarray(locs.astype(numpy.int32)))
                 except AttributeError:
@@ -931,7 +961,17 @@ class MOFFCorrelatorOp(object):
                     if a.stand.id == 256:
                         phases[:,:,:,i,:,:] = 0.0
                 phases = phases.conj()
+
+                if self.aa_extent > 1:
+                    # We can multiple in a straight phase change here.
+                    # For combining aa_kernel pattern and the illumination pattern
+                    # we will need to add a convolution. 
+                    phases = phases * aa_kerns
+
                 phases = bifrost.ndarray(phases)
+
+
+                
                 try:
                     copy_array(gphases, phases)
                 except NameError:
