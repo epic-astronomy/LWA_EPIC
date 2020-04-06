@@ -149,9 +149,6 @@ def generate_oversampled_aa_kernel(pswf, oversample, size=None,normalization_tol
     '''
     resultn = result/(size*oversample)
     intn = numpy.trapz(resultn.reshape(size*oversample),dx=1./float(oversample))
-    print("Integral: ")
-    print(intn)
-    print(resultn.T.reshape(size*oversample))
     if numpy.isclose(1.0,intn,rtol=normalization_tolerance):
         return resultn
     else:
