@@ -96,12 +96,13 @@ def generate_pswf(grid_size, support,m=0):
     '''
     Generates a PSWF anti aliasing function in image space. 
     '''
+    grid_size = float(grid_size) # Forgot python2 doesn't automatically cast ints to floats
     half_grid_size = grid_size // 2
     if grid_size % 2 == 0:
         coords = numpy.mgrid[-half_grid_size:half_grid_size] / grid_size
     else:
         coords = numpy.mgrid[-half_grid_size:half_grid_size+1] / grid_size
-    coords_scale_factor = 2 - 1/grid_size/4
+    coords_scale_factor = 2. - 1./grid_size/4.
     
     return pro_ang1(m,m, support, coords_scale_factor * coords)[0]
 
