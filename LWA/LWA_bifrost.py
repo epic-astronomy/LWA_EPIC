@@ -7,6 +7,7 @@ import logging
 import time
 import json
 import os
+import math
 import sys
 import threading
 import argparse
@@ -106,7 +107,7 @@ def generate_pswf(grid_size, support,m=0):
     
     return pro_ang1(m,m, support, coords_scale_factor * coords)[0]
 
-def generate_oversampled_aa_kernel(pswf, oversample, size=None):
+def generate_oversampled_aa_kernel(pswf, oversample, size=None,normalization_tolerance=1e-2):
 
     N = pswf.shape[0]
     if size is None: size = N
@@ -126,7 +127,35 @@ def generate_oversampled_aa_kernel(pswf, oversample, size=None):
     for x in range(oversample):
         xof = aas//2 - oversample*(size//2) + x
         result[x] = aa_kernel[xof: xof+oversample*size : oversample]
-    return result
+
+    ''' 
+    Lets normalise and check to make sure the integral of
+    the PSWF is approximately 1.0.  I have set the rel_tol
+    quite loosely here as the small kernel sizes and
+    oversampling mean we might not be super exact. This
+    knob/dial is user tweakable.
+
+    The oversampling can be realistically dialled up as high
+    as you want as at least my original intent is to
+    calculate oversampling before initialising the romein
+    module as the antenna locations don't move.
+
+    Therefore we don't need to calculate the oversampling
+    and access the full oversampled kernel on the GPU as you
+    would when convolving visibilities which are practically
+    random in their location (okay I know each baseline/freq
+    traces out an ellipse but show me one example of a good
+    optimisation based on this and I'll eat my hat (I don't own a hat))
+    '''
+    resultn = result/(size*oversample)
+    intn = numpy.trapz(resultn.reshape(size*oversample),dx=1./float(oversample))
+    print("Integral: ")
+    print(intn)
+    print(resultn.T.reshape(size*oversample))
+    if numpy.isclose(1.0,intn,rtol=normalization_tolerance):
+        return resultn
+    else:
+        raise ValueError("PSWF Integral significantly different from 1.0")
 
 ###############################################################
 
