@@ -35,7 +35,6 @@ from bifrost.reduce import reduce as Reduce
 from bifrost.proclog import ProcLog
 from bifrost.libbifrost import bf
 from bifrost.fft import Fft
-from bifrost.fft_shift import fft_shift_2d
 from bifrost.linalg import LinAlg
 from bifrost.romein import Romein
 import bifrost
@@ -1067,12 +1066,10 @@ class MOFFCorrelatorOp(object):
                                     #autocorr_g = romein_float(autocorrs_av,autocorr_g,autocorr_il,autocorr_lx,autocorr_ly,autocorr_lz,self.ant_extent,self.grid_size,nstand,nchan*npol**2)
                                     #Inverse FFT
                                     try:
-                                        autocorr_g = fft_shift_2d(autocorr_g, self.grid_size, nchan*npol**2)
                                         ac_fft.execute(autocorr_g,autocorr_g,inverse=True)
                                     except NameError:
                                          ac_fft = Fft()
-                                         ac_fft.init(autocorr_g,autocorr_g,axes=(1,2))
-                                         autocorr_g = fft_shift_2d(autocorr_g, self.grid_size, nchan*npol**2)
+                                         ac_fft.init(autocorr_g,autocorr_g,axes=(1,2), apply_fftshift=True)
                                          ac_fft.execute(autocorr_g,autocorr_g,inverse=True)
 
                                     accumulated_image = accumulated_image.reshape(nchan,npol**2,self.grid_size, self.grid_size)
@@ -1886,6 +1883,9 @@ def main():
         print('Output directory does not exist. Defaulting to current directory.')
         args.out_dir = '.'
 
+    if args.removeautocorrs:
+        raise NotImplementedError('Removing autocorrelations is not yet properly'
+                                  + ' implemented.')
 
     log = logging.getLogger(__name__)
     logFormat = logging.Formatter('%(asctime)s [%(levelname)-8s] %(message)s',
