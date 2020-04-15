@@ -10,10 +10,8 @@ DOXYGEN       ?= doxygen
 PYBUILDFLAGS   ?=
 PYINSTALLFLAGS ?=
 
-GPU_ARCHS     ?= 50 # GeForce GTX TITAN X
-# Always check the GPU Compute Capability (cc) and compatibility with nvcc version.
-
-# Install may work but the usgae code throws the following error for mismatched GPU and
+GPU_ARCHS     ?= 50 # GeForce GTX TITAN X, change if you are using a different card.
+# Installation with wrong GPU_ARCHS above results in an error like:
 # cudaGetErrorString(cuda_ret) = no kernel image is available for execution on the device
 #  or
 # cudaGetErrorString(cuda_ret) = invalid device function
