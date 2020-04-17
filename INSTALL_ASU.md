@@ -16,7 +16,7 @@ While not explicitly mentioned, lsl depends on `astropy` for fits I/O. Inclusion
 To install dependencies for lsl excute the following lines. This may not be necessay depending on your environment but will help smooth the install.
 ```
 $ conda activate ${env}
-$ conda install -c anaconda atlas
+$ conda install -c free atlas
 $ conda config --add channels conda-forge
 $ conda install aipy scipy numpy fftw astropy healpy ephem pytz matplotlib
 $ pip install lsl
@@ -27,11 +27,10 @@ $ pip install lsl
 $ cd ~/src
 $ git clone https://github.com/epic-astronomy/bifrost.git
 $ cd bifrost
+$ cp /data4/jdowell/CodeSafe/bifrost/src/proclog.cpp src/  # Make multi-user installation work
 # For development work, you will want to checkout the appropriate branch. For example:
 $ git checkout plugin-wrapper
-$ cp /data4/jdowell/CodeSafe/bifrost/src/proclog.cpp src/  # Make multi-user installation work
 ```
-(The `proclog.ccp` file referenced above is also in this repository, `LWA_EPIC/config/ASU_proclog.cpp`, so you can copy from there in case anything ever happens to the one on `/data4/`.)
 
 Note that the `README.md` in bifrost can be (and as of this commit *is*) out of date. Use the following line to install dependencies. (Do this in your epic env, *not* with sudo as the bifrost README indicates). The ctypes gen commit referenced here works for Ubuntu >18. In the future this may be another point of trouble. If this version doesn't work, you will want to file and issue on the [ledatelescope bifrost repo](https://github.com/ledatelescope/bifrost/issues).
 ```
