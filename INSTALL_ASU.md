@@ -33,10 +33,9 @@ $ cp /data4/jdowell/CodeSafe/bifrost/src/proclog.cpp src/  # Make multi-user ins
 ```
 (The `proclog.ccp` file referenced above is also in this repository, `LWA_EPIC/config/ASU_proclog.cpp`, so you can copy from there in case anything ever happens to the one on `/data4/`.)
 
-Check `README.md` to install dependencies (do this in your epic env, *not* with sudo as the README indicates).
-Always check that the ctypesgen is the latest as mentioned in the README.md
+Note that the `README.md` in bifrost can be (and as of this commit *is*) out of date. Use the following line to install dependencies. (Do this in your epic env, *not* with sudo as the bifrost README indicates). The ctypes gen commit referenced here works for Ubuntu >18. In the future this may be another point of trouble. If this version doesn't work, you will want to file and issue on the [ledatelescope bifrost repo](https://github.com/ledatelescope/bifrost/issues).
 ```
-$ pip install numpy contextlib2 pint git+https://github.com/olsonse/ctypesgen.git@9bd2d249aa4011c6383a10890ec6f203d7b7990f
+$ pip install contextlib2 pint git+https://github.com/olsonse/ctypesgen.git@9bd2d249aa4011c6383a10890ec6f203d7b7990f
 ```
 
 Downgrade matplotlib
