@@ -26,7 +26,7 @@ $ pip install lsl
 ```
 $ cd ~/src
 $ git clone https://github.com/epic-astronomy/bifrost.git
-$ cd bifrost 
+$ cd bifrost
 # For development work, you will want to checkout the appropriate branch. For example:
 $ git checkout plugin-wrapper
 $ cp /data4/jdowell/CodeSafe/bifrost/src/proclog.cpp src/  # Make multi-user installation work
@@ -53,9 +53,10 @@ Before proceeding to compiling, we need to ensure your `PATH` is setup to find t
 export PATH=/usr/local/cuda-10.2/bin:$PATH
 export LD_LIBRARY_PATH=/usr/local/cuda-10.2/lib64:$LD_LIBRARY_PATH
 ```
-Then source the file:
+Then source the file and reactivate your environment:
 ```
 $ source ~/.bashrc
+$ conda activate ${env}
 ```
 
 Finally, install (note **this must be done on intrepid with your environment activated**):
