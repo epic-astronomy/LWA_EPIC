@@ -49,6 +49,16 @@ Now we need to actually install bifrost. First set up configuration for intrepid
 $ cp ~/src/LWA_EPIC/config/ASU_user.mk ~/src/bifrost/user.mk
 ```
 
+Before proceeding to compiling, we need to ensure your `PATH` is setup to find the cuda libraries. Add the following lines to your `.bashrc` (or relevant shell initialization script):
+```
+export PATH=/usr/local/cuda-10.2/bin:$PATH
+export LD_LIBRARY_PATH=/usr/local/cuda-10.2/lib64:$LD_LIBRARY_PATH
+```
+Then source the file:
+```
+$ source ~/.bashrc
+```
+
 Finally, install (note **this must be done on intrepid with your environment activated**):
 ```
 $ make -j 32
