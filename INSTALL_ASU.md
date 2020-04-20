@@ -27,7 +27,6 @@ $ pip install lsl
 $ cd ~/src
 $ git clone https://github.com/epic-astronomy/bifrost.git
 $ cd bifrost
-$ cp ~/src/LWA_EPIC/config/ASU_proclog.cpp src/proclog.cpp  # Make multi-user installation work
 # For development work, you will want to checkout the appropriate branch. For example:
 $ git checkout plugin-wrapper
 ```
