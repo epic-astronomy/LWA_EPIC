@@ -2,6 +2,10 @@
 
 ## Core Python Includes
 from __future__ import print_function
+try:
+    range = xrange
+except NameError:
+    pass
 import signal
 import logging
 import time
@@ -839,7 +843,7 @@ class MOFFCorrelatorOp(object):
                 # Phases are Ntime x Nchan x Nstand x Npol x extent x extent
                 freq.shape += (1,1)
                 phases = numpy.zeros((self.ntime_gulp,nchan,nstand,npol,self.ant_extent,self.ant_extent), dtype=numpy.complex64)
-                for i in xrange(nstand):
+                for i in range(nstand):
                     ## X
                     a = self.antennas[2*i + 0]
                     delay = a.cable.delay(freq) - a.stand.z / speedOfLight
