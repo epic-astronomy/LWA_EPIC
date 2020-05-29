@@ -888,7 +888,7 @@ class MOFFCorrelatorOp(object):
                     ## Explicit outrigger masking - we probably want to do
                     ## away with this at some point
                     if (self.station == lwasv and a.stand.id == 256) \
-                       or (self.station == lwa1 and a.stand.id in (35, 256, 257, 258, 259, 260)):
+                       or (self.station == lwa1 and a.stand.id in (35, 257, 258, 259, 260)):
                         phases[:,:,:,i,:,:] = 0.0
                 phases = phases.conj()
                 phases = bifrost.ndarray(phases)
