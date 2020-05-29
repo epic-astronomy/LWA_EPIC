@@ -47,7 +47,7 @@ BFNoSpinZone()
 from lsl.common.constants import c as speedOfLight
 from lsl.writer import fitsidi
 from lsl.reader.ldp import TBNFile, TBFFile
-from lsl.common.stations import lwasv, parseSSMIF
+from lsl.common.stations import lwa1, lwasv, parseSSMIF
 
 #################### Trigger Processing #######################
 
@@ -640,7 +640,7 @@ class CalibrationOp(object):
         pass
 
 class MOFFCorrelatorOp(object):
-    def __init__(self, log, iring, oring, antennas, grid_size, grid_resolution,
+    def __init__(self, log, iring, oring, station, grid_size, grid_resolution,
                  ntime_gulp=2500, accumulation_time=10000, core=-1, gpu=-1,
                  remove_autocorrs = False, benchmark=False, profile=False,
                  *args, **kwargs):
@@ -649,8 +649,9 @@ class MOFFCorrelatorOp(object):
         self.oring = oring
         self.ntime_gulp = ntime_gulp
         self.accumulation_time=accumulation_time
-
-        self.antennas = antennas
+        
+        self.station = station
+        self.antennas = self.station.getAntennas()
         locations = numpy.empty(shape=(0,3))
         for ant in self.antennas:
             locations = numpy.vstack((locations,[ant.stand[0],ant.stand[1],ant.stand[2]]))
@@ -743,9 +744,9 @@ class MOFFCorrelatorOp(object):
                 ohdr['sampling_length_y'] = sampling_length
                 ohdr['accumulation_time'] = self.accumulation_time
                 ohdr['FS'] = FS
-                ohdr['latitude'] = lwasv.lat * 180. / numpy.pi
-                ohdr['longitude'] = lwasv.lon * 180. / numpy.pi
-                ohdr['telescope'] = 'LWA-SV'
+                ohdr['latitude'] = self.station.lat * 180. / numpy.pi
+                ohdr['longitude'] = self.station.lon * 180. / numpy.pi
+                ohdr['telescope'] = self.station.name.upper()
                 ohdr['data_units'] = 'UNCALIB'
                 if ohdr['npol'] == 1:
                     ohdr['pols'] = ['xx']
@@ -779,7 +780,8 @@ class MOFFCorrelatorOp(object):
                         phases[:,:,i,:,:,:] = 0.0
                     ## Explicit outrigger masking - we probably want to do
                     ## away with this at some point
-                    if a.stand.id == 256:
+                    if (self.station == lwasv and a.stand.id == 256) \
+                       or (self.station == lwa1 and a.stand.id in (35, 256, 257, 258, 259, 260)):
                         phases[:,:,i,:,:,:] = 0.0
                 phases = phases.conj()
                 phases = bifrost.ndarray(phases)
@@ -1297,6 +1299,7 @@ def main():
     group2.add_argument('--tbnfile', type=str, help = 'TBN Data Path')
     group2.add_argument('--tbffile', type=str, help = 'TBF Data Path')
     group3 = parser.add_argument_group('Processing Options')
+    group3.add_argument('--lwa1', action='store_true', help='TBN data is from LWA1, not LWA-SV')
     group3.add_argument('--imagesize', type=int, default = 64, help = '1-D Image Size')
     group3.add_argument('--imageres', type=float, default = 1.79057, help = 'Image pixel size in degrees')
     group3.add_argument('--nts',type=int, default = 1000, help= 'Number of timestamps per span')
@@ -1374,11 +1377,11 @@ def main():
 
 
     # Setup Antennas
-    ## TODO: Some sort of switch for other stations?
-
-    lwasv_antennas = lwasv.getAntennas()
-    lwasv_stands = lwasv.getStands()
-
+    
+    lwa_station = lwasv
+    if args.lwa1:
+        lwa_station = lwa1
+        
     # Setup threads
 
     if args.offline:
@@ -1415,7 +1418,7 @@ def main():
                                 nchan_out=args.channels, npol_out=1 if args.singlepol else 2,
                                 core=cores.pop(0)))
 
-    ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, lwasv_antennas,
+    ops.append(MOFFCorrelatorOp(log, fdomain_ring, gridandfft_ring, lwa_station,
                                 args.imagesize, args.imageres, ntime_gulp=args.nts,
                                 accumulation_time=args.accumulate,
                                 remove_autocorrs=args.removeautocorrs,
