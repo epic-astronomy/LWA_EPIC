@@ -722,7 +722,7 @@ class MOFFCorrelatorOp(object):
         benchmark=False,
         profile=False,
         *args,
-        **kwargs,
+        **kwargs
     ):
         self.log = log
         self.iring = iring
@@ -1161,7 +1161,7 @@ class TriggerOp(object):
         core=-1,
         gpu=-1,
         *args,
-        **kwargs,
+        **kwargs
     ):
         self.log = log
         self.iring = iring
@@ -1302,7 +1302,7 @@ class SaveOp(object):
         out_dir="",
         triggering=False,
         *args,
-        **kwargs,
+        **kwargs
     ):
         self.log = log
         self.iring = iring
