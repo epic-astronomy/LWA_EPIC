@@ -1533,7 +1533,7 @@ def main():
     group4 = parser.add_argument_group("Output")
     group4.add_argument(
         "--ints_per_file",
-        ype=int,
+        type=int,
         default=1,
         help="Number of integrations per output FITS file.",
     )
