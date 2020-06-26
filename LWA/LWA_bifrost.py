@@ -46,7 +46,7 @@ BFNoSpinZone()  # noqa
 # LWA Software Library Includes
 from lsl.common.constants import c as speedOfLight
 from lsl.reader.ldp import TBNFile, TBFFile
-from lsl.common.stations import lwasv, parse_ssmif
+from lsl.common.stations import lwasv
 
 # some py2/3 compatibility
 if sys.version_info.major < 3:
