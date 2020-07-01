@@ -18,6 +18,7 @@ import threading
 import argparse
 from collections import deque
 from scipy.fftpack import fft
+from astropy.constants import c as speed_of_light
 
 import datetime
 import ctypes
@@ -44,7 +45,6 @@ from bifrost.device import set_device as BFSetGPU, get_device as BFGetGPU, set_d
 BFNoSpinZone()  # noqa
 
 # LWA Software Library Includes
-from lsl.common.constants import c as speedOfLight
 from lsl.reader.ldp import TBNFile, TBFFile
 from lsl.common.stations import lwasv
 
@@ -127,7 +127,7 @@ def GenerateLocations(
 
     """
     delta = (2 * grid_size * numpy.sin(numpy.pi * grid_resolution / 360)) ** -1
-    chan_wavelengths = speedOfLight / frequencies
+    chan_wavelengths = speed_of_light.value / frequencies
     sample_grid = chan_wavelengths * delta
     sll = sample_grid[0] / chan_wavelengths[0]
     lsl_locs = lsl_locs.T
@@ -859,13 +859,13 @@ class MOFFCorrelatorOp(object):
                 for i in range(nstand):
                     # X
                     a = self.antennas[2 * i + 0]
-                    delay = a.cable.delay(freq) - a.stand.z / speedOfLight
+                    delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
                     phases[:, :, i, 0, :, :] = numpy.exp(2j * numpy.pi * freq * delay)
                     phases[:, :, i, 0, :, :] /= numpy.sqrt(a.cable.gain(freq))
                     if npol == 2:
                         # Y
                         a = self.antennas[2 * i + 1]
-                        delay = a.cable.delay(freq) - a.stand.z / speedOfLight
+                        delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
                         phases[:, :, i, 1, :, :] = numpy.exp(2j * numpy.pi * freq * delay)
                         phases[:, :, i, 1, :, :] /= numpy.sqrt(a.cable.gain(freq))
                     ## Explicit bad and suspect antenna masking - this will
@@ -1633,7 +1633,7 @@ def main():
     # TODO: Some sort of switch for other stations?
 
     lwasv_antennas = lwasv.antennas
-    lwasv_stands = lwasv.getStands()
+    lwasv_stands = lwasv.stands
 
     # Setup threads
 

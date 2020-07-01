@@ -18,6 +18,7 @@ import threading
 import argparse
 from collections import deque
 from scipy.fftpack import fft
+from astropy.constants import c as speed_of_light
 
 import datetime
 import ctypes
@@ -45,7 +46,6 @@ from bifrost.device import set_device as BFSetGPU, get_device as BFGetGPU, set_d
 BFNoSpinZone()  # noqa
 
 # LWA Software Library Includes
-from lsl.common.constants import c as speedOfLight
 from lsl.reader.ldp import TBNFile, TBFFile
 from lsl.common.stations import lwasv
 
@@ -167,7 +167,7 @@ def Generate_DFT_Locations(lsl_locs, frequencies, ntime, nchan, npol):
     """
     lsl_locs = lsl_locs.T
     lsl_locs = lsl_locs.copy()
-    chan_wavelengths = speedOfLight / frequencies
+    chan_wavelengths = speed_of_light.value / frequencies
     dft_locs = numpy.zeros(shape=(nchan, npol, 3, lsl_locs.shape[1]))
     for j in numpy.arange(npol):
         for i in numpy.arange(nchan):
@@ -209,7 +209,7 @@ def GenerateLocations(
 
     """
     delta = (2 * grid_size * numpy.sin(numpy.pi * grid_resolution / 360)) ** -1
-    chan_wavelengths = speedOfLight / frequencies
+    chan_wavelengths = speed_of_light.value / frequencies
     sample_grid = chan_wavelengths * delta
     sll = sample_grid[0] / chan_wavelengths[0]
     lsl_locs = lsl_locs.T
@@ -988,13 +988,13 @@ class MOFFCorrelatorOp(object):
                 for i in range(nstand):
                     # X
                     a = self.antennas[2 * i + 0]
-                    delay = a.cable.delay(freq) - a.stand.z / speedOfLight
+                    delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
                     phases[:, :, 0, i, :, :] = numpy.exp(2j * numpy.pi * freq * delay)
                     phases[:, :, 0, i, :, :] /= numpy.sqrt(a.cable.gain(freq))
                     if npol == 2:
                         # Y
                         a = self.antennas[2 * i + 1]
-                        delay = a.cable.delay(freq) - a.stand.z / speedOfLight
+                        delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
                         phases[:, :, 1, i, :, :] = numpy.exp(2j * numpy.pi * freq * delay)
                         phases[:, :, 1, i, :, :] /= numpy.sqrt(a.cable.gain(freq))
                     # Explicit outrigger masking - we probably want to do
@@ -1416,13 +1416,13 @@ class MOFF_DFT_CorrelatorOp(object):
                 for i in range(nstand):
                     # X
                     a = self.antennas[2 * i + 0]
-                    delay = a.cable.delay(freq) - a.stand.z / speedOfLight
+                    delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
                     phases[:, 0, i] = numpy.exp(2j * numpy.pi * freq * delay)
                     phases[:, 0, i] /= numpy.sqrt(a.cable.gain(freq))
                     if npol == 2:
                         # Y
                         a = self.antennas[2 * i + 1]
-                        delay = a.cable.delay(freq) - a.stand.z / speedOfLight
+                        delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
                         phases[:, 1, i] = numpy.exp(2j * numpy.pi * freq * delay)
                         phases[:, 1, i] /= numpy.sqrt(a.cable.gain(freq))
                         # Explicit outrigger masking - we probably want to do
@@ -2238,7 +2238,7 @@ def main():
     # TODO: Some sort of switch for other stations?
 
     lwasv_antennas = lwasv.antennas
-    lwasv_stands = lwasv.getStands()
+    lwasv_stands = lwasv.stands
 
     # Setup threads
 
