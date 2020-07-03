@@ -1000,6 +1000,11 @@ class MOFFCorrelatorOp(object):
                         delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
                         phases[:, :, 1, i, :, :] = numpy.exp(2j * numpy.pi * freq * delay)
                         phases[:, :, 1, i, :, :] /= numpy.sqrt(a.cable.gain(freq))
+                    # Explicit bad and suspect antenna masking - this will
+                    # mask an entire stand if either pol is bad
+                    if self.station.antennas[2 * i + 0].combined_status < 33 \
+                       or self.station.antennas[2 * i + 1].combined_status < 33:
+                        phases[:, :, :, i, :, :] = 0.0
                     # Explicit outrigger masking - we probably want to do
                     # away with this at some point
                     if (self.station == lwasv and a.stand.id == 256) \
@@ -1431,12 +1436,17 @@ class MOFF_DFT_CorrelatorOp(object):
                         delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
                         phases[:, 1, i] = numpy.exp(2j * numpy.pi * freq * delay)
                         phases[:, 1, i] /= numpy.sqrt(a.cable.gain(freq))
-                        # Explicit outrigger masking - we probably want to do
-                        # away with this at some point
-                        # if (self.station == lwasv and a.stand.id == 256) \
-                        #     or (self.station == lwa1 and a.stand.id in (35, 257, 258, 259, 260)):
-                        #     phases[:, :, i] = 0.0
-                        #     nj()
+                    # Explicit bad and suspect antenna masking - this will
+                    # mask an entire stand if either pol is bad
+                    if self.station.antennas[2 * i + 0].combined_status < 33 \
+                       or self.station.antennas[2 * i + 1].combined_status < 33:
+                        phases[:, :, i] = 0.0
+                    # Explicit outrigger masking - we probably want to do
+                    # away with this at some point
+                    # if (self.station == lwasv and a.stand.id == 256) \
+                    #     or (self.station == lwa1 and a.stand.id in (35, 257, 258, 259, 260)):
+                    #     phases[:, :, i] = 0.0
+                    #     nj()
                 phases = bifrost.ndarray(phases)
 
                 # Setup DFT Transform Matrix
