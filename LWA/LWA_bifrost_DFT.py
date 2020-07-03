@@ -2361,7 +2361,7 @@ def main():
                 log,
                 transpose_ring,
                 gridandfft_ring,
-                lwasv_antennas,
+                lwa_station,
                 skymodes=args.dft_skymodes_1D,
                 ntime_gulp=args.nts,
                 accumulation_time=args.accumulate,
