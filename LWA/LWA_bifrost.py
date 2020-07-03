@@ -1637,7 +1637,8 @@ def main():
     gridandfft_ring = Ring(name="gridandfft", space="cuda")
     image_ring = Ring(name="image", space="system")
 
-    # Setup Antennas
+    # Setup the station
+
     lwa_station = lwasv
     if args.lwa1:
         lwa_station = lwa1

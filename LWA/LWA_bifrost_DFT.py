@@ -2254,7 +2254,6 @@ def main():
     gridandfft_ring = Ring(name="gridandfft", space="cuda")
     image_ring = Ring(name="image", space="system")
 
-
     # Setup the station
     
     lwa_station = lwasv
