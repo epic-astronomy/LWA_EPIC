@@ -728,7 +728,7 @@ class MOFFCorrelatorOp(object):
         self.iring = iring
         self.oring = oring
         self.ntime_gulp = ntime_gulp
-        self.accumulation_time=accumulation_time
+        self.accumulation_time = accumulation_time
         
         self.station = station
         locations = numpy.empty(shape=(0, 3))
