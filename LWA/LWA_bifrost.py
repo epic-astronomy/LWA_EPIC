@@ -18,6 +18,7 @@ import threading
 import argparse
 from collections import deque
 from scipy.fftpack import fft
+from astropy.constants import c as speed_of_light
 
 import datetime
 import ctypes
@@ -44,7 +45,6 @@ from bifrost.device import set_device as BFSetGPU, get_device as BFGetGPU, set_d
 BFNoSpinZone()  # noqa
 
 # LWA Software Library Includes
-from lsl.common.constants import c as speedOfLight
 from lsl.reader.ldp import TBNFile, TBFFile
 from lsl.common.stations import lwa1, lwasv
 
@@ -127,7 +127,7 @@ def GenerateLocations(
 
     """
     delta = (2 * grid_size * numpy.sin(numpy.pi * grid_resolution / 360)) ** -1
-    chan_wavelengths = speedOfLight / frequencies
+    chan_wavelengths = speed_of_light.value / frequencies
     sample_grid = chan_wavelengths * delta
     sll = sample_grid[0] / chan_wavelengths[0]
     lsl_locs = lsl_locs.T
@@ -731,15 +731,14 @@ class MOFFCorrelatorOp(object):
         self.accumulation_time=accumulation_time
         
         self.station = station
-        self.antennas = self.station.antennas
         locations = numpy.empty(shape=(0, 3))
-        for ant in self.antennas:
+        for ant in self.station.antennas:
             locations = numpy.vstack((locations, [ant.stand[0], ant.stand[1], ant.stand[2]]))
         locations = numpy.delete(locations, list(range(0, locations.shape[0], 2)), axis=0)
         if self.station == lwasv:
-            locations[[i for i,a in enumerate(self.antennas[::2]) if a.stand.id == 256], :] = 0.0
+            locations[[i for i,a in enumerate(self.station.antennas[::2]) if a.stand.id == 256], :] = 0.0
         elif self.station == lwa1:
-             locations[[i for i,a in enumerate(self.antennas[::2]) if a.stand.id in (35, 257, 258, 259, 260)], :] = 0.0
+             locations[[i for i,a in enumerate(self.station.antennas[::2]) if a.stand.id in (35, 257, 258, 259, 260)], :] = 0.0
         self.locations = locations
 
         self.grid_size = grid_size
@@ -862,19 +861,19 @@ class MOFFCorrelatorOp(object):
                 )
                 for i in range(nstand):
                     # X
-                    a = self.antennas[2 * i + 0]
-                    delay = a.cable.delay(freq) - a.stand.z / speedOfLight
+                    a = self.station.antennas[2 * i + 0]
+                    delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
                     phases[:, :, i, 0, :, :] = numpy.exp(2j * numpy.pi * freq * delay)
                     phases[:, :, i, 0, :, :] /= numpy.sqrt(a.cable.gain(freq))
                     if npol == 2:
                         # Y
-                        a = self.antennas[2 * i + 1]
-                        delay = a.cable.delay(freq) - a.stand.z / speedOfLight
+                        a = self.station.antennas[2 * i + 1]
+                        delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
                         phases[:, :, i, 1, :, :] = numpy.exp(2j * numpy.pi * freq * delay)
                         phases[:, :, i, 1, :, :] /= numpy.sqrt(a.cable.gain(freq))
                     ## Explicit bad and suspect antenna masking - this will
                     ## mask an entire stand if either pol is bad
-                    if self.antennas[2 * i + 0].combined_status < 33 or self.antennas[2 * i + 1].combined_status < 33:
+                    if self.station.antennas[2 * i + 0].combined_status < 33 or self.station.antennas[2 * i + 1].combined_status < 33:
                         phases[:, :, i, :, :, :] = 0.0
                     ## Explicit outrigger masking - we probably want to do
                     ## away with this at some point
