@@ -47,7 +47,7 @@ BFNoSpinZone()  # noqa
 # LWA Software Library Includes
 from lsl.common.constants import c as speedOfLight
 from lsl.reader.ldp import TBNFile, TBFFile
-from lsl.common.stations import lwa1, lwasv, parse_ssmif
+from lsl.common.stations import lwa1, lwasv
 
 # some py2/3 compatibility
 if sys.version_info.major < 3:
@@ -847,18 +847,12 @@ class CalibrationOp(object):
 
 
 class MOFFCorrelatorOp(object):
-<<<<<<< HEAD
-    def __init__(self, log, iring, oring, station, grid_size, grid_resolution, 
-                 ntime_gulp=2500, accumulation_time=10000, core=-1, gpu=-1, 
-                 remove_autocorrs = False, benchmark=False, profile=False, 
-                 *args, **kwargs):
-=======
     def __init__(
         self,
         log,
         iring,
         oring,
-        antennas,
+        station,
         grid_size,
         grid_resolution,
         ntime_gulp=2500,
@@ -871,27 +865,22 @@ class MOFFCorrelatorOp(object):
         *args,
         **kwargs
     ):
->>>>>>> new-lsl-api
         self.log = log
         self.iring = iring
         self.oring = oring
         self.ntime_gulp = ntime_gulp
-<<<<<<< HEAD
-        self.accumulation_time=accumulation_time
-        
-        self.station = station
-        self.antennas = self.station.getAntennas()
-        locations = numpy.empty(shape=(0,3))
-=======
         self.accumulation_time = accumulation_time
 
-        self.antennas = antennas
+        self.station = station
+        self.antennas = self.station.antennas
         locations = numpy.empty(shape=(0, 3))
->>>>>>> new-lsl-api
         for ant in self.antennas:
             locations = numpy.vstack((locations, [ant.stand[0], ant.stand[1], ant.stand[2]]))
         locations = numpy.delete(locations, list(range(0, locations.shape[0], 2)), axis=0)
-        locations[255, :] = 0.0
+        if self.station == lwasv:
+            locations[[i for i,a in enumerate(self.antennas[::2]) if a.stand.id == 256], :] = 0.0
+        elif self.station == lwa1:
+             locations[[i for i,a in enumerate(self.antennas[::2]) if a.stand.id in (35, 257, 258, 259, 260)], :] = 0.0
         self.locations = locations
 
         self.grid_size = grid_size
@@ -969,29 +958,6 @@ class MOFFCorrelatorOp(object):
                     self.locs = bifrost.ndarray(locs.astype(numpy.int32), space="cuda")
 
                 ohdr = ihdr.copy()
-<<<<<<< HEAD
-                ohdr['nbit'] = 64
-
-
-                ohdr['npol'] = npol**2 # Because of cross multiplying shenanigans
-                ohdr['grid_size_x'] = self.grid_size
-                ohdr['grid_size_y'] = self.grid_size
-                ohdr['axes'] = 'time,chan,pol,gridy,gridx'
-                ohdr['sampling_length_x'] = sampling_length
-                ohdr['sampling_length_y'] = sampling_length
-                ohdr['accumulation_time'] = self.accumulation_time
-                ohdr['FS'] = FS
-                ohdr['latitude'] = self.station.lat * 180. / numpy.pi
-                ohdr['longitude'] = self.station.lon * 180. / numpy.pi
-                ohdr['telescope'] = self.station.name.upper()
-                ohdr['data_units'] = 'UNCALIB'
-                if ohdr['npol'] == 1:
-                    ohdr['pols'] = ['xx']
-                elif ohdr['npol'] == 2:
-                    ohdr['pols'] = ['xx', 'yy']
-                elif ohdr['npol'] == 4:
-                    ohdr['pols'] = ['xx', 'xy', 'yx', 'yy']
-=======
                 ohdr["nbit"] = 64
 
                 ohdr["npol"] = npol ** 2  # Because of cross multiplying shenanigans
@@ -1002,9 +968,9 @@ class MOFFCorrelatorOp(object):
                 ohdr["sampling_length_y"] = sampling_length
                 ohdr["accumulation_time"] = self.accumulation_time
                 ohdr["FS"] = FS
-                ohdr["latitude"] = lwasv.lat * 180. / numpy.pi
-                ohdr["longitude"] = lwasv.lon * 180. / numpy.pi
-                ohdr["telescope"] = "LWA-SV"
+                ohdr["latitude"] = self.station.lat * 180. / numpy.pi
+                ohdr["longitude"] = self.station..lon * 180. / numpy.pi
+                ohdr["telescope"] = self.station.name.upper()
                 ohdr["data_units"] = "UNCALIB"
                 if ohdr["npol"] == 1:
                     ohdr["pols"] = ["xx"]
@@ -1012,7 +978,6 @@ class MOFFCorrelatorOp(object):
                     ohdr["pols"] = ["xx", "yy"]
                 elif ohdr["npol"] == 4:
                     ohdr["pols"] = ["xx", "xy", "yx", "yy"]
->>>>>>> new-lsl-api
                 else:
                     raise ValueError("Cannot write fits file without knowing polarization list")
                 ohdr_str = json.dumps(ohdr)
@@ -1038,7 +1003,8 @@ class MOFFCorrelatorOp(object):
                         phases[:, :, 1, i, :, :] /= numpy.sqrt(a.cable.gain(freq))
                     # Explicit outrigger masking - we probably want to do
                     # away with this at some point
-                    if a.stand.id == 256:
+                    if (self.station == lwasv and a.stand.id == 256) \
+                       or (self.station == lwa1 and a.stand.id in (35, 257, 258, 259, 260)):
                         phases[:, :, :, i, :, :] = 0.0
                 phases = phases.conj()
                 phases = bifrost.ndarray(phases)
@@ -1336,12 +1302,15 @@ class MOFF_DFT_CorrelatorOp(object):
 
         # Setup Antennas
         self.station = station
-        self.antennas = self.stations.getAntennas()
+        self.antennas = self.stations.antennas
         locations = numpy.empty(shape=(0, 3))
         for ant in self.antennas:
             locations = numpy.vstack((locations, [ant.stand[0], ant.stand[1], ant.stand[2]]))
         locations = numpy.delete(locations, list(range(0, locations.shape[0], 2)), axis=0)
-        # locations[255,:] = 0.0
+        #if self.station == lwasv:
+        #    locations[[i for i,a in enumerate(self.antennas[::2]) if a.stand.id == 256], :] = 0.0
+        #elif self.station == lwa1:
+        #     locations[[i for i,a in enumerate(self.antennas[::2]) if a.stand.id in (35, 257, 258, 259, 260)], :] = 0.0
         self.locations = locations
 
         # LinAlg
@@ -1466,8 +1435,9 @@ class MOFF_DFT_CorrelatorOp(object):
                         phases[:, 1, i] /= numpy.sqrt(a.cable.gain(freq))
                         # Explicit outrigger masking - we probably want to do
                         # away with this at some point
-                        # if a.stand.id == 256:
-                        #     phases[:,i] = 0.0
+                        # if (self.station == lwasv and a.stand.id == 256) \
+                        #     or (self.station == lwa1 and a.stand.id in (35, 257, 258, 259, 260)):
+                        #     phases[:, :, i] = 0.0
                         #     nj()
                 phases = bifrost.ndarray(phases)
 

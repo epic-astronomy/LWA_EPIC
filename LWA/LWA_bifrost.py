@@ -46,7 +46,7 @@ BFNoSpinZone()  # noqa
 # LWA Software Library Includes
 from lsl.common.constants import c as speedOfLight
 from lsl.reader.ldp import TBNFile, TBFFile
-from lsl.common.stations import lwa1, lwasv, parse_ssmif
+from lsl.common.stations import lwa1, lwasv
 
 # some py2/3 compatibility
 if sys.version_info.major < 3:
@@ -736,7 +736,10 @@ class MOFFCorrelatorOp(object):
         for ant in self.antennas:
             locations = numpy.vstack((locations, [ant.stand[0], ant.stand[1], ant.stand[2]]))
         locations = numpy.delete(locations, list(range(0, locations.shape[0], 2)), axis=0)
-        locations[255, :] = 0.0
+        if self.station == lwasv:
+            locations[[i for i,a in enumerate(self.antennas[::2]) if a.stand.id == 256], :] = 0.0
+        elif self.station == lwa1:
+             locations[[i for i,a in enumerate(self.antennas[::2]) if a.stand.id in (35, 257, 258, 259, 260)], :] = 0.0
         self.locations = locations
 
         self.grid_size = grid_size
