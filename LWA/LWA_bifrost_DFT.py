@@ -239,7 +239,7 @@ def GenerateLocations(
     locy = numpy.tile(lsl_locsf[1, ...], (ntime, 1, 1, 1))
     locz = numpy.tile(lsl_locsf[2, ...], (ntime, 1, 1, 1))
     # .. and then stick them all into one large array
-    locc = numpy.concatenate([[locx, ], [locy, ], [locz, ]]).transpose(0, 1, 3, 2, 4).copy()
+    locc = numpy.concatenate([[locx, ], [locy, ], [locz, ]]).transpose(0, 1, 3, 4, 2).copy()
 
     return delta, locc, sll
 
@@ -628,7 +628,7 @@ ADP_EPOCH = datetime.datetime(1970, 1, 1)
 
 
 class FEngineCaptureOp(object):
-    """Receives Fourier Spectra from LWA FPGA."""
+    """Receive Fourier Spectra from LWA FPGA."""
 
     def __init__(self, log, *args, **kwargs):
         self.log = log
@@ -961,7 +961,7 @@ class MOFFCorrelatorOp(object):
                 accum = 0
 
                 igulp_size = self.ntime_gulp * nchan * nstand * npol * 1  # ci4
-                itshape = (self.ntime_gulp, nchan, npol, nstand)
+                itshape = (self.ntime_gulp, nchan, nstand, npol)
 
                 freq = (chan0 + numpy.arange(nchan)) * CHAN_BW
                 sampling_length, locs, sll = GenerateLocations(
@@ -1016,24 +1016,24 @@ class MOFFCorrelatorOp(object):
                 ohdr_str = json.dumps(ohdr)
 
                 # Setup the kernels to include phasing terms for zenith
-                # Phases are Ntime x Nchan x Npol x Nstand x extent x extent
+                # Phases are Ntime x Nchan x Nstand x Npol x extent x extent
                 freq.shape += (1, 1)
                 phases = numpy.zeros(
-                    (self.ntime_gulp, nchan, npol, nstand, self.ant_extent, self.ant_extent),
+                    (self.ntime_gulp, nchan, nstand, npol, self.ant_extent, self.ant_extent),
                     dtype=numpy.complex64
                 )
                 for i in range(nstand):
                     # X
                     a = self.antennas[2 * i + 0]
                     delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
-                    phases[:, :, 0, i, :, :] = numpy.exp(2j * numpy.pi * freq * delay)
-                    phases[:, :, 0, i, :, :] /= numpy.sqrt(a.cable.gain(freq))
+                    phases[:, :, i, 0, :, :] = numpy.exp(2j * numpy.pi * freq * delay)
+                    phases[:, :, i, 0, :, :] /= numpy.sqrt(a.cable.gain(freq))
                     if npol == 2:
                         # Y
                         a = self.antennas[2 * i + 1]
                         delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
-                        phases[:, :, 1, i, :, :] = numpy.exp(2j * numpy.pi * freq * delay)
-                        phases[:, :, 1, i, :, :] /= numpy.sqrt(a.cable.gain(freq))
+                        phases[:, :, i, 1, :, :] = numpy.exp(2j * numpy.pi * freq * delay)
+                        phases[:, :, i, 1, :, :] /= numpy.sqrt(a.cable.gain(freq))
                     # Explicit bad and suspect antenna masking - this will
                     # mask an entire stand if either pol is bad
                     if self.antennas[2 * i + 0].combined_status < 33 or self.antennas[2 * i + 1].combined_status < 33:
@@ -1041,7 +1041,7 @@ class MOFFCorrelatorOp(object):
                     # Explicit outrigger masking - we probably want to do
                     # away with this at some point
                     if a.stand.id == 256:
-                        phases[:, :, :, i, :, :] = 0.0
+                        phases[:, :, i, :, :, :] = 0.0
                 phases = phases.conj()
                 phases = bifrost.ndarray(phases)
                 try:
@@ -1076,7 +1076,12 @@ class MOFFCorrelatorOp(object):
                             # Setup and load
                             idata = ispan.data_view(numpy.uint8).reshape(itshape)
                             # Fix the type
-                            tdata = bifrost.ndarray(shape=itshape, dtype="ci4", native=False, buffer=idata.ctypes.data)
+                            tdata = bifrost.ndarray(
+                                shape=itshape,
+                                dtype="ci4",
+                                native=False,
+                                buffer=idata.ctypes.data,
+                            )
 
                             if self.benchmark is True:
                                 time1 = time.time()
@@ -1128,7 +1133,7 @@ class MOFFCorrelatorOp(object):
                                 bf_romein.execute(udata, gdata)
                             except NameError:
                                 bf_romein = Romein()
-                                bf_romein.init(self.locs, gphases, self.grid_size, polmajor=True)
+                                bf_romein.init(self.locs, gphases, self.grid_size, polmajor=False)
                                 bf_romein.execute(udata, gdata)
                             gdata = gdata.reshape(self.ntime_gulp * nchan * npol, self.grid_size, self.grid_size)
                             # gdata = self.LinAlgObj.matmul(1.0, udata, bfantgridmap, 0.0, gdata)
@@ -1186,19 +1191,19 @@ class MOFFCorrelatorOp(object):
                                 try:
                                     # If one isn't allocated, then none of them are.
                                     autocorrs = autocorrs.reshape(
-                                        self.ntime_gulp, nchan, npol ** 2, nstand
+                                        self.ntime_gulp, nchan, nstand, npol ** 2
                                     )
                                     autocorr_g = autocorr_g.reshape(
                                         nchan * npol ** 2, self.grid_size, self.grid_size
                                     )
                                 except NameError:
                                     autocorrs = bifrost.ndarray(
-                                        shape=(self.ntime_gulp, nchan, npol ** 2, nstand),
+                                        shape=(self.ntime_gulp, nchan, nstand, npol ** 2),
                                         dtype=numpy.complex64,
                                         space="cuda",
                                     )
                                     autocorrs_av = bifrost.zeros(
-                                        shape=(1, nchan, npol ** 2, nstand),
+                                        shape=(1, nchan, nstand, npol ** 2),
                                         dtype=numpy.complex64,
                                         space="cuda",
                                     )
@@ -1209,14 +1214,14 @@ class MOFFCorrelatorOp(object):
                                     )
                                     autocorr_lo = bifrost.ndarray(
                                         numpy.ones(
-                                            shape=(3, 1, nchan, npol ** 2, nstand),
+                                            shape=(3, 1, nchan, nstand, npol ** 2),
                                             dtype=numpy.int32
                                         ) * self.grid_size / 2,
                                         space="cuda",
                                     )
                                     autocorr_il = bifrost.ndarray(
                                         numpy.ones(
-                                            shape=(1, nchan, npol ** 2, nstand, self.ant_extent, self.ant_extent),
+                                            shape=(1, nchan, nstand, npol ** 2, self.ant_extent, self.ant_extent),
                                             dtype=numpy.complex64
                                         ),
                                         space="cuda",
@@ -1224,17 +1229,17 @@ class MOFFCorrelatorOp(object):
 
                                 # Cross multiply to calculate autocorrs
                                 bifrost.map(
-                                    "a(i,j,k,l) += (b(i,j,k/2,l) * b(i,j,k%2,l).conj())",
+                                    "a(i,j,k,l) += (b(i,j,k,l/2) * b(i,j,k,l%2).conj())",
                                     {"a": autocorrs, "b": udata, "t": self.ntime_gulp},
                                     axis_names=("i", "j", "k", "l"),
-                                    shape=(self.ntime_gulp, nchan, npol ** 2, nstand),
+                                    shape=(self.ntime_gulp, nchan, nstand, npol ** 2),
                                 )
 
                             bifrost.map(
                                 "a(i,j,p,k,l) += b(0,i,j,p/2,k,l)*b(0,i,j,p%2,k,l).conj()",
                                 {"a": crosspol, "b": gdata},
                                 axis_names=("i", "j", "p", "k", "l"),
-                                shape=(self.ntime_gulp, nchan, npol**2, self.grid_size, self.grid_size),
+                                shape=(self.ntime_gulp, nchan, npol ** 2, self.grid_size, self.grid_size),
                             )
                             crosspol = crosspol.reshape(
                                 self.ntime_gulp, nchan, npol ** 2, self.grid_size, self.grid_size
@@ -1261,7 +1266,7 @@ class MOFFCorrelatorOp(object):
                                     except NameError:
                                         bf_romein_autocorr = Romein()
                                         bf_romein_autocorr.init(
-                                            autocorr_lo, autocorr_il, self.grid_size, polmajor=True
+                                            autocorr_lo, autocorr_il, self.grid_size, polmajor=False
                                         )
                                         bf_romein_autocorr.execute(autocorrs_av, autocorr_g)
                                     autocorr_g = autocorr_g.reshape(1 * nchan * npol ** 2, self.grid_size, self.grid_size)
@@ -1443,7 +1448,7 @@ class MOFF_DFT_CorrelatorOp(object):
                 accum = 0
 
                 igulp_size = self.ntime_gulp * nchan * nstand * npol * 1  # ci4
-                itshape = (self.ntime_gulp, nchan, npol, nstand)
+                itshape = (self.ntime_gulp, nchan, nstand, npol)
 
                 # Sample locations at right u/v/w values
                 freq = (chan0 + numpy.arange(nchan)) * CHAN_BW
@@ -1490,19 +1495,19 @@ class MOFF_DFT_CorrelatorOp(object):
                 # Phases are Nchan x Npol x Nstand
                 # freq.shape += (1,)
 
-                phases = numpy.zeros((nchan, npol, nstand), dtype=numpy.complex64)
+                phases = numpy.zeros((nchan, nstand, npol), dtype=numpy.complex64)
                 for i in range(nstand):
                     # X
                     a = self.antennas[2 * i + 0]
                     delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
-                    phases[:, 0, i] = numpy.exp(2j * numpy.pi * freq * delay)
-                    phases[:, 0, i] /= numpy.sqrt(a.cable.gain(freq))
+                    phases[:, i, 0] = numpy.exp(2j * numpy.pi * freq * delay)
+                    phases[:, i, 0] /= numpy.sqrt(a.cable.gain(freq))
                     if npol == 2:
                         # Y
                         a = self.antennas[2 * i + 1]
                         delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
-                        phases[:, 1, i] = numpy.exp(2j * numpy.pi * freq * delay)
-                        phases[:, 1, i] /= numpy.sqrt(a.cable.gain(freq))
+                        phases[:, i, 1] = numpy.exp(2j * numpy.pi * freq * delay)
+                        phases[:, i, 1] /= numpy.sqrt(a.cable.gain(freq))
                         # Explicit outrigger masking - we probably want to do
                         # away with this at some point
                         # if a.stand.id == 256:
@@ -1555,10 +1560,10 @@ class MOFF_DFT_CorrelatorOp(object):
 
                             if self.benchmark is True:
                                 time1 = time.time()
-                            tdata = tdata.transpose((1, 2, 3, 0))
+                            # chan pol stand
+                            tdata = tdata.transpose((1, 3, 2, 0))
                             tdata = tdata.reshape(nchan * npol, nstand, self.ntime_gulp)
                             tdata = tdata.copy()
-#                            tdata = tdata.reshape(nchan,npol,nstand,self.ntime_gulp)
 
                             tdata = tdata.copy(space="cuda")
                             # Unpack
@@ -1637,6 +1642,8 @@ class MOFF_DFT_CorrelatorOp(object):
                                     # gdatass = gdatass.reshape(oshape)
                                     # odata[...] = gdatass
                                     odata[...] = accumulated_image
+                                    bifrost.device.stream_synchronize()
+
 
                                 curr_time = time.time()
                                 reserve_time = curr_time - prev_time

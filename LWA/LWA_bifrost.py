@@ -502,7 +502,7 @@ class TBFOfflineCaptureOp(object):
                         odata = ospan.data_view(numpy.int8).reshape(oshape)
 
                         # Transpose and reshape to time by channel by stand by pol
-                        idata = idata.transpose((2, 1 , 0))
+                        idata = idata.transpose((2, 1, 0))
                         idata = idata.reshape((ntime, nchan, nstand, npol))
                         idata = idata.copy()
 
@@ -884,7 +884,7 @@ class MOFFCorrelatorOp(object):
                     gphases = phases.copy(space="cuda")
 
                 oshape = (1, nchan, npol ** 2, self.grid_size, self.grid_size)
-                ogulp_size = nchan * npol**2 * self.grid_size * self.grid_size * 8
+                ogulp_size = nchan * npol ** 2 * self.grid_size * self.grid_size * 8
                 self.iring.resize(igulp_size)
                 self.oring.resize(ogulp_size, buffer_factor=5)
                 prev_time = time.time()
@@ -910,7 +910,12 @@ class MOFFCorrelatorOp(object):
                             # Setup and load
                             idata = ispan.data_view(numpy.uint8).reshape(itshape)
                             # Fix the type
-                            udata = bifrost.ndarray(shape=itshape, dtype="ci4", native=False, buffer=idata.ctypes.data)
+                            udata = bifrost.ndarray(
+                                shape=itshape,
+                                dtype="ci4",
+                                native=False,
+                                buffer=idata.ctypes.data,
+                            )
 
                             if self.benchmark is True:
                                 time1 = time.time()
@@ -923,7 +928,9 @@ class MOFFCorrelatorOp(object):
                             # Make sure we have a place to put the gridded data
                             # Gridded Antennas
                             try:
-                                gdata = gdata.reshape(self.ntime_gulp, nchan, npol, self.grid_size, self.grid_size)
+                                gdata = gdata.reshape(
+                                    self.ntime_gulp, nchan, npol, self.grid_size, self.grid_size
+                                )
                                 memset_array(gdata, 0)
                             except NameError:
                                 gdata = bifrost.zeros(
