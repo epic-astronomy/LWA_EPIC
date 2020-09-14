@@ -446,7 +446,7 @@ class TBFOfflineCaptureOp(object):
         chan0 = int(chans[0])
         nchan = len(chans)
         tInt, tStart, data = idf.read(0.1, time_in_samples=True)
-        
+
         # Setup the ring metadata and gulp sizes
         ntime = data.shape[2]
         nstand, npol = data.shape[0] / 2, 2
@@ -868,12 +868,12 @@ class MOFFCorrelatorOp(object):
                         delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
                         phases[:, :, i, 1, :, :] = numpy.exp(2j * numpy.pi * freq * delay)
                         phases[:, :, i, 1, :, :] /= numpy.sqrt(a.cable.gain(freq))
-                    ## Explicit bad and suspect antenna masking - this will
-                    ## mask an entire stand if either pol is bad
+                    # Explicit bad and suspect antenna masking - this will
+                    # mask an entire stand if either pol is bad
                     if self.antennas[2 * i + 0].combined_status < 33 or self.antennas[2 * i + 1].combined_status < 33:
                         phases[:, :, i, :, :, :] = 0.0
-                    ## Explicit outrigger masking - we probably want to do
-                    ## away with this at some point
+                    # Explicit outrigger masking - we probably want to do
+                    # away with this at some point
                     if a.stand.id == 256:
                         phases[:, :, i, :, :, :] = 0.0
                 phases = phases.conj()
@@ -1065,7 +1065,9 @@ class MOFFCorrelatorOp(object):
                                         bf_romein_autocorr.execute(autocorrs_av, autocorr_g)
                                     except NameError:
                                         bf_romein_autocorr = Romein()
-                                        bf_romein_autocorr.init(autocorr_lo, autocorr_il, self.grid_size, polmajor=False)
+                                        bf_romein_autocorr.init(
+                                            autocorr_lo, autocorr_il, self.grid_size, polmajor=False
+                                        )
                                         bf_romein_autocorr.execute(autocorrs_av, autocorr_g)
                                     autocorr_g = autocorr_g.reshape(1 * nchan * npol ** 2, self.grid_size, self.grid_size)
                                     # autocorr_g = romein_float(autocorrs_av,autocorr_g,autocorr_il,autocorr_lx,autocorr_ly,autocorr_lz,self.ant_extent,self.grid_size,nstand,nchan*npol**2)
@@ -1366,7 +1368,8 @@ class SaveOp(object):
             grid_size = max([grid_size_x, grid_size_y])
             print(
                 "Channel no: %d, Polarisation no: %d, Grid no: %d"
-                % (nchan, npol, grid_size))
+                % (nchan, npol, grid_size)
+            )
 
             igulp_size = nchan * npol * grid_size_x * grid_size_y * 8
             ishape = (nchan, npol, grid_size_x, grid_size_y)

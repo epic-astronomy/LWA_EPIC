@@ -41,6 +41,7 @@ from bifrost.libbifrost import bf
 from bifrost.fft import Fft
 from bifrost.linalg import LinAlg
 from bifrost.romein import Romein
+
 from bifrost.ndarray import memset_array, copy_array
 from bifrost.device import set_device as BFSetGPU, get_device as BFGetGPU, set_devices_no_spin_cpu as BFNoSpinZone
 BFNoSpinZone()  # noqa
@@ -54,6 +55,7 @@ if sys.version_info.major < 3:
     range = xrange  # noqa
 
 # Trigger Processing
+
 TRIGGER_ACTIVE = threading.Event()
 
 
@@ -214,10 +216,12 @@ def GenerateLocations(
     sll = sample_grid[0] / chan_wavelengths[0]
     lsl_locs = lsl_locs.T
     lsl_locs = lsl_locs.copy()
+
     lsl_locsf = numpy.zeros(shape=(3, npol, nchan, lsl_locs.shape[1]))
     for l in numpy.arange(3):
         for i in numpy.arange(nchan):
             lsl_locsf[l, :, i, :] = lsl_locs[l, :] / sample_grid[i]
+
             # I'm sure there's a more numpy way of doing this.
             for p in numpy.arange(npol):
                 lsl_locsf[l, p, i, :] -= numpy.min(lsl_locsf[l, p, i, :])
@@ -266,7 +270,7 @@ class TBNOfflineCaptureOp(object):
         if self.core != -1:
             bifrost.affinity.set_core(self.core)
         self.bind_proclog.update(
-            {"ncore": 1, "core0": bifrost.affinity.get_core(), }
+            {"ncore": 1, "core0": bifrost.affinity.get_core()}
         )
 
         idf = TBNFile(self.filename)
@@ -278,7 +282,7 @@ class TBNOfflineCaptureOp(object):
         ntime = data.shape[1]
         nstand, npol = data.shape[0] / 2, 2
         oshape = (ntime, nstand, npol)
-        ogulp_size = ntime * nstand * npol * 8		# complex64
+        ogulp_size = ntime * nstand * npol * 8  # complex64
         self.oring.resize(ogulp_size, buffer_factor=10)
 
         self.size_proclog.update({"nseq_per_gulp": ntime})
@@ -327,7 +331,6 @@ class TBNOfflineCaptureOp(object):
                         idata = data
 
                         odata = ospan.data_view(numpy.complex64).reshape(oshape)
-
                         # Transpose and reshape to time by stand by pol
                         idata = idata.transpose((1, 0))
                         idata = idata.reshape((ntime, nstand, npol))
@@ -356,7 +359,17 @@ class TBNOfflineCaptureOp(object):
 
 
 class FDomainOp(object):
-    def __init__(self, log, iring, oring, ntime_gulp=2500, nchan_out=1, profile=False, core=-1, gpu=-1):
+    def __init__(
+        self,
+        log,
+        iring,
+        oring,
+        ntime_gulp=2500,
+        nchan_out=1,
+        profile=False,
+        core=-1,
+        gpu=-1
+    ):
         self.log = log
         self.iring = iring
         self.oring = oring
@@ -508,7 +521,7 @@ class TBFOfflineCaptureOp(object):
         if self.core != -1:
             bifrost.affinity.set_core(self.core)
         self.bind_proclog.update(
-            {"ncore": 1, "core0": bifrost.affinity.get_core(), }
+            {"ncore": 1, "core0": bifrost.affinity.get_core()}
         )
 
         idf = TBFFile(self.filename)
@@ -517,7 +530,7 @@ class TBFOfflineCaptureOp(object):
         chan0 = int(chans[0])
         nchan = len(chans)
         tInt, tStart, data = idf.read(0.1, time_in_samples=True)
-        
+
         # Setup the ring metadata and gulp sizes
         ntime = data.shape[2]
         nstand, npol = data.shape[0] / 2, 2
@@ -628,7 +641,9 @@ class FEngineCaptureOp(object):
     def shutdown(self):
         self.shutdown_event.set()
 
-    def seq_callback(self, seq0, chan0, nchan, nsrc, time_tag_ptr, hdr_ptr, hdr_size_ptr):
+    def seq_callback(
+        self, seq0, chan0, nchan, nsrc, time_tag_ptr, hdr_ptr, hdr_size_ptr
+    ):
         timestamp0 = int((self.utc_start - ADP_EPOCH).total_seconds())
         time_tag0 = timestamp0 * int(FS)
         time_tag = time_tag0 + seq0 * (int(FS) // int(CHAN_BW))
@@ -670,7 +685,17 @@ class FEngineCaptureOp(object):
 
 
 class DecimationOp(object):
-    def __init__(self, log, iring, oring, ntime_gulp=2500, nchan_out=1, npol_out=2, guarantee=True, core=-1):
+    def __init__(
+        self,
+        log,
+        iring,
+        oring,
+        ntime_gulp=2500,
+        nchan_out=1,
+        npol_out=2,
+        guarantee=True,
+        core=-1,
+    ):
         self.log = log
         self.iring = iring
         self.oring = oring
@@ -695,7 +720,7 @@ class DecimationOp(object):
         if self.core != -1:
             bifrost.affinity.set_core(self.core)
         self.bind_proclog.update(
-            {"ncore": 1, "core0": bifrost.affinity.get_core(), }
+            {"ncore": 1, "core0": bifrost.affinity.get_core()}
         )
 
         with self.oring.begin_writing() as oring:
@@ -946,7 +971,7 @@ class MOFFCorrelatorOp(object):
                     nchan,
                     npol,
                     grid_size=self.grid_size,
-                    grid_resolution=self.grid_resolution
+                    grid_resolution=self.grid_resolution,
                 )
                 try:
                     copy_array(self.locs, bifrost.ndarray(locs.astype(numpy.int32)))
@@ -955,6 +980,16 @@ class MOFFCorrelatorOp(object):
 
                 ohdr = ihdr.copy()
                 ohdr["nbit"] = 64
+
+                ms_per_gulp = 1e3 * self.ntime_gulp / CHAN_BW
+                new_accumulation_time = numpy.ceil(self.accumulation_time / ms_per_gulp) * ms_per_gulp
+                if new_accumulation_time != self.accumulation_time:
+                    self.log.warning(
+                        "Adjusting accumulation time from %.3f ms to %.3f ms",
+                        self.accumulation_time,
+                        new_accumulation_time,
+                    )
+                    self.accumulation_time = new_accumulation_time
 
                 ohdr["npol"] = npol ** 2  # Because of cross multiplying shenanigans
                 ohdr["grid_size_x"] = self.grid_size
@@ -975,7 +1010,9 @@ class MOFFCorrelatorOp(object):
                 elif ohdr["npol"] == 4:
                     ohdr["pols"] = ["xx", "xy", "yx", "yy"]
                 else:
-                    raise ValueError("Cannot write fits file without knowing polarization list")
+                    raise ValueError(
+                        "Cannot write fits file without knowing polarization list"
+                    )
                 ohdr_str = json.dumps(ohdr)
 
                 # Setup the kernels to include phasing terms for zenith
@@ -997,6 +1034,10 @@ class MOFFCorrelatorOp(object):
                         delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
                         phases[:, :, 1, i, :, :] = numpy.exp(2j * numpy.pi * freq * delay)
                         phases[:, :, 1, i, :, :] /= numpy.sqrt(a.cable.gain(freq))
+                    # Explicit bad and suspect antenna masking - this will
+                    # mask an entire stand if either pol is bad
+                    if self.antennas[2 * i + 0].combined_status < 33 or self.antennas[2 * i + 1].combined_status < 33:
+                        phases[:, :, i, :, :, :] = 0.0
                     # Explicit outrigger masking - we probably want to do
                     # away with this at some point
                     if a.stand.id == 256:
@@ -1039,7 +1080,6 @@ class MOFFCorrelatorOp(object):
 
                             if self.benchmark is True:
                                 time1 = time.time()
-                            # tdata = tdata.transpose((0,1,3,2))
 
                             tdata = tdata.copy(space="cuda")
                             if self.benchmark is True:
@@ -1057,8 +1097,11 @@ class MOFFCorrelatorOp(object):
                                 time1b = time.time()
 
                             # Phase
-                            # bifrost.map('a(i,j,k,l) *= b(j,k,l)',
-                            #            {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)
+                            # bifrost.map(
+                            #     'a(i,j,k,l) *= b(j,k,l)',
+                            #     {'a': udata, 'b': gphases}, axis_names=('i','j','k','l'),
+                            #     shape=udata.shape
+                            # )
                             if self.benchmark is True:
                                 time1c = time.time()
                                 print("  Unpack and phase-up time: %f" % (time1c - time1a))
@@ -1074,7 +1117,7 @@ class MOFFCorrelatorOp(object):
                                 gdata = bifrost.zeros(
                                     shape=(self.ntime_gulp, nchan, npol, self.grid_size, self.grid_size),
                                     dtype=numpy.complex64,
-                                    space="cuda"
+                                    space="cuda",
                                 )
 
                             # Grid the Antennas
@@ -1105,7 +1148,9 @@ class MOFFCorrelatorOp(object):
                                 bf_fft = Fft()
                                 bf_fft.init(gdata, gdata, axes=(1, 2))
                                 bf_fft.execute(gdata, gdata, inverse=True)
-                            gdata = gdata.reshape(1, self.ntime_gulp, nchan, npol, self.grid_size, self.grid_size)
+                            gdata = gdata.reshape(
+                                1, self.ntime_gulp, nchan, npol, self.grid_size, self.grid_size
+                            )
                             if self.benchmark is True:
                                 timefft2 = time.time()
                                 print("  FFT time: %f" % (timefft2 - timefft1))
@@ -1113,8 +1158,12 @@ class MOFFCorrelatorOp(object):
                             # print("Accum: %d"%accum,end='\n')
                             if self.newflag is True:
                                 try:
-                                    crosspol = crosspol.reshape(self.ntime_gulp, nchan, npol ** 2, self.grid_size, self.grid_size)
-                                    accumulated_image = accumulated_image.reshape(1, nchan, npol ** 2, self.grid_size, self.grid_size)
+                                    crosspol = crosspol.reshape(
+                                        self.ntime_gulp, nchan, npol ** 2, self.grid_size, self.grid_size
+                                    )
+                                    accumulated_image = accumulated_image.reshape(
+                                        1, nchan, npol ** 2, self.grid_size, self.grid_size
+                                    )
                                     memset_array(crosspol, 0)
                                     memset_array(accumulated_image, 0)
 
@@ -1122,12 +1171,12 @@ class MOFFCorrelatorOp(object):
                                     crosspol = bifrost.zeros(
                                         shape=(self.ntime_gulp, nchan, npol ** 2, self.grid_size, self.grid_size),
                                         dtype=numpy.complex64,
-                                        space="cuda"
+                                        space="cuda",
                                     )
                                     accumulated_image = bifrost.zeros(
                                         shape=(1, nchan, npol ** 2, self.grid_size, self.grid_size),
                                         dtype=numpy.complex64,
-                                        space="cuda"
+                                        space="cuda",
                                     )
                                 self.newflag = False
 
@@ -1136,14 +1185,42 @@ class MOFFCorrelatorOp(object):
                                 # Setup everything for the autocorrelation calculation.
                                 try:
                                     # If one isn't allocated, then none of them are.
-                                    autocorrs = autocorrs.reshape(self.ntime_gulp, nchan, npol ** 2, nstand)
-                                    autocorr_g = autocorr_g.reshape(nchan * npol ** 2, self.grid_size, self.grid_size)
+                                    autocorrs = autocorrs.reshape(
+                                        self.ntime_gulp, nchan, npol ** 2, nstand
+                                    )
+                                    autocorr_g = autocorr_g.reshape(
+                                        nchan * npol ** 2, self.grid_size, self.grid_size
+                                    )
                                 except NameError:
-                                    autocorrs = bifrost.ndarray(shape=(self.ntime_gulp, nchan, npol ** 2, nstand), dtype=numpy.complex64, space="cuda")
-                                    autocorrs_av = bifrost.zeros(shape=(1, nchan, npol ** 2, nstand), dtype=numpy.complex64, space="cuda")
-                                    autocorr_g = bifrost.zeros(shape=(1, nchan, npol ** 2, self.grid_size, self.grid_size), dtype=numpy.complex64, space="cuda")
-                                    autocorr_lo = bifrost.ndarray(numpy.ones(shape=(3, 1, nchan, npol ** 2, nstand), dtype=numpy.int32) * self.grid_size / 2, space="cuda")
-                                    autocorr_il = bifrost.ndarray(numpy.ones(shape=(1, nchan, npol**2, nstand, self.ant_extent, self.ant_extent), dtype=numpy.complex64), space="cuda")
+                                    autocorrs = bifrost.ndarray(
+                                        shape=(self.ntime_gulp, nchan, npol ** 2, nstand),
+                                        dtype=numpy.complex64,
+                                        space="cuda",
+                                    )
+                                    autocorrs_av = bifrost.zeros(
+                                        shape=(1, nchan, npol ** 2, nstand),
+                                        dtype=numpy.complex64,
+                                        space="cuda",
+                                    )
+                                    autocorr_g = bifrost.zeros(
+                                        shape=(1, nchan, npol ** 2, self.grid_size, self.grid_size),
+                                        dtype=numpy.complex64,
+                                        space="cuda",
+                                    )
+                                    autocorr_lo = bifrost.ndarray(
+                                        numpy.ones(
+                                            shape=(3, 1, nchan, npol ** 2, nstand),
+                                            dtype=numpy.int32
+                                        ) * self.grid_size / 2,
+                                        space="cuda",
+                                    )
+                                    autocorr_il = bifrost.ndarray(
+                                        numpy.ones(
+                                            shape=(1, nchan, npol ** 2, nstand, self.ant_extent, self.ant_extent),
+                                            dtype=numpy.complex64
+                                        ),
+                                        space="cuda",
+                                    )
 
                                 # Cross multiply to calculate autocorrs
                                 bifrost.map(
@@ -1159,17 +1236,12 @@ class MOFFCorrelatorOp(object):
                                 axis_names=("i", "j", "p", "k", "l"),
                                 shape=(self.ntime_gulp, nchan, npol**2, self.grid_size, self.grid_size),
                             )
-                            # crosspol = crosspol.reshape(self.ntime_gulp*nchan, npol**2, self.grid_size*self.grid_size)
-                            # gdata = gdata.reshape(self.ntime_gulp*nchan, npol, self.grid_size*self.grid_size)
-                            # bifrost.map("""a(i,0,j) += b(i,0,j).mag2();
-                            #                a(i,1,j) = cfcmaf(b(i,1,j), b(i,0,j), a(i,1,j));
-                            #                a(i,2,j) = a(i,1,j).conj();
-                            #                a(i,3,j) += b(i,1,j).mag2();""",
-                            #             {'a':crosspol, 'b':gdata},
-                            #             axis_names=('i','j'),
-                            #             shape=(self.ntime_gulp*nchan, npol**2, self.grid_size*self.grid_size))
-                            crosspol = crosspol.reshape(self.ntime_gulp, nchan, npol ** 2, self.grid_size, self.grid_size)
-                            gdata = gdata.reshape(1, self.ntime_gulp, nchan, npol, self.grid_size, self.grid_size)
+                            crosspol = crosspol.reshape(
+                                self.ntime_gulp, nchan, npol ** 2, self.grid_size, self.grid_size
+                            )
+                            gdata = gdata.reshape(
+                                1, self.ntime_gulp, nchan, npol, self.grid_size, self.grid_size
+                            )
 
                             # Increment
                             accum += 1e3 * self.ntime_gulp / CHAN_BW
@@ -1181,12 +1253,16 @@ class MOFFCorrelatorOp(object):
                                     # Reduce along time axis.
                                     bifrost.reduce(autocorrs, autocorrs_av, op="sum")
                                     # Grid the autocorrelations.
-                                    autocorr_g = autocorr_g.reshape(1, nchan, npol ** 2, self.grid_size, self.grid_size)
+                                    autocorr_g = autocorr_g.reshape(
+                                        1, nchan, npol ** 2, self.grid_size, self.grid_size
+                                    )
                                     try:
                                         bf_romein_autocorr.execute(autocorrs_av, autocorr_g)
                                     except NameError:
                                         bf_romein_autocorr = Romein()
-                                        bf_romein_autocorr.init(autocorr_lo, autocorr_il, self.grid_size, polmajor=True)
+                                        bf_romein_autocorr.init(
+                                            autocorr_lo, autocorr_il, self.grid_size, polmajor=True
+                                        )
                                         bf_romein_autocorr.execute(autocorrs_av, autocorr_g)
                                     autocorr_g = autocorr_g.reshape(1 * nchan * npol ** 2, self.grid_size, self.grid_size)
                                     # autocorr_g = romein_float(autocorrs_av,autocorr_g,autocorr_il,autocorr_lx,autocorr_ly,autocorr_lz,self.ant_extent,self.grid_size,nstand,nchan*npol**2)
@@ -1200,10 +1276,12 @@ class MOFFCorrelatorOp(object):
 
                                     accumulated_image = accumulated_image.reshape(nchan, npol ** 2, self.grid_size, self.grid_size)
                                     autocorr_g = autocorr_g.reshape(nchan, npol ** 2, self.grid_size, self.grid_size)
-                                    bifrost.map("a(i,j,k,l) -= b(i,j,k,l)",
-                                                {"a": accumulated_image, "b": autocorr_g},
-                                                axis_names=("i", "j", "k", "l"),
-                                                shape=(nchan, npol ** 2, self.grid_size, self.grid_size))
+                                    bifrost.map(
+                                        "a(i,j,k,l) -= b(i,j,k,l)",
+                                        {"a": accumulated_image, "b": autocorr_g},
+                                        axis_names=("i", "j", "k", "l"),
+                                        shape=(nchan, npol ** 2, self.grid_size, self.grid_size),
+                                    )
 
                                 curr_time = time.time()
                                 process_time = curr_time - prev_time
@@ -1539,7 +1617,6 @@ class MOFF_DFT_CorrelatorOp(object):
                                         {"a": gdatas, "b": gdata},
                                         axis_names=("i", "j", "k", "l"),
                                         shape=(nchan, npol ** 2, self.skymodes, self.ntime_gulp))
-                            # sys.exit(1)
 
                             # Make sure we have a place to put the gridded data
                             # Gridded Antennas
@@ -1587,8 +1664,7 @@ class MOFF_DFT_CorrelatorOp(object):
                                 if spani >= 10:
                                     sys.exit()
                                     break
-                            # time.sleep(10)
-                            # sys.exit(1)
+
                             self.perf_proclog.update(
                                 {
                                     "acquire_time": acquire_time,
@@ -1674,7 +1750,8 @@ class TriggerOp(object):
             sampling_length = max([sampling_length_x, sampling_length_y])
             print(
                 "Channel no: %d, Polarisation no: %d, Grid no: %d, Sampling: %.3f"
-                % (nchan, npol, grid_size, sampling_length))
+                % (nchan, npol, grid_size, sampling_length)
+            )
 
             x, y = numpy.arange(grid_size_x), numpy.arange(grid_size_y)
             x, y = numpy.meshgrid(x, y)
@@ -1737,6 +1814,7 @@ class TriggerOp(object):
                     image = []
                     nints = 0
                     fileid += 1
+
 
 class SaveOp(object):
     def __init__(
@@ -2188,7 +2266,8 @@ def main():
 
     log = logging.getLogger(__name__)
     logFormat = logging.Formatter(
-        "%(asctime)s [%(levelname)-8s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+        "%(asctime)s [%(levelname)-8s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
     logFormat.converter = time.gmtime
     logHandler = logging.StreamHandler(sys.stdout)
@@ -2331,7 +2410,11 @@ def main():
 
     ops.append(
         TransposeOp(
-            log, fdomain_ring, transpose_ring, ntime_gulp=args.nts, core=cores.pop(0)
+            log,
+            fdomain_ring,
+            transpose_ring,
+            ntime_gulp=args.nts,
+            core=cores.pop(0),
         )
     )
     if args.dftcorrelation:
