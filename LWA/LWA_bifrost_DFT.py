@@ -139,7 +139,7 @@ def form_dft_matrix(lmn_vector, antenna_location, antenna_phases, nchan, npol, n
     for i in numpy.arange(dft_matrix.shape[2]):
         for p in numpy.arange(npol):
             for c in numpy.arange(nchan):
-                dft_matrix[c, p, i, :] *= antenna_phases[c, p, :]
+                dft_matrix[c, p, i, :] *= antenna_phases[c, :, p]
 
     return dft_matrix / antenna_location.shape[3]
 
@@ -784,87 +784,6 @@ class DecimationOp(object):
                             )
 
 
-class TransposeOp(object):
-    def __init__(self, log, iring, oring, ntime_gulp=2500, guarantee=True, core=-1):
-        self.log = log
-        self.iring = iring
-        self.oring = oring
-        self.ntime_gulp = ntime_gulp
-        self.guarantee = guarantee
-        self.core = core
-
-        self.bind_proclog = ProcLog(type(self).__name__ + "/bind")
-        self.in_proclog = ProcLog(type(self).__name__ + "/in")
-        self.out_proclog = ProcLog(type(self).__name__ + "/out")
-        self.size_proclog = ProcLog(type(self).__name__ + "/size")
-        self.sequence_proclog = ProcLog(type(self).__name__ + "/sequence0")
-        self.perf_proclog = ProcLog(type(self).__name__ + "/perf")
-
-        self.in_proclog.update({"nring": 1, "ring0": self.iring.name})
-        self.out_proclog.update({"nring": 1, "ring0": self.oring.name})
-        self.size_proclog.update({"nseq_per_gulp": self.ntime_gulp})
-
-    def main(self):
-        if self.core != -1:
-            bifrost.affinity.set_core(self.core)
-        self.bind_proclog.update(
-            {"ncore": 1, "core": bifrost.affinity.get_core(), }
-        )
-
-        with self.oring.begin_writing() as oring:
-            for iseq in self.iring.read(guarantee=self.guarantee):
-                ihdr = json.loads(iseq.header.tostring())
-
-                self.sequence_proclog.update(ihdr)
-
-                self.log.info("Transpose: Start of new sequence: %s", str(ihdr))
-
-                nchan = ihdr["nchan"]
-                nstand = ihdr["nstand"]
-                npol = ihdr["npol"]
-                chan0 = ihdr["chan0"]
-
-                igulp_size = self.ntime_gulp * nchan * nstand * npol * 1  # ci4
-                ishape = (self.ntime_gulp, nchan, nstand, npol)
-                ogulp_size = self.ntime_gulp * nchan * npol * nstand * 1  # ci4
-                oshape = (self.ntime_gulp, nchan, npol, nstand)
-                self.iring.resize(igulp_size)
-                self.oring.resize(ogulp_size)  # , obuf_size)
-
-                ohdr = ihdr.copy()
-                ohdr["axes"] = "time,chan,pol,stand"
-                ohdr_str = json.dumps(ohdr)
-
-                prev_time = time.time()
-                with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
-                    for ispan in iseq.read(igulp_size):
-                        if ispan.size < igulp_size:
-                            continue  # Ignore final gulp
-                        curr_time = time.time()
-                        acquire_time = curr_time - prev_time
-                        prev_time = curr_time
-
-                        with oseq.reserve(ogulp_size) as ospan:
-                            curr_time = time.time()
-                            reserve_time = curr_time - prev_time
-                            prev_time = curr_time
-
-                            idata = ispan.data_view(numpy.uint8).reshape(ishape)
-                            odata = ospan.data_view(numpy.uint8).reshape(oshape)
-
-                            idata = idata.transpose(0, 1, 3, 2)
-                            odata[...] = idata.copy()
-
-                            curr_time = time.time()
-                            process_time = curr_time - prev_time
-                            prev_time = curr_time
-                            self.perf_proclog.update(
-                                {
-                                    "acquire_time": acquire_time,
-                                    "reserve_time": reserve_time,
-                                    "process_time": process_time,
-                                }
-                            )
 
 class CalibrationOp(object):
     def __init__(self, log, iring, oring, *args, **kwargs):
@@ -1076,7 +995,7 @@ class MOFFCorrelatorOp(object):
                             # Setup and load
                             idata = ispan.data_view(numpy.uint8).reshape(itshape)
                             # Fix the type
-                            tdata = bifrost.ndarray(
+                            udata = bifrost.ndarray(
                                 shape=itshape,
                                 dtype="ci4",
                                 native=False,
@@ -1086,30 +1005,10 @@ class MOFFCorrelatorOp(object):
                             if self.benchmark is True:
                                 time1 = time.time()
 
-                            tdata = tdata.copy(space="cuda")
+                            udata = udata.copy(space="cuda")
                             if self.benchmark is True:
                                 time1a = time.time()
                                 print("  Input copy time: %f" % (time1a - time1))
-
-                            # Unpack
-                            try:
-                                udata = udata.reshape(*tdata.shape)
-                                Unpack(tdata, udata)
-                            except NameError:
-                                udata = bifrost.ndarray(shape=tdata.shape, dtype=numpy.complex64, space="cuda")
-                                Unpack(tdata, udata)
-                            if self.benchmark is True:
-                                time1b = time.time()
-
-                            # Phase
-                            # bifrost.map(
-                            #     'a(i,j,k,l) *= b(j,k,l)',
-                            #     {'a': udata, 'b': gphases}, axis_names=('i','j','k','l'),
-                            #     shape=udata.shape
-                            # )
-                            if self.benchmark is True:
-                                time1c = time.time()
-                                print("  Unpack and phase-up time: %f" % (time1c - time1a))
 
                             # Make sure we have a place to put the gridded data
                             # Gridded Antennas
@@ -1452,8 +1351,9 @@ class MOFF_DFT_CorrelatorOp(object):
 
                 # Sample locations at right u/v/w values
                 freq = (chan0 + numpy.arange(nchan)) * CHAN_BW
-                locs = Generate_DFT_Locations(self.locations, freq,
-                                              self.ntime_gulp, nchan, npol)
+                locs = Generate_DFT_Locations(
+                    self.locations, freq, self.ntime_gulp, nchan, npol
+                )
 
                 try:
                     copy_array(self.locs, bifrost.ndarray(locs.astype(numpy.int32)))
@@ -1492,7 +1392,7 @@ class MOFF_DFT_CorrelatorOp(object):
                 ohdr_str = json.dumps(ohdr)
 
                 # Setup the kernels to include phasing terms for zenith
-                # Phases are Nchan x Npol x Nstand
+                # Phases are Nchan x Nstand x Npol
                 # freq.shape += (1,)
 
                 phases = numpy.zeros((nchan, nstand, npol), dtype=numpy.complex64)
@@ -1522,8 +1422,13 @@ class MOFF_DFT_CorrelatorOp(object):
                 for i in numpy.arange(lm_matrix.shape[0]):
                     for j in numpy.arange(lm_matrix.shape[0]):
                         lm_matrix[i, j] = numpy.asarray([i * lm_step - 1.0, j * lm_step - 1.0, 0.0])
-                        lm_vector = lm_matrix.reshape((self.skymodes, 3))
-                self.dftm = bifrost.ndarray(form_dft_matrix(lm_vector, locs, phases, nchan, npol, nstand))
+                lm_vector = lm_matrix.reshape((self.skymodes, 3))
+                print("shapes: locs {locs}, phases {phases}".format(
+                    locs=locs.shape, phases=phases.shape,
+                ))
+                self.dftm = bifrost.ndarray(
+                    form_dft_matrix(lm_vector, locs, phases, nchan, npol, nstand)
+                )
 
                 # self.dftm = bifrost.ndarray(numpy.tile(self.dftm[numpy.newaxis,:],(nchan,1,1,1)))
                 dftm_cu = self.dftm.copy(space="cuda")
@@ -2316,15 +2221,12 @@ def main():
 
     fcapture_ring = Ring(name="capture", space="cuda_host")
     fdomain_ring = Ring(name="fengine", space="cuda_host")
-    transpose_ring = Ring(name="transpose", space="cuda_host")
     gridandfft_ring = Ring(name="gridandfft", space="cuda")
-    image_ring = Ring(name="image", space="system")
 
     # Setup Antennas
     # TODO: Some sort of switch for other stations?
 
     lwasv_antennas = lwasv.antennas
-    lwasv_stands = lwasv.stands
 
     # Setup threads
 
@@ -2415,20 +2317,11 @@ def main():
             )
         )
 
-    ops.append(
-        TransposeOp(
-            log,
-            fdomain_ring,
-            transpose_ring,
-            ntime_gulp=args.nts,
-            core=cores.pop(0),
-        )
-    )
     if args.dftcorrelation:
         ops.append(
             MOFF_DFT_CorrelatorOp(
                 log,
-                transpose_ring,
+                fdomain_ring,
                 gridandfft_ring,
                 lwasv_antennas,
                 skymodes=args.dft_skymodes_1D,
@@ -2444,7 +2337,7 @@ def main():
         ops.append(
             MOFFCorrelatorOp(
                 log,
-                transpose_ring,
+                fdomain_ring,
                 gridandfft_ring,
                 lwasv_antennas,
                 args.imagesize,
