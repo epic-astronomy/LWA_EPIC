@@ -680,7 +680,7 @@ class FEngineCaptureOp(object):
             *self.args, sequence_callback=seq_callback, **self.kwargs
         ) as capture:
             while not self.shutdown_event.is_set():
-                status = capture.recv()
+                capture.recv()
         del capture
 
 
@@ -1220,8 +1220,6 @@ class MOFFCorrelatorOp(object):
 
                             # TODO: Autocorrs using Romein??
                             # Output for gridded electric fields.
-                            if self.benchmark is True:
-                                time1h = time.time()
                             # gdata = gdata.reshape(self.ntime_gulp,nchan,2,self.grid_size,self.grid_size)
                             # image/autos, time, chan, pol, gridx, grid.
                             # accumulated_image = accumulated_image.reshape(oshape)
@@ -1478,8 +1476,6 @@ class MOFF_DFT_CorrelatorOp(object):
                             except NameError:
                                 udata = bifrost.ndarray(shape=tdata.shape, dtype=numpy.complex64, space="cuda")
                                 Unpack(tdata, udata)
-                            if self.benchmark is True:
-                                time1b = time.time()
                             # Phase
                             # bifrost.map('a(i,j,k,l) *= b(j,k,l)',
                             #            {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)
@@ -1651,7 +1647,6 @@ class TriggerOp(object):
             self.sequence_proclog.update(ihdr)
             self.log.info("TriggerOp: Config - %s" % ihdr)
 
-            cfreq = ihdr["cfreq"]
             nchan = ihdr["nchan"]
             npol = ihdr["npol"]
             grid_size_x = ihdr["grid_size_x"]
