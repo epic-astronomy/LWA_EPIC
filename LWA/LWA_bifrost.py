@@ -34,10 +34,12 @@ from bifrost.address import Address as BF_Address
 from bifrost.udp_socket import UDPSocket as BF_UDPSocket
 from bifrost.udp_capture import UDPCapture as BF_UDPCapture
 from bifrost.ring import Ring
+from bifrost.unpack import unpack as Unpack
 from bifrost.quantize import quantize as Quantize
 from bifrost.proclog import ProcLog
 from bifrost.libbifrost import bf
 from bifrost.fft import Fft
+from bifrost.linalg import LinAlg
 from bifrost.romein import Romein
 
 from bifrost.ndarray import memset_array, copy_array
@@ -83,6 +85,7 @@ def enable_thread_profiling():
 
 
 def get_thread_stats():
+    """Retreive stats from the thread."""
     stats = getattr(threading.Thread, "stats", None)
     if stats is None:
         raise ValueError(
@@ -91,12 +94,94 @@ def get_thread_stats():
     return stats
 
 
+# Direct Fourier Transform Matrix
+def form_dft_matrix(lmn_vector, antenna_location, antenna_phases, nchan, npol, nstand):
+    """Create the DFT Matrix.
+
+    Parameters
+    ----------
+    lmn_vector : array_like
+        Vector coordinates in (l, m, n) space over which the DFT will be performed.
+        Has shape (npoints, 3)
+    antenna_location : array_like
+        Array of atenna locations of the form (nchan, npol, 3, nstand)
+    antenna_phases : array_like
+        Array of per antenna phases. Has shape (nchan, npol, nstand)
+    nchan : int
+        Number of channels
+    npol : int
+        Number of polarizations
+    nstand : int
+        Number of stands in the array
+
+    Returns
+    -------
+    normalized DFT matrix for given inputs
+
+    """
+    # lm_matrix, shape = [...,2] , where the last dimension is an l/m pair.
+    lmn_vector[:, 2] = 1.0 - numpy.sqrt(
+        1.0 - lmn_vector[:, 0] ** 2 - lmn_vector[:, 1] ** 2
+    )
+    dft_matrix = numpy.zeros(
+        (nchan, npol, lmn_vector.shape[0], nstand), dtype=numpy.complex64
+    )
+    # DFT phase factors
+    for i in numpy.arange(antenna_location.shape[3]):
+        ant_uvw = antenna_location[0, 0, :, i]
+
+        # Both polarisations are at the same physical location, only phases differ.
+        dft_matrix[:, :, :, i] = numpy.exp(
+            2j * numpy.pi * (numpy.dot(lmn_vector, ant_uvw))
+        )
+
+    # Can put the antenna phases in as well because maths
+    for i in numpy.arange(dft_matrix.shape[2]):
+        for p in numpy.arange(npol):
+            for c in numpy.arange(nchan):
+                dft_matrix[c, p, i, :] *= antenna_phases[c, :, p]
+
+    return dft_matrix / antenna_location.shape[3]
+
+
 # Frequency-Dependent Locations
+def Generate_DFT_Locations(lsl_locs, frequencies, ntime, nchan, npol):
+    """
+    Generate locations used in DFT transformation.
+
+    Parameters
+    ----------
+    lsl_locs : numpy.ndarray
+        Array of stand locations. Has shape (3, nstand)
+    frequencies : numpy.ndarray
+        Array of frequencies in the observation.
+    ntime : int
+        Number of times.
+    nchan : int
+        Number of channels/frequencies.
+    npol : int
+        Number of polarizations
+
+    Returns
+    -------
+    Array of DFT locations of shape (nchan, npol, 3, nstand)
+
+    """
+    lsl_locs = lsl_locs.T
+    lsl_locs = lsl_locs.copy()
+    chan_wavelengths = speed_of_light.value / frequencies
+    dft_locs = numpy.zeros(shape=(nchan, npol, 3, lsl_locs.shape[1]))
+    for j in numpy.arange(npol):
+        for i in numpy.arange(nchan):
+            dft_locs[i, j, :, :] = lsl_locs / chan_wavelengths[i]
+    return dft_locs
+
+
 def GenerateLocations(
     lsl_locs, frequencies, ntime, nchan, npol, grid_size=64, grid_resolution=20 / 60.
 ):
     """
-    Generate locations for lsl stands.
+    Generate locations of stands compatible with DFT code.
 
     Parameters
     ----------
@@ -114,7 +199,6 @@ def GenerateLocations(
         The desired size of the DFT grid.
     grid_resolution : int
         The gridding resolution in degrees.
-
 
     Returns
     -------
@@ -700,6 +784,7 @@ class DecimationOp(object):
                             )
 
 
+
 class CalibrationOp(object):
     def __init__(self, log, iring, oring, *args, **kwargs):
         pass
@@ -950,6 +1035,7 @@ class MOFFCorrelatorOp(object):
                                 bf_romein.init(self.locs, gphases, self.grid_size, polmajor=False)
                                 bf_romein.execute(udata, gdata)
                             gdata = gdata.reshape(self.ntime_gulp * nchan * npol, self.grid_size, self.grid_size)
+                            # gdata = self.LinAlgObj.matmul(1.0, udata, bfantgridmap, 0.0, gdata)
                             if self.benchmark is True:
                                 timeg2 = time.time()
                                 print("  Romein time: %f" % (timeg2 - timeg1))
@@ -1027,14 +1113,14 @@ class MOFFCorrelatorOp(object):
                                     )
                                     autocorr_lo = bifrost.ndarray(
                                         numpy.ones(
-                                            (3, 1, nchan, nstand, npol ** 2),
+                                            shape=(3, 1, nchan, nstand, npol ** 2),
                                             dtype=numpy.int32
                                         ) * self.grid_size / 2,
                                         space="cuda",
                                     )
                                     autocorr_il = bifrost.ndarray(
                                         numpy.ones(
-                                            (1, nchan, nstand, npol ** 2, self.ant_extent, self.ant_extent),
+                                            shape=(1, nchan, nstand, npol ** 2, self.ant_extent, self.ant_extent),
                                             dtype=numpy.complex64
                                         ),
                                         space="cuda",
@@ -1053,6 +1139,12 @@ class MOFFCorrelatorOp(object):
                                 {"a": crosspol, "b": gdata},
                                 axis_names=("i", "j", "p", "k", "l"),
                                 shape=(self.ntime_gulp, nchan, npol ** 2, self.grid_size, self.grid_size),
+                            )
+                            crosspol = crosspol.reshape(
+                                self.ntime_gulp, nchan, npol ** 2, self.grid_size, self.grid_size
+                            )
+                            gdata = gdata.reshape(
+                                1, self.ntime_gulp, nchan, npol, self.grid_size, self.grid_size
                             )
 
                             # Increment
@@ -1133,6 +1225,345 @@ class MOFFCorrelatorOp(object):
                             # gdata = gdata.reshape(self.ntime_gulp,nchan,2,self.grid_size,self.grid_size)
                             # image/autos, time, chan, pol, gridx, grid.
                             # accumulated_image = accumulated_image.reshape(oshape)
+
+                            if self.benchmark is True:
+                                time2 = time.time()
+                                print("-> GPU Time Taken: %f" % (time2 - time1))
+
+                                runtime_history.append(time2 - time1)
+                                print("-> Average GPU Time Taken: %f (%i samples)" % (1.0 * sum(runtime_history) / len(runtime_history), len(runtime_history)))
+                            if self.profile:
+                                spani += 1
+                                if spani >= 10:
+                                    sys.exit()
+                                    break
+
+                            self.perf_proclog.update(
+                                {
+                                    "acquire_time": acquire_time,
+                                    "reserve_time": reserve_time,
+                                    "process_time": process_time,
+                                }
+                            )
+
+                        # Reset to move on to the next input sequence?
+                        if not reset_sequence:
+                            break
+
+
+# An alternative correlation step which uses a direct fourier transform.
+# This makes use of the DFT as a linear operator, and the high locality
+# of a matrix multiplication to form sky images with perfect wide field correction.
+class MOFF_DFT_CorrelatorOp(object):
+    def __init__(
+        self,
+        log,
+        iring,
+        oring,
+        antennas,
+        skymodes=64,
+        ntime_gulp=2500,
+        accumulation_time=10000,
+        core=-1,
+        gpu=-1,
+        benchmark=False,
+        profile=False,
+        *args,
+        **kwargs
+    ):
+        self.log = log
+        self.iring = iring
+        self.oring = oring
+        self.ntime_gulp = ntime_gulp
+        self.accumulation_time = accumulation_time
+
+        # Setup Antennas
+        self.antennas = antennas
+        locations = numpy.empty(shape=(0, 3))
+        for ant in self.antennas:
+            locations = numpy.vstack((locations, [ant.stand[0], ant.stand[1], ant.stand[2]]))
+        locations = numpy.delete(locations, list(range(0, locations.shape[0], 2)), axis=0)
+        # locations[255,:] = 0.0
+        self.locations = locations
+
+        # LinAlg
+
+        self.LinAlgObj = LinAlg()
+
+        # Setup Direct Fourier Transform Matrix
+        self.dftm = None
+        self.skymodes1d = skymodes
+        self.skymodes = skymodes ** 2
+        self.core = core
+        self.gpu = gpu
+        self.benchmark = benchmark
+        self.newflag = True
+        self.profile = profile
+
+        self.bind_proclog = ProcLog(type(self).__name__ + "/bind")
+        self.in_proclog = ProcLog(type(self).__name__ + "/in")
+        self.out_proclog = ProcLog(type(self).__name__ + "/out")
+        self.size_proclog = ProcLog(type(self).__name__ + "/size")
+        self.sequence_proclog = ProcLog(type(self).__name__ + "/sequence0")
+        self.perf_proclog = ProcLog(type(self).__name__ + "/perf")
+
+        self.in_proclog.update({"nring": 1, "ring0": self.iring.name})
+        self.out_proclog.update({"nring": 1, "ring0": self.oring.name})
+        self.size_proclog.update({"nseq_per_gulp": self.ntime_gulp})
+
+        self.ant_extent = 1
+
+        self.shutdown_event = threading.Event()
+
+    def shutdown(self):
+        self.shutdown_event.set()
+
+    def main(self):
+        if self.core != -1:
+            bifrost.affinity.set_core(self.core)
+        if self.gpu != -1:
+            BFSetGPU(self.gpu)
+        self.bind_proclog.update(
+            {
+                "ncore": 1,
+                "core0": bifrost.affinity.get_core(),
+                "ngpu": 1,
+                "gpu0": BFGetGPU(),
+            }
+        )
+
+        runtime_history = deque([], 50)
+        accum = 0
+        with self.oring.begin_writing() as oring:
+            for iseq in self.iring.read(guarantee=True):
+                ihdr = json.loads(iseq.header.tostring())
+                self.sequence_proclog.update(ihdr)
+                self.log.info("MOFFCorrelatorOp: Config - %s" % ihdr)
+                chan0 = ihdr["chan0"]
+                nchan = ihdr["nchan"]
+                nstand = ihdr["nstand"]
+                npol = ihdr["npol"]
+                self.newflag = True
+                accum = 0
+
+                igulp_size = self.ntime_gulp * nchan * nstand * npol * 1  # ci4
+                itshape = (self.ntime_gulp, nchan, nstand, npol)
+
+                # Sample locations at right u/v/w values
+                freq = (chan0 + numpy.arange(nchan)) * CHAN_BW
+                locs = Generate_DFT_Locations(
+                    self.locations, freq, self.ntime_gulp, nchan, npol
+                )
+
+                try:
+                    copy_array(self.locs, bifrost.ndarray(locs.astype(numpy.int32)))
+                except AttributeError:
+                    self.locs = bifrost.ndarray(locs.astype(numpy.int32), space="cuda")
+
+                ohdr = ihdr.copy()
+                ohdr["nbit"] = 64
+
+                ms_per_gulp = 1e3 * self.ntime_gulp / CHAN_BW
+                new_accumulation_time = numpy.ceil(self.accumulation_time / ms_per_gulp) * ms_per_gulp
+                if new_accumulation_time != self.accumulation_time:
+                    self.log.warning("Adjusting accumulation time from %.3f ms to %.3f ms",
+                                     self.accumulation_time, new_accumulation_time)
+                    self.accumulation_time = new_accumulation_time
+
+                ohdr["npol"] = npol ** 2  # Because of cross multiplying shenanigans
+                ohdr["skymodes"] = self.skymodes
+                ohdr["grid_size_x"] = self.skymodes1d
+                ohdr["grid_size_y"] = self.skymodes1d
+                ohdr["axes"] = "time,chan,pol,gridy,gridx"
+                ohdr["accumulation_time"] = self.accumulation_time
+                ohdr["FS"] = FS
+                ohdr["latitude"] = lwasv.lat * 180. / numpy.pi
+                ohdr["longitude"] = lwasv.lon * 180. / numpy.pi
+                ohdr["telescope"] = "LWA-SV"
+                ohdr["data_units"] = "UNCALIB"
+                if ohdr["npol"] == 1:
+                    ohdr["pols"] = ["xx"]
+                elif ohdr["npol"] == 2:
+                    ohdr["pols"] = ["xx", "yy"]
+                elif ohdr["npol"] == 4:
+                    ohdr["pols"] = ["xx", "xy", "yx", "yy"]
+                else:
+                    raise ValueError("Cannot write fits file without knowing polarization list")
+                ohdr_str = json.dumps(ohdr)
+
+                # Setup the kernels to include phasing terms for zenith
+                # Phases are Nchan x Nstand x Npol
+                # freq.shape += (1,)
+
+                phases = numpy.zeros((nchan, nstand, npol), dtype=numpy.complex64)
+                for i in range(nstand):
+                    # X
+                    a = self.antennas[2 * i + 0]
+                    delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
+                    phases[:, i, 0] = numpy.exp(2j * numpy.pi * freq * delay)
+                    phases[:, i, 0] /= numpy.sqrt(a.cable.gain(freq))
+                    if npol == 2:
+                        # Y
+                        a = self.antennas[2 * i + 1]
+                        delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
+                        phases[:, i, 1] = numpy.exp(2j * numpy.pi * freq * delay)
+                        phases[:, i, 1] /= numpy.sqrt(a.cable.gain(freq))
+                        # Explicit outrigger masking - we probably want to do
+                        # away with this at some point
+                        # if a.stand.id == 256:
+                        #     phases[:,i] = 0.0
+                        #     nj()
+                phases = bifrost.ndarray(phases)
+
+                # Setup DFT Transform Matrix
+
+                lm_matrix = numpy.zeros(shape=(self.skymodes1d, self.skymodes1d, 3))
+                lm_step = 2.0 / self.skymodes1d
+                for i in numpy.arange(lm_matrix.shape[0]):
+                    for j in numpy.arange(lm_matrix.shape[0]):
+                        lm_matrix[i, j] = numpy.asarray([i * lm_step - 1.0, j * lm_step - 1.0, 0.0])
+                lm_vector = lm_matrix.reshape((self.skymodes, 3))
+                print("shapes: locs {locs}, phases {phases}".format(
+                    locs=locs.shape, phases=phases.shape,
+                ))
+                self.dftm = bifrost.ndarray(
+                    form_dft_matrix(lm_vector, locs, phases, nchan, npol, nstand)
+                )
+
+                # self.dftm = bifrost.ndarray(numpy.tile(self.dftm[numpy.newaxis,:],(nchan,1,1,1)))
+                dftm_cu = self.dftm.copy(space="cuda")
+                # sys.exit(1)
+
+                oshape = (nchan, npol ** 2, self.skymodes, 1)
+                ogulp_size = nchan * npol**2 * self.skymodes * 8
+                self.iring.resize(igulp_size)
+                self.oring.resize(ogulp_size, buffer_factor=5)
+                prev_time = time.time()
+                with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
+                    iseq_spans = iseq.read(igulp_size)
+                    while not self.iring.writing_ended():
+                        reset_sequence = False
+
+                        if self.profile:
+                            spani = 0
+
+                        for ispan in iseq_spans:
+                            if ispan.size < igulp_size:
+                                continue  # Ignore final gulp
+                            curr_time = time.time()
+                            acquire_time = curr_time - prev_time
+                            prev_time = curr_time
+
+                            if self.benchmark is True:
+                                print(" ------------------ ")
+
+                            # Correlator
+                            # Setup and load
+                            idata = ispan.data_view(numpy.uint8).reshape(itshape)
+                            # Fix the type
+                            tdata = bifrost.ndarray(shape=itshape, dtype="ci4", native=False, buffer=idata.ctypes.data)
+
+                            if self.benchmark is True:
+                                time1 = time.time()
+                            # chan pol stand
+                            tdata = tdata.transpose((1, 3, 2, 0))
+                            tdata = tdata.reshape(nchan * npol, nstand, self.ntime_gulp)
+                            tdata = tdata.copy()
+
+                            tdata = tdata.copy(space="cuda")
+                            # Unpack
+                            try:
+                                udata = udata.reshape(*tdata.shape)
+                                Unpack(tdata, udata)
+                            except NameError:
+                                udata = bifrost.ndarray(shape=tdata.shape, dtype=numpy.complex64, space="cuda")
+                                Unpack(tdata, udata)
+                            if self.benchmark is True:
+                                time1b = time.time()
+                            # Phase
+                            # bifrost.map('a(i,j,k,l) *= b(j,k,l)',
+                            #            {'a':udata, 'b':gphases}, axis_names=('i','j','k','l'), shape=udata.shape)
+
+                            dftm_cu = dftm_cu.reshape(nchan * npol, self.skymodes, nstand)
+
+                            # Perform DFT Matrix Multiplication
+                            try:
+                                gdata = gdata.reshape(nchan * npol, self.skymodes, self.ntime_gulp)
+                                memset_array(data, 0)
+                                gdata = self.LinAlgObj.matmul(1.0, dftm_cu, udata, 0.0, gdata)
+                            except NameError:
+                                gdata = bifrost.zeros(
+                                    shape=(nchan * npol, self.skymodes, self.ntime_gulp),
+                                    dtype=numpy.complex64,
+                                    space="cuda"
+                                )
+                                memset_array(gdata, 0)
+                                gdata = self.LinAlgObj.matmul(1.0, dftm_cu, udata, 0.0, gdata)
+
+                            gdata = gdata.reshape(1, nchan, npol, self.skymodes, self.ntime_gulp)
+
+                            # Setup matrices for cross-multiplication and accumulation
+                            if self.newflag is True:
+                                try:
+                                    gdatas = gdatas.reshape(nchan, npol ** 2, self.skymodes, self.ntime_gulp)
+                                    accumulated_image = accumulated_image.reshape(nchan, npol ** 2, self.skymodes, 1)
+                                    memset_array(gdatas, 0)
+                                    memset_array(accumulated_image, 0)
+
+                                except NameError:
+                                    gdatas = bifrost.zeros(
+                                        shape=(nchan, npol ** 2, self.skymodes, self.ntime_gulp),
+                                        dtype=numpy.complex64,
+                                        space="cuda"
+                                    )
+                                    accumulated_image = bifrost.zeros(
+                                        shape=(nchan, npol ** 2, self.skymodes, 1),
+                                        dtype=numpy.complex64,
+                                        space="cuda"
+                                    )
+                                self.newflag = False
+
+                            bifrost.map("a(i,j,k,l) += (b(0,i,j/2,k,l) * b(0,i,j%2,k,l).conj())",
+                                        {"a": gdatas, "b": gdata},
+                                        axis_names=("i", "j", "k", "l"),
+                                        shape=(nchan, npol ** 2, self.skymodes, self.ntime_gulp))
+
+                            # Make sure we have a place to put the gridded data
+                            # Gridded Antennas
+                            # Increment
+                            accum += 1e3 * self.ntime_gulp / CHAN_BW
+
+                            if accum >= self.accumulation_time:
+
+                                bifrost.reduce(gdatas, accumulated_image, op="sum")
+
+                                curr_time = time.time()
+                                process_time = curr_time - prev_time
+                                prev_time = curr_time
+
+                                with oseq.reserve(ogulp_size) as ospan:
+                                    odata = ospan.data_view(numpy.complex64).reshape(oshape)
+                                    accumulated_image = accumulated_image.reshape(oshape)
+                                    # gdatass = gdatass.reshape(oshape)
+                                    # odata[...] = gdatass
+                                    odata[...] = accumulated_image
+                                    bifrost.device.stream_synchronize()
+
+
+                                curr_time = time.time()
+                                reserve_time = curr_time - prev_time
+                                prev_time = curr_time
+
+                                self.newflag = True
+                                accum = 0
+
+                            else:
+                                process_time = 0.0
+                                reserve_time = 0.0
+
+                            curr_time = time.time()
+                            process_time += curr_time - prev_time
+                            prev_time = curr_time
 
                             if self.benchmark is True:
                                 time2 = time.time()
@@ -1444,11 +1875,151 @@ class SaveOp(object):
                         sys.exit()
                         break
 
+class SaveDFTOp(object):
+    def __init__(
+        self,
+        log,
+        iring,
+        filename,
+        core=-1,
+        gpu=-1,
+        cpu=False,
+        profile=False,
+        ints_per_file=1,
+        out_dir="",
+        triggering=False,
+        *args,
+        **kwargs
+    ):
+        self.log = log
+        self.iring = iring
+        self.filename = filename
+        self.ints_per_file = ints_per_file
+        self.out_dir = out_dir
+        self.triggering = triggering
+
+        # TODO: Validate ntime_gulp vs accumulation_time
+        self.core = core
+        self.gpu = gpu
+        self.cpu = cpu
+        self.profile = profile
+
+        self.bind_proclog = ProcLog(type(self).__name__ + "/bind")
+        self.in_proclog = ProcLog(type(self).__name__ + "/in")
+        self.size_proclog = ProcLog(type(self).__name__ + "/size")
+        self.sequence_proclog = ProcLog(type(self).__name__ + "/sequence0")
+        self.perf_proclog = ProcLog(type(self).__name__ + "/perf")
+
+        self.in_proclog.update({"nring": 1, "ring0": self.iring.name})
+        self.size_proclog.update({"nseq_per_gulp": 1})
+
+        self.shutdown_event = threading.Event()
+
+    def shutdown(self):
+        self.shutdown_event.set()
+
+    def main(self):
+        global TRIGGER_ACTIVE
+
+        MAX_HISTORY = 5
+
+        if self.core != -1:
+            bifrost.affinity.set_core(self.core)
+        if self.gpu != -1:
+            BFSetGPU(self.gpu)
+        self.bind_proclog.update(
+            {
+                "ncore": 1,
+                "core0": bifrost.affinity.get_core(),
+                "ngpu": 1,
+                "gpu0": BFGetGPU(),
+            }
+        )
+
+        image_history = deque([], MAX_HISTORY)
+
+        for iseq in self.iring.read(guarantee=True):
+            ihdr = json.loads(iseq.header.tostring())
+            fileid = 0
+
+            self.sequence_proclog.update(ihdr)
+            self.log.info("SaveOp: Config - %s" % ihdr)
+
+            cfreq = ihdr["cfreq"]
+            nchan = ihdr["nchan"]
+            npol = ihdr["npol"]
+            skymodes = ihdr["skymodes"]
+            print(
+                "Channel no: %d, Polarisation no: %d, Sky Modes: %d"
+                % (nchan, npol, skymodes)
+            )
+
+            igulp_size = nchan * npol * skymodes * 8
+            ishape = (nchan, npol, skymodes)
+            image = []
+
+            prev_time = time.time()
+            iseq_spans = iseq.read(igulp_size)
+            nints = 0
+
+            dump_counter = 0
+
+            if self.profile:
+                spani = 0
+
+            for ispan in iseq_spans:
+                if ispan.size < igulp_size:
+                    continue  # Ignore final gulp
+                curr_time = time.time()
+                acquire_time = curr_time - prev_time
+                prev_time = curr_time
+
+                idata = ispan.data_view(numpy.complex64).reshape(ishape)
+                itemp = idata.copy(space="cuda_host")
+                image.append(itemp)
+                nints += 1
+                if nints >= self.ints_per_file:
+                    unix_time = (
+                        ihdr["time_tag"] / FS
+                        + ihdr["accumulation_time"] * 1e-3 * fileid * self.ints_per_file
+                    )
+                    image_nums = numpy.arange(fileid * self.ints_per_file, (fileid + 1) * self.ints_per_file)
+                    filename = os.path.join(self.out_dir, "EPIC_{0:3f}_{1:0.3f}MHz.npz".format(unix_time, cfreq / 1e6))
+                    image_history.append((filename, image, ihdr, image_nums))
+
+                    if TRIGGER_ACTIVE.is_set() or not self.triggering:
+                        if dump_counter == 0:
+                            dump_counter = 20 + MAX_HISTORY
+                        elif dump_counter == 1:
+                            TRIGGER_ACTIVE.clear()
+                        cfilename, cimage, chdr, cimage_nums = image_history.popleft()
+                        numpy.savez(cfilename, image=cimage, hdr=chdr, image_nums=cimage_nums)
+                        print("SaveOp - Image Saved")
+                        dump_counter -= 1
+
+                    image = []
+                    nints = 0
+                    fileid += 1
+
+                curr_time = time.time()
+                process_time = curr_time - prev_time
+                prev_time = curr_time
+                self.perf_proclog.update(
+                    {
+                        "acquire_time": acquire_time,
+                        "reserve_time": -1,
+                        "process_time": process_time,
+                    }
+                )
+                if self.profile:
+                    spani += 1
+                    if spani >= 10:
+                        sys.exit()
+                        break
+
 
 class SaveFFTOp(object):
-    def __init__(
-        self, log, iring, filename, ntime_gulp=2500, core=-1, *args, **kwargs
-    ):
+    def __init__(self, log, iring, filename, ntime_gulp=2500, core=-1, *args, **kwargs):
         self.log = log
         self.iring = iring
         self.filename = filename
@@ -1495,6 +2066,7 @@ def main():
         description="EPIC Correlator",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
+
     group1 = parser.add_argument_group("Online Data Processing")
     group1.add_argument(
         "--addr", type=str, default="p5p1", help="F-Engine UDP Stream Address"
@@ -1530,6 +2102,19 @@ def main():
         default=1000,
         help="How many milliseconds to accumulate an image over",
     )
+
+    group4 = parser.add_argument_group("Correlation Options")
+    group4.add_argument(
+        "--dftcorrelation",
+        action="store_true",
+        help="Use a Direct Fourier Transform to form images",
+    )
+    group4.add_argument(
+        "--dft_skymodes_1D",
+        type=int,
+        default=64,
+        help="How many pixels to simulate per full-sky image using a dft",
+    )
     group3.add_argument(
         "--channels", type=int, default=1, help="How many channels to produce"
     )
@@ -1553,6 +2138,7 @@ def main():
         default=".",
         help="Directory for output files. Default is current directory.",
     )
+
     group5 = parser.add_argument_group("Self Triggering")
     group5.add_argument(
         "--triggering", action="store_true", help="Enable self-triggering"
@@ -1566,10 +2152,9 @@ def main():
         default=20.0,
         help="Self-trigger minimum elevation limit in degrees",
     )
+
     group6 = parser.add_argument_group("Benchmarking")
-    group6.add_argument(
-        "--benchmark", action="store_true", help="benchmark gridder"
-    )
+    group6.add_argument("--benchmark", action="store_true", help="benchmark gridder")
     group6.add_argument(
         "--profile",
         action="store_true",
@@ -1594,7 +2179,7 @@ def main():
     log = logging.getLogger(__name__)
     logFormat = logging.Formatter(
         "%(asctime)s [%(levelname)-8s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
     logFormat.converter = time.gmtime
     logHandler = logging.StreamHandler(sys.stdout)
@@ -1622,12 +2207,13 @@ def main():
         except IndexError:
             pass
         shutdown_event.set()
+
     for sig in [
         signal.SIGHUP,
         signal.SIGINT,
         signal.SIGQUIT,
         signal.SIGTERM,
-        signal.SIGTSTP
+        signal.SIGTSTP,
     ]:
         signal.signal(sig, handle_signal_terminate)
 
@@ -1635,15 +2221,12 @@ def main():
 
     fcapture_ring = Ring(name="capture", space="cuda_host")
     fdomain_ring = Ring(name="fengine", space="cuda_host")
-    transpose_ring = Ring(name="transpose", space="cuda_host")
     gridandfft_ring = Ring(name="gridandfft", space="cuda")
-    image_ring = Ring(name="image", space="system")
 
     # Setup Antennas
     # TODO: Some sort of switch for other stations?
 
     lwasv_antennas = lwasv.antennas
-    lwasv_stands = lwasv.stands
 
     # Setup threads
 
@@ -1670,6 +2253,7 @@ def main():
                     profile=args.profile,
                 )
             )
+
         elif args.tbffile is not None:
             ops.append(
                 TBFOfflineCaptureOp(
@@ -1733,23 +2317,40 @@ def main():
             )
         )
 
-    ops.append(
-        MOFFCorrelatorOp(
-            log,
-            fdomain_ring,
-            gridandfft_ring,
-            lwasv_antennas,
-            args.imagesize,
-            args.imageres,
-            ntime_gulp=args.nts,
-            accumulation_time=args.accumulate,
-            remove_autocorrs=args.removeautocorrs,
-            core=cores.pop(0),
-            gpu=gpus.pop(0),
-            benchmark=args.benchmark,
-            profile=args.profile,
+    if args.dftcorrelation:
+        ops.append(
+            MOFF_DFT_CorrelatorOp(
+                log,
+                fdomain_ring,
+                gridandfft_ring,
+                lwasv_antennas,
+                skymodes=args.dft_skymodes_1D,
+                ntime_gulp=args.nts,
+                accumulation_time=args.accumulate,
+                core=cores.pop(0),
+                gpu=gpus.pop(0),
+                benchmark=args.benchmark,
+                profile=args.profile,
+            )
         )
-    )
+    else:
+        ops.append(
+            MOFFCorrelatorOp(
+                log,
+                fdomain_ring,
+                gridandfft_ring,
+                lwasv_antennas,
+                args.imagesize,
+                args.imageres,
+                ntime_gulp=args.nts,
+                accumulation_time=args.accumulate,
+                remove_autocorrs=args.removeautocorrs,
+                core=cores.pop(0),
+                gpu=gpus.pop(0),
+                benchmark=args.benchmark,
+                profile=args.profile,
+            )
+        )
     if args.triggering:
         ops.append(
             TriggerOp(
@@ -1762,20 +2363,37 @@ def main():
                 elevation_limit=max([0.0, args.elevation_limit]),
             )
         )
-    ops.append(
-        SaveOp(
-            log,
-            gridandfft_ring,
-            "EPIC_",
-            out_dir=args.out_dir,
-            core=cores.pop(0),
-            gpu=gpus.pop(0),
-            cpu=False,
-            ints_per_file=args.ints_per_file,
-            triggering=args.triggering,
-            profile=args.profile,
+
+    if args.dftcorrelation:
+        ops.append(
+            SaveDFTOp(
+                log,
+                gridandfft_ring,
+                "EPIC_",
+                out_dir=args.out_dir,
+                core=cores.pop(0),
+                gpu=gpus.pop(0),
+                cpu=False,
+                ints_per_file=args.ints_per_file,
+                triggering=args.triggering,
+                profile=args.profile,
+            )
         )
-    )
+    else:
+        ops.append(
+            SaveOp(
+                log,
+                gridandfft_ring,
+                "EPIC_",
+                out_dir=args.out_dir,
+                core=cores.pop(0),
+                gpu=gpus.pop(0),
+                cpu=False,
+                ints_per_file=args.ints_per_file,
+                triggering=args.triggering,
+                profile=args.profile,
+            )
+        )
 
     threads = [threading.Thread(target=op.main) for op in ops]
 
