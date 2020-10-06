@@ -280,7 +280,7 @@ class TBNOfflineCaptureOp(object):
 
         # Setup the ring metadata and gulp sizes
         ntime = data.shape[1]
-        nstand, npol = data.shape[0] / 2, 2
+        nstand, npol = data.shape[0] // 2, 2
         oshape = (ntime, nstand, npol)
         ogulp_size = ntime * nstand * npol * 8  # complex64
         self.oring.resize(ogulp_size, buffer_factor=10)
@@ -423,9 +423,9 @@ class FDomainOp(object):
                 npol = ihdr["npol"]
 
                 igulp_size = self.ntime_gulp * 1 * nstand * npol * 8  # complex64
-                ishape = (self.ntime_gulp / nchan, nchan, nstand, npol)
+                ishape = (self.ntime_gulp // nchan, nchan, nstand, npol)
                 ogulp_size = self.ntime_gulp * 1 * nstand * npol * 1  # ci4
-                oshape = (self.ntime_gulp / nchan, nchan, nstand, npol)
+                oshape = (self.ntime_gulp // nchan, nchan, nstand, npol)
                 # self.iring.resize(igulp_size)
                 self.oring.resize(ogulp_size, buffer_factor=5)
 
