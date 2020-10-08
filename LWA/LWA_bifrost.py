@@ -1421,9 +1421,7 @@ class MOFF_DFT_CorrelatorOp(object):
                     for j in numpy.arange(lm_matrix.shape[0]):
                         lm_matrix[i, j] = numpy.asarray([i * lm_step - 1.0, j * lm_step - 1.0, 0.0])
                 lm_vector = lm_matrix.reshape((self.skymodes, 3))
-                print("shapes: locs {locs}, phases {phases}".format(
-                    locs=locs.shape, phases=phases.shape,
-                ))
+
                 self.dftm = bifrost.ndarray(
                     form_dft_matrix(lm_vector, locs, phases, nchan, npol, nstand)
                 )
