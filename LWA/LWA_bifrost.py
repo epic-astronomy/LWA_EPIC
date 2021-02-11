@@ -816,10 +816,7 @@ class MOFFCorrelatorOp(object):
         self.accumulation_time = accumulation_time
 
         self.station = station
-        locations = numpy.empty(shape=(0, 3))
-        for ant in self.station.antennas:
-            locations = numpy.vstack((locations, [ant.stand[0], ant.stand[1], ant.stand[2]]))
-        locations = numpy.delete(locations, list(range(0, locations.shape[0], 2)), axis=0)
+        locations = numpy.array([(ant.stand.x, ant.stand.y, ant.stand.z) for ant in self.station.antennas[::2]])
         if self.station == lwasv:
             locations[[i for i, a in enumerate(self.station.antennas[::2]) if a.stand.id == 256], :] = 0.0
         elif self.station == lwa1:
@@ -1267,7 +1264,7 @@ class MOFF_DFT_CorrelatorOp(object):
         log,
         iring,
         oring,
-        antennas,
+        station,
         skymodes=64,
         ntime_gulp=2500,
         accumulation_time=10000,
@@ -1285,12 +1282,12 @@ class MOFF_DFT_CorrelatorOp(object):
         self.accumulation_time = accumulation_time
 
         # Setup Antennas
-        self.antennas = antennas
-        locations = numpy.empty(shape=(0, 3))
-        for ant in self.antennas:
-            locations = numpy.vstack((locations, [ant.stand[0], ant.stand[1], ant.stand[2]]))
-        locations = numpy.delete(locations, list(range(0, locations.shape[0], 2)), axis=0)
-        # locations[255,:] = 0.0
+        self.station = station
+        locations = numpy.array([(ant.stand.x, ant.stand.y, ant.stand.z) for ant in self.station.antennas[::2]])
+        #if self.station == lwasv:
+        #    locations[[i for i, a in enumerate(self.station.antennas[::2]) if a.stand.id == 256], :] = 0.0
+        #elif self.station == lwa1:
+        #    locations[[i for i, a in enumerate(self.station.antennas[::2]) if a.stand.id in (35, 257, 258, 259, 260)], :] = 0.0
         self.locations = locations
 
         # LinAlg
@@ -1384,9 +1381,9 @@ class MOFF_DFT_CorrelatorOp(object):
                 ohdr["axes"] = "time,chan,pol,gridy,gridx"
                 ohdr["accumulation_time"] = self.accumulation_time
                 ohdr["FS"] = FS
-                ohdr["latitude"] = lwasv.lat * 180. / numpy.pi
-                ohdr["longitude"] = lwasv.lon * 180. / numpy.pi
-                ohdr["telescope"] = "LWA-SV"
+                ohdr["latitude"] = self.station.lat * 180. / numpy.pi
+                ohdr["longitude"] = self.station.lon * 180. / numpy.pi
+                ohdr["telescope"] = self.station.name.upper()
                 ohdr["data_units"] = "UNCALIB"
                 if ohdr["npol"] == 1:
                     ohdr["pols"] = ["xx"]
@@ -1415,11 +1412,20 @@ class MOFF_DFT_CorrelatorOp(object):
                         delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
                         phases[:, i, 1] = numpy.exp(2j * numpy.pi * freq * delay)
                         phases[:, i, 1] /= numpy.sqrt(a.cable.gain(freq))
-                        # Explicit outrigger masking - we probably want to do
-                        # away with this at some point
-                        # if a.stand.id == 256:
-                        #     phases[:,i] = 0.0
-                        #     nj()
+                    # Explicit bad and suspect antenna masking - this will
+                    # mask an entire stand if either pol is bad
+                    if (
+                        self.station.antennas[2 * i + 0].combined_status < 33
+                        or self.station.antennas[2 * i + 1].combined_status < 33
+                    ):
+                        phases[:, :, i, :, :, :] = 0.0
+                    # Explicit outrigger masking - we probably want to do
+                    # away with this at some point
+                    #if (
+                    #    (self.station == lwasv and a.stand.id == 256)
+                    #    or (self.station == lwa1 and a.stand.id in (35, 257, 258, 259, 260))
+                    #):
+                    #    phases[:, :, i, :, :, :] = 0.0
                 phases = bifrost.ndarray(phases)
 
                 # Setup DFT Transform Matrix
