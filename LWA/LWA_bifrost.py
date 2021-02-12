@@ -1402,13 +1402,13 @@ class MOFF_DFT_CorrelatorOp(object):
                 phases = numpy.zeros((nchan, nstand, npol), dtype=numpy.complex64)
                 for i in range(nstand):
                     # X
-                    a = self.antennas[2 * i + 0]
+                    a = self.station.antennas[2 * i + 0]
                     delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
                     phases[:, i, 0] = numpy.exp(2j * numpy.pi * freq * delay)
                     phases[:, i, 0] /= numpy.sqrt(a.cable.gain(freq))
                     if npol == 2:
                         # Y
-                        a = self.antennas[2 * i + 1]
+                        a = self.station.antennas[2 * i + 1]
                         delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
                         phases[:, i, 1] = numpy.exp(2j * numpy.pi * freq * delay)
                         phases[:, i, 1] /= numpy.sqrt(a.cable.gain(freq))
@@ -1418,14 +1418,14 @@ class MOFF_DFT_CorrelatorOp(object):
                         self.station.antennas[2 * i + 0].combined_status < 33
                         or self.station.antennas[2 * i + 1].combined_status < 33
                     ):
-                        phases[:, :, i, :, :, :] = 0.0
+                        phases[:, i, :] = 0.0
                     # Explicit outrigger masking - we probably want to do
                     # away with this at some point
                     #if (
                     #    (self.station == lwasv and a.stand.id == 256)
                     #    or (self.station == lwa1 and a.stand.id in (35, 257, 258, 259, 260))
                     #):
-                    #    phases[:, :, i, :, :, :] = 0.0
+                    #    phases[:, i, :] = 0.0
                 phases = bifrost.ndarray(phases)
 
                 # Setup DFT Transform Matrix
