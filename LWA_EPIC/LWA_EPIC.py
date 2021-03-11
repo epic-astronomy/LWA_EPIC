@@ -171,9 +171,11 @@ def Generate_DFT_Locations(lsl_locs, frequencies, ntime, nchan, npol):
     lsl_locs = lsl_locs.copy()
     chan_wavelengths = speed_of_light.value / frequencies
     dft_locs = numpy.zeros(shape=(nchan, npol, 3, lsl_locs.shape[1]))
-    for j in numpy.arange(npol):
-        for i in numpy.arange(nchan):
-            dft_locs[i, j, :, :] = lsl_locs / chan_wavelengths[i]
+
+    dft_locs[:, :, :, :] = (
+        lsl_locs[numpy.newaxis, numpy.newaxis, :, :]
+        / chan_wavelengths[:, numpy.newaxis, numpy.newaxis, numpy.newaxis]
+    )
     return dft_locs
 
 
