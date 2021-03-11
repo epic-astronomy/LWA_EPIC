@@ -127,7 +127,7 @@ def form_dft_matrix(lmn_vector, antenna_location, antenna_phases, nchan, npol, n
         (nchan, npol, lmn_vector.shape[0], nstand), dtype=numpy.complex64
     )
     # DFT phase factors
-    # Both polarisations are at the same physical location, only phases differ.
+    # Both polarisations are at the same physical location, only phases differ
     dft_matrix[:, :] = numpy.exp(
         2j * numpy.pi * (numpy.dot(lmn_vector, antenna_location[0, 0]))
     )
@@ -214,28 +214,20 @@ def GenerateLocations(
     lsl_locs = lsl_locs.copy()
 
     lsl_locsf = numpy.zeros(shape=(3, npol, nchan, lsl_locs.shape[1]))
-    for l in numpy.arange(3):
-        for i in numpy.arange(nchan):
-            lsl_locsf[l, :, i, :] = lsl_locs[l, :] / sample_grid[i]
 
-            # I'm sure there's a more numpy way of doing this.
-            for p in numpy.arange(npol):
-                lsl_locsf[l, p, i, :] -= numpy.min(lsl_locsf[l, p, i, :])
+    lsl_locsf[:, :, :, :] = (
+        lsl_locs[:, numpy.newaxis, numpy.newaxis, :]
+        / sample_grid[numpy.newaxis, numpy.newaxis, :, numpy.newaxis]
+    )
+    lsl_locsf -= numpy.min(lsl_locsf, axis=3, keepdims=True)
 
     # Centre locations slightly
-    for l in numpy.arange(3):
-        for i in numpy.arange(nchan):
-            for p in numpy.arange(npol):
-                lsl_locsf[l, p, i, :] += (
-                    grid_size - numpy.max(lsl_locsf[l, p, i, :])
-                ) / 2
+    lsl_locsf += (grid_size - numpy.max(lsl_locsf, axis=3, keepdims=True)) / 2.
 
-    # Tile them for ntime...
-    locx = numpy.tile(lsl_locsf[0, ...], (ntime, 1, 1, 1))
-    locy = numpy.tile(lsl_locsf[1, ...], (ntime, 1, 1, 1))
-    locz = numpy.tile(lsl_locsf[2, ...], (ntime, 1, 1, 1))
-    # .. and then stick them all into one large array
-    locc = numpy.concatenate([[locx, ], [locy, ], [locz, ]]).transpose(0, 1, 3, 4, 2).copy()
+    # add ntime axis
+    locc = numpy.broadcast_to(
+        lsl_locsf, (ntime, 3, npol, nchan, lsl_locs.shape[1])
+    ).transpose(1, 0, 3, 4, 2)
 
     return delta, locc, sll
 
