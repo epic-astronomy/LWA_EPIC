@@ -127,21 +127,15 @@ def form_dft_matrix(lmn_vector, antenna_location, antenna_phases, nchan, npol, n
         (nchan, npol, lmn_vector.shape[0], nstand), dtype=numpy.complex64
     )
     # DFT phase factors
-    for i in numpy.arange(antenna_location.shape[3]):
-        ant_uvw = antenna_location[0, 0, :, i]
-
-        # Both polarisations are at the same physical location, only phases differ.
-        dft_matrix[:, :, :, i] = numpy.exp(
-            2j * numpy.pi * (numpy.dot(lmn_vector, ant_uvw))
-        )
+    # Both polarisations are at the same physical location, only phases differ.
+    dft_matrix[:, :] = numpy.exp(
+        2j * numpy.pi * (numpy.dot(lmn_vector, antenna_location[0, 0]))
+    )
 
     # Can put the antenna phases in as well because maths
-    for i in numpy.arange(dft_matrix.shape[2]):
-        for p in numpy.arange(npol):
-            for c in numpy.arange(nchan):
-                dft_matrix[c, p, i, :] *= antenna_phases[c, :, p]
+    dft_matrix *= antenna_phases.transpose([0, 2, 1])[:, :, None, :] / nstand
 
-    return dft_matrix / antenna_location.shape[3]
+    return dft_matrix
 
 
 # Frequency-Dependent Locations
