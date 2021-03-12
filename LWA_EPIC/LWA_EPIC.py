@@ -133,7 +133,7 @@ def form_dft_matrix(lmn_vector, antenna_location, antenna_phases, nchan, npol, n
     )
 
     # Can put the antenna phases in as well because maths
-    dft_matrix *= antenna_phases.transpose([0, 2, 1])[:, :, None, :] / nstand
+    dft_matrix *= antenna_phases.transpose([0, 2, 1])[:, :, numpy.newaxis, :] / nstand
 
     return dft_matrix
 
