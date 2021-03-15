@@ -1,7 +1,7 @@
 
 
 # What is EPIC?
-A direct imaging correlator for radio interferometer arrays. Instead of cross-correlating voltages stream from all antenna stream to form visibilities, voltages can be gridded and Fourier Transformed directly into the image domain. A Discrete Fourier Transform (DFT) can also be implemented to skip the gridding step.
+A direct imaging correlator for radio interferometer arrays. Instead of cross-correlating voltages streams from all antenna to form visibilities, voltages can be gridded and Fourier Transformed directly into the image domain. A Discrete Fourier Transform (DFT) can also be implemented to skip the gridding step.
 
 The process creates all sky images in real time with millisecond time resolution. High time resolution is vital in the identification and classification of radio transients, FRBs, Pulsar timing, and Gravitational Wave follow-ups.
 
