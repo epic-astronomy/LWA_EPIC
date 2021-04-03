@@ -751,8 +751,8 @@ class DecimationOp(object):
                 ishape = (self.ntime_gulp, nchan, nstand, npol)
                 ogulp_size = self.ntime_gulp * self.nchan_out * nstand * self.npol_out * 1  # ci4
                 oshape = (self.ntime_gulp, self.nchan_out, nstand, self.npol_out)
-                self.iring.resize(igulp_size)
-                self.oring.resize(ogulp_size, buffer_factor=1024)  # , obuf_size)
+                self.iring.resize(igulp_size, buffer_factor=8)
+                self.oring.resize(ogulp_size, buffer_factor=512)  # , obuf_size)
 
                 ohdr = ihdr.copy()
                 ohdr["nchan"] = self.nchan_out
@@ -981,8 +981,8 @@ class MOFFCorrelatorOp(object):
 
                 oshape = (1, nchan, npol ** 2, self.grid_size, self.grid_size)
                 ogulp_size = nchan * npol ** 2 * self.grid_size * self.grid_size * 8
-                self.iring.resize(igulp_size, buffer_factor=32)
-                self.oring.resize(ogulp_size, buffer_factor=256)
+                self.iring.resize(igulp_size, buffer_factor=512)
+                self.oring.resize(ogulp_size, buffer_factor=128)
                 prev_time = time.time()
                 with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
                     iseq_spans = iseq.read(igulp_size)
@@ -1445,7 +1445,7 @@ class MOFF_DFT_CorrelatorOp(object):
 
                 oshape = (nchan, npol ** 2, self.skymodes, 1)
                 ogulp_size = nchan * npol**2 * self.skymodes * 8
-                self.iring.resize(igulp_size, buffer_factor=128)
+                self.iring.resize(igulp_size, buffer_factor=32)
                 self.oring.resize(ogulp_size, buffer_factor=256)
                 prev_time = time.time()
                 with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
@@ -1847,7 +1847,7 @@ class SaveOp(object):
                         + ihdr["accumulation_time"] * 1e-3 * fileid * self.ints_per_file
                     )
                     image_nums = numpy.arange(fileid * self.ints_per_file, (fileid + 1) * self.ints_per_file)
-                    filename = os.path.join(self.out_dir, "EPIC_{0:3f}_{1:0.3f}MHz.npz".format(unix_time, cfreq / 1e6))
+                    filename = os.path.join(self.out_dir, self.filename+"{0:3f}_{1:0.3f}MHz.npz".format(unix_time, cfreq / 1e6))
 
                     image_history.append((filename, image, ihdr, image_nums))
 
@@ -1967,11 +1967,17 @@ def main():
     )
 
     group4 = parser.add_argument_group("Correlation Options")
+    #group4.add_argument(
+    #    "--dftcorrelation",
+    #    action="store_true",
+    #    help="Use a Direct Fourier Transform to form images",
+    #)
     group4.add_argument(
-        "--dftcorrelation",
+        "--simultaneous",
         action="store_true",
         help="Use a Direct Fourier Transform to form images",
     )
+
     group4.add_argument(
         "--dft_skymodes_1D",
         type=int,
@@ -2051,8 +2057,14 @@ def main():
     log.setLevel(logging.DEBUG)
 
     # Setup the cores and GPUs to use
-    gpus = [0, 0, 0, 0, 0]
-    cores = [2, 3, 4, 5, 6]
+    gpu1 = [0, 0, 0, 0, 0]
+    core1 = [2, 3, 4, 5, 6]
+    gpu2 = [1, 1, 1, 1, 1]
+    core2 = [20, 21, 22, 24, 25]
+
+
+    # Setup the GPU to use
+    ##BFSetGPU(gpu1.pop(0))
 
     # Setup the signal handling
     ops = []
@@ -2085,6 +2097,7 @@ def main():
     fcapture_ring = Ring(name="capture", space="system")
     fdomain_ring = Ring(name="fengine", space="system")
     gridandfft_ring = Ring(name="gridandfft", space="cuda")
+    gridandfft2_ring = Ring(name="gridandfft2",space="cuda")
 
     # Setup Antennas
     # TODO: Some sort of switch for other stations?
@@ -2100,7 +2113,7 @@ def main():
                     log,
                     fcapture_ring,
                     args.tbnfile,
-                    core=cores.pop(0),
+                    core=core1.pop(0),
                     profile=args.profile,
                 )
             )
@@ -2111,8 +2124,8 @@ def main():
                     fdomain_ring,
                     ntime_gulp=args.nts,
                     nchan_out=args.channels,
-                    core=cores.pop(0),
-                    gpu=gpus.pop(0),
+                    core=core1.pop(0),
+                    gpu=gpu1.pop(0),
                     profile=args.profile,
                 )
             )
@@ -2123,7 +2136,7 @@ def main():
                     log,
                     fcapture_ring,
                     args.tbffile,
-                    core=cores.pop(0),
+                    core=core1.pop(0),
                     profile=args.profile,
                 )
             )
@@ -2135,7 +2148,7 @@ def main():
                     ntime_gulp=args.nts,
                     nchan_out=args.channels,
                     npol_out=1 if args.singlepol else 2,
-                    core=cores.pop(0),
+                    core=core1.pop(0),
                 )
             )
         else:
@@ -2164,7 +2177,7 @@ def main():
                 max_payload_size=9000,
                 buffer_ntime=args.nts,
                 slot_ntime=25000,
-                core=cores.pop(0),
+                core=core1.pop(0),
                 utc_start=utc_start_dt,
             )
         )
@@ -2176,27 +2189,46 @@ def main():
                 ntime_gulp=args.nts,
                 nchan_out=args.channels,
                 npol_out=1 if args.singlepol else 2,
-                core=cores.pop(0),
+                core=core1.pop(0),
             )
         )
 
-    if args.dftcorrelation:
+    if args.simultaneous:
+            #dftcorrelation:
+        ##ops.append(
+        ##    MOFF_DFT_CorrelatorOp(
+        ##        log,
+        ##        fdomain_ring,
+        ##        gridandfft_ring,
+        ##        lwasv_antennas,
+        ##        skymodes=args.dft_skymodes_1D,
+        ##        ntime_gulp=args.nts,
+        ##        accumulation_time=args.accumulate,
+        ##        core=core1.pop(0),
+        ##        gpu=gpu1.pop(0),
+        ##        benchmark=args.benchmark,
+        ##        profile=args.profile,
+        ##    )
+        ##)
         ops.append(
-            MOFF_DFT_CorrelatorOp(
+            MOFFCorrelatorOp(
                 log,
                 fdomain_ring,
-                gridandfft_ring,
+                gridandfft2_ring,
                 lwasv_antennas,
-                skymodes=args.dft_skymodes_1D,
+                args.imagesize,
+                args.imageres,
                 ntime_gulp=args.nts,
                 accumulation_time=args.accumulate,
-                core=cores.pop(0),
-                gpu=gpus.pop(0),
+                remove_autocorrs=args.removeautocorrs,
+                core=core2.pop(0),
+                gpu=gpu2.pop(0),
                 benchmark=args.benchmark,
                 profile=args.profile,
             )
         )
-    else:
+
+    ##else:
         ops.append(
             MOFFCorrelatorOp(
                 log,
@@ -2208,8 +2240,8 @@ def main():
                 ntime_gulp=args.nts,
                 accumulation_time=args.accumulate,
                 remove_autocorrs=args.removeautocorrs,
-                core=cores.pop(0),
-                gpu=gpus.pop(0),
+                core=core1.pop(0),
+                gpu=gpu1.pop(0),
                 benchmark=args.benchmark,
                 profile=args.profile,
             )
@@ -2219,8 +2251,8 @@ def main():
             TriggerOp(
                 log,
                 gridandfft_ring,
-                core=cores.pop(0),
-                gpu=gpus.pop(0),
+                core=core1.pop(0),
+                gpu=gpu1.pop(0),
                 ints_per_analysis=args.ints_per_file,
                 threshold=args.threshold,
                 elevation_limit=max([0.0, args.elevation_limit]),
@@ -2231,15 +2263,30 @@ def main():
         SaveOp(
             log,
             gridandfft_ring,
-            "EPIC_FFT1",
+            "EPIC_FFT1_",
             out_dir=args.out_dir,
-            core=cores.pop(0),
-            gpu=gpus.pop(0),
+            core=core1.pop(0),
+            gpu=gpu1.pop(0),
             cpu=False,
             ints_per_file=args.ints_per_file,
             triggering=args.triggering,
             profile=args.profile,
         )
+    )        
+    ops.append(
+        SaveOp(
+            log,
+            gridandfft2_ring,
+            "EPIC_FFT2_",
+            out_dir=args.out_dir,
+            core=core2.pop(0),
+            gpu=gpu2.pop(0),
+            cpu=False,
+            ints_per_file=args.ints_per_file,
+            triggering=args.triggering,
+            profile=args.profile,
+        )
+    
     )
 
     threads = [threading.Thread(target=op.main) for op in ops]
