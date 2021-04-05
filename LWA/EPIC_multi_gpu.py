@@ -981,8 +981,8 @@ class MOFFCorrelatorOp(object):
 
                 oshape = (1, nchan, npol ** 2, self.grid_size, self.grid_size)
                 ogulp_size = nchan * npol ** 2 * self.grid_size * self.grid_size * 8
-                self.iring.resize(igulp_size, buffer_factor=512)
-                self.oring.resize(ogulp_size, buffer_factor=128)
+                self.iring.resize(igulp_size, buffer_factor=32)
+                self.oring.resize(ogulp_size, buffer_factor=256)
                 prev_time = time.time()
                 with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
                     iseq_spans = iseq.read(igulp_size)
@@ -1040,13 +1040,12 @@ class MOFFCorrelatorOp(object):
                                 timeg1 = time.time()
 
                             try:
-                                bf_romein.execute(udata, gdata)
+                                bf_vgrid.execute(udata, gdata)
                             except NameError:
-                                bf_romein = Romein()
-                                bf_romein.init(self.locs, gphases, self.grid_size, polmajor=False)
-                                bf_romein.execute(udata, gdata)
+                                bf_vgrid = Romein()
+                                bf_vgrid.init(self.locs, gphases, self.grid_size, polmajor=False)
+                                bf_vgrid.execute(udata, gdata)
                             gdata = gdata.reshape(self.ntime_gulp * nchan * npol, self.grid_size, self.grid_size)
-                            # gdata = self.LinAlgObj.matmul(1.0, udata, bfantgridmap, 0.0, gdata)
                             if self.benchmark is True:
                                 timeg2 = time.time()
                                 print("  Romein time: %f" % (timeg2 - timeg1))
@@ -1137,20 +1136,27 @@ class MOFFCorrelatorOp(object):
                                         space="cuda",
                                     )
 
-                                # Cross multiply to calculate autocorrs
-                                bifrost.map(
-                                    "a(i,j,k,l) += (b(i,j,k,l/2) * b(i,j,k,l%2).conj())",
-                                    {"a": autocorrs, "b": udata, "t": self.ntime_gulp},
-                                    axis_names=("i", "j", "k", "l"),
-                                    shape=(self.ntime_gulp, nchan, nstand, npol ** 2),
+                               # Autocorrelation Estimation
+
+                                try:
+                                     bf_auto.execute(udata, autocorrs)
+                                except NameError:
+                                     bf_auto = aCorr()
+                                     bf_auto.init(self.locs, polmajor=False)
+                                     bf_auto.execute(udata, autocorrs)
+                                autocorrs = autocorrs.reshape(
+                                self.ntime_gulp, nchan, nstand, npol ** 2
                                 )
 
-                            bifrost.map(
-                                "a(i,j,p,k,l) += b(0,i,j,p/2,k,l)*b(0,i,j,p%2,k,l).conj()",
-                                {"a": crosspol, "b": gdata},
-                                axis_names=("i", "j", "p", "k", "l"),
-                                shape=(self.ntime_gulp, nchan, npol ** 2, self.grid_size, self.grid_size),
-                            )
+
+                            #Grid Multiplication Implementation
+
+                            try:
+                                bf_gmul.execute(gdata, crosspol)
+                            except NameError:
+                                bf_gmul = xCorr()
+                                bf_gmul.init(self.grid_size, polmajor=False)
+                                bf_gmul.execute(gdata, crosspol)
                             crosspol = crosspol.reshape(
                                 self.ntime_gulp, nchan, npol ** 2, self.grid_size, self.grid_size
                             )
@@ -2039,11 +2045,6 @@ def main():
     if not os.path.isdir(args.out_dir):
         print("Output directory does not exist. Defaulting to current directory.")
         args.out_dir = "."
-
-    if args.removeautocorrs:
-        raise NotImplementedError(
-            "Removing autocorrelations is not yet properly implemented."
-        )
 
     log = logging.getLogger(__name__)
     logFormat = logging.Formatter(
