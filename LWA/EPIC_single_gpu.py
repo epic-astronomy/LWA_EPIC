@@ -49,6 +49,7 @@ BFNoSpinZone()  # noqa
 
 #Optimizations to EPIC in Bifrost
 from bifrost.vgrid import vgrid
+from bifrost.GMul import gMul
 from bifrost.xCorr import xCorr
 from bifrost.aCorr import aCorr
 
@@ -1047,7 +1048,7 @@ class MOFFCorrelatorOp(object):
                             try:
                                 bf_vgrid.execute(udata, gdata)
                             except NameError:
-                                bf_vgrid = Romein()
+                                bf_vgrid = vgrid()#Romein()
                                 bf_vgrid.init(self.locs, gphases, self.grid_size, polmajor=False)
                                 bf_vgrid.execute(udata, gdata)
                             gdata = gdata.reshape(self.ntime_gulp * nchan * npol, self.grid_size, self.grid_size)
@@ -1160,7 +1161,7 @@ class MOFFCorrelatorOp(object):
                             try:
                                 bf_gmul.execute(gdata, crosspol)
                             except NameError:
-                                bf_gmul = xCorr()
+                                bf_gmul = gMul()#xCorr()
                                 bf_gmul.init(self.grid_size, polmajor=False)
                                 bf_gmul.execute(gdata, crosspol)
                             crosspol = crosspol.reshape(
@@ -1186,7 +1187,7 @@ class MOFFCorrelatorOp(object):
                                     try:
                                         bf_vgrid_autocorr.execute(autocorrs_av, autocorr_g)
                                     except NameError:
-                                        bf_vgrid_autocorr = Romein()
+                                        bf_vgrid_autocorr = vgrid()#Romein()
                                         bf_vgrid_autocorr.init(
                                             autocorr_lo, autocorr_il, self.grid_size, polmajor=False
                                         )
