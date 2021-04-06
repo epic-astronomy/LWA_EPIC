@@ -32,7 +32,8 @@ import bifrost
 import bifrost.affinity
 from bifrost.address import Address as BF_Address
 from bifrost.udp_socket import UDPSocket as BF_UDPSocket
-from bifrost.udp_capture import UDPCapture as BF_UDPCapture
+#from bifrost.udp_capture import UDPCapture as BF_UDPCapture
+from bifrost.packet_capture import PacketCaptureCallback, UDPCapture
 from bifrost.ring import Ring
 from bifrost.unpack import unpack as Unpack
 from bifrost.quantize import quantize as Quantize
@@ -45,6 +46,12 @@ from bifrost.romein import Romein
 from bifrost.ndarray import memset_array, copy_array
 from bifrost.device import set_device as BFSetGPU, get_device as BFGetGPU, set_devices_no_spin_cpu as BFNoSpinZone
 BFNoSpinZone()  # noqa
+
+#Optimizations to EPIC in Bifrost
+from bifrost.vgrid import vgrid
+from bifrost.GMul import gMul
+from bifrost.xCorr import xCorr
+from bifrost.aCorr import aCorr
 
 # LWA Software Library Includes
 from lsl.reader.ldp import TBNFile, TBFFile
@@ -675,13 +682,16 @@ class FEngineCaptureOp(object):
         return 0
 
     def main(self):
-        seq_callback = bf.BFudpcapture_sequence_callback(self.seq_callback)
-        with BF_UDPCapture(
-            *self.args, sequence_callback=seq_callback, **self.kwargs
-        ) as capture:
+        seq_callback = PacketCaptureCallback()
+        seq_callback.set_chips(self.seq_callback)
+        with UDPCapture(*self.args,
+                        sequence_callback=seq_callback,
+                        **self.kwargs) as capture:
             while not self.shutdown_event.is_set():
-                capture.recv()
+                status = capture.recv()
+                #print status
         del capture
+
 
 
 class DecimationOp(object):
@@ -740,8 +750,8 @@ class DecimationOp(object):
                 ishape = (self.ntime_gulp, nchan, nstand, npol)
                 ogulp_size = self.ntime_gulp * self.nchan_out * nstand * self.npol_out * 1  # ci4
                 oshape = (self.ntime_gulp, self.nchan_out, nstand, self.npol_out)
-                self.iring.resize(igulp_size)
-                self.oring.resize(ogulp_size)  # , obuf_size)
+                self.iring.resize(igulp_size, buffer_factor=8)
+                self.oring.resize(ogulp_size, buffer_factor=512)  # , obuf_size)
 
                 ohdr = ihdr.copy()
                 ohdr["nchan"] = self.nchan_out
@@ -970,8 +980,8 @@ class MOFFCorrelatorOp(object):
 
                 oshape = (1, nchan, npol ** 2, self.grid_size, self.grid_size)
                 ogulp_size = nchan * npol ** 2 * self.grid_size * self.grid_size * 8
-                self.iring.resize(igulp_size)
-                self.oring.resize(ogulp_size, buffer_factor=5)
+                self.iring.resize(igulp_size, buffer_factor=32)
+                self.oring.resize(ogulp_size, buffer_factor=256)
                 prev_time = time.time()
                 with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
                     iseq_spans = iseq.read(igulp_size)
@@ -1029,13 +1039,12 @@ class MOFFCorrelatorOp(object):
                                 timeg1 = time.time()
 
                             try:
-                                bf_romein.execute(udata, gdata)
+                                bf_vgrid.execute(udata, gdata)
                             except NameError:
-                                bf_romein = Romein()
-                                bf_romein.init(self.locs, gphases, self.grid_size, polmajor=False)
-                                bf_romein.execute(udata, gdata)
+                                bf_vgrid = vgrid()#Romein()
+                                bf_vgrid.init(self.locs, gphases, self.grid_size, polmajor=False)
+                                bf_vgrid.execute(udata, gdata)
                             gdata = gdata.reshape(self.ntime_gulp * nchan * npol, self.grid_size, self.grid_size)
-                            # gdata = self.LinAlgObj.matmul(1.0, udata, bfantgridmap, 0.0, gdata)
                             if self.benchmark is True:
                                 timeg2 = time.time()
                                 print("  Romein time: %f" % (timeg2 - timeg1))
@@ -1125,21 +1134,28 @@ class MOFFCorrelatorOp(object):
                                         ),
                                         space="cuda",
                                     )
-
-                                # Cross multiply to calculate autocorrs
-                                bifrost.map(
-                                    "a(i,j,k,l) += (b(i,j,k,l/2) * b(i,j,k,l%2).conj())",
-                                    {"a": autocorrs, "b": udata, "t": self.ntime_gulp},
-                                    axis_names=("i", "j", "k", "l"),
-                                    shape=(self.ntime_gulp, nchan, nstand, npol ** 2),
+    
+                                # Autocorrelation Estimation
+                                
+                                try:
+                                     bf_auto.execute(udata, autocorrs)
+                                except NameError:
+                                     bf_auto = aCorr()
+                                     bf_auto.init(self.locs, polmajor=False)
+                                     bf_auto.execute(udata, autocorrs)
+                                autocorrs = autocorrs.reshape(
+                                self.ntime_gulp, nchan, nstand, npol ** 2
                                 )
+                        
 
-                            bifrost.map(
-                                "a(i,j,p,k,l) += b(0,i,j,p/2,k,l)*b(0,i,j,p%2,k,l).conj()",
-                                {"a": crosspol, "b": gdata},
-                                axis_names=("i", "j", "p", "k", "l"),
-                                shape=(self.ntime_gulp, nchan, npol ** 2, self.grid_size, self.grid_size),
-                            )
+                            #Grid Multiplication
+
+                            try:
+                                bf_gmul.execute(gdata, crosspol)
+                            except NameError:
+                                bf_gmul = gMul()#xCorr()
+                                bf_gmul.init(self.grid_size, polmajor=False)
+                                bf_gmul.execute(gdata, crosspol)
                             crosspol = crosspol.reshape(
                                 self.ntime_gulp, nchan, npol ** 2, self.grid_size, self.grid_size
                             )
@@ -1161,15 +1177,15 @@ class MOFFCorrelatorOp(object):
                                         1, nchan, npol ** 2, self.grid_size, self.grid_size
                                     )
                                     try:
-                                        bf_romein_autocorr.execute(autocorrs_av, autocorr_g)
+                                        bf_vgrid_autocorr.execute(autocorrs_av, autocorr_g)
                                     except NameError:
-                                        bf_romein_autocorr = Romein()
-                                        bf_romein_autocorr.init(
+                                        bf_vgrid_autocorr = vgrid()#Romein()
+                                        bf_vgrid_autocorr.init(
                                             autocorr_lo, autocorr_il, self.grid_size, polmajor=False
                                         )
-                                        bf_romein_autocorr.execute(autocorrs_av, autocorr_g)
+                                        bf_vgrid_autocorr.execute(autocorrs_av, autocorr_g)
                                     autocorr_g = autocorr_g.reshape(1 * nchan * npol ** 2, self.grid_size, self.grid_size)
-                                    # autocorr_g = romein_float(autocorrs_av,autocorr_g,autocorr_il,autocorr_lx,autocorr_ly,autocorr_lz,self.ant_extent,self.grid_size,nstand,nchan*npol**2)
+                                    
                                     # Inverse FFT
                                     try:
                                         ac_fft.execute(autocorr_g, autocorr_g, inverse=True)
@@ -1434,8 +1450,8 @@ class MOFF_DFT_CorrelatorOp(object):
 
                 oshape = (nchan, npol ** 2, self.skymodes, 1)
                 ogulp_size = nchan * npol**2 * self.skymodes * 8
-                self.iring.resize(igulp_size)
-                self.oring.resize(ogulp_size, buffer_factor=5)
+                self.iring.resize(igulp_size, buffer_factor=128)
+                self.oring.resize(ogulp_size, buffer_factor=256)
                 prev_time = time.time()
                 with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
                     iseq_spans = iseq.read(igulp_size)
@@ -2023,11 +2039,6 @@ def main():
         print("Output directory does not exist. Defaulting to current directory.")
         args.out_dir = "."
 
-    if args.removeautocorrs:
-        raise NotImplementedError(
-            "Removing autocorrelations is not yet properly implemented."
-        )
-
     log = logging.getLogger(__name__)
     logFormat = logging.Formatter(
         "%(asctime)s [%(levelname)-8s] %(message)s",
@@ -2040,8 +2051,8 @@ def main():
     log.setLevel(logging.DEBUG)
 
     # Setup the cores and GPUs to use
-    cores = [0, 2, 3, 4, 5, 6, 7]
-    gpus = [0, 0, 0, 0, 0, 0, 0]
+    gpus = [0, 0, 0, 0, 0]
+    cores = [2, 3, 4, 5, 6]
 
     # Setup the signal handling
     ops = []
@@ -2071,8 +2082,8 @@ def main():
 
     # Setup Rings
 
-    fcapture_ring = Ring(name="capture", space="cuda_host")
-    fdomain_ring = Ring(name="fengine", space="cuda_host")
+    fcapture_ring = Ring(name="capture", space="system")
+    fdomain_ring = Ring(name="fengine", space="system")
     gridandfft_ring = Ring(name="gridandfft", space="cuda")
 
     # Setup Antennas
@@ -2220,7 +2231,7 @@ def main():
         SaveOp(
             log,
             gridandfft_ring,
-            "EPIC_",
+            "EPIC_FFT1",
             out_dir=args.out_dir,
             core=cores.pop(0),
             gpu=gpus.pop(0),
