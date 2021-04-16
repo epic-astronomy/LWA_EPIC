@@ -48,7 +48,7 @@ BFNoSpinZone()  # noqa
 
 # LWA Software Library Includes
 from lsl.reader.ldp import TBNFile, TBFFile
-from lsl.common.stations import lwasv
+from lsl.common.stations import lwa1, lwasv
 
 # some py2/3 compatibility
 if sys.version_info.major < 3:
@@ -796,7 +796,7 @@ class MOFFCorrelatorOp(object):
         log,
         iring,
         oring,
-        antennas,
+        station,
         grid_size,
         grid_resolution,
         ntime_gulp=2500,
@@ -815,12 +815,12 @@ class MOFFCorrelatorOp(object):
         self.ntime_gulp = ntime_gulp
         self.accumulation_time = accumulation_time
 
-        self.antennas = antennas
-        locations = numpy.empty(shape=(0, 3))
-        for ant in self.antennas:
-            locations = numpy.vstack((locations, [ant.stand[0], ant.stand[1], ant.stand[2]]))
-        locations = numpy.delete(locations, list(range(0, locations.shape[0], 2)), axis=0)
-        locations[255, :] = 0.0
+        self.station = station
+        locations = numpy.array([(ant.stand.x, ant.stand.y, ant.stand.z) for ant in self.station.antennas[::2]])
+        if self.station == lwasv:
+            locations[[i for i, a in enumerate(self.station.antennas[::2]) if a.stand.id == 256], :] = 0.0
+        elif self.station == lwa1:
+            locations[[i for i, a in enumerate(self.station.antennas[::2]) if a.stand.id in (35, 257, 258, 259, 260)], :] = 0.0
         self.locations = locations
 
         self.grid_size = grid_size
@@ -918,9 +918,9 @@ class MOFFCorrelatorOp(object):
                 ohdr["sampling_length_y"] = sampling_length
                 ohdr["accumulation_time"] = self.accumulation_time
                 ohdr["FS"] = FS
-                ohdr["latitude"] = lwasv.lat * 180. / numpy.pi
-                ohdr["longitude"] = lwasv.lon * 180. / numpy.pi
-                ohdr["telescope"] = "LWA-SV"
+                ohdr["latitude"] = self.station.lat * 180. / numpy.pi
+                ohdr["longitude"] = self.station.lon * 180. / numpy.pi
+                ohdr["telescope"] = self.station.name.upper()
                 ohdr["data_units"] = "UNCALIB"
                 if ohdr["npol"] == 1:
                     ohdr["pols"] = ["xx"]
@@ -943,23 +943,29 @@ class MOFFCorrelatorOp(object):
                 )
                 for i in range(nstand):
                     # X
-                    a = self.antennas[2 * i + 0]
+                    a = self.station.antennas[2 * i + 0]
                     delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
                     phases[:, :, i, 0, :, :] = numpy.exp(2j * numpy.pi * freq * delay)
                     phases[:, :, i, 0, :, :] /= numpy.sqrt(a.cable.gain(freq))
                     if npol == 2:
                         # Y
-                        a = self.antennas[2 * i + 1]
+                        a = self.station.antennas[2 * i + 1]
                         delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
                         phases[:, :, i, 1, :, :] = numpy.exp(2j * numpy.pi * freq * delay)
                         phases[:, :, i, 1, :, :] /= numpy.sqrt(a.cable.gain(freq))
                     # Explicit bad and suspect antenna masking - this will
                     # mask an entire stand if either pol is bad
-                    if self.antennas[2 * i + 0].combined_status < 33 or self.antennas[2 * i + 1].combined_status < 33:
+                    if (
+                        self.station.antennas[2 * i + 0].combined_status < 33
+                        or self.station.antennas[2 * i + 1].combined_status < 33
+                    ):
                         phases[:, :, i, :, :, :] = 0.0
                     # Explicit outrigger masking - we probably want to do
                     # away with this at some point
-                    if a.stand.id == 256:
+                    if (
+                        (self.station == lwasv and a.stand.id == 256)
+                        or (self.station == lwa1 and a.stand.id in (35, 257, 258, 259, 260))
+                    ):
                         phases[:, :, i, :, :, :] = 0.0
                 phases = phases.conj()
                 phases = bifrost.ndarray(phases)
@@ -1258,7 +1264,7 @@ class MOFF_DFT_CorrelatorOp(object):
         log,
         iring,
         oring,
-        antennas,
+        station,
         skymodes=64,
         ntime_gulp=2500,
         accumulation_time=10000,
@@ -1276,12 +1282,12 @@ class MOFF_DFT_CorrelatorOp(object):
         self.accumulation_time = accumulation_time
 
         # Setup Antennas
-        self.antennas = antennas
-        locations = numpy.empty(shape=(0, 3))
-        for ant in self.antennas:
-            locations = numpy.vstack((locations, [ant.stand[0], ant.stand[1], ant.stand[2]]))
-        locations = numpy.delete(locations, list(range(0, locations.shape[0], 2)), axis=0)
-        # locations[255,:] = 0.0
+        self.station = station
+        locations = numpy.array([(ant.stand.x, ant.stand.y, ant.stand.z) for ant in self.station.antennas[::2]])
+        #if self.station == lwasv:
+        #    locations[[i for i, a in enumerate(self.station.antennas[::2]) if a.stand.id == 256], :] = 0.0
+        #elif self.station == lwa1:
+        #    locations[[i for i, a in enumerate(self.station.antennas[::2]) if a.stand.id in (35, 257, 258, 259, 260)], :] = 0.0
         self.locations = locations
 
         # LinAlg
@@ -1375,9 +1381,9 @@ class MOFF_DFT_CorrelatorOp(object):
                 ohdr["axes"] = "time,chan,pol,gridy,gridx"
                 ohdr["accumulation_time"] = self.accumulation_time
                 ohdr["FS"] = FS
-                ohdr["latitude"] = lwasv.lat * 180. / numpy.pi
-                ohdr["longitude"] = lwasv.lon * 180. / numpy.pi
-                ohdr["telescope"] = "LWA-SV"
+                ohdr["latitude"] = self.station.lat * 180. / numpy.pi
+                ohdr["longitude"] = self.station.lon * 180. / numpy.pi
+                ohdr["telescope"] = self.station.name.upper()
                 ohdr["data_units"] = "UNCALIB"
                 if ohdr["npol"] == 1:
                     ohdr["pols"] = ["xx"]
@@ -1396,21 +1402,30 @@ class MOFF_DFT_CorrelatorOp(object):
                 phases = numpy.zeros((nchan, nstand, npol), dtype=numpy.complex64)
                 for i in range(nstand):
                     # X
-                    a = self.antennas[2 * i + 0]
+                    a = self.station.antennas[2 * i + 0]
                     delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
                     phases[:, i, 0] = numpy.exp(2j * numpy.pi * freq * delay)
                     phases[:, i, 0] /= numpy.sqrt(a.cable.gain(freq))
                     if npol == 2:
                         # Y
-                        a = self.antennas[2 * i + 1]
+                        a = self.station.antennas[2 * i + 1]
                         delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
                         phases[:, i, 1] = numpy.exp(2j * numpy.pi * freq * delay)
                         phases[:, i, 1] /= numpy.sqrt(a.cable.gain(freq))
-                        # Explicit outrigger masking - we probably want to do
-                        # away with this at some point
-                        # if a.stand.id == 256:
-                        #     phases[:,i] = 0.0
-                        #     nj()
+                    # Explicit bad and suspect antenna masking - this will
+                    # mask an entire stand if either pol is bad
+                    if (
+                        self.station.antennas[2 * i + 0].combined_status < 33
+                        or self.station.antennas[2 * i + 1].combined_status < 33
+                    ):
+                        phases[:, i, :] = 0.0
+                    # Explicit outrigger masking - we probably want to do
+                    # away with this at some point
+                    #if (
+                    #    (self.station == lwasv and a.stand.id == 256)
+                    #    or (self.station == lwa1 and a.stand.id in (35, 257, 258, 259, 260))
+                    #):
+                    #    phases[:, i, :] = 0.0
                 phases = bifrost.ndarray(phases)
 
                 # Setup DFT Transform Matrix
@@ -1938,6 +1953,9 @@ def main():
         "--offline", action="store_true", help="Load TBN data from Disk"
     )
     group2.add_argument("--tbnfile", type=str, help="TBN Data Path")
+    group2.add_argument(
+        "--lwa1", action="store_true", help="TBN data is from LWA1, not LWA-SV"
+    )
     group2.add_argument("--tbffile", type=str, help="TBF Data Path")
 
     group3 = parser.add_argument_group("Processing Options")
@@ -2075,10 +2093,11 @@ def main():
     fdomain_ring = Ring(name="fengine", space="cuda_host")
     gridandfft_ring = Ring(name="gridandfft", space="cuda")
 
-    # Setup Antennas
-    # TODO: Some sort of switch for other stations?
+    # Setup the station
 
-    lwasv_antennas = lwasv.antennas
+    lwa_station = lwasv
+    if args.lwa1:
+        lwa_station = lwa1
 
     # Setup threads
 
@@ -2175,7 +2194,7 @@ def main():
                 log,
                 fdomain_ring,
                 gridandfft_ring,
-                lwasv_antennas,
+                lwa_station,
                 skymodes=args.dft_skymodes_1D,
                 ntime_gulp=args.nts,
                 accumulation_time=args.accumulate,
@@ -2191,7 +2210,7 @@ def main():
                 log,
                 fdomain_ring,
                 gridandfft_ring,
-                lwasv_antennas,
+                lwa_station,
                 args.imagesize,
                 args.imageres,
                 ntime_gulp=args.nts,
