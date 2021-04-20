@@ -208,32 +208,15 @@ def GenerateLocations(
     sample_grid = chan_wavelengths * delta
     sll = sample_grid[0] / chan_wavelengths[0]
     lsl_locs = lsl_locs.T
-    lsl_locs = lsl_locs.copy()
-
-    lsl_locsf = np.zeros(shape=(3, npol, nchan, lsl_locs.shape[1]))
-    for l in np.arange(3):
-        for i in np.arange(nchan):
-            lsl_locsf[l, :, i, :] = lsl_locs[l, :] / sample_grid[i]
-
-            # I'm sure there's a more np way of doing this.
-            for p in np.arange(npol):
-                lsl_locsf[l, p, i, :] -= np.min(lsl_locsf[l, p, i, :])
+    
+    lsl_locsf = lsl_locs[:, np.newaxis, np.newaxis, :] / sample_grid[np.newaxis, np.newaxis, :, np.newaxis]
+    lsl_locsf -= np.min(lsl_locsf, axis=3, keepdims=True)
 
     # Centre locations slightly
-    for l in np.arange(3):
-        for i in np.arange(nchan):
-            for p in np.arange(npol):
-                lsl_locsf[l, p, i, :] += (
-                    grid_size - np.max(lsl_locsf[l, p, i, :])
-                ) / 2
+    lsl_locsf += (grid_size - np.max(lsl_locsf, axis=3, keepdims=True)) / 2.
 
-    # Tile them for ntime...
-    locx = np.tile(lsl_locsf[0, ...], (ntime, 1, 1, 1))
-    locy = np.tile(lsl_locsf[1, ...], (ntime, 1, 1, 1))
-    locz = np.tile(lsl_locsf[2, ...], (ntime, 1, 1, 1))
-    # .. and then stick them all into one large array
-    locc = np.concatenate([[locx, ], [locy, ], [locz, ]]).transpose(0, 1, 3, 4, 2).copy()
-
+    # add ntime axis
+    locc = np.broadcast_to(lsl_locsf, (ntime, 3, npol, nchan, lsl_locs.shape[1],)).transpose(1, 0, 3, 4, 2)
     return delta, locc, sll
 
 
