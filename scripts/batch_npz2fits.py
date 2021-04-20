@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-import numpy
 import argparse
+import numpy as np
 from astropy.io import fits
 from astropy.time import Time
 from astropy.time import TimeDelta
@@ -16,7 +16,7 @@ def epic2fits(filename, data, hdr, image_nums):
     -----------
     filename : str
         file to save
-    data : numpy.ndarray
+    data : np.ndarray
         shape (Ntimes, Nfreq, Npol, Ny, Nx)
     hdr : dict
         header dictionary with necessary metadata
@@ -55,13 +55,13 @@ def epic2fits(filename, data, hdr, image_nums):
     # Reorder pol for fits convention
     pol_dict = {"xx": -5, "yy": -6, "xy": -7, "yx": -8}
     pol_nums = [pol_dict[p] for p in hdr["pols"]]
-    pol_order = numpy.argsort(pol_nums)[::-1]
+    pol_order = np.argsort(pol_nums)[::-1]
     data = data[:, pol_order, :, :, :]
     # Break up real/imaginary
-    data = data[:, numpy.newaxis, :, :, :, :]  # Now (Ntimes, 2 (complex), Npol, Nfreq, y, x)
-    data = numpy.concatenate([data.real, data.imag], axis=1)
+    data = data[:, np.newaxis, :, :, :, :]  # Now (Ntimes, 2 (complex), Npol, Nfreq, y, x)
+    data = np.concatenate([data.real, data.imag], axis=1)
 
-    if not isinstance(image_nums, (list, tuple, numpy.ndarray)):
+    if not isinstance(image_nums, (list, tuple, np.ndarray)):
         image_nums = [image_nums]
 
     dt = TimeDelta(1e-3 * hdr["accumulation_time"], format="sec")
@@ -81,16 +81,16 @@ def epic2fits(filename, data, hdr, image_nums):
         hdu.header["EQUINOX"] = "J2000"
         hdu.header["CTYPE1"] = "RA---SIN"
         hdu.header["CRPIX1"] = float(hdr["grid_size_x"] / 2 + 1)
-        dtheta = 2 * numpy.arcsin(.5 / (hdr["grid_size_x"] * hdr["sampling_length_x"]))
-        hdu.header["CDELT1"] = -dtheta * 180. / numpy.pi
+        dtheta = 2 * np.arcsin(.5 / (hdr["grid_size_x"] * hdr["sampling_length_x"]))
+        hdu.header["CDELT1"] = -dtheta * 180. / np.pi
         hdu.header["CRVAL1"] = coord.ra.deg
         hdu.header["CUNIT1"] = "deg"
         hdu.header["CTYPE2"] = "DEC--SIN"
         # Need to correct for shift in center pixel when we flipped dec dimension when writing npz
         # Only applies for even dimension size
         hdu.header["CRPIX2"] = float(hdr["grid_size_y"] / 2 + 1) - (hdr["grid_size_x"] + 1) % 2
-        dtheta = 2 * numpy.arcsin(.5 / (hdr["grid_size_y"] * hdr["sampling_length_y"]))
-        hdu.header["CDELT2"] = dtheta * 180. / numpy.pi
+        dtheta = 2 * np.arcsin(.5 / (hdr["grid_size_y"] * hdr["sampling_length_y"]))
+        hdu.header["CDELT2"] = dtheta * 180. / np.pi
         hdu.header["CRVAL2"] = coord.dec.deg
         hdu.header["CUNIT2"] = "deg"
         # Coordinates - Freq
@@ -125,6 +125,6 @@ a.add_argument(
 args = a.parse_args()
 
 for f in args.files:
-    d = numpy.load(f, allow_pickle=True)
+    d = np.load(f, allow_pickle=True)
     of = f[:-3] + "fits"
-    epic2fits(of, d["image"], numpy.ravel(d["hdr"])[0], d["image_nums"])
+    epic2fits(of, d["image"], np.ravel(d["hdr"])[0], d["image_nums"])
