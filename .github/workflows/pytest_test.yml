@@ -1,11 +1,10 @@
 
 name: test-python-code
 
-on: [push, pull_request]
+on:
   push:
-    branches: ['Test/dummyPytest']
-  pull_request:
-    branches: ['Test/dummyPytest']
+    branches-ignore:
+      - 'Test/dummyPytest'
 jobs:
     runs-on: ubuntu-latest
     steps:
