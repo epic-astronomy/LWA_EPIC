@@ -1,4 +1,4 @@
-xname: Python package
+name: Python package
 
 on: [push]
 
