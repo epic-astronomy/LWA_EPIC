@@ -7,9 +7,9 @@ on:
       - 'Test/dummyPytest'
 jobs:
   runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Use Python 3.9.4
-      - uses: actions/LWA_EPIC/Test/dummyPytest
-        run: pytest                                                                     
-        working-directory: /LWA_EPIC/Tests   
+  steps:
+    - uses: actions/checkout@v2
+    - name: Use Python 3.9.4
+    - uses: actions/LWA_EPIC/Test/dummyPytest
+      run: pytest                                                                     
+      working-directory: /LWA_EPIC/Tests   
