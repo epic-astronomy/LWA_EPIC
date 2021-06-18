@@ -1,11 +1,5 @@
 name: test-python-code
 on:
-  push:
-   branches:
-     - Test/dummyPytest
-  pull_request:
-   branches:
-     - Test_dummyPytest
 jobs:
   test-code:
     runs-on: ubuntu-latest
