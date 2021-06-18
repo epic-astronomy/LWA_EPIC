@@ -1,9 +1,15 @@
 name: test-python-code
-on:
+on: [push, pull_request]
+  push:
+   branches:
+     - Test/dummyPytest
+  pull_request:
+   branches:
+     - Test_dummyPytest
 jobs:
   test-code:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/LWA_EPIC/Test/dummyPytest
-      - run: pytest
-      - working-directory: /LWA_EPIC/Tests
+        run: pytest
+        working-directory: /LWA_EPIC/Tests
