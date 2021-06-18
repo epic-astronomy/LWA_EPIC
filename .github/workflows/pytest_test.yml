@@ -4,7 +4,7 @@ on: [push, pull_request]
 
   push:
     branches:
-      - 'Tests/dummyPytest;
+      - 'Tests/dummyPytest'
   pull_request:
     branches:
       - 'Tests/dummyPytest'
