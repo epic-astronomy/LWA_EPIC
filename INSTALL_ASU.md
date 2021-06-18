@@ -36,11 +36,6 @@ Note that the `README.md` in bifrost can be (and as of this commit *is*) out of 
 $ pip install contextlib2 pint git+https://github.com/olsonse/ctypesgen.git@9bd2d249aa4011c6383a10890ec6f203d7b7990f
 ```
 
-Downgrade matplotlib
-```
-$ conda install matplotlib=2.2.3
-```
-
 Now we need to actually install bifrost. First set up configuration for intrepid. Copy the file `LWA_EPIC/config/ASU_user.mk` from this repository to your bifrost directory:
 ```
 $ cp ~/src/LWA_EPIC/config/ASU_user.mk ~/src/bifrost/user.mk
