@@ -6,7 +6,7 @@ on:
     branches-ignore:
       - 'Test/dummyPytest'
 jobs:
-    runs-on: ubuntu-latest
+  runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
       - name: Use Python 3.9.4
