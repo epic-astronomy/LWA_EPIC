@@ -3,9 +3,9 @@ name: test-python-code
 
 on: [push, pull_request]
   push:
-    branches: [Test/dummyPytest]
+    branches: ['Test/dummyPytest']
   pull_request:
-    branches: [Test/dummyPytest]
+    branches: ['Test/dummyPytest']
 jobs:
     runs-on: ubuntu-latest
     steps:
