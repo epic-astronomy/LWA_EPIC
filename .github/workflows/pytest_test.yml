@@ -15,5 +15,5 @@ jobs:
         python-version: '3.9'
     - name: Pytest Test Install and Run
       run:|
-	 pip install pytest
-	 pytest
+        pip install pytest
+        pytest
