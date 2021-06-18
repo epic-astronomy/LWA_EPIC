@@ -10,8 +10,5 @@ jobs:
   test-code:
     runs-on: ubuntu-latest
     steps:
-      - name: Clean pycache
-      - run: rm -r pycache
-      - working-directory: ~/src/Work/LWA_EPIC/Tests
       - uses: actions/LWA_EPIC/Test/dummyPytest
       - run: pytest
