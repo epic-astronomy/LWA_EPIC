@@ -1,9 +1,6 @@
 name: test-python-code
 
-on:
-  push:
-    branches-ignore:
-      - 'Test/dummyPytest'
+on: [push]
 jobs:
   test:
     name: Test on node ${{ matrix.node_version }} and ${{ matrix.os }}
