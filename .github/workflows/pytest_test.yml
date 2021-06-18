@@ -1,5 +1,5 @@
 name: test-python-code
-on: [push, pull_requests]
+on:
   push:
    branches:
      - Test/dummyPytest
