@@ -1,13 +1,13 @@
 # General
 
-Start with the general [Enterprise new user setup](https://docs.google.com/document/d/1DOoiYEZd15KMw4KNSIkaGnph2aARI4n77cEuQHiOJqs/edit), and do the steps up to and including anaconda installation. When you create your environment, **be sure to use python 2**, not 3 as is the default. Give an appropriate name to the conda environment. Below we use `epic` as the example.
+Start with the general [Enterprise new user setup](https://docs.google.com/document/d/1DOoiYEZd15KMw4KNSIkaGnph2aARI4n77cEuQHiOJqs/edit), and do the steps up to and including anaconda installation. When you create your environment, **be sure to use python 3**. Give an appropriate name to the conda environment. Below we use `epic` as the example.
 
 
 After the installation of anaconda do the following
 ```
 $ user=`whoami`
 $ env=epic
- $ conda create -n ${env} python=2.7
+ $ conda create -n ${env}
 ```
 It is advised to install the dependencies of LSL before attempting a `pip install`. While pip generally is good about grabbing package dependencies, the configuration of some packages requires dependencies to be installed before pip can check if the dependencies are installed.
 
