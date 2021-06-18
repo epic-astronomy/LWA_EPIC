@@ -1,0 +1,17 @@
+name: test-python-code
+on: [push, pull_requests]
+  push:
+   branches:
+     - Test/dummyPytest
+  pull_request:
+   branches:
+     - Test_dummyPytest
+jobs:
+  test-code:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clean pycache
+        run: rm -r pycache
+        working-directory: ~/src/Work/LWA_EPIC/Tests
+      - uses: actions/LWA_EPIC/Test/dummyPytest
+        run: pytest
