@@ -1,17 +1,18 @@
-name: test-python-code
+name: Test Python Code
 
 on: [push]
+
 jobs:
   test:
-    name: Test on node ${{ matrix.node_version }} and ${{ matrix.os }}
+
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v1
-    - name: Use 
-      uses: actions/setup-python@v1
+    - uses: actions/checkout@v2
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v2
       with:
-        python-version: 3.9.4
-
+        python-version: '3.9'
     - name: pytest test
-      run: pytest                                                                 
+      run: pytest
+      working-directory: /LWA_EPIC/Tests                                                                 
