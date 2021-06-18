@@ -6,10 +6,16 @@ on:
     branches-ignore:
       - 'Test/dummyPytest'
 jobs:
-  runs-on: ubuntu-latest
-  steps:
-    - uses: actions/checkout@v2
-    - name: Use Python 3.9.4
-    - uses: actions/LWA_EPIC/Test/dummyPytest
-      run: pytest                                                                     
-      working-directory: /LWA_EPIC/Tests   
+  test:
+    name: Test on node ${{ matrix.node_version }} and ${{ matrix.os }}
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v1
+    - name: Use 
+      uses: actions/setup-python@v1
+      with:
+        python-version: 3.9.4
+
+    - name: pytest test
+      run: pytest                                                                 
