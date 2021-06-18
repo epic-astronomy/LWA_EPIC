@@ -15,4 +15,4 @@ jobs:
         python-version: '3.9'
     - name: Pytest Test
       run: pytest                                                                 
-      working-directory: ./LWA_EPIC/Tests
+      working-directory: ./Tests
