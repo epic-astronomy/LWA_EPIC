@@ -12,3 +12,4 @@ jobs:
     steps:
       - uses: actions/LWA_EPIC/Test/dummyPytest
       - run: pytest
+      - working-directory: /LWA_EPIC/Tests
