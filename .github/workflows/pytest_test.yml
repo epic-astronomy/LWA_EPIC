@@ -1,12 +1,6 @@
 name: Test Python Code
 
 on: [push, pull_request]
-   push:
-    branches:
-      - 'Tests/dummyPytest'
-  pull_request:
-    branches:
-      - 'Tests/dummyPytest'
 
 jobs:
   test:
