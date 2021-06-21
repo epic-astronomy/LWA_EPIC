@@ -29,8 +29,8 @@ $ git clone https://github.com/epic-astronomy/bifrost.git
 $ cd bifrost
 # At the time of this commit, the most up-to-date and stable branch is ibverb-support
 $ git checkout ibverb-support
-# There are several other branches, so you may need to check out something else if you are testing/developing something specific.
 ```
+There are several other branches, so you may need to check out something else if you are testing/developing something specific.
 
 Note that the `README.md` in bifrost can be (and as of this commit *is*) out of date. Use the following line to install dependencies. (Do this in your epic env, *not* with sudo as the bifrost README indicates). The ctypes gen commit referenced here works for Ubuntu >18. In the future this may be another point of trouble. If this version doesn't work, you will want to file and issue on the [ledatelescope bifrost repo](https://github.com/ledatelescope/bifrost/issues).
 ```
