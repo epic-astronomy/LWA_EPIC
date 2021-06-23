@@ -32,7 +32,7 @@ import bifrost
 import bifrost.affinity
 from bifrost.address import Address as BF_Address
 from bifrost.udp_socket import UDPSocket as BF_UDPSocket
-from bifrost.udp_capture import UDPCapture as BF_UDPCapture
+from bifrost.packet_capture import PacketCaptureCallback, UDPCapture
 from bifrost.ring import Ring
 from bifrost.unpack import unpack as Unpack
 from bifrost.quantize import quantize as Quantize
@@ -675,12 +675,15 @@ class FEngineCaptureOp(object):
         return 0
 
     def main(self):
-        seq_callback = bf.BFudpcapture_sequence_callback(self.seq_callback)
-        with BF_UDPCapture(
-            *self.args, sequence_callback=seq_callback, **self.kwargs
-        ) as capture:
+        seq_callback = PacketCaptureCallback()
+
+        seq_callback.set_chips(self.seq_callback)
+        with UDPCapture(*self.args,
+                        sequence_callback=seq_callback,
+                        **self.kwargs) as capture:
             while not self.shutdown_event.is_set():
-                capture.recv()
+                status = capture.recv()
+                #print status
         del capture
 
 
