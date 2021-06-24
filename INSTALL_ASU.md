@@ -1,14 +1,16 @@
 # General
 
-Start with the general [Enterprise new user setup](https://docs.google.com/document/d/1DOoiYEZd15KMw4KNSIkaGnph2aARI4n77cEuQHiOJqs/edit), and do the steps up to and including anaconda installation. When you create your environment, **be sure to use python 2**, not 3 as is the default. Give an appropriate name to the conda environment. Below we use `epic` as the example.
+Start with the general [Enterprise new user setup](https://docs.google.com/document/d/1DOoiYEZd15KMw4KNSIkaGnph2aARI4n77cEuQHiOJqs/edit), and do the steps up to and including anaconda installation. When you create your environment, **be sure to use python 3**. Give an appropriate name to the conda environment. Below we use `epic` as the example.
 
 
 After the installation of anaconda do the following
 ```
 $ user=`whoami`
 $ env=epic
- $ conda create -n ${env} python=2.7
+ $ conda create -n ${env} python=3.6
 ```
+Bifrost is tested with python 3.6, we have successfully installed with python 3.8 and 3.9. Choose your favorite!
+
 It is advised to install the dependencies of LSL before attempting a `pip install`. While pip generally is good about grabbing package dependencies, the configuration of some packages requires dependencies to be installed before pip can check if the dependencies are installed.
 
 While not explicitly mentioned, lsl depends on `astropy` for fits I/O. Inclusion of astropy is not a mistake.
@@ -16,7 +18,6 @@ While not explicitly mentioned, lsl depends on `astropy` for fits I/O. Inclusion
 To install dependencies for lsl excute the following lines. This may not be necessay depending on your environment but will help smooth the install.
 ```
 $ conda activate ${env}
-$ conda install -c free atlas
 $ conda config --add channels conda-forge
 $ conda install aipy scipy numpy fftw astropy healpy ephem pytz matplotlib
 $ pip install lsl
@@ -27,18 +28,14 @@ $ pip install lsl
 $ cd ~/src
 $ git clone https://github.com/epic-astronomy/bifrost.git
 $ cd bifrost
-# For development work, you will want to checkout the appropriate branch. For example:
-$ git checkout plugin-wrapper
+# At the time of this commit, the most up-to-date and stable branch is ibverb-support
+$ git checkout ibverb-support
 ```
+There are several other branches, so you may need to check out something else if you are testing/developing something specific.
 
-Note that the `README.md` in bifrost can be (and as of this commit *is*) out of date. Use the following line to install dependencies. (Do this in your epic env, *not* with sudo as the bifrost README indicates). The ctypes gen commit referenced here works for Ubuntu >18. In the future this may be another point of trouble. If this version doesn't work, you will want to file and issue on the [ledatelescope bifrost repo](https://github.com/ledatelescope/bifrost/issues).
+Note that the `README.md` in bifrost can be (and as of this commit *is*) out of date. Use the following line to install dependencies. (Do this in your epic env, *not* with sudo as the bifrost README indicates). The ctypes gen commit referenced here works for Ubuntu >18. In the future this may be another point of trouble. If this version doesn't work, you will want to file and issue on the [ledatelescope bifrost repo](https://github.com/ledatelescope/bifrost/issues). Or figure out a fix and send a PR :)
 ```
 $ pip install contextlib2 pint git+https://github.com/olsonse/ctypesgen.git@9bd2d249aa4011c6383a10890ec6f203d7b7990f
-```
-
-Downgrade matplotlib
-```
-$ conda install matplotlib=2.2.3
 ```
 
 Now we need to actually install bifrost. First set up configuration for intrepid. Copy the file `LWA_EPIC/config/ASU_user.mk` from this repository to your bifrost directory:
