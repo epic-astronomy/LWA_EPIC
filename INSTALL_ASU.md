@@ -7,7 +7,7 @@ After the installation of anaconda do the following
 ```
 $ user=`whoami`
 $ env=epic
- $ conda create -n ${env}
+ $ conda create -n ${env} python=3.6
 ```
 It is advised to install the dependencies of LSL before attempting a `pip install`. While pip generally is good about grabbing package dependencies, the configuration of some packages requires dependencies to be installed before pip can check if the dependencies are installed.
 
