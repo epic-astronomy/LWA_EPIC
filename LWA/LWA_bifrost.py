@@ -683,7 +683,6 @@ class FEngineCaptureOp(object):
                         **self.kwargs) as capture:
             while not self.shutdown_event.is_set():
                 status = capture.recv()
-                #print status
         del capture
 
 
