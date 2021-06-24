@@ -16,7 +16,6 @@ While not explicitly mentioned, lsl depends on `astropy` for fits I/O. Inclusion
 To install dependencies for lsl excute the following lines. This may not be necessay depending on your environment but will help smooth the install.
 ```
 $ conda activate ${env}
-$ conda install -c free atlas
 $ conda config --add channels conda-forge
 $ conda install aipy scipy numpy fftw astropy healpy ephem pytz matplotlib
 $ pip install lsl
