@@ -9,6 +9,8 @@ $ user=`whoami`
 $ env=epic
  $ conda create -n ${env} python=3.6
 ```
+Bifrost is tested with python 3.6, we have successfully installed with python 3.8 and 3.9. Choose your favorite!
+
 It is advised to install the dependencies of LSL before attempting a `pip install`. While pip generally is good about grabbing package dependencies, the configuration of some packages requires dependencies to be installed before pip can check if the dependencies are installed.
 
 While not explicitly mentioned, lsl depends on `astropy` for fits I/O. Inclusion of astropy is not a mistake.
