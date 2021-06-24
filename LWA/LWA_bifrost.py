@@ -412,7 +412,7 @@ class FDomainOp(object):
 
         with self.oring.begin_writing() as oring:
             for iseq in self.iring.read(guarantee=True):
-                ihdr = json.loads(iseq.header.tostring())
+                ihdr = json.loads(iseq.header.tobytes())
 
                 self.sequence_proclog.update(ihdr)
                 print("FDomainOp: Config - %s" % ihdr)
@@ -665,7 +665,7 @@ class FEngineCaptureOp(object):
             "axes": "time,chan,stand,pol",
         }
         print("******** CFREQ:", hdr["cfreq"])
-        hdr_str = json.dumps(hdr)
+        hdr_str = json.dumps(hdr).encode()
         # TODO: Can't pad with NULL because returned as C-string
         # hdr_str = json.dumps(hdr).ljust(4096, '\0')
         # hdr_str = json.dumps(hdr).ljust(4096, ' ')
@@ -727,7 +727,7 @@ class DecimationOp(object):
 
         with self.oring.begin_writing() as oring:
             for iseq in self.iring.read(guarantee=self.guarantee):
-                ihdr = json.loads(iseq.header.tostring())
+                ihdr = json.loads(iseq.header.tobytes())
 
                 self.sequence_proclog.update(ihdr)
 
@@ -871,7 +871,7 @@ class MOFFCorrelatorOp(object):
         accum = 0
         with self.oring.begin_writing() as oring:
             for iseq in self.iring.read(guarantee=True):
-                ihdr = json.loads(iseq.header.tostring())
+                ihdr = json.loads(iseq.header.tobytes())
                 self.sequence_proclog.update(ihdr)
                 self.log.info("MOFFCorrelatorOp: Config - %s" % ihdr)
                 chan0 = ihdr["chan0"]
@@ -1342,7 +1342,7 @@ class MOFF_DFT_CorrelatorOp(object):
         accum = 0
         with self.oring.begin_writing() as oring:
             for iseq in self.iring.read(guarantee=True):
-                ihdr = json.loads(iseq.header.tostring())
+                ihdr = json.loads(iseq.header.tobytes())
                 self.sequence_proclog.update(ihdr)
                 self.log.info("MOFFCorrelatorOp: Config - %s" % ihdr)
                 chan0 = ihdr["chan0"]
@@ -1658,7 +1658,7 @@ class TriggerOp(object):
         )
 
         for iseq in self.iring.read(guarantee=True):
-            ihdr = json.loads(iseq.header.tostring())
+            ihdr = json.loads(iseq.header.tobytes())
             fileid = 0
 
             self.sequence_proclog.update(ihdr)
@@ -1804,7 +1804,7 @@ class SaveOp(object):
         image_history = deque([], MAX_HISTORY)
 
         for iseq in self.iring.read(guarantee=True):
-            ihdr = json.loads(iseq.header.tostring())
+            ihdr = json.loads(iseq.header.tobytes())
             fileid = 0
 
             self.sequence_proclog.update(ihdr)
@@ -1900,7 +1900,7 @@ class SaveFFTOp(object):
 
         for iseq in self.iring.read(guarantee=True):
 
-            ihdr = json.loads(iseq.header.tostring())
+            ihdr = json.loads(iseq.header.tobytes())
             nchan = ihdr["nchan"]
             nstand = ihdr["nstand"]
             npol = ihdr["npol"]
