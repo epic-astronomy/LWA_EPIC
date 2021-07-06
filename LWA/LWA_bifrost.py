@@ -32,7 +32,7 @@ import bifrost
 import bifrost.affinity
 from bifrost.address import Address as BF_Address
 from bifrost.udp_socket import UDPSocket as BF_UDPSocket
-from bifrost.udp_capture import UDPCapture as BF_UDPCapture
+from bifrost.packet_capture import PacketCaptureCallback, UDPCapture
 from bifrost.ring import Ring
 from bifrost.unpack import unpack as Unpack
 from bifrost.quantize import quantize as Quantize
@@ -412,7 +412,7 @@ class FDomainOp(object):
 
         with self.oring.begin_writing() as oring:
             for iseq in self.iring.read(guarantee=True):
-                ihdr = json.loads(iseq.header.tostring())
+                ihdr = json.loads(iseq.header.tobytes())
 
                 self.sequence_proclog.update(ihdr)
                 print("FDomainOp: Config - %s" % ihdr)
@@ -665,7 +665,7 @@ class FEngineCaptureOp(object):
             "axes": "time,chan,stand,pol",
         }
         print("******** CFREQ:", hdr["cfreq"])
-        hdr_str = json.dumps(hdr)
+        hdr_str = json.dumps(hdr).encode()
         # TODO: Can't pad with NULL because returned as C-string
         # hdr_str = json.dumps(hdr).ljust(4096, '\0')
         # hdr_str = json.dumps(hdr).ljust(4096, ' ')
@@ -675,12 +675,14 @@ class FEngineCaptureOp(object):
         return 0
 
     def main(self):
-        seq_callback = bf.BFudpcapture_sequence_callback(self.seq_callback)
-        with BF_UDPCapture(
-            *self.args, sequence_callback=seq_callback, **self.kwargs
-        ) as capture:
+        seq_callback = PacketCaptureCallback()
+
+        seq_callback.set_chips(self.seq_callback)
+        with UDPCapture(*self.args,
+                        sequence_callback=seq_callback,
+                        **self.kwargs) as capture:
             while not self.shutdown_event.is_set():
-                capture.recv()
+                status = capture.recv()
         del capture
 
 
@@ -725,7 +727,7 @@ class DecimationOp(object):
 
         with self.oring.begin_writing() as oring:
             for iseq in self.iring.read(guarantee=self.guarantee):
-                ihdr = json.loads(iseq.header.tostring())
+                ihdr = json.loads(iseq.header.tobytes())
 
                 self.sequence_proclog.update(ihdr)
 
@@ -869,7 +871,7 @@ class MOFFCorrelatorOp(object):
         accum = 0
         with self.oring.begin_writing() as oring:
             for iseq in self.iring.read(guarantee=True):
-                ihdr = json.loads(iseq.header.tostring())
+                ihdr = json.loads(iseq.header.tobytes())
                 self.sequence_proclog.update(ihdr)
                 self.log.info("MOFFCorrelatorOp: Config - %s" % ihdr)
                 chan0 = ihdr["chan0"]
@@ -1340,7 +1342,7 @@ class MOFF_DFT_CorrelatorOp(object):
         accum = 0
         with self.oring.begin_writing() as oring:
             for iseq in self.iring.read(guarantee=True):
-                ihdr = json.loads(iseq.header.tostring())
+                ihdr = json.loads(iseq.header.tobytes())
                 self.sequence_proclog.update(ihdr)
                 self.log.info("MOFFCorrelatorOp: Config - %s" % ihdr)
                 chan0 = ihdr["chan0"]
@@ -1656,7 +1658,7 @@ class TriggerOp(object):
         )
 
         for iseq in self.iring.read(guarantee=True):
-            ihdr = json.loads(iseq.header.tostring())
+            ihdr = json.loads(iseq.header.tobytes())
             fileid = 0
 
             self.sequence_proclog.update(ihdr)
@@ -1802,7 +1804,7 @@ class SaveOp(object):
         image_history = deque([], MAX_HISTORY)
 
         for iseq in self.iring.read(guarantee=True):
-            ihdr = json.loads(iseq.header.tostring())
+            ihdr = json.loads(iseq.header.tobytes())
             fileid = 0
 
             self.sequence_proclog.update(ihdr)
@@ -1898,7 +1900,7 @@ class SaveFFTOp(object):
 
         for iseq in self.iring.read(guarantee=True):
 
-            ihdr = json.loads(iseq.header.tostring())
+            ihdr = json.loads(iseq.header.tobytes())
             nchan = ihdr["nchan"]
             nstand = ihdr["nstand"]
             npol = ihdr["npol"]
