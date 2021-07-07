@@ -1,10 +1,7 @@
 #!/usr/bin/env python
 
-import sys
 
-sys.path.insert(1, 'Work/LWA_EPIC/LWA')
-
-import LWA_bifrost
+from LWA import LWA_bifrost
 
 def test_args():
     args = LWA_bifrost.args_maker()  # This will give you the defaults
