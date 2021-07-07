@@ -2047,6 +2047,7 @@ def args_maker():
 
 def main(args):
 
+    args = args_maker()
     # Main Input: UDP Broadcast RX from F-Engine?
 
     log = logging.getLogger(__name__)
