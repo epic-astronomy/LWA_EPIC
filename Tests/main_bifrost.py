@@ -2,9 +2,11 @@
 
 import LWA_bifrost
 
-LWA_bifrost.main()
+def test_args():
+    args = LWA_bifrost.args_maker()  # This will give you the defaults
+    args.offline = True  # manually set the offline argument
+    LWA_bifrost.main()
 
-#def test_main()
 	
 
 
