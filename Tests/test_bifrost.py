@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 
+import sys
+
+sys.path.insert(1, LWA_EPIC/LWA/)
+
 import LWA_bifrost
 
 def test_args():
