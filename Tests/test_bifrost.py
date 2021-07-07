@@ -2,7 +2,7 @@
 
 import sys
 
-sys.path.insert(1, LWA_EPIC/LWA)
+sys.path.insert(1, Work/LWA_EPIC/LWA)
 
 import LWA_bifrost
 
