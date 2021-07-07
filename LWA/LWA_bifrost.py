@@ -2045,6 +2045,8 @@ def args_maker():
             "Removing autocorrelations is not yet properly implemented."
         )
 
+    return args
+
 def main(args):
 
     args = args_maker()
