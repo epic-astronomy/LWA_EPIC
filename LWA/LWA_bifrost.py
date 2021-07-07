@@ -2048,10 +2048,7 @@ def args_maker():
     return args
 
 def main(args):
-
-    args = args_maker()
-    # Main Input: UDP Broadcast RX from F-Engine?
-
+    
     log = logging.getLogger(__name__)
     logFormat = logging.Formatter(
         "%(asctime)s [%(levelname)-8s] %(message)s",
