@@ -6,7 +6,7 @@ from LWA import LWA_bifrost
 def test_args():
     args = LWA_bifrost.args_maker()  # This will give you the defaults
     args.offline = True  # manually set the offline argument
-    args.tbfile = "\data5\LWA_SV_data\data_raw\TBN\Jupiter\058161_000086727"
+    args.tbfile = "/data5/LWA_SV_data/data_raw/TBN/Jupiter/058161_000086727"
     args.imagesize = 64
     args.imageres = 1.79057
     args.nts = 512
