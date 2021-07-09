@@ -2287,4 +2287,5 @@ def main(arg_overrides, parser):
 
 if __name__ == "__main__":
     parser = args_maker()
-    main({}, parser)
+    args = {}
+    main(args, parser)
