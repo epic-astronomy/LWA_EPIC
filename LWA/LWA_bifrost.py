@@ -2030,26 +2030,28 @@ def args_maker():
         help="Run cProfile on ALL threads. Produces trace for each individual thread",
     )
 
+    # args = parser.parse_args()
+    # # Logging Setup
+    # # TODO: Set this up properly
+    # if args.profile:
+    #     enable_thread_profiling()
+
+    # if not os.path.isdir(args.out_dir):
+    #     print("Output directory does not exist. Defaulting to current directory.")
+    #     args.out_dir = "."
+
+    # if args.removeautocorrs:
+    #     raise NotImplementedError(
+    #         "Removing autocorrelations is not yet properly implemented."
+    #     )
+
+    return parser
+
+def main(arg_overrides, parser):
     args = parser.parse_args()
-    # Logging Setup
-    # TODO: Set this up properly
-    if args.profile:
-        enable_thread_profiling()
 
-    if not os.path.isdir(args.out_dir):
-        print("Output directory does not exist. Defaulting to current directory.")
-        args.out_dir = "."
-
-    if args.removeautocorrs:
-        raise NotImplementedError(
-            "Removing autocorrelations is not yet properly implemented."
-        )
-
-    return args, parser
-
-def main(args, parser):
-    
-    parser = parser
+    for key,val in arg_overrides:
+        setattr(args, key, val)
 
     log = logging.getLogger(__name__)
     logFormat = logging.Formatter(
@@ -2284,5 +2286,5 @@ def main(args, parser):
 
 
 if __name__ == "__main__":
-    args, parser = args_maker()
-    main(args, parser)
+    parser = args_maker()
+    main({}, parser)
