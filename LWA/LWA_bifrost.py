@@ -2045,11 +2045,10 @@ def args_maker():
             "Removing autocorrelations is not yet properly implemented."
         )
 
-    return args, parser
+    return args
 
-def main(args, parser):
+def main(args):
     
-    parser = args_maker().parser
     log = logging.getLogger(__name__)
     logFormat = logging.Formatter(
         "%(asctime)s [%(levelname)-8s] %(message)s",
@@ -2151,7 +2150,7 @@ def main(args, parser):
                 )
             )
         else:
-            raise parser.error(
+            raise args.error(
                 "--offline set but no file provided via --tbnfile or --tbffile"
             )
     else:
@@ -2284,5 +2283,4 @@ def main(args, parser):
 
 if __name__ == "__main__":
     args = args_maker()
-    parser = args_maker().parser
-    main(args, parser)
+    main(args)
