@@ -2284,5 +2284,5 @@ def main(args, parser):
 
 
 if __name__ == "__main__":
-    args = args_maker()
-    main(args)
+    args, parser = args_maker()
+    main(args, parser)
