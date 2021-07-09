@@ -2049,9 +2049,9 @@ def args_maker():
 
     return args
 
-def main(arg_overrides):
+def main(args):
+    # args = parser.parse_args()
     parser = gen_parser()
-    args = args_maker()
 
     # if args.profile:
     #     enable_thread_profiling()
@@ -2065,8 +2065,8 @@ def main(arg_overrides):
     #         "Removing autocorrelations is not yet properly implemented."
     #     )
 
-    for key in arg_overrides.keys():
-        setattr(args, key, arg_overrides[key])
+    # for key in arg_overrides.keys():
+    #     setattr(args, key, arg_overrides[key])
 
     log = logging.getLogger(__name__)
     logFormat = logging.Formatter(
@@ -2301,5 +2301,5 @@ def main(arg_overrides):
 
 
 if __name__ == "__main__":
-    #args = args_maker()
-    main({})
+    args = args_maker()
+    main(args)
