@@ -2045,10 +2045,11 @@ def args_maker():
             "Removing autocorrelations is not yet properly implemented."
         )
 
-    return args
+    return args, parser
 
-def main(args):
+def main(args, parser):
     
+    parser = args_maker().parser
     log = logging.getLogger(__name__)
     logFormat = logging.Formatter(
         "%(asctime)s [%(levelname)-8s] %(message)s",
@@ -2283,4 +2284,5 @@ def main(args):
 
 if __name__ == "__main__":
     args = args_maker()
-    main(args)
+    parser = args_maker().parser
+    main(args, parser)
