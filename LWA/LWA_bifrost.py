@@ -686,7 +686,6 @@ class FEngineCaptureOp(object):
             while not self.shutdown_event.is_set():
                 status = capture.recv()
         del capture
-        os.kill(os.getpid(), signal.SIGTERM)
 
 
 class DecimationOp(object):
