@@ -5,6 +5,7 @@ from LWA import LWA_bifrost
 
 def test_args():
     args = LWA_bifrost.args_maker()  # This will give you the defaults
+    parser = LWA_bifrost.args_maker().parser
     args.offline = True  # manually set the offline argument
     args.tbfile = "/data5/LWA_SV_data/data_raw/TBN/Jupiter/058161_000086727"
     args.imagesize = 64
@@ -13,7 +14,7 @@ def test_args():
     args.channels = 4
     args.accumulate = 50
     args.ints_per_file = 40
-    LWA_bifrost.main(args)
+    LWA_bifrost.main(args, parser)
 
 	
 
