@@ -356,6 +356,7 @@ class TBNOfflineCaptureOp(object):
                             sys.exit()
                             break
         print("TBNFillerOp - Done")
+        os.kill(os.getpid(), signal.SIGTERM)
 
 
 class FDomainOp(object):
@@ -618,6 +619,7 @@ class TBFOfflineCaptureOp(object):
                             sys.exit()
                             break
         print("TBFFillerOp - Done")
+        os.kill(os.getpid(), signal.SIGTERM)
 
 
 # For when we don't need to care about doing the F-Engine ourself.
@@ -684,6 +686,7 @@ class FEngineCaptureOp(object):
             while not self.shutdown_event.is_set():
                 status = capture.recv()
         del capture
+        os.kill(os.getpid(), signal.SIGTERM)
 
 
 class DecimationOp(object):
