@@ -2050,8 +2050,8 @@ def args_maker():
 def main(arg_overrides, parser):
     args = parser.parse_args()
 
-    for key,val in arg_overrides:
-        setattr(args, key, val)
+    for key in arg_overrides.keys():
+        setattr(args, key, arg_overrides[key])
 
     log = logging.getLogger(__name__)
     logFormat = logging.Formatter(
