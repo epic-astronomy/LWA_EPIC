@@ -2047,8 +2047,9 @@ def args_maker():
 
     return args, parser
 
-def main(args, parser):
+def main(args):
     # args = parser.parse_args()
+    parser = args_maker()[1]
 
     # if args.profile:
     #     enable_thread_profiling()
@@ -2166,7 +2167,7 @@ def main(args, parser):
                 )
             )
         else:
-            raise args.error(
+            raise parser.error(
                 "--offline set but no file provided via --tbnfile or --tbffile"
             )
     else:
@@ -2298,5 +2299,5 @@ def main(args, parser):
 
 
 if __name__ == "__main__":
-    args, parser = args_maker()
-    main(args, parser)
+    args = args_maker()[1]
+    main(args)
