@@ -4,7 +4,7 @@
 from LWA import LWA_bifrost
 
 def test_args():
-    args = LWA_bifrost.args_maker()[0]  # This will give you the defaults
+    args = LWA_bifrost.args_maker()  # This will give you the defaults
     # args = {
     #     "offline": True,
     #     "tbnfile": "/data5/LWA_SV_data/data_raw/TBN/Jupiter/058161_000086727",
