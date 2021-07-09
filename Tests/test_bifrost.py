@@ -22,6 +22,7 @@ def test_args():
     # args.channels = 4
     # args.accumulate = 50
     # args.ints_per_file = 40
+    print(type(parser))
     LWA_bifrost.main(args, parser)
 
 	
