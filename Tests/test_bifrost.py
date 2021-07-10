@@ -2,7 +2,7 @@
 
 
 from LWA import LWA_bifrost
-import os, os.path
+import glob
 
 def test_args():
     args = LWA_bifrost.args_maker()  # This will give you the defaults
@@ -15,4 +15,7 @@ def test_args():
     args.accumulate = 50
     args.ints_per_file = 40
     LWA_bifrost.main(args)
-    assert len([name for name in os.listdir('*.npz') if os.path.isfile(name)]) == 24
+
+    fileList = glob.glob('*.npz')
+
+    assert len(fileList) == 24
