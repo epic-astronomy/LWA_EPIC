@@ -50,6 +50,12 @@ BFNoSpinZone()  # noqa
 from lsl.reader.ldp import TBNFile, TBFFile
 from lsl.common.stations import lwa1, lwasv
 
+#Bifrost include Hari's upgrades
+from bifrost.xCorr import xCorr
+from bifrost.aCorr import aCorr
+from bifrost.VGrid import VGrid
+
+
 # some py2/3 compatibility
 if sys.version_info.major < 3:
     range = xrange  # noqa
@@ -744,8 +750,8 @@ class DecimationOp(object):
                 ishape = (self.ntime_gulp, nchan, nstand, npol)
                 ogulp_size = self.ntime_gulp * self.nchan_out * nstand * self.npol_out * 1  # ci4
                 oshape = (self.ntime_gulp, self.nchan_out, nstand, self.npol_out)
-                self.iring.resize(igulp_size)
-                self.oring.resize(ogulp_size)  # , obuf_size)
+                self.iring.resize(igulp_size, buffer_factor=8)
+                self.oring.resize(ogulp_size, buffer_factor=512)  # , obuf_size)
 
                 ohdr = ihdr.copy()
                 ohdr["nchan"] = self.nchan_out
@@ -980,8 +986,8 @@ class MOFFCorrelatorOp(object):
 
                 oshape = (1, nchan, npol ** 2, self.grid_size, self.grid_size)
                 ogulp_size = nchan * npol ** 2 * self.grid_size * self.grid_size * 8
-                self.iring.resize(igulp_size)
-                self.oring.resize(ogulp_size, buffer_factor=5)
+                self.iring.resize(igulp_size, buffer_factor=512)
+                self.oring.resize(ogulp_size, buffer_factor=32)
                 prev_time = time.time()
                 with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
                     iseq_spans = iseq.read(igulp_size)
@@ -1136,13 +1142,30 @@ class MOFFCorrelatorOp(object):
                                         space="cuda",
                                     )
 
+                                ## Auto-Correlation of Antennas
+                                if self.benchmark == True:
+                                  timeacorr1 = time.time()
+
+                                try:
+                                  bf_acorr.execute(udata, autocorrs)
+                                except NameError:
+                                  bf_acorr = aCorr()
+                                  bf_acorr.init(self.locs, polmajor=False)
+                                  bf_acorr.execute(udata, autocorrs)
+
+                                if self.benchmark == True:
+                                  timeacorr2 = time.time()
+                                  print("Auto-Corr time : %f"%(timeacorr2 - timeacorr1))
+                          
+                                    
+                                  
                                 # Cross multiply to calculate autocorrs
-                                bifrost.map(
-                                    "a(i,j,k,l) += (b(i,j,k,l/2) * b(i,j,k,l%2).conj())",
-                                    {"a": autocorrs, "b": udata, "t": self.ntime_gulp},
-                                    axis_names=("i", "j", "k", "l"),
-                                    shape=(self.ntime_gulp, nchan, nstand, npol ** 2),
-                                )
+                                #bifrost.map(
+                                #    "a(i,j,k,l) += (b(i,j,k,l/2) * b(i,j,k,l%2).conj())",
+                                #    {"a": autocorrs, "b": udata, "t": self.ntime_gulp},
+                                #    axis_names=("i", "j", "k", "l"),
+                                #    shape=(self.ntime_gulp, nchan, nstand, npol ** 2),
+                                #)
 
                             bifrost.map(
                                 "a(i,j,p,k,l) += b(0,i,j,p/2,k,l)*b(0,i,j,p%2,k,l).conj()",
@@ -1452,9 +1475,9 @@ class MOFF_DFT_CorrelatorOp(object):
                 # sys.exit(1)
 
                 oshape = (nchan, npol ** 2, self.skymodes, 1)
-                ogulp_size = nchan * npol**2 * self.skymodes * 8
-                self.iring.resize(igulp_size)
-                self.oring.resize(ogulp_size, buffer_factor=5)
+                ogulp_size = nchan * npol**2 * self.skymodes * 32#8
+                self.iring.resize(igulp_size, buffer_factor=512)
+                self.oring.resize(ogulp_size, buffer_factor=32)
                 prev_time = time.time()
                 with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
                     iseq_spans = iseq.read(igulp_size)
@@ -2045,10 +2068,10 @@ def main():
         print("Output directory does not exist. Defaulting to current directory.")
         args.out_dir = "."
 
-    if args.removeautocorrs:
-        raise NotImplementedError(
-            "Removing autocorrelations is not yet properly implemented."
-        )
+    #if args.removeautocorrs:
+    #    raise NotImplementedError(
+    #        "Removing autocorrelations is not yet properly implemented."
+    #    )
 
     log = logging.getLogger(__name__)
     logFormat = logging.Formatter(
@@ -2062,8 +2085,9 @@ def main():
     log.setLevel(logging.DEBUG)
 
     # Setup the cores and GPUs to use
-    cores = [0, 2, 3, 4, 5, 6, 7]
+    #cores = [0, 2, 3, 4, 5, 6, 7]
     gpus = [0, 0, 0, 0, 0, 0, 0]
+    cores = [5, 4, 3, 2, 24, 25]
 
     # Setup the signal handling
     ops = []
