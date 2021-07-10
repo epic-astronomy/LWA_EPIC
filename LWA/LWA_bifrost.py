@@ -2052,23 +2052,8 @@ def args_maker():
     return args
 
 def main(args):
-    # args = parser.parse_args()
+
     parser = gen_parser()
-
-    # if args.profile:
-    #     enable_thread_profiling()
-
-    # if not os.path.isdir(args.out_dir):
-    #     print("Output directory does not exist. Defaulting to current directory.")
-    #     args.out_dir = "."
-
-    # if args.removeautocorrs:
-    #     raise NotImplementedError(
-    #         "Removing autocorrelations is not yet properly implemented."
-    #     )
-
-    # for key in arg_overrides.keys():
-    #     setattr(args, key, arg_overrides[key])
 
     log = logging.getLogger(__name__)
     logFormat = logging.Formatter(
