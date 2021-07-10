@@ -15,8 +15,7 @@ def test_args():
     args.accumulate = 50
     args.ints_per_file = 40
     LWA_bifrost.main(args)
-    path = "/LWA_EPIC/Tests/*.npz"
-    assert len([name for name in os.listdir('.') if os.path.isfile(name)]) == 24
+    assert len([name for name in os.listdir('*.npz') if os.path.isfile(name)]) == 24
 
 	
 
