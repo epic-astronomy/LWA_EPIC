@@ -10,7 +10,6 @@ jobs:
       ENV_NAME: epic
       PYTHON: ${{ matrix.python-version }}
       OS: ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest]
