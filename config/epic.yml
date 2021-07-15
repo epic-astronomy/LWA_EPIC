@@ -1,0 +1,20 @@
+name: epic
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - aipy
+  - scipy
+  - numpy
+  - fftw
+  - astropy
+  - healpy
+  - ephem
+  - pytz
+  - matplotlib
+  - pytest
+  - pip:
+    - lsl
+    - contextlib2
+    - pint
+    - git+https://github.com/olsonse/ctypesgen.git@9bd2d249aa4011c6383a10890ec6f203d7b7990f

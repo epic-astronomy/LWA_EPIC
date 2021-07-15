@@ -1,0 +1,55 @@
+name: Test LWA EPIC
+
+on: [push, pull_request]
+
+jobs:
+  test:
+
+    runs-on: [self-hosted, linux, x64]
+    env:
+      ENV_NAME: epic
+      PYTHON: ${{ matrix.python-version }}
+      OS: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        python-version: [3.6]
+
+    steps:
+    - uses: actions/checkout@master
+      with:
+        fetch-depth: 1
+
+    - name: Get Miniconda
+      run: |
+        wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O $HOME/miniconda.sh;
+        bash $HOME/miniconda.sh -b -p $HOME/miniconda
+
+    - name: Setup Environment
+      run: |
+        export PATH="$HOME/miniconda/bin:$PATH"
+        ./config/install_conda.sh
+
+    - name: Install bifrost
+      run: |
+        export PATH=/usr/local/cuda-10.2/bin:$PATH
+        export LD_LIBRARY_PATH=/usr/local/cuda-10.2/lib64:$LD_LIBRARY_PATH
+        cd $HOME
+        git clone --branch ibverb-support https://github.com/epic-astronomy/bifrost.git
+        cd bifrost
+        cp $HOME/LWA_EPIC/config/ASU_user.mk user.mk
+        make -j 32
+        make install INSTALL_LIB_DIR="$HOME/miniconda/envs/${ENV_NAME}/lib" INSTALL_INC_DIR="$HOME/miniconda/envs/${ENV_NAME}/include" PYINSTALLFLAGS="--prefix=$HOME/miniconda/envs/${ENV_NAME}"
+
+    - name: Install
+      run: |
+        export PATH="$HOME/miniconda/bin:$PATH"
+        source activate ${ENV_NAME}
+        pip install .
+
+    - name: Pytest Install
+      run: |
+        export PATH="$HOME/miniconda/bin:$PATH"
+        source activate ${ENV_NAME}
+        pytest
