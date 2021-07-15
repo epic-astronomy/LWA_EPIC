@@ -1928,14 +1928,11 @@ class SaveFFTOp(object):
             break
         print("Save F-Engine Spectra.. done")
 
-def gen_parser():
-    return argparse.ArgumentParser(
+def gen_args(return_parser=False):
+    parser = argparse.ArgumentParser(
         description="EPIC Correlator",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-
-def args_maker():
-    parser = gen_parser()
 
     group1 = parser.add_argument_group("Online Data Processing")
     group1.add_argument(
@@ -2049,11 +2046,12 @@ def args_maker():
             "Removing autocorrelations is not yet properly implemented."
         )
 
-    return args
+    if return_parser:
+        return args, parser
+    else:
+        return args
 
-def main(args):
-
-    parser = gen_parser()
+def main(args, parser):
 
     log = logging.getLogger(__name__)
     logFormat = logging.Formatter(
@@ -2288,5 +2286,5 @@ def main(args):
 
 
 if __name__ == "__main__":
-    args = args_maker()
-    main(args)
+    args, parser = gen_args(return_parser=True)
+    main(args, parser)
