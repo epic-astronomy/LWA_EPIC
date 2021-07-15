@@ -3,3 +3,4 @@
 *.npz
 scripts/*~
 scripts/*.pyc
+Tests/__pycache__
