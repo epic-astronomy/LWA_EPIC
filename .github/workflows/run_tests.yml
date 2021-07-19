@@ -25,7 +25,7 @@ jobs:
         wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O $HOME/miniconda.sh;
         pwd
         whoami
-        bash $HOME/miniconda.sh -b -p -u $HOME/miniconda
+        bash $HOME/miniconda.sh -b -u -p $HOME/miniconda
 
     - name: Setup Environment
       run: |
