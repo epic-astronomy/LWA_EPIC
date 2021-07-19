@@ -57,7 +57,7 @@ jobs:
         pytest
 
     - name: Clean up
-      if: {@always()}
+      if: always()
       run: |
         cd $HOME
         rm -rf $WORKDIR
