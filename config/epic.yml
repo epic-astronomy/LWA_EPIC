@@ -13,6 +13,7 @@ dependencies:
   - pytz
   - matplotlib
   - pytest
+  - pip
   - pip:
     - lsl
     - contextlib2
