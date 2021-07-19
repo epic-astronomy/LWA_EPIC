@@ -60,4 +60,4 @@ jobs:
       if: always()
       run: |
         cd $HOME
-        rm -rf $WORKDIR
+        rm -rf $WORKDIR/*
