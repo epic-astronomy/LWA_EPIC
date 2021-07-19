@@ -55,3 +55,9 @@ jobs:
         export PATH="$WORKDIR/miniconda/bin:$PATH"
         source activate ${ENV_NAME}
         pytest
+
+    - name: Clean up
+      if: {@always()}
+      run: |
+        cd $HOME
+        rm -rf $WORKDIR
