@@ -3,6 +3,7 @@
 
 from LWA_EPIC import LWA_EPIC
 import glob
+import os
 
 def test_default_run(tmpdir):
     args, parser = LWA_EPIC.gen_args(return_parser=True)  # This will give you the defaults
@@ -17,6 +18,6 @@ def test_default_run(tmpdir):
     args.out_dir = tmpdir
     LWA_EPIC.main(args, parser)
 
-    fileList = glob.glob(tmpdir.join('*.npz'))
+    fileList = glob.glob(os.path.join(tmpdir, '*.npz'))
 
     assert len(fileList) == 24
