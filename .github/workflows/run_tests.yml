@@ -27,6 +27,8 @@ jobs:
         pwd
         whoami
         bash $WORKDIR/miniconda.sh -b -u -p $WORKDIR/miniconda
+        export PATH="$WORKDIR/miniconda/bin:$PATH"
+        conda init bash
 
     - name: Setup Environment
       run: |
