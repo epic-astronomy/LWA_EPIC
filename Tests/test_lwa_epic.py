@@ -4,7 +4,7 @@
 from LWA_EPIC import LWA_EPIC
 import glob
 
-def test_default_run():
+def test_default_run(tmpdir):
     args, parser = LWA_EPIC.gen_args(return_parser=True)  # This will give you the defaults
     args.offline = True  # manually set the offline argument
     args.tbnfile = "/data5/LWA_SV_data/data_raw/TBN/Jupiter/058161_000086727"
@@ -14,8 +14,9 @@ def test_default_run():
     args.channels = 4
     args.accumulate = 50
     args.ints_per_file = 40
+    args.out_dir = tmpdir
     LWA_EPIC.main(args, parser)
 
-    fileList = glob.glob('*.npz')
+    fileList = glob.glob(tmpdir.join('*.npz'))
 
     assert len(fileList) == 24
