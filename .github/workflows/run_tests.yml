@@ -21,14 +21,14 @@ jobs:
       with:
         fetch-depth: 1
 
-    - name: Get Miniconda
-      run: |
-        wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O $WORKDIR/miniconda.sh;
-        pwd
-        whoami
-        bash $WORKDIR/miniconda.sh -b -u -p $WORKDIR/miniconda
-        export PATH="$WORKDIR/miniconda/bin:$PATH"
-        conda init bash
+    - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v2.0.0
+        with:
+          auto-update-conda: true
+          miniconda-version: "latest"
+          python-version: ${{ matrix.python-version }}
+          environment-file: config/${ENV_NAME}.yml
+          activate-environment: ${ENV_NAME}
 
     - name: Setup Environment
       run: |
