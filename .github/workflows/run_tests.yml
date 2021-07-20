@@ -6,6 +6,10 @@ jobs:
   test:
 
     runs-on: [self-hosted, linux, x64]
+    defaults:
+     run:
+       # Adding -l {0} helps ensure conda can be found properly.
+       shell: bash -l {0}
     env:
       ENV_NAME: epic
       WORKDIR: /data5/epic-actions-runner/_work/LWA_EPIC
@@ -31,7 +35,6 @@ jobs:
 
     - name: Install bifrost
       run: |
-        export PATH="$WORKDIR/LWA_EPIC/3/condabin:$PATH"
         export PATH=/usr/local/cuda-10.2/bin:$PATH
         export LD_LIBRARY_PATH=/usr/local/cuda-10.2/lib64:$LD_LIBRARY_PATH
         cd $WORKDIR
@@ -43,12 +46,10 @@ jobs:
 
     - name: Install
       run: |
-        export PATH="$WORKDIR/LWA_EPIC/3/condabin:$PATH"
         pip install .
 
     - name: Pytest Install
       run: |
-        export PATH="$WORKDIR/LWA_EPIC/3/condabin:$PATH"
         pytest
     #
     # - name: Clean up
