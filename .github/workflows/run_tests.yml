@@ -14,7 +14,6 @@ jobs:
       ENV_NAME: epic
       WORKDIR: /data5/epic-actions-runner/_work/LWA_EPIC
       PYTHON: ${{ matrix.python-version }}
-      OS: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest]
