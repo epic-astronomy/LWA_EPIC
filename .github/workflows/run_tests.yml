@@ -26,13 +26,12 @@ jobs:
         auto-update-conda: true
         miniconda-version: "latest"
         python-version: ${{ matrix.python-version }}
-        channels: conda-forge,defaults
         environment-file: config/${{ env.ENV_NAME }}.yml
         activate-environment: ${{ env.ENV_NAME }}
 
     - name: Install bifrost
       run: |
-        export PATH="$WORKDIR/3/condabin:$PATH"
+        export PATH="$WORKDIR/LWA_EPIC/3/condabin:$PATH"
         export PATH=/usr/local/cuda-10.2/bin:$PATH
         export LD_LIBRARY_PATH=/usr/local/cuda-10.2/lib64:$LD_LIBRARY_PATH
         cd $WORKDIR
@@ -45,13 +44,13 @@ jobs:
 
     - name: Install
       run: |
-        export PATH="$WORKDIR/3/condabin:$PATH"
+        export PATH="$WORKDIR/LWA_EPIC/3/condabin:$PATH"
         conda activate ${ENV_NAME}
         pip install .
 
     - name: Pytest Install
       run: |
-        export PATH="$WORKDIR/3/condabin:$PATH"
+        export PATH="$WORKDIR/LWA_EPIC/3/condabin:$PATH"
         conda activate ${ENV_NAME}
         pytest
     #
