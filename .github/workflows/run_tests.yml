@@ -38,20 +38,17 @@ jobs:
         git clone --branch ibverb-support https://github.com/epic-astronomy/bifrost.git
         cd bifrost
         cp $WORKDIR/LWA_EPIC/config/ASU_user.mk user.mk
-        source activate ${ENV_NAME}
         make -j 32
         make install INSTALL_LIB_DIR="$WORKDIR/miniconda/envs/${ENV_NAME}/lib" INSTALL_INC_DIR="$WORKDIR/miniconda/envs/${ENV_NAME}/include" PYINSTALLFLAGS="--prefix=$WORKDIR/miniconda/envs/${ENV_NAME}"
 
     - name: Install
       run: |
         export PATH="$WORKDIR/LWA_EPIC/3/condabin:$PATH"
-        source activate ${ENV_NAME}
         pip install .
 
     - name: Pytest Install
       run: |
         export PATH="$WORKDIR/LWA_EPIC/3/condabin:$PATH"
-        source activate ${ENV_NAME}
         pytest
     #
     # - name: Clean up
