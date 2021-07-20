@@ -35,6 +35,7 @@ jobs:
 
     - name: Install bifrost
       run: |
+        export PATH="$WORKDIR/miniconda/bin:$PATH"
         export PATH=/usr/local/cuda-10.2/bin:$PATH
         export LD_LIBRARY_PATH=/usr/local/cuda-10.2/lib64:$LD_LIBRARY_PATH
         cd $WORKDIR
