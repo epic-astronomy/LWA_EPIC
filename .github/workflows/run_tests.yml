@@ -51,9 +51,9 @@ jobs:
     - name: Pytest Install
       run: |
         pytest
-    #
-    # - name: Clean up
-    #   if: always()
-    #   run: |
-    #     cd $HOME
-    #     rm -rf $WORKDIR/*
+
+    - name: Clean up
+      if: always()
+      run: |
+        cd $HOME
+        rm -rf $WORKDIR/bifrost
