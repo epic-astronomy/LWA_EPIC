@@ -42,7 +42,7 @@ jobs:
         cp $WORKDIR/LWA_EPIC/config/ASU_user.mk user.mk
         uname -s
         make -j 32
-        make install INSTALL_LIB_DIR="$WORKDIR/miniconda/envs/${ENV_NAME}/lib" INSTALL_INC_DIR="$WORKDIR/miniconda/envs/${ENV_NAME}/include" PYINSTALLFLAGS="--prefix=$WORKDIR/miniconda/envs/${ENV_NAME}"
+        make install INSTALL_LIB_DIR="$WORKDIR/LWA_EPIC/3/envs/${ENV_NAME}/lib" INSTALL_INC_DIR="$WORKDIR/LWA_EPIC/3/envs/${ENV_NAME}/include" PYINSTALLFLAGS="--prefix=$WORKDIR/LWA_EPIC/3/envs/${ENV_NAME}"
 
     - name: Install
       run: |
