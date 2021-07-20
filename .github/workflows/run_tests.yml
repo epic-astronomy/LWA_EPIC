@@ -27,8 +27,8 @@ jobs:
         miniconda-version: "latest"
         python-version: ${{ matrix.python-version }}
         channels: conda-forge,defaults
-        environment-file: config/${ENV_NAME}.yml
-        activate-environment: ${ENV_NAME}
+        environment-file: config/${{ env.ENV_NAME }}.yml
+        activate-environment: ${{ env.ENV_NAME }}
 
     - name: Install bifrost
       run: |
