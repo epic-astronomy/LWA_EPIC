@@ -14,7 +14,7 @@ def test_default_run():
     args.channels = 4
     args.accumulate = 50
     args.ints_per_file = 40
-    LWA_bifrost.main(args, parser)
+    LWA_EPIC.main(args, parser)
 
     fileList = glob.glob('*.npz')
 
