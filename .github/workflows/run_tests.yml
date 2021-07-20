@@ -21,19 +21,14 @@ jobs:
       with:
         fetch-depth: 1
 
-    - name: Setup Miniconda
-        uses: conda-incubator/setup-miniconda@v2.0.0
-        with:
-          auto-update-conda: true
-          miniconda-version: "latest"
-          python-version: ${{ matrix.python-version }}
-          environment-file: config/${ENV_NAME}.yml
-          activate-environment: ${ENV_NAME}
-
-    - name: Setup Environment
-      run: |
-        export PATH="$WORKDIR/miniconda/bin:$PATH"
-        ./config/install_conda.sh
+    - uses: conda-incubator/setup-miniconda@v2.0.0
+      with:
+        auto-update-conda: true
+        miniconda-version: "latest"
+        python-version: ${{ matrix.python-version }}
+        channels: conda-forge,defaults
+        environment-file: config/${ENV_NAME}.yml
+        activate-environment: ${ENV_NAME}
 
     - name: Install bifrost
       run: |
