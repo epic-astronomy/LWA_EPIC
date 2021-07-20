@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 
-from LWA_EPIC import LWA_EPC
+from LWA_EPIC import LWA_EPIC
 import glob
 
 def test_default_run():
