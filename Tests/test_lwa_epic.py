@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 
 
-from LWA import LWA_bifrost
+from LWA_EPIC import LWA_EPIC
 import glob
+import os
 
-def test_args():
-    args = LWA_bifrost.args_maker()  # This will give you the defaults
+def test_default_run(tmpdir):
+    args, parser = LWA_EPIC.gen_args(return_parser=True)  # This will give you the defaults
     args.offline = True  # manually set the offline argument
     args.tbnfile = "/data5/LWA_SV_data/data_raw/TBN/Jupiter/058161_000086727"
     args.imagesize = 64
@@ -14,8 +15,9 @@ def test_args():
     args.channels = 4
     args.accumulate = 50
     args.ints_per_file = 40
-    LWA_bifrost.main(args)
+    args.out_dir = tmpdir
+    LWA_EPIC.main(args, parser)
 
-    fileList = glob.glob('*.npz')
+    fileList = glob.glob(os.path.join(tmpdir, '*.npz'))
 
     assert len(fileList) == 24

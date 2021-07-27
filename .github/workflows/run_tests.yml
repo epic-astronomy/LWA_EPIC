@@ -1,0 +1,59 @@
+name: Test LWA EPIC
+
+on: [push, pull_request]
+
+jobs:
+  test:
+
+    runs-on: [self-hosted, linux, x64]
+    defaults:
+     run:
+       # Adding -l {0} helps ensure conda can be found properly.
+       shell: bash -l {0}
+    env:
+      ENV_NAME: epic
+      WORKDIR: /data5/epic-actions-runner/_work/LWA_EPIC
+      PYTHON: ${{ matrix.python-version }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        python-version: [3.6]
+
+    steps:
+    - uses: actions/checkout@master
+      with:
+        fetch-depth: 1
+
+    - uses: conda-incubator/setup-miniconda@v2.0.0
+      with:
+        auto-update-conda: true
+        miniconda-version: "latest"
+        python-version: ${{ matrix.python-version }}
+        environment-file: config/${{ env.ENV_NAME }}.yml
+        activate-environment: ${{ env.ENV_NAME }}
+
+    - name: Install bifrost
+      run: |
+        export PATH=/usr/local/cuda-10.2/bin:$PATH
+        export LD_LIBRARY_PATH=/usr/local/cuda-10.2/lib64:$LD_LIBRARY_PATH
+        cd $WORKDIR
+        git clone --branch ibverb-support https://github.com/epic-astronomy/bifrost.git
+        cd bifrost
+        cp $WORKDIR/LWA_EPIC/config/ASU_user.mk user.mk
+        uname -s
+        make -j 32
+        make install INSTALL_LIB_DIR="$WORKDIR/LWA_EPIC/3/envs/${ENV_NAME}/lib" INSTALL_INC_DIR="$WORKDIR/LWA_EPIC/3/envs/${ENV_NAME}/include" PYINSTALLFLAGS="--prefix=$WORKDIR/LWA_EPIC/3/envs/${ENV_NAME}"
+
+    - name: Install
+      run: |
+        pip install .
+
+    - name: Pytest Install
+      run: |
+        pytest
+
+    - name: Clean up
+      if: always()
+      run: |
+        cd $HOME
+        rm -rf $WORKDIR/bifrost
