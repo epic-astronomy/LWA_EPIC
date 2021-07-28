@@ -55,5 +55,4 @@ jobs:
     - name: Clean up
       if: always()
       run: |
-        cd $HOME
         rm -rf $WORKDIR/bifrost
