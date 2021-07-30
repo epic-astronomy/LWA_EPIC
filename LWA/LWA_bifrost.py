@@ -47,10 +47,9 @@ from bifrost.ndarray import memset_array, copy_array
 from bifrost.device import set_device as BFSetGPU, get_device as BFGetGPU, set_devices_no_spin_cpu as BFNoSpinZone
 BFNoSpinZone()  # noqa
 
-#Optimizations to EPIC in Bifrost
-from bifrost.vgrid import vgrid
-from bifrost.GMul import gMul
-from bifrost.xCorr import xCorr
+#Optimized Bifrost blocks for EPIC
+from bifrost.VGrid import VGrid
+from bifrost.XGrid import XGrid
 from bifrost.aCorr import aCorr
 
 # LWA Software Library Includes
@@ -672,7 +671,7 @@ class FEngineCaptureOp(object):
             "axes": "time,chan,stand,pol",
         }
         print("******** CFREQ:", hdr["cfreq"])
-        hdr_str = json.dumps(hdr)
+        hdr_str = json.dumps(hdr).encode()
         # TODO: Can't pad with NULL because returned as C-string
         # hdr_str = json.dumps(hdr).ljust(4096, '\0')
         # hdr_str = json.dumps(hdr).ljust(4096, ' ')
@@ -735,7 +734,7 @@ class DecimationOp(object):
 
         with self.oring.begin_writing() as oring:
             for iseq in self.iring.read(guarantee=self.guarantee):
-                ihdr = json.loads(iseq.header.tostring())
+                ihdr = json.loads(iseq.header.tobytes())
 
                 self.sequence_proclog.update(ihdr)
 
@@ -751,7 +750,7 @@ class DecimationOp(object):
                 ogulp_size = self.ntime_gulp * self.nchan_out * nstand * self.npol_out * 1  # ci4
                 oshape = (self.ntime_gulp, self.nchan_out, nstand, self.npol_out)
                 self.iring.resize(igulp_size, buffer_factor=8)
-                self.oring.resize(ogulp_size, buffer_factor=512)  # , obuf_size)
+                self.oring.resize(ogulp_size, buffer_factor=128)  # , obuf_size)
 
                 ohdr = ihdr.copy()
                 ohdr["nchan"] = self.nchan_out
@@ -877,9 +876,10 @@ class MOFFCorrelatorOp(object):
 
         runtime_history = deque([], 50)
         accum = 0
+        nchan_avg=4
         with self.oring.begin_writing() as oring:
             for iseq in self.iring.read(guarantee=True):
-                ihdr = json.loads(iseq.header.tostring())
+                ihdr = json.loads(iseq.header.tobytes())
                 self.sequence_proclog.update(ihdr)
                 self.log.info("MOFFCorrelatorOp: Config - %s" % ihdr)
                 chan0 = ihdr["chan0"]
@@ -980,8 +980,8 @@ class MOFFCorrelatorOp(object):
 
                 oshape = (1, nchan, npol ** 2, self.grid_size, self.grid_size)
                 ogulp_size = nchan * npol ** 2 * self.grid_size * self.grid_size * 8
-                self.iring.resize(igulp_size, buffer_factor=32)
-                self.oring.resize(ogulp_size, buffer_factor=256)
+                self.iring.resize(igulp_size, buffer_factor=128)#=2)
+                self.oring.resize(ogulp_size, buffer_factor=256)#=16)
                 prev_time = time.time()
                 with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
                     iseq_spans = iseq.read(igulp_size)
@@ -1011,6 +1011,7 @@ class MOFFCorrelatorOp(object):
                                 native=False,
                                 buffer=idata.ctypes.data,
                             )
+                            #udata = udata.reshape(-1,8).mean(1).reshape(4,-1)
 
                             if self.benchmark is True:
                                 time1 = time.time()
@@ -1022,6 +1023,33 @@ class MOFFCorrelatorOp(object):
 
                             # Make sure we have a place to put the gridded data
                             # Gridded Antennas
+                           # try:
+                           #     gdata = gdata.reshape(
+                           #         self.ntime_gulp, nchan, npol, self.grid_size, self.grid_size
+                           #     )
+                           #     memset_array(gdata, 0)
+                           # except NameError:
+                           #     gdata = bifrost.zeros(
+                           #         shape=(self.ntime_gulp, nchan, npol, self.grid_size, self.grid_size),
+                           #         dtype=numpy.complex64,
+                           #         space="cuda",
+                           #     )
+
+                            # Grid the Antennas
+                            #if self.benchmark is True:
+                            #    timeg1 = time.time()
+
+                            #try:
+                            #    bf_romein.execute(udata, gdata)
+                            #except NameError:
+                            #    bf_romein = Romein()
+                            #    bf_romein.init(self.locs, gphases, self.grid_size, polmajor=False)
+                            #    bf_romein.execute(udata, gdata)
+                            #gdata = gdata.reshape(self.ntime_gulp * nchan * npol, self.grid_size, self.grid_size)
+                            #if self.benchmark is True:
+                            #    timeg2 = time.time()
+                            #    print("  Romein time: %f" % (timeg2 - timeg1))
+                           
                             try:
                                 gdata = gdata.reshape(
                                     self.ntime_gulp, nchan, npol, self.grid_size, self.grid_size
@@ -1033,21 +1061,17 @@ class MOFFCorrelatorOp(object):
                                     dtype=numpy.complex64,
                                     space="cuda",
                                 )
-
-                            # Grid the Antennas
-                            if self.benchmark is True:
-                                timeg1 = time.time()
-
+  
                             try:
                                 bf_vgrid.execute(udata, gdata)
                             except NameError:
-                                bf_vgrid = vgrid()#Romein()
+                                bf_vgrid = VGrid()
                                 bf_vgrid.init(self.locs, gphases, self.grid_size, polmajor=False)
                                 bf_vgrid.execute(udata, gdata)
                             gdata = gdata.reshape(self.ntime_gulp * nchan * npol, self.grid_size, self.grid_size)
                             if self.benchmark is True:
                                 timeg2 = time.time()
-                                print("  Romein time: %f" % (timeg2 - timeg1))
+                                print("  Gridding time: %f" % (timeg2 - timeg1))
 
                             # Inverse transform
 
@@ -1135,7 +1159,15 @@ class MOFFCorrelatorOp(object):
                                         space="cuda",
                                     )
     
-                                # Autocorrelation Estimation
+                               
+                                #Cross multiply to calculate autocorrs
+                                #bifrost.map(
+                                #    "a(i,j,k,l) += (b(i,j,k,l/2) * b(i,j,k,l%2).conj())",
+                                #    {"a": autocorrs, "b": udata, "t": self.ntime_gulp},
+                                #    axis_names=("i", "j", "k", "l"),
+                                #    shape=(self.ntime_gulp, nchan, nstand, npol ** 2),
+                                #)
+
                                 
                                 try:
                                      bf_auto.execute(udata, autocorrs)
@@ -1146,14 +1178,22 @@ class MOFFCorrelatorOp(object):
                                 autocorrs = autocorrs.reshape(
                                 self.ntime_gulp, nchan, nstand, npol ** 2
                                 )
-                        
 
+
+                            #bifrost.map(
+                            #    "a(i,j,p,k,l) += b(0,i,j,p/2,k,l)*b(0,i,j,p%2,k,l).conj()",
+                            #    {"a": crosspol, "b": gdata},
+                            #    axis_names=("i", "j", "p", "k", "l"),
+                            #    shape=(self.ntime_gulp, nchan, npol ** 2, self.grid_size, self.grid_size),
+                            #)
+                                
+                        
                             #Grid Multiplication
 
                             try:
                                 bf_gmul.execute(gdata, crosspol)
                             except NameError:
-                                bf_gmul = gMul()#xCorr()
+                                bf_gmul = XGrid()
                                 bf_gmul.init(self.grid_size, polmajor=False)
                                 bf_gmul.execute(gdata, crosspol)
                             crosspol = crosspol.reshape(
@@ -1179,7 +1219,7 @@ class MOFFCorrelatorOp(object):
                                     try:
                                         bf_vgrid_autocorr.execute(autocorrs_av, autocorr_g)
                                     except NameError:
-                                        bf_vgrid_autocorr = vgrid()#Romein()
+                                        bf_vgrid_autocorr = VGrid()
                                         bf_vgrid_autocorr.init(
                                             autocorr_lo, autocorr_il, self.grid_size, polmajor=False
                                         )
@@ -1350,7 +1390,7 @@ class MOFF_DFT_CorrelatorOp(object):
         accum = 0
         with self.oring.begin_writing() as oring:
             for iseq in self.iring.read(guarantee=True):
-                ihdr = json.loads(iseq.header.tostring())
+                ihdr = json.loads(iseq.header.tobytes())
                 self.sequence_proclog.update(ihdr)
                 self.log.info("MOFFCorrelatorOp: Config - %s" % ihdr)
                 chan0 = ihdr["chan0"]
@@ -1803,7 +1843,7 @@ class SaveOp(object):
         image_history = deque([], MAX_HISTORY)
 
         for iseq in self.iring.read(guarantee=True):
-            ihdr = json.loads(iseq.header.tostring())
+            ihdr = json.loads(iseq.header.tobytes())
             fileid = 0
 
             self.sequence_proclog.update(ihdr)
@@ -1945,10 +1985,10 @@ def main():
     group1.add_argument(
         "--utcstart",
         type=str,
-        default="1970_1_1T0_0_0",
+        default="2021_1_1T0_0_0",
         help="F-Engine UDP Stream Start Time",
     )
-
+    
     group2 = parser.add_argument_group("Offline Data Processing")
     group2.add_argument(
         "--offline", action="store_true", help="Load TBN data from Disk"
@@ -1970,6 +2010,14 @@ def main():
         default=1000,
         help="How many milliseconds to accumulate an image over",
     )
+    group3.add_argument(
+        "--duration",
+        type=int,
+        default=3600,
+        help="Duration of EPIC (seconds)",
+    )
+
+
 
     group4 = parser.add_argument_group("Correlation Options")
     group4.add_argument(
@@ -2051,8 +2099,8 @@ def main():
     log.setLevel(logging.DEBUG)
 
     # Setup the cores and GPUs to use
-    gpus = [0, 0, 0, 0, 0]
-    cores = [2, 3, 4, 5, 6]
+    gpus = [0, 0, 0, 0, 0]#[0, 0, 0, 0, 0]
+    cores =[2, 3, 4, 5, 7]#[31, 32, 33, 34, 35] #[2, 3, 4, 5, 6]
 
     # Setup the signal handling
     ops = []
@@ -2151,7 +2199,7 @@ def main():
         iaddr = BF_Address(args.addr, args.port)
         isock = BF_UDPSocket()
         isock.bind(iaddr)
-        isock.timeout = 0.5
+        isock.timeout = 1#0.5
 
         ops.append(
             FEngineCaptureOp(
@@ -2245,17 +2293,32 @@ def main():
     threads = [threading.Thread(target=op.main) for op in ops]
 
     # Go!
-
+    start_time = time.time()
+    end_time = start_time + args.duration
     for thread in threads:
         thread.daemon = False
         thread.start()
 
+    ##Observation stops after a set duration
+
+    def epic_timer(signum, frame):
+       print ("****Observation is Complete****")
+       os._exit(0)
+
+    signal.signal(signal.SIGALRM, epic_timer)
+    signal.alarm(args.duration)
+      
+    
     while not shutdown_event.is_set():
-        # Keep threads alive -- if reader is still alive, prevent timeout signal from executing
-        if threads[0].is_alive():
+        # Keep threads alive -- if reader is still alive, prevent timeout signal from execute
+          if threads[0].is_alive():
             signal.pause()
-        else:
+          else:  
             break
+
+#    signal.alarm(args.duration)
+#    print("****Observation is over -- Time Elapsed (seconds) : ****", time.time()-start_time)
+            
 
     # Wait for threads to finish
 
@@ -2268,7 +2331,9 @@ def main():
         stats.dump_stats("EPIC_stats.prof")
 
     log.info("Done")
-
+     
+    #for thread in threads:
+    #  process.terminate()
 
 if __name__ == "__main__":
     main()
