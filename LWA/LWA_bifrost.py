@@ -734,6 +734,7 @@ class DecimationOp(object):
 
         with self.oring.begin_writing() as oring:
             for iseq in self.iring.read(guarantee=self.guarantee):
+                            
                 ihdr = json.loads(iseq.header.tobytes())
 
                 self.sequence_proclog.update(ihdr)
@@ -791,7 +792,8 @@ class DecimationOp(object):
                                     "process_time": process_time,
                                 }
                             )
-
+              #except ValueError:
+              #     continue 
 
 
 class CalibrationOp(object):
@@ -879,6 +881,7 @@ class MOFFCorrelatorOp(object):
         nchan_avg=4
         with self.oring.begin_writing() as oring:
             for iseq in self.iring.read(guarantee=True):
+            
                 ihdr = json.loads(iseq.header.tobytes())
                 self.sequence_proclog.update(ihdr)
                 self.log.info("MOFFCorrelatorOp: Config - %s" % ihdr)
@@ -1843,6 +1846,7 @@ class SaveOp(object):
         image_history = deque([], MAX_HISTORY)
 
         for iseq in self.iring.read(guarantee=True):
+            
             ihdr = json.loads(iseq.header.tobytes())
             fileid = 0
 
@@ -2115,6 +2119,9 @@ def main():
         log.warning("Received signal %i %s", signum, SIGNAL_NAMES[signum])
         try:
             ops[0].shutdown()
+            if SIGNAL_NAMES[signum] == "SIGALRM":
+                print("****Observation is Complete****")
+                os._exit(0)
         except IndexError:
             pass
         shutdown_event.set()
@@ -2125,9 +2132,10 @@ def main():
         signal.SIGQUIT,
         signal.SIGTERM,
         signal.SIGTSTP,
+        signal.SIGALRM
     ]:
         signal.signal(sig, handle_signal_terminate)
-
+       
     # Setup Rings
 
     fcapture_ring = Ring(name="capture", space="system")
@@ -2301,24 +2309,14 @@ def main():
 
     ##Observation stops after a set duration
 
-    def epic_timer(signum, frame):
-       print ("****Observation is Complete****")
-       os._exit(0)
-
-    signal.signal(signal.SIGALRM, epic_timer)
     signal.alarm(args.duration)
       
-    
     while not shutdown_event.is_set():
         # Keep threads alive -- if reader is still alive, prevent timeout signal from execute
           if threads[0].is_alive():
             signal.pause()
           else:  
-            break
-
-#    signal.alarm(args.duration)
-#    print("****Observation is over -- Time Elapsed (seconds) : ****", time.time()-start_time)
-            
+            break          
 
     # Wait for threads to finish
 
@@ -2331,7 +2329,8 @@ def main():
         stats.dump_stats("EPIC_stats.prof")
 
     log.info("Done")
-     
+    os._exit(0)
+
     #for thread in threads:
     #  process.terminate()
 
