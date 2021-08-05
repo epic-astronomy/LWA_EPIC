@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 
-from LWA_EPIC import LWA_EPIC
+import LWA_EPIC
 import glob
 import os
 
