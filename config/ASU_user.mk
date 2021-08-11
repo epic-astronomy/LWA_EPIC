@@ -20,7 +20,7 @@ ALIGNMENT ?= 4096 # Memory allocation alignment
 GPU_SHAREDMEM ?= 16384 # Fix GPU shared memory per device
 
 # check the NVCC version installed and its install directory
-CUDA_HOME     ?= /usr/local/cuda-10.2
+CUDA_HOME     ?= /usr/local/cuda-11.4
 
 CUDA_LIBDIR   ?= $(CUDA_HOME)/lib
 CUDA_LIBDIR64 ?= $(CUDA_HOME)/lib64
