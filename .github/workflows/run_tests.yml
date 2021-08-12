@@ -34,8 +34,8 @@ jobs:
 
     - name: Install bifrost
       run: |
-        export PATH=/usr/local/cuda-10.2/bin:$PATH
-        export LD_LIBRARY_PATH=/usr/local/cuda-10.2/lib64:$LD_LIBRARY_PATH
+        export PATH=/usr/local/cuda-11.4/bin:$PATH
+        export LD_LIBRARY_PATH=/usr/local/cuda-11.4/lib64:$LD_LIBRARY_PATH
         cd $WORKDIR
         git clone --branch ibverb-support https://github.com/epic-astronomy/bifrost.git
         cd bifrost
@@ -46,9 +46,9 @@ jobs:
 
     - name: Install
       run: |
-        pip install .
+        python setup.py install
 
-    - name: Run pytest
+    - name: Pytest Install
       run: |
         pytest
 
