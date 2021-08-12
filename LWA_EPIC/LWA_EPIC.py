@@ -1928,11 +1928,7 @@ class SaveFFTOp(object):
             break
         print("Save F-Engine Spectra.. done")
 
-
-def main():
-
-    # Main Input: UDP Broadcast RX from F-Engine?
-
+def gen_args(return_parser=False):
     parser = argparse.ArgumentParser(
         description="EPIC Correlator",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -2049,6 +2045,13 @@ def main():
         raise NotImplementedError(
             "Removing autocorrelations is not yet properly implemented."
         )
+
+    if return_parser:
+        return args, parser
+    else:
+        return args
+
+def main(args, parser):
 
     log = logging.getLogger(__name__)
     logFormat = logging.Formatter(
@@ -2283,4 +2286,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    args, parser = gen_args(return_parser=True)
+    main(args, parser)
