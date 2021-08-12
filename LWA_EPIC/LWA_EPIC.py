@@ -166,7 +166,7 @@ def Generate_DFT_Locations(lsl_locs, frequencies, ntime, nchan, npol):
 
     dft_locs = lsl_locs[np.newaxis, np.newaxis, :, :] / chan_wavelengths[:, np.newaxis, np.newaxis, np.newaxis]
 
-    dft_locs = np.broadcast_to(dft_locs, (nchan, npol, 3, lsl_locs.shape[1]))
+    dft_locs = np.broadcast_to(dft_locs, (nchan, npol, 3, lsl_locs.shape[1])).copy()
     return dft_locs
 
 
@@ -208,7 +208,7 @@ def GenerateLocations(
     sample_grid = chan_wavelengths * delta
     sll = sample_grid[0] / chan_wavelengths[0]
     lsl_locs = lsl_locs.T
-    
+
     lsl_locsf = lsl_locs[:, np.newaxis, np.newaxis, :] / sample_grid[np.newaxis, np.newaxis, :, np.newaxis]
     lsl_locsf -= np.min(lsl_locsf, axis=3, keepdims=True)
 
@@ -216,7 +216,7 @@ def GenerateLocations(
     lsl_locsf += (grid_size - np.max(lsl_locsf, axis=3, keepdims=True)) / 2.
 
     # add ntime axis
-    locc = np.broadcast_to(lsl_locsf, (ntime, 3, npol, nchan, lsl_locs.shape[1],)).transpose(1, 0, 3, 4, 2)
+    locc = np.broadcast_to(lsl_locsf, (ntime, 3, npol, nchan, lsl_locs.shape[1],)).transpose(1, 0, 3, 4, 2).copy()
     return delta, locc, sll
 
 
