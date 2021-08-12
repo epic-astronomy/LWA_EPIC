@@ -50,7 +50,7 @@ jobs:
 
     - name: Run pytest
       run: |
-        pytest
+        CUDA_VISIBLE_DEVICES=1 pytest
 
     - name: Clean up
       if: always()
