@@ -11,11 +11,11 @@ import os
 import sys
 import json
 import time
-import numpy
 import signal
 import logging
-import threading
 import argparse
+import threading
+import numpy as np
 from collections import deque
 from scipy.fftpack import fft
 from astropy.constants import c as speed_of_light
@@ -120,28 +120,21 @@ def form_dft_matrix(lmn_vector, antenna_location, antenna_phases, nchan, npol, n
 
     """
     # lm_matrix, shape = [...,2] , where the last dimension is an l/m pair.
-    lmn_vector[:, 2] = 1.0 - numpy.sqrt(
+    lmn_vector[:, 2] = 1.0 - np.sqrt(
         1.0 - lmn_vector[:, 0] ** 2 - lmn_vector[:, 1] ** 2
     )
-    dft_matrix = numpy.zeros(
-        (nchan, npol, lmn_vector.shape[0], nstand), dtype=numpy.complex64
+    dft_matrix = np.zeros(
+        (nchan, npol, lmn_vector.shape[0], nstand), dtype=np.complex64
     )
     # DFT phase factors
-    for i in numpy.arange(antenna_location.shape[3]):
-        ant_uvw = antenna_location[0, 0, :, i]
-
-        # Both polarisations are at the same physical location, only phases differ.
-        dft_matrix[:, :, :, i] = numpy.exp(
-            2j * numpy.pi * (numpy.dot(lmn_vector, ant_uvw))
-        )
-
+    # Both polarisations are at the same physical location, only phases differ.
+    dft_matrix[:, :] = np.exp(
+        2j * np.pi * (np.dot(lmn_vector, antenna_location[0, 0]))
+    )
     # Can put the antenna phases in as well because maths
-    for i in numpy.arange(dft_matrix.shape[2]):
-        for p in numpy.arange(npol):
-            for c in numpy.arange(nchan):
-                dft_matrix[c, p, i, :] *= antenna_phases[c, :, p]
+    dft_matrix *= antenna_phases.transpose([0, 2, 1])[:, :, np.newaxis, :] / nstand
 
-    return dft_matrix / antenna_location.shape[3]
+    return dft_matrix
 
 
 # Frequency-Dependent Locations
@@ -151,9 +144,9 @@ def Generate_DFT_Locations(lsl_locs, frequencies, ntime, nchan, npol):
 
     Parameters
     ----------
-    lsl_locs : numpy.ndarray
+    lsl_locs : np.ndarray
         Array of stand locations. Has shape (3, nstand)
-    frequencies : numpy.ndarray
+    frequencies : np.ndarray
         Array of frequencies in the observation.
     ntime : int
         Number of times.
@@ -170,10 +163,10 @@ def Generate_DFT_Locations(lsl_locs, frequencies, ntime, nchan, npol):
     lsl_locs = lsl_locs.T
     lsl_locs = lsl_locs.copy()
     chan_wavelengths = speed_of_light.value / frequencies
-    dft_locs = numpy.zeros(shape=(nchan, npol, 3, lsl_locs.shape[1]))
-    for j in numpy.arange(npol):
-        for i in numpy.arange(nchan):
-            dft_locs[i, j, :, :] = lsl_locs / chan_wavelengths[i]
+
+    dft_locs = lsl_locs[np.newaxis, np.newaxis, :, :] / chan_wavelengths[:, np.newaxis, np.newaxis, np.newaxis]
+
+    dft_locs = np.broadcast_to(dft_locs, (nchan, npol, 3, lsl_locs.shape[1])).copy()
     return dft_locs
 
 
@@ -185,9 +178,9 @@ def GenerateLocations(
 
     Parameters
     ----------
-    lsl_locs : numpy.ndarray
+    lsl_locs : np.ndarray
         Array of stand locations. Has shape (3, nstand)
-    frequencies : numpy.ndarray
+    frequencies : np.ndarray
         Array of frequencies in the observation.
     ntime : int
         Number of times.
@@ -210,37 +203,20 @@ def GenerateLocations(
         The sampling length of the DFT or resolution in image space.
 
     """
-    delta = (2 * grid_size * numpy.sin(numpy.pi * grid_resolution / 360)) ** -1
+    delta = (2 * grid_size * np.sin(np.pi * grid_resolution / 360)) ** -1
     chan_wavelengths = speed_of_light.value / frequencies
     sample_grid = chan_wavelengths * delta
     sll = sample_grid[0] / chan_wavelengths[0]
     lsl_locs = lsl_locs.T
-    lsl_locs = lsl_locs.copy()
 
-    lsl_locsf = numpy.zeros(shape=(3, npol, nchan, lsl_locs.shape[1]))
-    for l in numpy.arange(3):
-        for i in numpy.arange(nchan):
-            lsl_locsf[l, :, i, :] = lsl_locs[l, :] / sample_grid[i]
-
-            # I'm sure there's a more numpy way of doing this.
-            for p in numpy.arange(npol):
-                lsl_locsf[l, p, i, :] -= numpy.min(lsl_locsf[l, p, i, :])
+    lsl_locsf = lsl_locs[:, np.newaxis, np.newaxis, :] / sample_grid[np.newaxis, np.newaxis, :, np.newaxis]
+    lsl_locsf -= np.min(lsl_locsf, axis=3, keepdims=True)
 
     # Centre locations slightly
-    for l in numpy.arange(3):
-        for i in numpy.arange(nchan):
-            for p in numpy.arange(npol):
-                lsl_locsf[l, p, i, :] += (
-                    grid_size - numpy.max(lsl_locsf[l, p, i, :])
-                ) / 2
+    lsl_locsf += (grid_size - np.max(lsl_locsf, axis=3, keepdims=True)) / 2.
 
-    # Tile them for ntime...
-    locx = numpy.tile(lsl_locsf[0, ...], (ntime, 1, 1, 1))
-    locy = numpy.tile(lsl_locsf[1, ...], (ntime, 1, 1, 1))
-    locz = numpy.tile(lsl_locsf[2, ...], (ntime, 1, 1, 1))
-    # .. and then stick them all into one large array
-    locc = numpy.concatenate([[locx, ], [locy, ], [locz, ]]).transpose(0, 1, 3, 4, 2).copy()
-
+    # add ntime axis
+    locc = np.broadcast_to(lsl_locsf, (ntime, 3, npol, nchan, lsl_locs.shape[1])).transpose(1, 0, 3, 4, 2).copy()
     return delta, locc, sll
 
 
@@ -330,7 +306,7 @@ class TBNOfflineCaptureOp(object):
                         # Setup and load
                         idata = data
 
-                        odata = ospan.data_view(numpy.complex64).reshape(oshape)
+                        odata = ospan.data_view(np.complex64).reshape(oshape)
                         # Transpose and reshape to time by stand by pol
                         idata = idata.transpose((1, 0))
                         idata = idata.reshape((ntime, nstand, npol))
@@ -458,24 +434,24 @@ class FDomainOp(object):
                                 prev_time = curr_time
 
                                 # Setup and load
-                                idata = ispan.data_view(numpy.complex64).reshape(ishape)
+                                idata = ispan.data_view(np.complex64).reshape(ishape)
 
-                                odata = ospan.data_view(numpy.int8).reshape(oshape)
+                                odata = ospan.data_view(np.int8).reshape(oshape)
 
                                 # FFT, shift, and phase
                                 fdata = fft(idata, axis=1)
-                                fdata = numpy.fft.fftshift(fdata, axes=1)
+                                fdata = np.fft.fftshift(fdata, axes=1)
                                 fdata = bifrost.ndarray(fdata, space="system")
 
                                 # Quantization
                                 try:
-                                    Quantize(fdata, qdata, scale=1. / numpy.sqrt(nchan))
+                                    Quantize(fdata, qdata, scale=1. / np.sqrt(nchan))
                                 except NameError:
                                     qdata = bifrost.ndarray(shape=fdata.shape, native=False, dtype="ci4")
-                                    Quantize(fdata, qdata, scale=1. / numpy.sqrt(nchan))
+                                    Quantize(fdata, qdata, scale=1. / np.sqrt(nchan))
 
                                 # Save
-                                odata[...] = qdata.copy(space="cuda_host").view(numpy.int8).reshape(oshape)
+                                odata[...] = qdata.copy(space="cuda_host").view(np.int8).reshape(oshape)
 
                                 if self.profile:
                                     spani += 1
@@ -527,7 +503,7 @@ class TBFOfflineCaptureOp(object):
 
         idf = TBFFile(self.filename)
         srate = idf.get_info("sample_rate")
-        chans = numpy.round(idf.get_info("freq1") / srate).astype(numpy.int32)
+        chans = np.round(idf.get_info("freq1") / srate).astype(np.int32)
         chan0 = int(chans[0])
         nchan = len(chans)
         tInt, tStart, data = idf.read(0.1, time_in_samples=True)
@@ -584,7 +560,7 @@ class TBFOfflineCaptureOp(object):
                         # Setup and load
                         idata = data
 
-                        odata = ospan.data_view(numpy.int8).reshape(oshape)
+                        odata = ospan.data_view(np.int8).reshape(oshape)
 
                         # Transpose and reshape to time by channel by stand by pol
                         idata = idata.transpose((2, 1, 0))
@@ -593,13 +569,13 @@ class TBFOfflineCaptureOp(object):
 
                         # Quantization
                         try:
-                            Quantize(idata, qdata, scale=1. / numpy.sqrt(nchan))
+                            Quantize(idata, qdata, scale=1. / np.sqrt(nchan))
                         except NameError:
                             qdata = bifrost.ndarray(shape=idata.shape, native=False, dtype="ci4")
                             Quantize(idata, qdata, scale=1.0)
 
                         # Save
-                        odata[...] = qdata.copy(space="cuda_host").view(numpy.int8).reshape(oshape)
+                        odata[...] = qdata.copy(space="cuda_host").view(np.int8).reshape(oshape)
 
                     data = next_data
 
@@ -768,8 +744,8 @@ class DecimationOp(object):
                             reserve_time = curr_time - prev_time
                             prev_time = curr_time
 
-                            idata = ispan.data_view(numpy.uint8).reshape(ishape)
-                            odata = ospan.data_view(numpy.uint8).reshape(oshape)
+                            idata = ispan.data_view(np.uint8).reshape(ishape)
+                            odata = ospan.data_view(np.uint8).reshape(oshape)
 
                             sdata = idata[:, :self.nchan_out, :, :]
                             if self.npol_out != npol:
@@ -820,7 +796,7 @@ class MOFFCorrelatorOp(object):
         self.accumulation_time = accumulation_time
 
         self.station = station
-        locations = numpy.array([(ant.stand.x, ant.stand.y, ant.stand.z) for ant in self.station.antennas[::2]])
+        locations = np.array([(ant.stand.x, ant.stand.y, ant.stand.z) for ant in self.station.antennas[::2]])
         if self.station == lwasv:
             locations[[i for i, a in enumerate(self.station.antennas[::2]) if a.stand.id == 256], :] = 0.0
         elif self.station == lwa1:
@@ -886,7 +862,7 @@ class MOFFCorrelatorOp(object):
                 igulp_size = self.ntime_gulp * nchan * nstand * npol * 1  # ci4
                 itshape = (self.ntime_gulp, nchan, nstand, npol)
 
-                freq = (chan0 + numpy.arange(nchan)) * CHAN_BW
+                freq = (chan0 + np.arange(nchan)) * CHAN_BW
                 sampling_length, locs, sll = GenerateLocations(
                     self.locations,
                     freq,
@@ -897,15 +873,15 @@ class MOFFCorrelatorOp(object):
                     grid_resolution=self.grid_resolution,
                 )
                 try:
-                    copy_array(self.locs, bifrost.ndarray(locs.astype(numpy.int32)))
+                    copy_array(self.locs, bifrost.ndarray(locs.astype(np.int32)))
                 except AttributeError:
-                    self.locs = bifrost.ndarray(locs.astype(numpy.int32), space="cuda")
+                    self.locs = bifrost.ndarray(locs.astype(np.int32), space="cuda")
 
                 ohdr = ihdr.copy()
                 ohdr["nbit"] = 64
 
                 ms_per_gulp = 1e3 * self.ntime_gulp / CHAN_BW
-                new_accumulation_time = numpy.ceil(self.accumulation_time / ms_per_gulp) * ms_per_gulp
+                new_accumulation_time = np.ceil(self.accumulation_time / ms_per_gulp) * ms_per_gulp
                 if new_accumulation_time != self.accumulation_time:
                     self.log.warning(
                         "Adjusting accumulation time from %.3f ms to %.3f ms",
@@ -922,8 +898,8 @@ class MOFFCorrelatorOp(object):
                 ohdr["sampling_length_y"] = sampling_length
                 ohdr["accumulation_time"] = self.accumulation_time
                 ohdr["FS"] = FS
-                ohdr["latitude"] = self.station.lat * 180. / numpy.pi
-                ohdr["longitude"] = self.station.lon * 180. / numpy.pi
+                ohdr["latitude"] = self.station.lat * 180. / np.pi
+                ohdr["longitude"] = self.station.lon * 180. / np.pi
                 ohdr["telescope"] = self.station.name.upper()
                 ohdr["data_units"] = "UNCALIB"
                 if ohdr["npol"] == 1:
@@ -941,22 +917,22 @@ class MOFFCorrelatorOp(object):
                 # Setup the kernels to include phasing terms for zenith
                 # Phases are Ntime x Nchan x Nstand x Npol x extent x extent
                 freq.shape += (1, 1)
-                phases = numpy.zeros(
+                phases = np.zeros(
                     (self.ntime_gulp, nchan, nstand, npol, self.ant_extent, self.ant_extent),
-                    dtype=numpy.complex64
+                    dtype=np.complex64
                 )
                 for i in range(nstand):
                     # X
                     a = self.station.antennas[2 * i + 0]
                     delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
-                    phases[:, :, i, 0, :, :] = numpy.exp(2j * numpy.pi * freq * delay)
-                    phases[:, :, i, 0, :, :] /= numpy.sqrt(a.cable.gain(freq))
+                    phases[:, :, i, 0, :, :] = np.exp(2j * np.pi * freq * delay)
+                    phases[:, :, i, 0, :, :] /= np.sqrt(a.cable.gain(freq))
                     if npol == 2:
                         # Y
                         a = self.station.antennas[2 * i + 1]
                         delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
-                        phases[:, :, i, 1, :, :] = numpy.exp(2j * numpy.pi * freq * delay)
-                        phases[:, :, i, 1, :, :] /= numpy.sqrt(a.cable.gain(freq))
+                        phases[:, :, i, 1, :, :] = np.exp(2j * np.pi * freq * delay)
+                        phases[:, :, i, 1, :, :] /= np.sqrt(a.cable.gain(freq))
                     # Explicit bad and suspect antenna masking - this will
                     # mask an entire stand if either pol is bad
                     if (
@@ -1003,7 +979,7 @@ class MOFFCorrelatorOp(object):
 
                             # Correlator
                             # Setup and load
-                            idata = ispan.data_view(numpy.uint8).reshape(itshape)
+                            idata = ispan.data_view(np.uint8).reshape(itshape)
                             # Fix the type
                             udata = bifrost.ndarray(
                                 shape=itshape,
@@ -1030,7 +1006,7 @@ class MOFFCorrelatorOp(object):
                             except NameError:
                                 gdata = bifrost.zeros(
                                     shape=(self.ntime_gulp, nchan, npol, self.grid_size, self.grid_size),
-                                    dtype=numpy.complex64,
+                                    dtype=np.complex64,
                                     space="cuda",
                                 )
 
@@ -1084,12 +1060,12 @@ class MOFFCorrelatorOp(object):
                                 except NameError:
                                     crosspol = bifrost.zeros(
                                         shape=(self.ntime_gulp, nchan, npol ** 2, self.grid_size, self.grid_size),
-                                        dtype=numpy.complex64,
+                                        dtype=np.complex64,
                                         space="cuda",
                                     )
                                     accumulated_image = bifrost.zeros(
                                         shape=(1, nchan, npol ** 2, self.grid_size, self.grid_size),
-                                        dtype=numpy.complex64,
+                                        dtype=np.complex64,
                                         space="cuda",
                                     )
                                 self.newflag = False
@@ -1108,30 +1084,30 @@ class MOFFCorrelatorOp(object):
                                 except NameError:
                                     autocorrs = bifrost.ndarray(
                                         shape=(self.ntime_gulp, nchan, nstand, npol ** 2),
-                                        dtype=numpy.complex64,
+                                        dtype=np.complex64,
                                         space="cuda",
                                     )
                                     autocorrs_av = bifrost.zeros(
                                         shape=(1, nchan, nstand, npol ** 2),
-                                        dtype=numpy.complex64,
+                                        dtype=np.complex64,
                                         space="cuda",
                                     )
                                     autocorr_g = bifrost.zeros(
                                         shape=(1, nchan, npol ** 2, self.grid_size, self.grid_size),
-                                        dtype=numpy.complex64,
+                                        dtype=np.complex64,
                                         space="cuda",
                                     )
                                     autocorr_lo = bifrost.ndarray(
-                                        numpy.ones(
+                                        np.ones(
                                             shape=(3, 1, nchan, nstand, npol ** 2),
-                                            dtype=numpy.int32
+                                            dtype=np.int32
                                         ) * self.grid_size / 2,
                                         space="cuda",
                                     )
                                     autocorr_il = bifrost.ndarray(
-                                        numpy.ones(
+                                        np.ones(
                                             shape=(1, nchan, nstand, npol ** 2, self.ant_extent, self.ant_extent),
-                                            dtype=numpy.complex64
+                                            dtype=np.complex64
                                         ),
                                         space="cuda",
                                     )
@@ -1202,7 +1178,7 @@ class MOFFCorrelatorOp(object):
                                 prev_time = curr_time
 
                                 with oseq.reserve(ogulp_size) as ospan:
-                                    odata = ospan.data_view(numpy.complex64).reshape(oshape)
+                                    odata = ospan.data_view(np.complex64).reshape(oshape)
                                     accumulated_image = accumulated_image.reshape(oshape)
                                     odata[...] = accumulated_image
                                     bifrost.device.stream_synchronize()
@@ -1287,7 +1263,7 @@ class MOFF_DFT_CorrelatorOp(object):
 
         # Setup Antennas
         self.station = station
-        locations = numpy.array([(ant.stand.x, ant.stand.y, ant.stand.z) for ant in self.station.antennas[::2]])
+        locations = np.array([(ant.stand.x, ant.stand.y, ant.stand.z) for ant in self.station.antennas[::2]])
         #if self.station == lwasv:
         #    locations[[i for i, a in enumerate(self.station.antennas[::2]) if a.stand.id == 256], :] = 0.0
         #elif self.station == lwa1:
@@ -1358,21 +1334,21 @@ class MOFF_DFT_CorrelatorOp(object):
                 itshape = (self.ntime_gulp, nchan, nstand, npol)
 
                 # Sample locations at right u/v/w values
-                freq = (chan0 + numpy.arange(nchan)) * CHAN_BW
+                freq = (chan0 + np.arange(nchan)) * CHAN_BW
                 locs = Generate_DFT_Locations(
                     self.locations, freq, self.ntime_gulp, nchan, npol
                 )
 
                 try:
-                    copy_array(self.locs, bifrost.ndarray(locs.astype(numpy.int32)))
+                    copy_array(self.locs, bifrost.ndarray(locs.astype(np.int32)))
                 except AttributeError:
-                    self.locs = bifrost.ndarray(locs.astype(numpy.int32), space="cuda")
+                    self.locs = bifrost.ndarray(locs.astype(np.int32), space="cuda")
 
                 ohdr = ihdr.copy()
                 ohdr["nbit"] = 64
 
                 ms_per_gulp = 1e3 * self.ntime_gulp / CHAN_BW
-                new_accumulation_time = numpy.ceil(self.accumulation_time / ms_per_gulp) * ms_per_gulp
+                new_accumulation_time = np.ceil(self.accumulation_time / ms_per_gulp) * ms_per_gulp
                 if new_accumulation_time != self.accumulation_time:
                     self.log.warning("Adjusting accumulation time from %.3f ms to %.3f ms",
                                      self.accumulation_time, new_accumulation_time)
@@ -1385,8 +1361,8 @@ class MOFF_DFT_CorrelatorOp(object):
                 ohdr["axes"] = "time,chan,pol,gridy,gridx"
                 ohdr["accumulation_time"] = self.accumulation_time
                 ohdr["FS"] = FS
-                ohdr["latitude"] = self.station.lat * 180. / numpy.pi
-                ohdr["longitude"] = self.station.lon * 180. / numpy.pi
+                ohdr["latitude"] = self.station.lat * 180. / np.pi
+                ohdr["longitude"] = self.station.lon * 180. / np.pi
                 ohdr["telescope"] = self.station.name.upper()
                 ohdr["data_units"] = "UNCALIB"
                 if ohdr["npol"] == 1:
@@ -1403,19 +1379,19 @@ class MOFF_DFT_CorrelatorOp(object):
                 # Phases are Nchan x Nstand x Npol
                 # freq.shape += (1,)
 
-                phases = numpy.zeros((nchan, nstand, npol), dtype=numpy.complex64)
+                phases = np.zeros((nchan, nstand, npol), dtype=np.complex64)
                 for i in range(nstand):
                     # X
                     a = self.station.antennas[2 * i + 0]
                     delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
-                    phases[:, i, 0] = numpy.exp(2j * numpy.pi * freq * delay)
-                    phases[:, i, 0] /= numpy.sqrt(a.cable.gain(freq))
+                    phases[:, i, 0] = np.exp(2j * np.pi * freq * delay)
+                    phases[:, i, 0] /= np.sqrt(a.cable.gain(freq))
                     if npol == 2:
                         # Y
                         a = self.station.antennas[2 * i + 1]
                         delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
-                        phases[:, i, 1] = numpy.exp(2j * numpy.pi * freq * delay)
-                        phases[:, i, 1] /= numpy.sqrt(a.cable.gain(freq))
+                        phases[:, i, 1] = np.exp(2j * np.pi * freq * delay)
+                        phases[:, i, 1] /= np.sqrt(a.cable.gain(freq))
                     # Explicit bad and suspect antenna masking - this will
                     # mask an entire stand if either pol is bad
                     if (
@@ -1434,20 +1410,20 @@ class MOFF_DFT_CorrelatorOp(object):
 
                 # Setup DFT Transform Matrix
 
-                lm_matrix = numpy.zeros(shape=(self.skymodes1d, self.skymodes1d, 3))
+                lm_matrix = np.zeros(shape=(self.skymodes1d, self.skymodes1d, 3))
                 lm_step = 2.0 / self.skymodes1d
-                i, j = numpy.meshgrid(numpy.arange(self.skymodes1d), numpy.arange(self.skymodes1d))
+                i, j = np.meshgrid(np.arange(self.skymodes1d), np.arange(self.skymodes1d))
                 # this builds a 3 x 64 x 64 matrix, need to transpose axes to [2, 1, 0] to get correct
                 #  64 x 64 x 3 shape
-                lm_matrix = numpy.asarray([i * lm_step - 1.0, j * lm_step - 1.0, numpy.zeros_like(j)])
-                lm_matrix = numpy.fft.fftshift(lm_matrix, axes=(1,2))
+                lm_matrix = np.asarray([i * lm_step - 1.0, j * lm_step - 1.0, np.zeros_like(j)])
+                lm_matrix = np.fft.fftshift(lm_matrix, axes=(1,2))
                 lm_vector = lm_matrix.transpose([1, 2, 0]).reshape((self.skymodes, 3))
 
                 self.dftm = bifrost.ndarray(
                     form_dft_matrix(lm_vector, locs, phases, nchan, npol, nstand)
                 )
 
-                # self.dftm = bifrost.ndarray(numpy.tile(self.dftm[numpy.newaxis,:],(nchan,1,1,1)))
+                # self.dftm = bifrost.ndarray(np.tile(self.dftm[np.newaxis,:],(nchan,1,1,1)))
                 dftm_cu = self.dftm.copy(space="cuda")
                 # sys.exit(1)
 
@@ -1476,7 +1452,7 @@ class MOFF_DFT_CorrelatorOp(object):
 
                             # Correlator
                             # Setup and load
-                            idata = ispan.data_view(numpy.uint8).reshape(itshape)
+                            idata = ispan.data_view(np.uint8).reshape(itshape)
                             # Fix the type
                             tdata = bifrost.ndarray(shape=itshape, dtype="ci4", native=False, buffer=idata.ctypes.data)
 
@@ -1493,7 +1469,7 @@ class MOFF_DFT_CorrelatorOp(object):
                                 udata = udata.reshape(*tdata.shape)
                                 Unpack(tdata, udata)
                             except NameError:
-                                udata = bifrost.ndarray(shape=tdata.shape, dtype=numpy.complex64, space="cuda")
+                                udata = bifrost.ndarray(shape=tdata.shape, dtype=np.complex64, space="cuda")
                                 Unpack(tdata, udata)
                             # Phase
                             # bifrost.map('a(i,j,k,l) *= b(j,k,l)',
@@ -1509,7 +1485,7 @@ class MOFF_DFT_CorrelatorOp(object):
                             except NameError:
                                 gdata = bifrost.zeros(
                                     shape=(nchan * npol, self.skymodes, self.ntime_gulp),
-                                    dtype=numpy.complex64,
+                                    dtype=np.complex64,
                                     space="cuda"
                                 )
                                 memset_array(gdata, 0)
@@ -1528,12 +1504,12 @@ class MOFF_DFT_CorrelatorOp(object):
                                 except NameError:
                                     gdatas = bifrost.zeros(
                                         shape=(nchan, npol ** 2, self.skymodes, self.ntime_gulp),
-                                        dtype=numpy.complex64,
+                                        dtype=np.complex64,
                                         space="cuda"
                                     )
                                     accumulated_image = bifrost.zeros(
                                         shape=(nchan, npol ** 2, self.skymodes, 1),
-                                        dtype=numpy.complex64,
+                                        dtype=np.complex64,
                                         space="cuda"
                                     )
                                 self.newflag = False
@@ -1557,7 +1533,7 @@ class MOFF_DFT_CorrelatorOp(object):
                                 prev_time = curr_time
 
                                 with oseq.reserve(ogulp_size) as ospan:
-                                    odata = ospan.data_view(numpy.complex64).reshape(oshape)
+                                    odata = ospan.data_view(np.complex64).reshape(oshape)
                                     accumulated_image = accumulated_image.reshape(oshape)
                                     # gdatass = gdatass.reshape(oshape)
                                     # odata[...] = gdatass
@@ -1622,7 +1598,7 @@ class TriggerOp(object):
         self.iring = iring
         self.ints_per_file = ints_per_analysis
         self.threshold = threshold
-        self.elevation_limit = elevation_limit * numpy.pi / 180.0
+        self.elevation_limit = elevation_limit * np.pi / 180.0
 
         self.core = core
         self.gpu = gpu
@@ -1679,11 +1655,11 @@ class TriggerOp(object):
                 % (nchan, npol, grid_size, sampling_length)
             )
 
-            x, y = numpy.arange(grid_size_x), numpy.arange(grid_size_y)
-            x, y = numpy.meshgrid(x, y)
-            rho = numpy.sqrt((x - grid_size_x / 2) ** 2 + (y - grid_size_y / 2) ** 2)
-            mask = numpy.where(
-                rho <= grid_size * sampling_length * numpy.cos(self.elevation_limit),
+            x, y = np.arange(grid_size_x), np.arange(grid_size_y)
+            x, y = np.meshgrid(x, y)
+            rho = np.sqrt((x - grid_size_x / 2) ** 2 + (y - grid_size_y / 2) ** 2)
+            mask = np.where(
+                rho <= grid_size * sampling_length * np.cos(self.elevation_limit),
                 False,
                 True
             )
@@ -1704,12 +1680,12 @@ class TriggerOp(object):
                 acquire_time = curr_time - prev_time
                 prev_time = curr_time
 
-                idata = ispan.data_view(numpy.complex64).reshape(ishape)
+                idata = ispan.data_view(np.complex64).reshape(ishape)
                 itemp = idata.copy(space="cuda_host")
                 image.append(itemp)
                 nints += 1
                 if nints >= self.ints_per_file:
-                    image = numpy.fft.fftshift(image, axes=(3, 4))
+                    image = np.fft.fftshift(image, axes=(3, 4))
                     image = image[:, :, :, ::-1, :]
                     # NOTE:  This just uses the first polarization (XX) for now.
                     #        In the future we probably want to use Stokes I (if
@@ -1725,8 +1701,8 @@ class TriggerOp(object):
                         # current image (image) with a moving average of the last
                         # N images (image_background).  This is roughly like what
                         # is done at LWA1/LWA-SV to find events in the LASI images.
-                        image_background = numpy.median(image_history, axis=0)
-                        image_diff = numpy.ma.array(image - image_background, mask=mask)
+                        image_background = np.median(image_history, axis=0)
+                        image_diff = np.ma.array(image - image_background, mask=mask)
                         peak, mid, rms = image_diff.max(), image_diff.mean(), image_diff.std()
                         print("-->", peak, mid, rms, "@", (peak - mid) / rms)
                         if (peak - mid) > self.threshold * rms:
@@ -1843,18 +1819,18 @@ class SaveOp(object):
                 acquire_time = curr_time - prev_time
                 prev_time = curr_time
 
-                idata = ispan.data_view(numpy.complex64).reshape(ishape)
+                idata = ispan.data_view(np.complex64).reshape(ishape)
                 itemp = idata.copy(space="cuda_host")
                 image.append(itemp)
                 nints += 1
                 if nints >= self.ints_per_file:
-                    image = numpy.fft.fftshift(image, axes=(3, 4))
+                    image = np.fft.fftshift(image, axes=(3, 4))
                     image = image[:, :, :, ::-1, :]
                     unix_time = (
                         ihdr["time_tag"] / FS
                         + ihdr["accumulation_time"] * 1e-3 * fileid * self.ints_per_file
                     )
-                    image_nums = numpy.arange(fileid * self.ints_per_file, (fileid + 1) * self.ints_per_file)
+                    image_nums = np.arange(fileid * self.ints_per_file, (fileid + 1) * self.ints_per_file)
                     filename = os.path.join(self.out_dir, "EPIC_{0:3f}_{1:0.3f}MHz.npz".format(unix_time, cfreq / 1e6))
 
                     image_history.append((filename, image, ihdr, image_nums))
@@ -1865,7 +1841,7 @@ class SaveOp(object):
                         elif dump_counter == 1:
                             TRIGGER_ACTIVE.clear()
                         cfilename, cimage, chdr, cimage_nums = image_history.popleft()
-                        numpy.savez(cfilename, image=cimage, hdr=chdr, image_nums=cimage_nums)
+                        np.savez(cfilename, image=cimage, hdr=chdr, image_nums=cimage_nums)
                         print("SaveOp - Image Saved")
                         dump_counter -= 1
 
@@ -1918,12 +1894,12 @@ class SaveFFTOp(object):
                     if ispan.size < igulp_size:
                         continue
 
-                    idata = ispan.data_view(numpy.int8)
+                    idata = ispan.data_view(np.int8)
 
                     idata = idata.reshape(ishape)
                     idata = bifrost.ndarray(shape=ishape, dtype="ci4", native=False, buffer=idata.ctypes.data)
-                    print(numpy.shape(idata))
-                    numpy.savez(self.filename + "asdasd.npy", data=idata)
+                    print(np.shape(idata))
+                    np.savez(self.filename + "asdasd.npy", data=idata)
                     print("Wrote to disk")
             break
         print("Save F-Engine Spectra.. done")
