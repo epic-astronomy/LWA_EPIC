@@ -216,7 +216,7 @@ def GenerateLocations(
     lsl_locsf += (grid_size - np.max(lsl_locsf, axis=3, keepdims=True)) / 2.
 
     # add ntime axis
-    locc = np.broadcast_to(lsl_locsf, (ntime, 3, npol, nchan, lsl_locs.shape[1],)).transpose(1, 0, 3, 4, 2).copy()
+    locc = np.broadcast_to(lsl_locsf, (ntime, 3, npol, nchan, lsl_locs.shape[1])).transpose(1, 0, 3, 4, 2).copy()
     return delta, locc, sll
 
 
