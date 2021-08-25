@@ -86,7 +86,7 @@ def epic2fits(filename, data, hdr, image_nums):
     delta_f = hdr["bw"] / hdr["nchan"]
     crit_pix_f = (hdr["nchan"] - 1) * 0.5 + 1  # +1 for FITS numbering
 
-    for im_num, d in zip(image_nums, data):
+    for im_num, d in enumerate(data):
         hdu = fits.ImageHDU(data=d)
         # Time
         t = time_array[im_num]
