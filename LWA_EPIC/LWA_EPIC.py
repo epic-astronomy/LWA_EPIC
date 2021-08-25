@@ -1825,7 +1825,7 @@ class SaveOp(object):
                 ihdr["time_tag"] / ihdr["FS"] + 1e-3 * ihdr["accumulation_time"] / 2.0,
                 format="unix",
                 precision=6,
-            )
+            ).isot
 
             primary_hdu.header["BUNIT"] = ihdr["data_units"]
             primary_hdu.header["BSCALE"] = 1e0
