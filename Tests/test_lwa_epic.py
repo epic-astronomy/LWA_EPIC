@@ -18,6 +18,6 @@ def test_default_run(tmpdir):
     args.out_dir = tmpdir
     LWA_EPIC.main(args, parser)
 
-    fileList = glob.glob(os.path.join(tmpdir, '*.npz'))
+    fileList = glob.glob(os.path.join(tmpdir, '*.fits'))
 
     assert len(fileList) == 24
