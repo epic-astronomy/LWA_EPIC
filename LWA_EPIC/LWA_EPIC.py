@@ -1954,7 +1954,7 @@ class SaveOp(object):
 
                     filename = os.path.join(
                         self.out_dir,
-                        "EPIC_{0:3f}_{1:0.3f}MHz.npz".format(unix_time, cfreq / 1e6),
+                        "EPIC_{0:3f}_{1:0.3f}MHz.fits".format(unix_time, cfreq / 1e6),
                     )
 
                     image_history.append((filename, hdul))
