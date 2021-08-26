@@ -1770,7 +1770,6 @@ class SaveOp(object):
 
         MAX_HISTORY = 5
 
-        image_nums = np.arange(self.ints_per_file)
 
         if self.core != -1:
             bifrost.affinity.set_core(self.core)
@@ -1903,7 +1902,8 @@ class SaveOp(object):
                         location=(ihdr["longitude"], ihdr["latitude"])
                     )
 
-                    time_array = t0 + image_nums * dt
+                    time_array = t0 + np.arange(nints) * dt
+
                     lsts = time_array.sidereal_time("apparent")
                     coords = SkyCoord(
                         lsts.deg, ihdr["latitude"], obstime=time_array, unit="deg"
