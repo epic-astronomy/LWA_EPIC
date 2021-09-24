@@ -18,8 +18,8 @@ except ImportError:
     import Queue as queue
 import time
 from datetime import datetime
-from ConsumerThread import ConsumerThread
-from SocketThread import UDPRecvThread
+from .ConsumerThread import ConsumerThread
+from .SocketThread import UDPRecvThread
 import string
 import struct
 
