@@ -26,7 +26,7 @@ from astropy.constants import c as speed_of_light
 
 import datetime
 import ctypes
-from . import MCS2 as MCS
+import MCS2 as MCS
 
 # Profiling Includes
 import cProfile
