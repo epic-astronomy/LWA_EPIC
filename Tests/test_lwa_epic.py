@@ -15,6 +15,7 @@ def test_default_run(tmpdir):
     args.channels = 4
     args.accumulate = 50
     args.ints_per_file = 40
+    args.utc_start = "1970_01_01T00_00_00"
     args.out_dir = tmpdir
     LWA_EPIC.main(args, parser)
 
