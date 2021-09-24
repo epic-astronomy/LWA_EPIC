@@ -26,6 +26,7 @@ from astropy.constants import c as speed_of_light
 
 import datetime
 import ctypes
+import MCS2 as MCS
 
 # Profiling Includes
 import cProfile
@@ -61,6 +62,23 @@ if sys.version_info.major < 3:
 # Trigger Processing
 
 TRIGGER_ACTIVE = threading.Event()
+
+DATE_FORMAT = "%Y_%m_%dT%H_%M_%S"
+
+
+def get_utc_start():
+    got_utc_start = False
+    while not got_utc_start:
+        try:
+            with MCS.Communicator() as adp_control:
+                utc_start = adp_control.report('UTC_START')
+                # Check for valid timestamp
+                utc_start_dt = datetime.datetime.strptime(utc_start, DATE_FORMAT)
+            got_utc_start = True
+        except Exception as ex:
+            print(ex)
+            time.sleep(0.1)
+    return utc_start_dt
 
 
 # Profiling
@@ -2050,7 +2068,7 @@ def gen_args(return_parser=False):
     group1.add_argument(
         "--utcstart",
         type=str,
-        default="1970_1_1T0_0_0",
+        default=None,
         help="F-Engine UDP Stream Start Time",
     )
 
@@ -2264,8 +2282,10 @@ def main(args, parser):
                 "--offline set but no file provided via --tbnfile or --tbffile"
             )
     else:
-        # It would be great is we could pull this from ADP MCS...
-        utc_start_dt = datetime.datetime.strptime(args.utcstart, "%Y_%m_%dT%H_%M_%S")
+        if args.utcstart is None:
+            utc_start_dt = get_utc_start()
+        else:
+            utc_start_dt = datetime.datetime.strptime(args.utcstart, DATE_FORMAT)
 
         # Note: Capture uses Bifrost address+socket objects, while output uses
         #         plain Python address+socket objects.
