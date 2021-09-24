@@ -11,16 +11,15 @@ except NameError:
             return data.hex()
         except TypeError:
             return data.encode().hex()
-            
+
 try:
     import queue
 except ImportError:
     import Queue as queue
 import time
 from datetime import datetime
-import socket
-from ConsumerThread import ConsumerThread
-from SocketThread import UDPRecvThread
+from .ConsumerThread import ConsumerThread
+from .SocketThread import UDPRecvThread
 import string
 import struct
 
@@ -140,7 +139,7 @@ class Msg(object):
             # Python2 catch/binary data catch
             print('hdr error:', str(e), '@', hdr)
             pass
-            
+
         self.slot = get_current_slot()
         self.dst  = hdr[:3]
         self.src  = hdr[3:6]
@@ -155,7 +154,7 @@ class Msg(object):
         broken_commands = ['BAM']#, 'FST']
         if self.cmd in broken_commands:
             self.data = pkt[38:]
-            
+
     def create_reply(self, accept, status, data=''):
         msg = Msg(#src=self.dst,
                   dst=self.src,
@@ -397,12 +396,12 @@ class SynchronizerGroup(object):
                 pass
             finally:
                 self.pending_lock.release()
-                
+
             if len(self.socks) == 0:
                 # Avoid spinning after all socks close
                 time.sleep(0.1)
                 continue
-                
+
             # Find out where everyone is
             tags = []
             i = 0
@@ -428,14 +427,14 @@ class SynchronizerGroup(object):
                     continue
                 tags.append( int(tag_msg[4:22], 10) )
                 i += 1
-                
+
             # Elect tag0, the reference time tag
             try:
                 tag0 = max(tags)
                 #print("ELECTED %i as tag0 for %s" % (tag0, self.group))
             except ValueError:
                 continue
-                
+
             # Speed up the slow ones a little bit
             slow = [i for i,tag in enumerate(tags) if tag < tag0]
             if len(slow) > 0:
@@ -454,7 +453,7 @@ class SynchronizerGroup(object):
                             #    slowFactors[i] = 1
                         except socket.error as e:
                             self.log("WARNING: Synchronizer (2a): socket.error %s client %i: %s" % (self.group, i, e))
-                            
+
                         ### Receive - ignoring errors
                         try:
                             tag_msg = sock.recv(4096)
@@ -468,24 +467,24 @@ class SynchronizerGroup(object):
                             continue
                         tags[i] = int(tag_msg[4:22], 10)
                         #print("Updated %s client %i tag to %i (tag0 is %i; delta is now %i" % (self.group, i, tags[i], tag0, tags[i]-tag0))
-                        
+
                     ## Evaluate the latest batch of timetags
                     slow = [i for i,tag in enumerate(tags) if tag < tag0]
-                    
+
                     ## Update the iteration variable
                     j += 1
-                    
+
                 ### Report on what we've done
                 #for i,v in slowFactors.items():
                 #	print("WARNING: Synchronizer (2e): slipped %s client %i forward by %s" % (self.group, i, v))
-                    
+
             # Send to everyone regardless to make sure the fast ones don't falter
             i = 0
             while i < len(self.socks):
                 sock, tag = self.socks[i], tags[i]
                 if tag != tag0:
                     self.log("WARNING: Synchronizer (3a): Tag mismatch: "+str(tag)+" != "+str(tag0)+" from "+self.group+" client "+str(i)+" (delta is "+str((tag-tag0)/196e6*1000)+" ms)")
-                    
+
                 try:
                     sock.send('GROUP:'+self.group+',TAG:'+str(tag0))
                 except socket.error as e:
@@ -495,10 +494,10 @@ class SynchronizerGroup(object):
                     del tags[i]
                     continue
                 i += 1
-                
+
             # Done with the iteration
             ##print("SYNCED "+str(len(self.socks))+" clients in "+self.group)
-            
+
         self.log("SynchronizerGroup "+self.group+": shut down")
 
 class SynchronizerServer(object):
