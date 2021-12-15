@@ -11,7 +11,7 @@ except NameError:
             return data.hex()
         except TypeError:
             return data.encode().hex()
-            
+
 try:
     import queue
 except ImportError:
