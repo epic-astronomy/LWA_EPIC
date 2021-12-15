@@ -2217,12 +2217,6 @@ def gen_args(return_parser=False):
     else:
         return args
 
-def main(args, parser):
-
-    if return_parser:
-        return args, parser
-    else:
-        return args
 
 def main(args, parser):
 
@@ -2446,7 +2440,7 @@ def main(args, parser):
     for thread in threads:
         thread.daemon = False
         thread.start()
-  
+
     signal.alarm(args.duration)
 
 
