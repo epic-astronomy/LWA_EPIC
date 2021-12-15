@@ -18,10 +18,15 @@ import threading
 import numpy as np
 from collections import deque
 from scipy.fftpack import fft
+
+from astropy.io import fits
+from astropy.time import Time, TimeDelta
+from astropy.coordinates import SkyCoord, FK5
 from astropy.constants import c as speed_of_light
 
 import datetime
 import ctypes
+from . import MCS2 as MCS
 
 # Profiling Includes
 import cProfile
@@ -57,6 +62,23 @@ if sys.version_info.major < 3:
 # Trigger Processing
 
 TRIGGER_ACTIVE = threading.Event()
+
+DATE_FORMAT = "%Y_%m_%dT%H_%M_%S"
+
+
+def get_utc_start():
+    got_utc_start = False
+    while not got_utc_start:
+        try:
+            with MCS.Communicator() as adp_control:
+                utc_start = adp_control.report('UTC_START')
+                # Check for valid timestamp
+                utc_start_dt = datetime.datetime.strptime(utc_start, DATE_FORMAT)
+            got_utc_start = True
+        except Exception as ex:
+            print(ex)
+            time.sleep(0.1)
+    return utc_start_dt
 
 
 # Profiling
@@ -1766,6 +1788,7 @@ class SaveOp(object):
 
         MAX_HISTORY = 5
 
+
         if self.core != -1:
             bifrost.affinity.set_core(self.core)
         if self.gpu != -1:
@@ -1809,6 +1832,51 @@ class SaveOp(object):
 
             dump_counter = 0
 
+            # some constant header information
+            primary_hdu = fits.PrimaryHDU()
+
+            primary_hdu.header["TELESCOP"] = ihdr["telescope"]
+            # grab the time from the 0th file for the primary header
+            # before dumping
+            primary_hdu.header["DATE-OBS"] = Time(
+                ihdr["time_tag"] / ihdr["FS"] + 1e-3 * ihdr["accumulation_time"] / 2.0,
+                format="unix",
+                precision=6,
+            ).isot
+
+            primary_hdu.header["BUNIT"] = ihdr["data_units"]
+            primary_hdu.header["BSCALE"] = 1e0
+            primary_hdu.header["BZERO"] = 0e0
+            primary_hdu.header["EQUINOX"] = "J2000"
+            primary_hdu.header["EXTNAME"] = "PRIMARY"
+            primary_hdu.header["GRIDDIMX"] = ihdr["grid_size_x"]
+            primary_hdu.header["GRIDDIMY"] = ihdr["grid_size_y"]
+            primary_hdu.header["DGRIDX"] = ihdr["sampling_length_x"]
+            primary_hdu.header["DGRIDY"] = ihdr["sampling_length_y"]
+            primary_hdu.header["INTTIM"] = ihdr["accumulation_time"] * 1e-3
+            primary_hdu.header["INTTIMU"] = "SECONDS"
+            primary_hdu.header["CFREQ"] = ihdr["cfreq"]
+            primary_hdu.header["CFREQU"] = "HZ"
+
+            pol_dict = {"xx": -5, "yy": -6, "xy": -7, "yx": -8}
+            pol_nums = [pol_dict[p] for p in ihdr["pols"]]
+            pol_order = np.argsort(pol_nums)[::-1]
+
+            dt = TimeDelta(1e-3 * ihdr["accumulation_time"], format="sec")
+
+            dtheta_x = 2 * np.arcsin(0.5 / (ihdr["grid_size_x"] * ihdr["sampling_length_x"]))
+            dtheta_y = 2 * np.arcsin(0.5 / (ihdr["grid_size_y"] * ihdr["sampling_length_y"]))
+
+            crit_pix_x = float(ihdr["grid_size_x"] / 2 + 1)
+            # Need to correct for shift in center pixel when we flipped dec dimension
+            # when writing npz, Only applies for even dimension size
+            crit_pix_y = float(ihdr["grid_size_y"] / 2 + 1) - (ihdr["grid_size_x"] + 1) % 2
+
+            delta_x = -dtheta_x * 180.0 / np.pi
+            delta_y = dtheta_y * 180.0 / np.pi
+            delta_f = ihdr["bw"] / ihdr["nchan"]
+            crit_pix_f = (ihdr["nchan"] - 1) * 0.5 + 1  # +1 for FITS numbering
+
             if self.profile:
                 spani = 0
 
@@ -1823,25 +1891,105 @@ class SaveOp(object):
                 itemp = idata.copy(space="cuda_host")
                 image.append(itemp)
                 nints += 1
+
                 if nints >= self.ints_per_file:
                     image = np.fft.fftshift(image, axes=(3, 4))
                     image = image[:, :, :, ::-1, :]
+
+                    # Restructure data in preparation to stuff into fits
+                    # Now (Ntimes, Npol, Nfreq, y, x)
+                    image = image.transpose(0, 2, 1, 3, 4)
+
+                    # Reorder pol for fits convention
+                    image = image[:, pol_order, :, :, :]
+                    # Break up real/imaginary
+                    image = image[
+                        :, np.newaxis, :, :, :, :
+                    ]  # Now (Ntimes, 2 (complex), Npol, Nfreq, y, x)
+                    image = np.concatenate([image.real, image.imag], axis=1)
+
                     unix_time = (
                         ihdr["time_tag"] / FS
                         + ihdr["accumulation_time"] * 1e-3 * fileid * self.ints_per_file
                     )
-                    image_nums = np.arange(fileid * self.ints_per_file, (fileid + 1) * self.ints_per_file)
-                    filename = os.path.join(self.out_dir, "EPIC_{0:3f}_{1:0.3f}MHz.npz".format(unix_time, cfreq / 1e6))
 
-                    image_history.append((filename, image, ihdr, image_nums))
+                    t0 = Time(
+                        unix_time,
+                        format="unix",
+                        precision=6,
+                        location=(ihdr["longitude"], ihdr["latitude"])
+                    )
+
+                    time_array = t0 + np.arange(nints) * dt
+
+                    lsts = time_array.sidereal_time("apparent")
+                    coords = SkyCoord(
+                        lsts.deg, ihdr["latitude"], obstime=time_array, unit="deg"
+                    ).transform_to(FK5(equinox="J2000"))
+
+                    hdul = []
+                    for im_num, d in enumerate(image):
+                        hdu = fits.ImageHDU(data=d)
+                        # Time
+                        t = time_array[im_num]
+                        lst = lsts[im_num]
+                        hdu.header["DATETIME"] = t.isot
+                        hdu.header["LST"] = lst.hour
+                        # Coordinates - sky
+
+                        hdu.header["EQUINOX"] = "J2000"
+
+                        hdu.header["CTYPE1"] = "RA---SIN"
+                        hdu.header["CRPIX1"] = crit_pix_x
+                        hdu.header["CDELT1"] = delta_x
+                        hdu.header["CRVAL1"] = coords[im_num].ra.deg
+                        hdu.header["CUNIT1"] = "deg"
+                        hdu.header["CTYPE2"] = "DEC--SIN"
+
+                        hdu.header["CRPIX2"] = crit_pix_y
+
+                        hdu.header["CDELT2"] = delta_y
+                        hdu.header["CRVAL2"] = coords[im_num].dec.deg
+                        hdu.header["CUNIT2"] = "deg"
+                        # Coordinates - Freq
+                        hdu.header["CTYPE3"] = "FREQ"
+                        hdu.header["CRPIX3"] = crit_pix_f
+                        hdu.header["CDELT3"] = delta_f
+                        hdu.header["CRVAL3"] = ihdr["cfreq"]
+                        hdu.header["CUNIT3"] = "Hz"
+                        # Coordinates - Stokes parameters
+                        hdu.header["CTYPE4"] = "STOKES"
+                        hdu.header["CRPIX4"] = 1
+                        hdu.header["CDELT4"] = -1
+                        hdu.header["CRVAL4"] = pol_nums[pol_order[0]]
+                        # Coordinates - Complex
+                        hdu.header["CTYPE5"] = "COMPLEX"
+                        hdu.header["CRVAL5"] = 1.0
+                        hdu.header["CRPIX5"] = 1.0
+                        hdu.header["CDELT5"] = 1.0
+
+                        hdul.append(hdu)
+
+                    filename = os.path.join(
+                        self.out_dir,
+                        "EPIC_{0:3f}_{1:0.3f}MHz.fits".format(unix_time, cfreq / 1e6),
+                    )
+
+                    image_history.append((filename, hdul))
 
                     if TRIGGER_ACTIVE.is_set() or not self.triggering:
                         if dump_counter == 0:
                             dump_counter = 20 + MAX_HISTORY
                         elif dump_counter == 1:
                             TRIGGER_ACTIVE.clear()
-                        cfilename, cimage, chdr, cimage_nums = image_history.popleft()
-                        np.savez(cfilename, image=cimage, hdr=chdr, image_nums=cimage_nums)
+
+
+
+                        cfilename, hdus = image_history.popleft()
+                        hdulist = fits.HDUList([primary_hdu, *hdus])
+                        hdulist.writeto(cfilename, overwrite=True)
+
+                        # np.savez(cfilename, image=cimage, hdr=chdr, image_nums=cimage_nums)
                         print("SaveOp - Image Saved")
                         dump_counter -= 1
 
@@ -1920,7 +2068,7 @@ def gen_args(return_parser=False):
     group1.add_argument(
         "--utcstart",
         type=str,
-        default="1970_1_1T0_0_0",
+        default=None,
         help="F-Engine UDP Stream Start Time",
     )
 
@@ -2134,8 +2282,10 @@ def main(args, parser):
                 "--offline set but no file provided via --tbnfile or --tbffile"
             )
     else:
-        # It would be great is we could pull this from ADP MCS...
-        utc_start_dt = datetime.datetime.strptime(args.utcstart, "%Y_%m_%dT%H_%M_%S")
+        if args.utcstart is None:
+            utc_start_dt = get_utc_start()
+        else:
+            utc_start_dt = datetime.datetime.strptime(args.utcstart, DATE_FORMAT)
 
         # Note: Capture uses Bifrost address+socket objects, while output uses
         #         plain Python address+socket objects.
