@@ -25,7 +25,6 @@ from astropy.coordinates import SkyCoord, FK5
 from astropy.constants import c as speed_of_light
 
 import datetime
-import MCS2 as MCS
 import ctypes
 from . import MCS2 as MCS
 
