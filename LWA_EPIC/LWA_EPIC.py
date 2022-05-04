@@ -1882,7 +1882,7 @@ class SaveOp(object):
             primary_hdu.header["BUNIT"] = ihdr["data_units"]
             primary_hdu.header["BSCALE"] = 1e0
             primary_hdu.header["BZERO"] = 0e0
-            primary_hdu.header["EQUINOX"] = "2000.0"
+            primary_hdu.header["EQUINOX"] = 2000.0
             primary_hdu.header["EXTNAME"] = "PRIMARY"
             primary_hdu.header["GRIDDIMX"] = ihdr["grid_size_x"]
             primary_hdu.header["GRIDDIMY"] = ihdr["grid_size_y"]
@@ -1972,7 +1972,7 @@ class SaveOp(object):
                         hdu.header["LST"] = lst.hour
                         # Coordinates - sky
 
-                        hdu.header["EQUINOX"] = "2000.0"
+                        hdu.header["EQUINOX"] = 2000.0
 
                         hdu.header["CTYPE1"] = "RA---SIN"
                         hdu.header["CRPIX1"] = crit_pix_x

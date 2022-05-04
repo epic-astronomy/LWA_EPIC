@@ -36,7 +36,7 @@ def epic2fits(filename, data, hdr, image_nums):
     hdu.header["BUNIT"] = hdr["data_units"]
     hdu.header["BSCALE"] = 1e0
     hdu.header["BZERO"] = 0e0
-    hdu.header["EQUINOX"] = "2000.0"
+    hdu.header["EQUINOX"] = 2000.0
     hdu.header["EXTNAME"] = "PRIMARY"
     hdu.header["GRIDDIMX"] = hdr["grid_size_x"]
     hdu.header["GRIDDIMY"] = hdr["grid_size_y"]
