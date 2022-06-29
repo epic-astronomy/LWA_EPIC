@@ -37,7 +37,7 @@ jobs:
         export PATH=/usr/local/cuda-11.4/bin:$PATH
         export LD_LIBRARY_PATH=/usr/local/cuda-11.4/lib64:$LD_LIBRARY_PATH
         cd $WORKDIR
-        git clone --branch ibverb-support https://github.com/epic-astronomy/bifrost.git
+        git clone https://github.com/epic-astronomy/bifrost.git
         cd bifrost
         cp $WORKDIR/LWA_EPIC/config/ASU_user.mk user.mk
         uname -s
