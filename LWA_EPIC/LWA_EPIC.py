@@ -892,7 +892,7 @@ class MOFFCorrelatorOp(object):
                 locname = "locations_%s_%i_%i_%i_%i_%i_%i_%.6f.npy" % (self.station.name, chan0, nchan, nstand, npol, self.ant_extent, self.grid_size, self.grid_resolution)
                 locname = os.path.join(os.path.dirname(__file__), locname)
                 try:
-                    loc_data = np.loadz(locname)
+                    loc_data = np.load(locname)
                     sampling_length = loc_data['sampling_length'].item()
                     locs = loc_data['locs'][...]
                     sll = loc_data['sll'].item()
