@@ -889,7 +889,7 @@ class MOFFCorrelatorOp(object):
                 itshape = (self.ntime_gulp, nchan, nstand, npol)
 
                 freq = (chan0 + np.arange(nchan)) * CHAN_BW
-                locname = "locations_%s_%i_%i_%i_%i_%i_%i_%.6f.npz" % (self.station.name, chan0, nchan, nstand, npol, self.ant_extent, self.grid_size, self.grid_resolution)
+                locname = "locations_%s_%i_%i_%i_%i_%i_%i_%i_%.6f.npz" % (self.station.name, chan0, self.ntime_gulp, nchan, nstand, npol, self.ant_extent, self.grid_size, self.grid_resolution)
                 locname = os.path.join(os.path.dirname(__file__), locname)
                 try:
                     loc_data = np.load(locname)
@@ -951,7 +951,7 @@ class MOFFCorrelatorOp(object):
 
                 # Setup the kernels to include phasing terms for zenith
                 # Phases are Ntime x Nchan x Nstand x Npol x extent x extent
-                phasename = "phases_%s_%i_%i_%i_%i_%i.npy" % (self.station.name, chan0, nchan, nstand, npol, self.ant_extent)
+                phasename = "phases_%s_%i_%i_%i_%i_%i_%i.npy" % (self.station.name, chan0, self.ntime_gulp, nchan, nstand, npol, self.ant_extent)
                 phasename = os.path.join(os.path.dirname(__file__), phasename)
                 try:
                     phases = np.load(phasename)
