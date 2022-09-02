@@ -889,15 +889,24 @@ class MOFFCorrelatorOp(object):
                 itshape = (self.ntime_gulp, nchan, nstand, npol)
 
                 freq = (chan0 + np.arange(nchan)) * CHAN_BW
-                sampling_length, locs, sll = GenerateLocations(
-                    self.locations,
-                    freq,
-                    self.ntime_gulp,
-                    nchan,
-                    npol,
-                    grid_size=self.grid_size,
-                    grid_resolution=self.grid_resolution,
-                )
+                locname = "locations_%s_%i_%i_%i_%i_%i_%i_%.6f.npy" % (self.station.name, chan0, nchan, nstand, npol, self.ant_extent, self.grid_size, self.grid_resolution)
+                locname = os.path.join(os.path.dirname(__file__), locname)
+                try:
+                    loc_data = np.loadz(locname)
+                    sampling_length = loc_data['sampling_length'].item()
+                    locs = loc_data['locs'][...]
+                    sll = loc_data['sll'].item()
+                except OSError:
+                    sampling_length, locs, sll = GenerateLocations(
+                        self.locations,
+                        freq,
+                        self.ntime_gulp,
+                        nchan,
+                        npol,
+                        grid_size=self.grid_size,
+                        grid_resolution=self.grid_resolution,
+                    )
+                    np.savez(locname, sampling_length=sampling_length, locs=locs, sll=sll)
                 try:
                     copy_array(self.locs, bifrost.ndarray(locs.astype(np.int32)))
                 except AttributeError:
@@ -942,39 +951,45 @@ class MOFFCorrelatorOp(object):
 
                 # Setup the kernels to include phasing terms for zenith
                 # Phases are Ntime x Nchan x Nstand x Npol x extent x extent
-                freq.shape += (1, 1)
-                phases = np.zeros(
-                    (self.ntime_gulp, nchan, nstand, npol, self.ant_extent, self.ant_extent),
-                    dtype=np.complex64
-                )
-                for i in range(nstand):
-                    # X
-                    a = self.station.antennas[2 * i + 0]
-                    delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
-                    phases[:, :, i, 0, :, :] = np.exp(2j * np.pi * freq * delay)
-                    phases[:, :, i, 0, :, :] /= np.sqrt(a.cable.gain(freq))
-                    if npol == 2:
-                        # Y
-                        a = self.station.antennas[2 * i + 1]
+                phasename = "phases_%s_%i_%i_%i_%i_%i.npy" % (self.station.name, chan0, nchan, nstand, npol, self.ant_extent)
+                phasename = os.path.join(os.path.dirname(__file__), phasename)
+                try:
+                    phases = np.load(phasename)
+                except OSError:
+                    freq.shape += (1, 1)
+                    phases = np.zeros(
+                        (self.ntime_gulp, nchan, nstand, npol, self.ant_extent, self.ant_extent),
+                        dtype=np.complex64
+                    )
+                    for i in range(nstand):
+                        # X
+                        a = self.station.antennas[2 * i + 0]
                         delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
-                        phases[:, :, i, 1, :, :] = np.exp(2j * np.pi * freq * delay)
-                        phases[:, :, i, 1, :, :] /= np.sqrt(a.cable.gain(freq))
-                    # Explicit bad and suspect antenna masking - this will
-                    # mask an entire stand if either pol is bad
-                    if (
-                        self.station.antennas[2 * i + 0].combined_status < 33
-                        or self.station.antennas[2 * i + 1].combined_status < 33
-                    ):
-                        phases[:, :, i, :, :, :] = 0.0
-                    # Explicit outrigger masking - we probably want to do
-                    # away with this at some point
-                    if (
-                        (self.station == lwasv and a.stand.id == 256)
-                        or (self.station == lwa1 and a.stand.id in (35, 257, 258, 259, 260))
-                    ):
-                        phases[:, :, i, :, :, :] = 0.0
-                phases = phases.conj()
-                phases = bifrost.ndarray(phases)
+                        phases[:, :, i, 0, :, :] = np.exp(2j * np.pi * freq * delay)
+                        phases[:, :, i, 0, :, :] /= np.sqrt(a.cable.gain(freq))
+                        if npol == 2:
+                            # Y
+                            a = self.station.antennas[2 * i + 1]
+                            delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
+                            phases[:, :, i, 1, :, :] = np.exp(2j * np.pi * freq * delay)
+                            phases[:, :, i, 1, :, :] /= np.sqrt(a.cable.gain(freq))
+                        # Explicit bad and suspect antenna masking - this will
+                        # mask an entire stand if either pol is bad
+                        if (
+                            self.station.antennas[2 * i + 0].combined_status < 33
+                            or self.station.antennas[2 * i + 1].combined_status < 33
+                        ):
+                            phases[:, :, i, :, :, :] = 0.0
+                        # Explicit outrigger masking - we probably want to do
+                        # away with this at some point
+                        if (
+                            (self.station == lwasv and a.stand.id == 256)
+                            or (self.station == lwa1 and a.stand.id in (35, 257, 258, 259, 260))
+                        ):
+                            phases[:, :, i, :, :, :] = 0.0
+                    phases = phases.conj()
+                    phases = bifrost.ndarray(phases)
+                    np.save(phasename, phases)
                 try:
                     copy_array(gphases, phases)
                 except NameError:
@@ -1434,7 +1449,6 @@ class MOFF_DFT_CorrelatorOp(object):
                 # Setup the kernels to include phasing terms for zenith
                 # Phases are Nchan x Nstand x Npol
                 # freq.shape += (1,)
-
                 phases = np.zeros((nchan, nstand, npol), dtype=np.complex64)
                 for i in range(nstand):
                     # X
