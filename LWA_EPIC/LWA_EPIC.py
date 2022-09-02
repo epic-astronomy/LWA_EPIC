@@ -746,8 +746,8 @@ class DecimationOp(object):
                 ishape = (self.ntime_gulp, nchan, nstand, npol)
                 ogulp_size = self.ntime_gulp * self.nchan_out * nstand * self.npol_out * 1  # ci4
                 oshape = (self.ntime_gulp, self.nchan_out, nstand, self.npol_out)
-                self.iring.resize(igulp_size, buffer_factor= 8)
-                self.oring.resize(ogulp_size, buffer_factor= 128)  # , obuf_size)
+                self.iring.resize(igulp_size, buffer_factor= 5)
+                self.oring.resize(ogulp_size, buffer_factor= 10)  # , obuf_size)
 
                 ohdr = ihdr.copy()
                 ohdr["nchan"] = self.nchan_out
@@ -998,8 +998,8 @@ class MOFFCorrelatorOp(object):
 
                 oshape = (1, nchan, npol ** 2, self.grid_size, self.grid_size)
                 ogulp_size = nchan * npol ** 2 * self.grid_size * self.grid_size * 8
-                self.iring.resize(igulp_size, buffer_factor=128)
-                self.oring.resize(ogulp_size, buffer_factor=256)
+                self.iring.resize(igulp_size, buffer_factor=10)
+                self.oring.resize(ogulp_size, buffer_factor=10)
                 prev_time = time.time()
                 with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
                     iseq_spans = iseq.read(igulp_size)
