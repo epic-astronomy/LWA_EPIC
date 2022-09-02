@@ -988,8 +988,9 @@ class MOFFCorrelatorOp(object):
                         ):
                             phases[:, :, i, :, :, :] = 0.0
                     phases = phases.conj()
-                    phases = bifrost.ndarray(phases)
                     np.save(phasename, phases)
+                phases = bifrost.ndarray(phases)
+                
                 try:
                     copy_array(gphases, phases)
                 except NameError:
