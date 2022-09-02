@@ -2117,6 +2117,8 @@ def gen_args(return_parser=False):
     group2.add_argument("--tbffile", type=str, help="TBF Data Path")
 
     group3 = parser.add_argument_group("Processing Options")
+    group3.add_argument("--cores", type=str, default="3,4,5,6,7", help="Comma separated list of CPU cores to bind to")
+    group3.add_argument("--gpu", type=int, default=0, help="GPU to bind to")
     group3.add_argument("--imagesize", type=int, default=64, help="1-D Image Size")
     group3.add_argument(
         "--imageres", type=float, default=1.79057, help="Image pixel size in degrees"
@@ -2231,8 +2233,8 @@ def main(args, parser):
     log.setLevel(logging.DEBUG)
 
     # Setup the cores and GPUs to use
-    cores = [3, 4, 5, 6, 7]
-    gpus = [0, 0, 0, 0, 0]
+    cores = [int(v) for v in args.cores.split(',')]
+    gpus = [args.gpu,]*len(cores)
 
     # Setup the signal handling
     ops = []
