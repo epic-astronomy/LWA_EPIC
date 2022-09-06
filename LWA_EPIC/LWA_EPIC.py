@@ -1065,15 +1065,9 @@ class MOFFCorrelatorOp(object):
                                 bf_vgrid = VGrid()
                                 bf_vgrid.init(self.locs, gphases, self.grid_size, polmajor=False)
                                 bf_vgrid.execute(udata, gdata)
-
-                            #try:
-                            #    bf_romein.execute(udata, gdata)
-                            #except NameError:
-                            #    bf_romein = Romein()
-                            #    bf_romein.init(self.locs, gphases, self.grid_size, polmajor=False)
-                            #    bf_romein.execute(udata, gdata)
-                            gdata = gdata.reshape(self.ntime_gulp * nchan * npol, self.grid_size, self.grid_size)
-                            # gdata = self.LinAlgObj.matmul(1.0, udata, bfantgridmap, 0.0, gdata)
+                            gdata = gdata.reshape(
+                                self.ntime_gulp * nchan * npol, self.grid_size, self.grid_size
+                            )
                             if self.benchmark is True:
                                 timeg2 = time.time()
                                 print("  Grid time: %f" % (timeg2 - timeg1))
@@ -1097,7 +1091,6 @@ class MOFFCorrelatorOp(object):
                                 timefft2 = time.time()
                                 print("  FFT time: %f" % (timefft2 - timefft1))
 
-                            # print("Accum: %d"%accum,end='\n')
                             if self.newflag is True:
                                 try:
                                     crosspol = crosspol.reshape(
