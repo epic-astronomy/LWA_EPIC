@@ -793,7 +793,7 @@ class DecimationOp(object):
                             odata = ospan.data_view(np.uint8).reshape(oshape)
 
                             if do_truncate:
-                                sdata2 = idata[:, :self.nchan_out, :, :]
+                                sdata = idata[:, :self.nchan_out, :, :]
                                 if self.npol_out != npol:
                                     sdata = sdata[:, :, :, :self.npol_out]
                             else:
