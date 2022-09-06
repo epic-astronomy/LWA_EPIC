@@ -754,7 +754,7 @@ class DecimationOp(object):
                 if nchan % self.nchan_out == 0:
                     do_truncate = False
                     act_chan_bw = CHAN_BW * (nchan // self.nchan_out)
-                    self.log.info("Decimation: Running in averageing mode")
+                    self.log.info("Decimation: Running in averaging mode")
                 else:
                     self.log.info("Decimation: Running in truncation mode")
                 self.log.info("Decimation: Channel bandwidth is %.3f kHz", act_chan_bw/1e3)
@@ -784,42 +784,47 @@ class DecimationOp(object):
                             odata = ospan.data_view(np.uint8).reshape(oshape)
 
                             if do_truncate:
-                                sdata = idata[:, :self.nchan_out, :, :]
+                                sdata2 = idata[:, :self.nchan_out, :, :]
                             else:
                                 # Fix the type
                                 udata = bifrost.ndarray(
-                                    shape=itshape,
+                                    shape=ishape,
                                     dtype="ci4",
                                     native=False,
                                     buffer=idata.ctypes.data,
                                 )
+                                udata = udata.copy(space='cuda')
                                 
                                 try:
-                                    Unpack(udata, cdata)
+                                    cdata = cdata.reshape(
+                                        idata.shape
+                                    )
                                 except NameError:
                                     cdata = bifrost.zeros(
                                         shape=idata.shape,
-                                        dtype=np.complex64
+                                        dtype=np.complex64,
+                                        space='cuda'
                                     )
-                                    Unpack(udata, cdata)
-                                
+                                Unpack(udata, cdata)
                                 cdata = cdata.reshape(
                                     self.ntime_gulp, -1, nchan // self.nchan_out, nstand, npol
                                 )
-                                cdata = cdata.mean(axis=2, dtype=np.complex64)
+                                adata = cdata.mean(axis=2, dtype=np.complex64)
 
                                 try:
-                                    Quantize(cdata, sdata)
+                                    Quantize(adata, sdata)
                                 except NameError:
-                                    qdata = bifrost.zeros(
-                                        shape=cdata.shape,
-                                        dtype='ci4'
+                                    sdata = bifrost.zeros(
+                                        shape=adata.shape,
+                                        dtype='ci4',
+                                        space='cuda'
                                     )
-                                    Quantize(cdata, sdata)
+                                    Quantize(adata, sdata)
+                                sdata2 = sdata.copy(space='system')
 
                             if self.npol_out != npol:
-                                sdata = sdata[:, :, :, :self.npol_out]
-                            odata[...] = sdata
+                                sdata3 = sdata2[:, :, :, :self.npol_out]
+                            odata[...] = sdata3.view(np.uint8)
 
                             curr_time = time.time()
                             process_time = curr_time - prev_time
