@@ -798,7 +798,7 @@ class DecimationOp(object):
                                     Unpack(udata, cdata)
                                 except NameError:
                                     cdata = bifrost.zeros(
-                                        shape=idata.shape
+                                        shape=idata.shape,
                                         dtype=np.complex64
                                     )
                                     Unpack(udata, cdata)
@@ -812,7 +812,7 @@ class DecimationOp(object):
                                     Quantize(cdata, sdata)
                                 except NameError:
                                     qdata = bifrost.zeros(
-                                        shape=cdata.shape
+                                        shape=cdata.shape,
                                         dtype='ci4'
                                     )
                                     Quantize(cdata, sdata)
