@@ -1174,7 +1174,7 @@ class MOFFCorrelatorOp(object):
                                      bf_auto.init(self.locs, polmajor=False)
                                      bf_auto.execute(udata, autocorrs)
                                 autocorrs = autocorrs.reshape(
-                                self.ntime_gulp, nchan, nstand, npol ** 2
+                                    self.ntime_gulp, nchan, nstand, npol ** 2
                                 )
 
 
