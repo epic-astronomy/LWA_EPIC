@@ -786,6 +786,7 @@ class DecimationOp(object):
                             if do_truncate:
                                 sdata = idata[:, :self.nchan_out, :, :]
                             else:
+                                sdata = idata[...]
                                 sdata = sdata.reshape(
                                     self.ntime_gulp, -1, nchan // self.nchan_out, nstand, npol
                                 )
