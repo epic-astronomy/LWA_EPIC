@@ -828,7 +828,11 @@ class MOFFCorrelatorOp(object):
         elif self.station == lwa1:
             locations[[i for i, a in enumerate(self.station.antennas[::2]) if a.stand.id in (35, 257, 258, 259, 260)], :] = 0.0
         self.locations = locations
-
+        
+        self.cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cache')
+        if not os.path.exists(self.cache_dir):
+            os.mkdir(self.cache_dir)
+            
         self.grid_size = grid_size
         self.grid_resolution = grid_resolution
 
@@ -890,7 +894,7 @@ class MOFFCorrelatorOp(object):
 
                 freq = (chan0 + np.arange(nchan)) * CHAN_BW
                 locname = "locations_%s_%i_%i_%i_%i_%i_%i_%i_%.6f.npz" % (self.station.name, chan0, self.ntime_gulp, nchan, nstand, npol, self.ant_extent, self.grid_size, self.grid_resolution)
-                locname = os.path.join(os.path.dirname(__file__), locname)
+                locname = os.path.join(self.cache_dir, locname)
                 try:
                     loc_data = np.load(locname)
                     sampling_length = loc_data['sampling_length'].item()
@@ -952,7 +956,7 @@ class MOFFCorrelatorOp(object):
                 # Setup the kernels to include phasing terms for zenith
                 # Phases are Ntime x Nchan x Nstand x Npol x extent x extent
                 phasename = "phases_%s_%i_%i_%i_%i_%i_%i.npy" % (self.station.name, chan0, self.ntime_gulp, nchan, nstand, npol, self.ant_extent)
-                phasename = os.path.join(os.path.dirname(__file__), phasename)
+                phasename = os.path.join(self.cache_dir, phasename)
                 try:
                     phases = np.load(phasename)
                 except OSError:
