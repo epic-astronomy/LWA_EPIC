@@ -1060,8 +1060,10 @@ class MOFFCorrelatorOp(object):
                             if self.benchmark is True:
                                 timeg1 = time.time()
                             try:
+                                
                                 bf_vgrid.execute(udata, gdata)
                             except NameError:
+                                
                                 bf_vgrid = VGrid()
                                 bf_vgrid.init(self.locs, gphases, self.grid_size, polmajor=False)
                                 bf_vgrid.execute(udata, gdata)
@@ -1146,7 +1148,7 @@ class MOFFCorrelatorOp(object):
                                         np.ones(
                                             shape=(3, 1, nchan, nstand, npol ** 2),
                                             dtype=np.int32
-                                        ) * self.grid_size / 2,
+                                        ) * self.grid_size // 2,
                                         space="cuda",
                                     )
                                     autocorr_il = bifrost.ndarray(
@@ -1157,13 +1159,6 @@ class MOFFCorrelatorOp(object):
                                         space="cuda",
                                     )
 
-                                # Cross multiply to calculate autocorrs
-                                #bifrost.map(
-                                #    "a(i,j,k,l) += (b(i,j,k,l/2) * b(i,j,k,l%2).conj())",
-                                #    {"a": autocorrs, "b": udata, "t": self.ntime_gulp},
-                                #    axis_names=("i", "j", "k", "l"),
-                                #    shape=(self.ntime_gulp, nchan, nstand, npol ** 2),
-                                #)
                                 try:
                                      bf_auto.execute(udata, autocorrs)
                                 except NameError:
@@ -1174,16 +1169,11 @@ class MOFFCorrelatorOp(object):
                                     self.ntime_gulp, nchan, nstand, npol ** 2
                                 )
 
-
-                            #bifrost.map(
-                            #    "a(i,j,p,k,l) += b(0,i,j,p/2,k,l)*b(0,i,j,p%2,k,l).conj()",
-                            #    {"a": crosspol, "b": gdata},
-                            #    axis_names=("i", "j", "p", "k", "l"),
-                            #    shape=(self.ntime_gulp, nchan, npol ** 2, self.grid_size, self.grid_size),
-                            #)
                             try:
+                                
                                 bf_gmul.execute(gdata, crosspol)
                             except NameError:
+                                
                                 bf_gmul = XGrid()
                                 bf_gmul.init(self.grid_size, polmajor=False)
                                 bf_gmul.execute(gdata, crosspol)
