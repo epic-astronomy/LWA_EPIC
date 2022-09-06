@@ -763,6 +763,7 @@ class DecimationOp(object):
                 if nchan % self.nchan_out == 0:
                     do_truncate = False
                     act_chan_bw = CHAN_BW * (nchan // self.nchan_out)
+                    chan0 = chan0 + 0.5 * (nchan // self.nchan_out - 1)
                     self.log.info("Decimation: Running in averaging mode")
                 else:
                     self.log.info("Decimation: Running in truncation mode")
