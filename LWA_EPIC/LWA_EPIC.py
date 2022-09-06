@@ -701,6 +701,7 @@ class DecimationOp(object):
         npol_out=2,
         guarantee=True,
         core=-1,
+        gpu=-1,
     ):
         self.log = log
         self.iring = iring
@@ -710,6 +711,7 @@ class DecimationOp(object):
         self.npol_out = npol_out
         self.guarantee = guarantee
         self.core = core
+        self.gpu = gpu
 
         self.bind_proclog = ProcLog(type(self).__name__ + "/bind")
         self.in_proclog = ProcLog(type(self).__name__ + "/in")
@@ -725,8 +727,15 @@ class DecimationOp(object):
     def main(self):
         if self.core != -1:
             bifrost.affinity.set_core(self.core)
+        if self.gpu != -1:
+            BFSetGPU(self.gpu)
         self.bind_proclog.update(
-            {"ncore": 1, "core0": bifrost.affinity.get_core()}
+            {
+                "ncore": 1,
+                "core0": bifrost.affinity.get_core(),
+                "ngpu": 1,
+                "gpu0": BFGetGPU(),
+            }
         )
 
         with self.oring.begin_writing() as oring:
@@ -785,46 +794,45 @@ class DecimationOp(object):
 
                             if do_truncate:
                                 sdata2 = idata[:, :self.nchan_out, :, :]
+                                if self.npol_out != npol:
+                                    sdata = sdata[:, :, :, :self.npol_out]
                             else:
-                                # Fix the type
-                                udata = bifrost.ndarray(
-                                    shape=ishape,
-                                    dtype="ci4",
-                                    native=False,
-                                    buffer=idata.ctypes.data,
-                                )
-                                udata = udata.copy(space='cuda')
+                                try:
+                                    copy_array(gdata, idata)
+                                except NameError:
+                                    gdata = idata.copy(space='cuda')
+                                    adata = bifrost.zeros(
+                                        shape=(self.ntime_gulp, self.nchan_out, nstand, self.npol_out),
+                                        dtype='u8',
+                                        space='cuda'
+                                    )
+                                
+                                bifrost.map("""
+                                signed char re, im;
+                                #pragma unroll
+                                for(int l=0; l<{npol_out}; l++) {{
+                                    re = ((signed char) (b(i,j*{navg},k,l) & 0xF0)) / 16;
+                                    im = ((signed char) ((b(i,j*{navg},k,l) & 0x0F) << 4)) / 16;
+                                    #pragma unroll
+                                    for(int m=1; m<{navg}; m++) {{
+                                        re += ((signed char) (b(i,j*{navg}+m,k,l) & 0xF0)) / 16;
+                                        im += ((signed char) ((b(i,j*{navg}+m,k,l) & 0x0F) << 4)) / 16;
+                                    }}
+                                    re /= {navg};
+                                    im /= {navg};
+                                    a(i,j,k,l) = ((re * 16) & 0xF0) | ((im * 16) >> 4);
+                                }}
+                                """.format(npol_out=self.npol_out, navg=nchan // self.nchan_out),
+                                {'a': adata, 'b': gdata},
+                                axis_names=('i', 'j', 'k'),
+                                shape=adata.shape[:3])
                                 
                                 try:
-                                    cdata = cdata.reshape(
-                                        idata.shape
-                                    )
+                                    copy_array(sdata, adata)
                                 except NameError:
-                                    cdata = bifrost.zeros(
-                                        shape=idata.shape,
-                                        dtype=np.complex64,
-                                        space='cuda'
-                                    )
-                                Unpack(udata, cdata)
-                                cdata = cdata.reshape(
-                                    self.ntime_gulp, -1, nchan // self.nchan_out, nstand, npol
-                                )
-                                adata = cdata.mean(axis=2, dtype=np.complex64)
+                                    sdata = adata.copy(space='system')
 
-                                try:
-                                    Quantize(adata, sdata)
-                                except NameError:
-                                    sdata = bifrost.zeros(
-                                        shape=adata.shape,
-                                        dtype='ci4',
-                                        space='cuda'
-                                    )
-                                    Quantize(adata, sdata)
-                                sdata2 = sdata.copy(space='system')
-
-                            if self.npol_out != npol:
-                                sdata3 = sdata2[:, :, :, :self.npol_out]
-                            odata[...] = sdata3.view(np.uint8)
+                            odata[...] = sdata
 
                             curr_time = time.time()
                             process_time = curr_time - prev_time
@@ -2178,7 +2186,7 @@ def gen_args(return_parser=False):
     group2.add_argument("--tbffile", type=str, help="TBF Data Path")
 
     group3 = parser.add_argument_group("Processing Options")
-    group3.add_argument("--cores", type=str, default="3,4,5,6,7", help="Comma separated list of CPU cores to bind to")
+    group3.add_argument("--cores", type=str, default="2,3,4,5,6,7", help="Comma separated list of CPU cores to bind to")
     group3.add_argument("--gpu", type=int, default=0, help="GPU to bind to")
     group3.add_argument("--imagesize", type=int, default=64, help="1-D Image Size")
     group3.add_argument(
@@ -2387,6 +2395,7 @@ def main(args, parser):
                     nchan_out=args.channels,
                     npol_out=1 if args.singlepol else 2,
                     core=cores.pop(0),
+                    gpu=gpus.pop(0),
                 )
             )
         else:
@@ -2430,6 +2439,7 @@ def main(args, parser):
                 nchan_out=args.channels,
                 npol_out=1 if args.singlepol else 2,
                 core=cores.pop(0),
+                gpu=gpus.pop(0),
             )
         )
 
