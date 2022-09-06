@@ -550,7 +550,7 @@ class TBFOfflineCaptureOp(object):
         ohdr["chan0"] = chan0
         ohdr["nchan"] = nchan
         ohdr["cfreq"] = (chan0 + 0.5 * (nchan - 1)) * srate
-        ohdr["bw"] = srate * nchan
+        ohdr["bw"] = nchan * srate
         ohdr["nstand"] = nstand
         ohdr["npol"] = npol
         ohdr["nbit"] = 4
@@ -749,11 +749,21 @@ class DecimationOp(object):
                 self.iring.resize(igulp_size, buffer_factor= 5)
                 self.oring.resize(ogulp_size, buffer_factor= 10)  # , obuf_size)
 
+                do_truncate = True
+                act_chan_bw = CHAN_BW
+                if nchan % self.nchan_out == 0:
+                    do_truncate = False
+                    act_chan_bw = CHAN_BW * (nchan // self.nchan_out)
+                    self.log.info("Decimation: Running in averageing mode")
+                else:
+                    self.log.info("Decimation: Running in truncation mode")
+                self.log.info("Decimation: Channel bandwidth is %.3f kHz", act_chan_bw/1e3)
+                
                 ohdr = ihdr.copy()
                 ohdr["nchan"] = self.nchan_out
                 ohdr["npol"] = self.npol_out
-                ohdr["cfreq"] = (chan0 + 0.5 * (self.nchan_out - 1)) * CHAN_BW
-                ohdr["bw"] = self.nchan_out * CHAN_BW
+                ohdr["cfreq"] = chan0 * CHAN_BW + 0.5 * (self.nchan_out - 1) * act_chan_bw
+                ohdr["bw"] = self.nchan_out * act_chan_bw
                 ohdr_str = json.dumps(ohdr)
 
                 prev_time = time.time()
@@ -773,7 +783,14 @@ class DecimationOp(object):
                             idata = ispan.data_view(np.uint8).reshape(ishape)
                             odata = ospan.data_view(np.uint8).reshape(oshape)
 
-                            sdata = idata[:, :self.nchan_out, :, :]
+                            if do_truncate:
+                                sdata = idata[:, :self.nchan_out, :, :]
+                            else:
+                                sdata = sdata.reshape(
+                                    self.ntime_gulp, -1, nchan // self.nchan_out, nstand, npol
+                                )
+                                sdata = sdate.mean(axis=2)
+
                             if self.npol_out != npol:
                                 sdata = sdata[:, :, :, :self.npol_out]
                             odata[...] = sdata
@@ -884,6 +901,8 @@ class MOFFCorrelatorOp(object):
                 self.log.info("MOFFCorrelatorOp: Config - %s" % ihdr)
                 chan0 = ihdr["chan0"]
                 nchan = ihdr["nchan"]
+                bw = ihdr["bw"]
+                act_chan_bw = bw / nchan
                 nstand = ihdr["nstand"]
                 npol = ihdr["npol"]
                 self.newflag = True
@@ -892,7 +911,7 @@ class MOFFCorrelatorOp(object):
                 igulp_size = self.ntime_gulp * nchan * nstand * npol * 1  # ci4
                 itshape = (self.ntime_gulp, nchan, nstand, npol)
 
-                freq = (chan0 + np.arange(nchan)) * CHAN_BW
+                freq = chan0 * CHAN_BW + np.arange(nchan) * act_chan_bw
                 locname = "locations_%s_%i_%i_%i_%i_%i_%i_%i_%.6f.npz" % (self.station.name, chan0, self.ntime_gulp, nchan, nstand, npol, self.ant_extent, self.grid_size, self.grid_resolution)
                 locname = os.path.join(self.cache_dir, locname)
                 try:
@@ -1386,6 +1405,8 @@ class MOFF_DFT_CorrelatorOp(object):
                 nchan = ihdr["nchan"]
                 nstand = ihdr["nstand"]
                 npol = ihdr["npol"]
+                bw = ihdr["bw"]
+                act_chan_bw = bw / nchan
                 self.newflag = True
                 accum = 0
 
@@ -1393,7 +1414,7 @@ class MOFF_DFT_CorrelatorOp(object):
                 itshape = (self.ntime_gulp, nchan, nstand, npol)
 
                 # Sample locations at right u/v/w values
-                freq = (chan0 + np.arange(nchan)) * CHAN_BW
+                freq = chan0 * CHAN_BW + np.arange(nchan) * act_chan_bw
                 locs = Generate_DFT_Locations(
                     self.locations, freq, self.ntime_gulp, nchan, npol
                 )
