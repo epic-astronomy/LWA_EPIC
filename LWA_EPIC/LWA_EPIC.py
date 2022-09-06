@@ -786,10 +786,36 @@ class DecimationOp(object):
                             if do_truncate:
                                 sdata = idata[:, :self.nchan_out, :, :]
                             else:
-                                sdata = idata.reshape(
+                                # Fix the type
+                                udata = bifrost.ndarray(
+                                    shape=itshape,
+                                    dtype="ci4",
+                                    native=False,
+                                    buffer=idata.ctypes.data,
+                                )
+                                
+                                try:
+                                    Unpack(udata, cdata)
+                                except NameError:
+                                    cdata = bifrost.zeros(
+                                        shape=idata.shape
+                                        dtype=np.complex64
+                                    )
+                                    Unpack(udata, cdata)
+                                
+                                cdata = cdata.reshape(
                                     self.ntime_gulp, -1, nchan // self.nchan_out, nstand, npol
                                 )
-                                sdata = sdata.mean(axis=2)
+                                cdata = cdata.mean(axis=2, dtype=np.complex64)
+
+                                try:
+                                    Quantize(cdata, sdata)
+                                except NameError:
+                                    qdata = bifrost.zeros(
+                                        shape=cdata.shape
+                                        dtype='ci4'
+                                    )
+                                    Quantize(cdata, sdata)
 
                             if self.npol_out != npol:
                                 sdata = sdata[:, :, :, :self.npol_out]
@@ -805,6 +831,13 @@ class DecimationOp(object):
                                     "process_time": process_time,
                                 }
                             )
+
+                if not do_truncate:
+                    try:
+                        del cdata
+                        del sdata
+                    except NameError:
+                        pass
 
 
 
