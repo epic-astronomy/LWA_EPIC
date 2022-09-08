@@ -770,6 +770,7 @@ class DecimationOp(object):
                 self.log.info("Decimation: Channel bandwidth is %.3f kHz", act_chan_bw/1e3)
                 
                 ohdr = ihdr.copy()
+                ohdr["chan0"] = chan0
                 ohdr["nchan"] = self.nchan_out
                 ohdr["npol"] = self.npol_out
                 ohdr["cfreq"] = chan0 * CHAN_BW + 0.5 * (self.nchan_out - 1) * act_chan_bw
