@@ -3,8 +3,20 @@ name: Test LWA EPIC
 on: [push, pull_request]
 
 jobs:
+  pre_test:
+    runs-on: ubuntu-latest
+    outputs:
+      should_skip: ${{ steps.skip_check.outputs.should_skip }}
+    steps:
+      - id: skip_check
+        uses: fkirc/skip-duplicate-actions@v5
+        with:
+          concurrent_skipping: 'same_content'
+          skip_after_successful_duplicate: 'true'
+          do_not_skip: '["pull_request", "workflow_dispatch", "schedule"]'
   test:
-
+    needs: pre_test
+    if: ${{ needs.pre_test.outputs.should_skip != 'true' }}
     runs-on: [self-hosted, linux, x64]
     defaults:
      run:
