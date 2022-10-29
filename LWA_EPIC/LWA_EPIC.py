@@ -763,7 +763,7 @@ class DecimationOp(object):
                 if nchan % self.nchan_out == 0:
                     do_truncate = False
                     navg = nchan // self.nchan_out
-                    act_chan_bw = CHAN_BW * (nchan // self.nchan_out)
+                    act_chan_bw = CHAN_BW * navg
                     chan0 = chan0 + 0.5 * (nchan // self.nchan_out - 1)
                     self.log.info("Decimation: Running in averaging mode")
                 else:
@@ -1055,12 +1055,16 @@ class MOFFCorrelatorOp(object):
                             phases[:, :, i, :, :, :] = 0.0
                     phases = phases.conj()
                     np.save(phasename, phases)
+                acphases = np.abs(phases, dtype=np.complex64)
                 phases = bifrost.ndarray(phases)
+                acphases = bifrost.ndarray(acphases)
                 
                 try:
                     copy_array(gphases, phases)
+                    copy_array(gacphases, acphases)
                 except NameError:
                     gphases = phases.copy(space="cuda")
+                    gacphases = acphases.copy(space="cuda")
 
                 oshape = (1, nchan, npol ** 2, self.grid_size, self.grid_size)
                 ogulp_size = nchan * npol ** 2 * self.grid_size * self.grid_size * 8
@@ -1206,13 +1210,6 @@ class MOFFCorrelatorOp(object):
                                         ) * self.grid_size // 2,
                                         space="cuda",
                                     )
-                                    autocorr_il = bifrost.ndarray(
-                                        np.ones(
-                                            shape=(1, nchan, nstand, npol ** 2, self.ant_extent, self.ant_extent),
-                                            dtype=np.complex64
-                                        ),
-                                        space="cuda",
-                                    )
 
                                 try:
                                      bf_auto.execute(udata, autocorrs)
@@ -1265,7 +1262,7 @@ class MOFFCorrelatorOp(object):
                                     except NameError:
                                         bf_vgrid_autocorr = VGrid()
                                         bf_vgrid_autocorr.init(
-                                            autocorr_lo, autocorr_il, self.grid_size, polmajor=False
+                                            autocorr_lo, gacphases, self.grid_size, polmajor=False
                                         )
                                         bf_vgrid_autocorr.execute(autocorrs_av, autocorr_g)
                                     autocorr_g = autocorr_g.reshape(1 * nchan * npol ** 2, self.grid_size, self.grid_size)
