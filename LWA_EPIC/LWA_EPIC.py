@@ -816,7 +816,7 @@ class DecimationOp(object):
                                             
                                             #pragma unroll
                                             for(int m=0; m<{navg}; m++) {{
-                                                jF = j*{avg} + m;
+                                                jF = j*{navg} + m;
                                                 sample = b(i,jF,k,l).real_imag;
                                                 re += ((signed char)  (sample & 0xF0))       / 16;
                                                 im += ((signed char) ((sample & 0x0F) << 4)) / 16;
