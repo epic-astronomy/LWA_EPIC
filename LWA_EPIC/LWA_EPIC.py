@@ -1249,22 +1249,22 @@ class MOFFCorrelatorOp(object):
                                     autocorr_g = autocorr_g.reshape(
                                         1, nchan, npol ** 2, self.grid_size, self.grid_size
                                     )
-                                    #try:
-                                    #    bf_romein_autocorr.execute(autocorrs_av, autocorr_g)
-                                    #except NameError:
-                                    #    bf_romein_autocorr = Romein()
-                                    #    bf_romein_autocorr.init(
-                                    #        autocorr_lo, autocorr_il, self.grid_size, polmajor=False
-                                    #    )
-                                    #    bf_romein_autocorr.execute(autocorrs_av, autocorr_g)
                                     try:
-                                        bf_vgrid_autocorr.execute(autocorrs_av, autocorr_g)
+                                        bf_romein_autocorr.execute(autocorrs_av, autocorr_g)
                                     except NameError:
-                                        bf_vgrid_autocorr = VGrid()
-                                        bf_vgrid_autocorr.init(
+                                        bf_romein_autocorr = Romein()
+                                        bf_romein_autocorr.init(
                                             autocorr_lo, gacphases, self.grid_size, polmajor=False
                                         )
-                                        bf_vgrid_autocorr.execute(autocorrs_av, autocorr_g)
+                                        bf_romein_autocorr.execute(autocorrs_av, autocorr_g)
+                                    # try:
+                                    #     bf_vgrid_autocorr.execute(autocorrs_av, autocorr_g)
+                                    # except NameError:
+                                    #     bf_vgrid_autocorr = VGrid()
+                                    #     bf_vgrid_autocorr.init(
+                                    #         autocorr_lo, gacphases, self.grid_size, polmajor=False
+                                    #     )
+                                    #     bf_vgrid_autocorr.execute(autocorrs_av, autocorr_g)
                                     autocorr_g = autocorr_g.reshape(1 * nchan * npol ** 2, self.grid_size, self.grid_size)
                                     # autocorr_g = romein_float(autocorrs_av,autocorr_g,autocorr_il,autocorr_lx,autocorr_ly,autocorr_lz,self.ant_extent,self.grid_size,nstand,nchan*npol**2)
                                     # Inverse FFT
