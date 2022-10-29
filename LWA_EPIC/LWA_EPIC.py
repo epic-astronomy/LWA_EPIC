@@ -1055,7 +1055,8 @@ class MOFFCorrelatorOp(object):
                             phases[:, :, i, :, :, :] = 0.0
                     phases = phases.conj()
                     np.save(phasename, phases)
-                acphases = np.abs(phases, dtype=np.complex64)
+                acphases = np.abs(phases) + 0j
+                acphases = acphases.astype(np.complex64)
                 phases = bifrost.ndarray(phases)
                 acphases = bifrost.ndarray(acphases)
                 
