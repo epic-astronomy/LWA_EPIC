@@ -802,7 +802,7 @@ class DecimationOp(object):
                                 gdata = idata.copy(space='cuda')
                                 adata = bifrost.zeros(
                                     shape=(self.ntime_gulp, self.nchan_out, nstand, self.npol_out),
-                                    dtype='ci4',
+                                    dtype='ci8',
                                     space='cuda'
                                 )
 
