@@ -427,7 +427,7 @@ class FDomainOp(object):
 
                 igulp_size = self.ntime_gulp * 1 * nstand * npol * 8  # complex64
                 ishape = (self.ntime_gulp // nchan, nchan, nstand, npol)
-                ogulp_size = self.ntime_gulp * 1 * nstand * npol * 1  # ci4
+                ogulp_size = self.ntime_gulp * 1 * nstand * npol * 2  # ci8
                 oshape = (self.ntime_gulp // nchan, nchan, nstand, npol)
                 # self.iring.resize(igulp_size)
                 self.oring.resize(ogulp_size, buffer_factor=5)
@@ -462,7 +462,7 @@ class FDomainOp(object):
                                 # Setup and load
                                 idata = ispan.data_view(np.complex64).reshape(ishape)
 
-                                odata = ospan.data_view(np.int8).reshape(oshape)
+                                odata = ospan.data_view('ci8').reshape(oshape)
 
                                 # FFT, shift, and phase
                                 fdata = fft(idata, axis=1)
@@ -473,11 +473,11 @@ class FDomainOp(object):
                                 try:
                                     Quantize(fdata, qdata, scale=1. / np.sqrt(nchan))
                                 except NameError:
-                                    qdata = bifrost.ndarray(shape=fdata.shape, native=False, dtype="ci4")
+                                    qdata = bifrost.ndarray(shape=fdata.shape, dtype="ci8")
                                     Quantize(fdata, qdata, scale=1. / np.sqrt(nchan))
 
                                 # Save
-                                odata[...] = qdata.copy(space="cuda_host").view(np.int8).reshape(oshape)
+                                odata[...] = qdata.copy(space="cuda_host").reshape(oshape)
 
                                 if self.profile:
                                     spani += 1
@@ -753,7 +753,7 @@ class DecimationOp(object):
 
                 igulp_size = self.ntime_gulp * nchan * nstand * npol * 1  # ci4
                 ishape = (self.ntime_gulp, nchan, nstand, npol)
-                ogulp_size = self.ntime_gulp * self.nchan_out * nstand * self.npol_out * 1  # ci4
+                ogulp_size = self.ntime_gulp * self.nchan_out * nstand * self.npol_out * 2  # ci8
                 oshape = (self.ntime_gulp, self.nchan_out, nstand, self.npol_out)
                 self.iring.resize(igulp_size, buffer_factor= 5)
                 self.oring.resize(ogulp_size, buffer_factor= 10)  # , obuf_size)
@@ -762,10 +762,12 @@ class DecimationOp(object):
                 act_chan_bw = CHAN_BW
                 if nchan % self.nchan_out == 0:
                     do_truncate = False
+                    navg = nchan // self.nchan_out
                     act_chan_bw = CHAN_BW * (nchan // self.nchan_out)
                     chan0 = chan0 + 0.5 * (nchan // self.nchan_out - 1)
                     self.log.info("Decimation: Running in averaging mode")
                 else:
+                    navg = 1
                     self.log.info("Decimation: Running in truncation mode")
                 self.log.info("Decimation: Channel bandwidth is %.3f kHz", act_chan_bw/1e3)
                 
@@ -791,51 +793,45 @@ class DecimationOp(object):
                             reserve_time = curr_time - prev_time
                             prev_time = curr_time
 
-                            idata = ispan.data_view(np.uint8).reshape(ishape)
-                            odata = ospan.data_view(np.uint8).reshape(oshape)
+                            idata = ispan.data_view('ci4').reshape(ishape)
+                            odata = ospan.data_view('ci8').reshape(oshape)
 
-                            if do_truncate:
-                                sdata = idata[:, :self.nchan_out, :, :]
-                                if self.npol_out != npol:
-                                    sdata = sdata[:, :, :, :self.npol_out]
-                            else:
-                                try:
-                                    copy_array(gdata, idata)
-                                except NameError:
-                                    gdata = idata.copy(space='cuda')
-                                    adata = bifrost.zeros(
-                                        shape=(self.ntime_gulp, self.nchan_out, nstand, self.npol_out),
-                                        dtype='u8',
-                                        space='cuda'
-                                    )
-                                
-                                bifrost.map("""
-                                signed char re, im;
-                                #pragma unroll
-                                for(int l=0; l<{npol_out}; l++) {{
-                                    re = ((signed char) (b(i,j*{navg},k,l) & 0xF0)) / 16;
-                                    im = ((signed char) ((b(i,j*{navg},k,l) & 0x0F) << 4)) / 16;
-                                    #pragma unroll
-                                    for(int m=1; m<{navg}; m++) {{
-                                        re += ((signed char) (b(i,j*{navg}+m,k,l) & 0xF0)) / 16;
-                                        im += ((signed char) ((b(i,j*{navg}+m,k,l) & 0x0F) << 4)) / 16;
-                                    }}
-                                    re /= {navg};
-                                    im /= {navg};
-                                    a(i,j,k,l) = ((re * 16) & 0xF0) | ((im * 16) >> 4);
-                                }}
-                                """.format(npol_out=self.npol_out, navg=nchan // self.nchan_out),
-                                {'a': adata, 'b': gdata},
-                                axis_names=('i', 'j', 'k'),
-                                shape=adata.shape[:3])
-                                
-                                try:
-                                    copy_array(sdata, adata)
-                                except NameError:
-                                    sdata = adata.copy(space='system')
+                            try:
+                                copy_array(gdata, idata)
+                            except NameError:
+                                gdata = idata.copy(space='cuda')
+                                adata = bifrost.zeros(
+                                    shape=(self.ntime_gulp, self.nchan_out, nstand, self.npol_out),
+                                    dtype='ci4',
+                                    space='cuda'
+                                )
 
-                            odata[...] = sdata
-
+                            bifrost.map("""
+                                        int jF;
+                                        signed char sample, re, im;
+                                        
+                                        #pragma unroll
+                                        for(int l=0; l<{npol_out}; l++) {{
+                                            re = im = 0;
+                                            
+                                            #pragma unroll
+                                            for(int m=0; m<{navg}; m++) {{
+                                                jF = j*DECIM + m;
+                                                sample = b(i,jF,k,l).real_imag;
+                                                re += ((signed char)  (sample & 0xF0))       / 16;
+                                                im += ((signed char) ((sample & 0x0F) << 4)) / 16;
+                                            }}
+                                            
+                                            // Save
+                                            a(i,j,k,l) = Complex<signed char>(re, im);
+                                        }}
+                                        """.format(npol_out=self.npol_out, navg=navg),
+                                        {'a': adata, 'b': gdata},
+                                        axis_names=('i', 'j', 'k'),
+                                        shape=adata.shape[:3])
+                            
+                            copy_array(odata, adata)
+                            
                             curr_time = time.time()
                             process_time = curr_time - prev_time
                             prev_time = curr_time
@@ -847,12 +843,11 @@ class DecimationOp(object):
                                 }
                             )
 
-                if not do_truncate:
-                    try:
-                        del cdata
-                        del sdata
-                    except NameError:
-                        pass
+                try:
+                    del gdata
+                    del adata
+                except NameError:
+                    pass
 
 
 
@@ -956,7 +951,7 @@ class MOFFCorrelatorOp(object):
                 self.newflag = True
                 accum = 0
 
-                igulp_size = self.ntime_gulp * nchan * nstand * npol * 1  # ci4
+                igulp_size = self.ntime_gulp * nchan * nstand * npol * 2  # ci8
                 itshape = (self.ntime_gulp, nchan, nstand, npol)
 
                 freq = chan0 * CHAN_BW + np.arange(nchan) * act_chan_bw
@@ -1092,19 +1087,12 @@ class MOFFCorrelatorOp(object):
 
                             # Correlator
                             # Setup and load
-                            idata = ispan.data_view(np.uint8).reshape(itshape)
-                            # Fix the type
-                            udata = bifrost.ndarray(
-                                shape=itshape,
-                                dtype="ci4",
-                                native=False,
-                                buffer=idata.ctypes.data,
-                            )
+                            idata = ispan.data_view('ci8').reshape(itshape)
 
                             if self.benchmark is True:
                                 time1 = time.time()
 
-                            udata = udata.copy(space="cuda")
+                            udata = idata.copy(space="cuda")
                             if self.benchmark is True:
                                 time1a = time.time()
                                 print("  Input copy time: %f" % (time1a - time1))
@@ -1458,7 +1446,7 @@ class MOFF_DFT_CorrelatorOp(object):
                 self.newflag = True
                 accum = 0
 
-                igulp_size = self.ntime_gulp * nchan * nstand * npol * 1  # ci4
+                igulp_size = self.ntime_gulp * nchan * nstand * npol * 2  # ci8
                 itshape = (self.ntime_gulp, nchan, nstand, npol)
 
                 # Sample locations at right u/v/w values
@@ -1579,16 +1567,14 @@ class MOFF_DFT_CorrelatorOp(object):
 
                             # Correlator
                             # Setup and load
-                            idata = ispan.data_view(np.uint8).reshape(itshape)
-                            # Fix the type
-                            tdata = bifrost.ndarray(shape=itshape, dtype="ci4", native=False, buffer=idata.ctypes.data)
-
+                            idata = ispan.data_view('ci8').reshape(itshape)
+                            
                             if self.benchmark is True:
                                 time1 = time.time()
                             # chan pol stand
-                            tdata = tdata.transpose((1, 3, 2, 0))
-                            tdata = tdata.reshape(nchan * npol, nstand, self.ntime_gulp)
-                            tdata = tdata.copy()
+                            idata = idata.transpose((1, 3, 2, 0))
+                            idata = idata.reshape(nchan * npol, nstand, self.ntime_gulp)
+                            tdata = idata.copy()
 
                             tdata = tdata.copy(space="cuda")
                             # Unpack
