@@ -76,7 +76,7 @@ cmake_print_variables(outVar)
 
 add_library(epic_cu STATIC src/MOFF_cu_handler.cu src/ex/host_helpers.cu)
 target_compile_features(epic_cu PUBLIC cxx_std_17)
-target_compile_options(epic_cu PRIVATE -O3 -use_fast_math -Xptxas -v) 
+target_compile_options(epic_cu PRIVATE -O3 -use_fast_math) 
 set_target_properties( epic_cu
                        PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 set_target_properties(epic_cu PROPERTIES CUDA_ARCHITECTURES "86")
