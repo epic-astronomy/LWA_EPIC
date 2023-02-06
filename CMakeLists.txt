@@ -92,6 +92,8 @@ target_link_libraries(epic++ PRIVATE pybind11::embed raft hwy epiclib ibverbs ep
 #OpenMP::OpenMP_CXX
 )
 
+configure_file(src/python/epic_utils.py ${CMAKE_CURRENT_BINARY_DIR}/epic_utils.py COPYONLY)
+
 
 
 

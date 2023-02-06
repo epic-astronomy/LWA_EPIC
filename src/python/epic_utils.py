@@ -1,16 +1,20 @@
 import numpy as np
 from lsl.common.stations import lwasv
 from astropy.constants import c as speed_of_light
+import matplotlib.image
 
 
-def gen_loc_lwasv(
-    grid_size=64, grid_resolution=20 / 60.
-):
+def gen_loc_lwasv(grid_size, grid_resolution):
     """
     Generate grid centered locations of LWASV stands compatible with DFT code.
+    grid_size: Dimension of the grid.
+    grid_resolution: Grid resolution in degrees
     """
 
-    lsl_locsf = np.array([(ant.stand.x, ant.stand.y, ant.stand.z) for ant in lwasv[::2]])
+    lsl_locsf = np.array(
+        [(ant.stand.x, ant.stand.y, ant.stand.z) for ant in lwasv[::2]]
+    )
+    # print(lsl_locsf[0,:])
 
     lsl_locsf[[i for i, a in enumerate(lwasv[::2]) if a.stand.id == 256], :] = 0.0
 
@@ -21,15 +25,92 @@ def gen_loc_lwasv(
     # lsl_locs = lsl_locs.T
 
     lsl_locsf = lsl_locsf / delta
-    #sample_grid[np.newaxis, np.newaxis, :, np.newaxis]
+    # print(lsl_locsf[0,:])
+
+    # sample_grid[np.newaxis, np.newaxis, :, np.newaxis]
+    # print(np.min(lsl_locsf, axis=0, keepdims=True))
     lsl_locsf -= np.min(lsl_locsf, axis=0, keepdims=True)
+    # print(lsl_locsf[0,:])
 
     # Centre locations slightly
-    lsl_locsf += (grid_size - np.max(lsl_locsf, axis=0, keepdims=True)) / 2.
+    # divide by wavelength and add grid_size/2 to get the correct grid positions
+    lsl_locsf -= np.max(lsl_locsf, axis=0, keepdims=True) / 2.0
+    # print(lsl_locsf[0,:])
 
     # add ntime axis
     # final dimensions = 3, ntime, nchan, nant, npol
     # locc = np.broadcast_to(lsl_locsf, (ntime, 3, npol, nchan, lsl_locs.shape[1])).transpose(1, 0, 3, 4, 2).copy()
-    return dict(delta=delta, locations=lsl_locsf.astype(np.double))
+    return dict(delta=delta, locations=lsl_locsf.astype(np.double).ravel().copy())
+
+
+def gen_phases_lwasv(nchan, chan0):
+    print("ok0")
+    nstand = int(len(lwasv.antennas) / 2)
+    npol = 2
+    phases = np.zeros((nchan, nstand, npol), dtype=np.complex64)
+    bandwidth = 25000
+    freq = np.arange(chan0, chan0 + nchan) * bandwidth
+    print("ok1")
+    for i in range(nstand):
+        # X
+        a = lwasv.antennas[2 * i + 0]
+        delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
+        phases[:, i, 0] = np.exp(2j * np.pi * freq * delay)
+        phases[:, i, 0] /= np.sqrt(a.cable.gain(freq))
+
+        # Y
+        a = lwasv.antennas[2 * i + 1]
+        delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
+        phases[:, i, 1] = np.exp(2j * np.pi * freq * delay)
+        phases[:, i, 1] /= np.sqrt(a.cable.gain(freq))
+        # Explicit bad and suspect antenna masking - this will
+        # mask an entire stand if either pol is bad
+        if (
+            lwasv.antennas[2 * i + 0].combined_status < 33
+            or lwasv.antennas[2 * i + 1].combined_status < 33
+        ):
+            phases[:, i, :] = 0.0
+        # Explicit outrigger masking - we probably want to do
+        # away with this at some point
+        if a.stand.id == 256:
+            phases[:, i, :] = 0.0
+    print("ok")
+    return phases.conj().ravel().copy()
+
+def save_output(output_arr, grid_size, nchan, filename):
+    output_arr = output_arr.reshape((nchan, grid_size, grid_size))
+    output_arr = np.fft.fftshift(output_arr, axes=(1,2))
+
+    # output_arr = output_arr.sum(axis=0)
+    # matplotlib.image.imsave(filename, output_arr[:,:].T/1000)
+    matplotlib.image.imsave(filename, output_arr[0,:,:].T/1000)
+
+
+
+
+
+if __name__=="__main__":
+    # a = gen_phases_lwasv(132, 800)
+    # print(a[:4])
+
+    freq = 1260 * 25000
+
+    # b = lwasv.antennas[0]
+    # delay = b.cable.delay(freq) - b.stand.z / speed_of_light.value
+    # cphase = np.exp(2j * np.pi * freq * delay) / np.sqrt(b.cable.gain(freq))
+    # print(a[0], cphase)
+    # # assert(a[0]==cphase)
+
+    # b = lwasv.antennas[1]
+    # delay = b.cable.delay(freq) - b.stand.z / speed_of_light.value
+    # print(a[1],cphase)
+
+    res=gen_loc_lwasv(64, 2)
+    print(freq)
+    # print(res['locations'][:3*256].astype(float))
+    print(32+(res['locations'][3*256:6*256].astype(float)*freq/3e8))
+
+
+    # assert(a[1]==cphase)
 
 
