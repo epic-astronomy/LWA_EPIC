@@ -1,0 +1,15 @@
+[submodule "src/extern/RaftLib"]
+	path = src/extern/RaftLib
+	url = https://github.com/RaftLib/RaftLib.git
+[submodule "src/extern/benchmark"]
+	path = src/extern/benchmark
+	url = https://github.com/google/benchmark.git
+[submodule "src/extern/highway"]
+	path = src/extern/highway
+	url = https://github.com/google/highway.git
+[submodule "src/extern/infinity"]
+	path = src/extern/infinity
+	url = https://github.com/claudebarthels/infinity.git
+[submodule "src/extern/pybind11"]
+	path = src/extern/pybind11
+	url = https://github.com/pybind/pybind11.git

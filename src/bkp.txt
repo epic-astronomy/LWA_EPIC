@@ -1,0 +1,546 @@
+   // #ifdef USELESS
+    // const char* SERVER_IP = "239.168.40.11";
+    // int PORT_NUMBER = 4016;
+    // int BUFFER_SIZE = 9000;
+    // // Create new context
+    // std::cout << "pre\n";
+    // infinity::core::Context* context = new infinity::core::Context(0, 1);
+
+    // std::cout << "0\n";
+    // // Create a queue pair
+    // infinity::queues::QueuePairFactory* qpFactory = new infinity::queues::QueuePairFactory(context);
+    // std::cout << "0.5\n";
+    // infinity::queues::QueuePair* qp = qpFactory->connectToRemoteHost(SERVER_IP, PORT_NUMBER);
+    // std::cout << "1\n";
+    // // Create and register a buffer with the network
+    // infinity::memory::Buffer* localBuffer = new infinity::memory::Buffer(context, BUFFER_SIZE);
+    // std::cout << "2\n";
+
+    // // Get information from a remote buffer
+    // infinity::memory::RegionToken* remoteBufferToken = (infinity::memory::RegionToken*)qp->getUserData(); // new infinity::memory::RegionToken();
+    // std::cout << "3\n";
+
+    // // Read (one-sided) from a remote buffer and wait for completion
+    // infinity::requests::RequestToken requestToken(context);
+    // std::cout << "3\n";
+
+    // qp->read(localBuffer, remoteBufferToken, &requestToken);
+    // requestToken.waitUntilCompleted();
+    // std::cout << "4\n";
+
+    // // // Write (one-sided) content of a local buffer to a remote buffer and wait for completion
+    // // qp->write(localBuffer, remoteBufferToken, &requestToken);
+    // // requestToken.waitUntilCompleted();
+
+    // // // Send (two-sided) content of a local buffer over the queue pair and wait for completion
+    // // qp->send(localBuffer, &requestToken);
+    // // requestToken.waitUntilCompleted();
+
+    // // Close connection
+    // delete remoteBufferToken;
+    // delete localBuffer;
+    // delete qp;
+    // delete qpFactory;
+    // delete context;
+
+    //     // struct ibv_ah* ah;
+    //     // struct ibv_ah_attr ah_attr;
+    //     // memset(&ah_attr, 0, sizeof(ah_attr));
+    //     // ah_attr.is_global = 0;
+    //     // ah_attr.dlid = port_attr.lid;
+    //     // ah_attr.sl = sl;
+    //     // ah_attr.src_path_bits = 0;
+    //     // ah_attr.port_num = 1;
+    //     // ah = ibv_create_ah(pd, &ah_attr);
+    //     // if (!ah) {
+    //     //     fprintf(stderr, "Error, ibv_create_ah() failed\n");
+    //     //     return -1;
+    //     // }
+
+    //     exit(1);
+
+    // //#ifdef _USELESS
+    // #ifdef __AVX512__
+    //     std::cout << "512\n";
+    // #endif
+    //     /** instantiate print kernel **/
+    //     raft::print<std::string> p;
+    //     raft::print<int> pint;
+    //     /** instantiate hello world kernel **/
+    //     hi hello;
+    //     /** make a map object **/
+    //     raft::map m;
+    //     /** add kernels to map, both hello and p are executed concurrently **/
+    //     // m += hello >> p;
+    //     simple_producer producer;
+    //     simple_post post;
+    //     simple_consumer consumer;
+    //     m += producer >> consumer >> post >> pint;
+    //     __m512i test2;
+
+    //     int sockfd;
+
+    //     sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+
+    //     sockaddr_in sockaddr;
+    //     bzero(&sockaddr, sizeof(sockaddr));
+    //     sockaddr.sin_family = AF_INET;
+    //     sockaddr.sin_port = htons(4015);
+    //     sockaddr.sin_addr.s_addr = inet_addr("239.168.40.11");
+
+    //     int DEFAULT_SOCK_BUF_SIZE = 256 * 1024 * 1024;
+
+    //     setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &DEFAULT_SOCK_BUF_SIZE, sizeof(DEFAULT_SOCK_BUF_SIZE));
+    //     setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &DEFAULT_SOCK_BUF_SIZE, sizeof(DEFAULT_SOCK_BUF_SIZE));
+
+    //     ip_mreq mreq;
+    //     memset(&mreq, 0, sizeof(ip_mreq));
+    //     mreq.imr_multiaddr.s_addr = inet_addr("239.168.40.11");
+    //     mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+    //     setsockopt(sockfd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq));
+
+    //     auto rc = bind(sockfd, (struct sockaddr*)&sockaddr, sizeof(sockaddr));
+    //     std::cout << "rc: " << rc << std::endl;
+    //     // rc=listen(sockfd,5);
+    //     if (rc < 0) {
+    //         fprintf(stderr, "listen() failed %d : %s\n", errno, strerror(errno));
+    //         exit(1);
+    //     }
+
+    //     int buffer_size = 9000;
+
+    //     uint8_t* buffer = (uint8_t*)(malloc(buffer_size));
+    //     uint8_t test = 128;
+    //     auto buffer2 = hwy::AllocateAligned<uint8_t>(buffer_size);
+    //     auto buffer3 = hwy::AllocateAligned<uint8_t>(buffer_size);
+
+    //     tag8 a, b;
+    //     auto max_lanes = hn::Lanes(a);
+    //     for (auto i = 0; i < 128; i += max_lanes) {
+    //         Store(hn::Iota(a, uint8_t(0)), a, buffer3.get() + i);
+    //     }
+
+
+
+
+
+
+
+
+    // vma_api_t* _api = vma_get_api();
+    //     std::cout << "sizet " << sizeof(size_t) << std::endl;
+    //     // exit(1);
+    //     // &((vma_packets_t*)(buffer3.get()))->pkts[0]
+    //     // _pkt = &reinterpret_cast<vma_packets_t*>(buffer3.get())->pkts[0];
+    //     // std::cout<<_pkt<<std::endl;
+    //     // pkt_ptr = (uint8_t*)(_pkt);
+
+    //     // std::cout<<*(uint8_t*)_pkt<<std::endl;
+    //     // fprintf(stdout,"Seq: %d\n", *(uint8_t*)pkt_ptr);
+    //     // auto *uptr = (uint8_t*)((&((vma_packets_t*)(buffer3.get()))->pkts[0])->iov[0].iov_base);
+
+    //     // for(auto i=0;i<32;++i){
+    //     //     fprintf(stdout,"Seq: %d\n", *(pkt_ptr+i));
+    //     // }
+
+    //     // exit(1);
+
+    //     chips_packet data_packet;
+    //     data_packet.hdr.nchan = 140;
+    //     // data_packet.data = std::move(buffer2);
+
+    //     vma_packets_t _buf_pkts;
+    //     vma_packet_t _pktt;
+    //     iovec iov_pkt1;
+    //     iov_pkt1.iov_base = &data_packet; // buffer2.get();
+    //     _pktt.iov[0] = iov_pkt1;
+    //     _buf_pkts.pkts[0] = _pktt;
+
+
+
+
+
+
+
+
+
+
+     // auto ret = _api->recvfrom_zcopy(sockfd, (buffer2.get()), buffer_size, &flags, NULL, NULL);
+        // printf("Address of x is %p %p %p\n", (void*)pkt_ptr, (void*)_pkt, (uint8_t*)_pkt->iov[0].iov_base);
+
+        // for (auto i = 0; i < 32; ++i) {
+        //     fprintf(stdout, " %d ", *(pkt_ptr + i));
+        // }
+        // const chips_hdr_type* pkt_hdr = (chips_hdr_type*)pkt_ptr;
+        // int max_tries=128;
+        // for(auto i=0;i<max_tries;++i){
+        //     fprintf(stdout, "nchan: %d\n", (((chips_hdr_type*)(buffer2.get()+i))->nchan));
+        //     if(((chips_hdr_type*)(buffer2.get()+i))->nchan==(uint8_t)132){
+        //         std::cout<<"HEREEEE: "<<i<<std::endl;
+        //     }
+
+
+
+
+
+
+
+
+
+
+
+
+        // int n=16;
+        // std::cout<<"binary: ";
+        // for(auto i=0;i<n;i++){
+        //     std::cout<<std::bitset<32>(*(size_t*)(buffer2.get()+i*4));
+        // }
+
+        // std::cout <<" t\n";
+
+        // std::cout<<pkt_ptr<<" "<<&data_packet<<std::endl;
+        // std::cout << "ROACH ID: " << std::bitset<8>(pkt_hdr->roach) << " t\n";
+        // std::cout << "ROACH ID: " << (int)(pkt_hdr->roach) << " t\n";
+        // fprintf(stdout, "ROACH ID %d\n", pkt_hdr->roach);
+        // std::cout<<uint64_t(be64toh(pkt_hdr->seq))<<std::endl;
+        // fprintf(stdout,"Seq: %d\n", uint64_t(be64toh(pkt_hdr->seq)));
+        // fprintf(stdout,"Seq: %d\n", pkt_hdr->seq);
+        // fprintf(stdout, "nchan: %d\n", pkt_hdr->nchan);
+        // fprintf(stdout,"Seq: %d\n", data_packet.hdr.nchan);
+/*sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+
+
+    sockaddr_in sockaddr;
+    bzero(&sockaddr, sizeof(sockaddr));
+    sockaddr.sin_family = AF_INET;
+    sockaddr.sin_port = htons(4015);
+    sockaddr.sin_addr.s_addr = inet_addr(ip.c_str());
+
+    int DEFAULT_SOCK_BUF_SIZE = 256 * 1024 * 1024;
+
+    setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &DEFAULT_SOCK_BUF_SIZE, sizeof(DEFAULT_SOCK_BUF_SIZE));
+    setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &DEFAULT_SOCK_BUF_SIZE, sizeof(DEFAULT_SOCK_BUF_SIZE));
+
+    ip_mreq mreq;
+    memset(&mreq, 0, sizeof(ip_mreq));
+    mreq.imr_multiaddr.s_addr = inet_addr(ip.c_str());
+    mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+    setsockopt(sockfd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq));
+
+    auto rc = bind(sockfd, (struct sockaddr*)&sockaddr, sizeof(sockaddr));*/
+
+
+
+    // int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+
+    // sockaddr_in sockaddr;
+    // bzero(&sockaddr, sizeof(sockaddr));
+    // sockaddr.sin_family = AF_INET;
+    // sockaddr.sin_port = htons(port);
+    // sockaddr.sin_addr.s_addr = inet_addr(ip.c_str());
+
+    // int DEFAULT_SOCK_BUF_SIZE = 256 * 1024 * 1024;
+
+    // setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &DEFAULT_SOCK_BUF_SIZE, sizeof(DEFAULT_SOCK_BUF_SIZE));
+    // setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &DEFAULT_SOCK_BUF_SIZE, sizeof(DEFAULT_SOCK_BUF_SIZE));
+
+    // ip_mreq mreq;
+    // memset(&mreq, 0, sizeof(ip_mreq));
+    // mreq.imr_multiaddr.s_addr = inet_addr(ip.c_str());
+    // mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+    // setsockopt(sockfd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq));
+
+    // auto rc = bind(sockfd, (struct sockaddr*)&sockaddr, sizeof(sockaddr));
+    // // auto verbs = Verbs(sockfd, 9000);
+    // int buffer_size = 9000;
+    // auto buffer2 = hwy::AllocateAligned<uint8_t>(buffer_size);
+    // uint8_t* ptr;
+    // // int total = 100000;
+    // // int runs = 16 * total;
+    // // int counter = runs;
+    // // float time_elapsed = 0.;
+    // //#ifndef _VMA_
+    // // while (--counter) {
+    // // auto start = high_resolution_clock::now();
+    // // auto len = verbs.recv_packet(&ptr);
+    // // auto stop = high_resolution_clock::now();
+    // // std::cout << "Received: " << len << " bytes\n";
+    // uint8_t* pkt_ptr;
+    // vma_packet_t* _pkt{ 0 };
+    // vma_api_t* _api = vma_get_api();
+    // int flags = 0;
+    // auto ret = _api->recvfrom_zcopy(sockfd, (buffer2.get()), buffer_size, &flags, NULL, NULL);
+    // // if (ret < 0) {
+    // //     std::cout << "No bytes returned " << ret << "\n";
+    // // } else {
+    // //     std::cout << "Returned " << ret << " bytes\n";
+    // // }
+    // _pkt = 0;
+    // if (flags & MSG_VMA_ZCOPY) {
+    //     // std::cout << "ZCOPY\n";
+    //     //  _pkt = &((vma_packets_t*)buffer)->pkts[0];
+    //     //  pkt_ptr = (uint8_t*)_pkt->iov[0].iov_base;
+    //     //  pkt_ptr = (uint8_t*)_buf_pkts.pkts[0].iov[0].iov_base;
+
+    //     _pkt = &((vma_packets_t*)(buffer2.get()))->pkts[0];
+    //     pkt_ptr = (uint8_t*)_pkt->iov[0].iov_base;
+    //     // std::cout<<*(size_t*)(((vma_packets_t*)(buffer2.get()))->pkts[0].packet_id)<<"NUM\n";
+
+    //     // std::cout << "ROACH ID: " << *pkt_ptr << " \n";
+    // } else {
+    //     // std::cout << "Regular copy\n";
+    //     pkt_ptr = buffer2.get();
+    // }
+    // // printf("Address of x is %p %p %p\n", (void*)pkt_ptr, (void*)_pkt, (uint8_t*)_pkt->iov[0].iov_base);
+
+    // // for (auto i = 0; i < 32; ++i) {
+    // //     fprintf(stdout, " %d ", *(pkt_ptr + i));
+    // // }
+
+        // int max_tries=128;
+    // const chips_hdr_type* pkt_hdr = (chips_hdr_type*)(ptr);
+    // time_elapsed += duration_cast<microseconds>(stop - start).count();
+    // std::cout << "ROACH ID: " << (int)(pkt_hdr->roach) << " t\n";
+    // std::cout << "nchan: " << (int)(pkt_hdr->nchan) << std::endl;
+    // std::cout << "binary: ";
+    // int n = 10;
+    // for (auto i = 0; i < n; i++) {
+    //     std::cout << std::bitset<32>(*(size_t*)(ptr + i * 4));
+    // }
+    // std::cout<<"\n";
+    //}
+    // std::cout << "Average block time IBV (us): " << time_elapsed / float(total) << " us\n";
+    // std::cout << "Average packet time IBV (us): " << time_elapsed / float(runs) << " us\n";
+    // std::cout<<pkt_hdr->chan0<<std::endl;
+    // close(sockfd);
+
+
+
+
+
+
+
+
+
+
+    //////////////////////////////TESTING VMS vs Verbs//////////////////////////////
+    // auto ptr = hwy::AllocateAligned<num[]>(100);
+    // std::string ip = "239.168.40.13";
+    // int port = 4015;
+    auto udp_socket = MultiCastUDPSocket("239.168.40.13",4015);
+    int sockfd = udp_socket.get_fd();
+    tag8 _8bit_tag;
+    auto lanes = hn::Lanes(_8bit_tag);
+    size_t buffer_size = ceil(float(9000) / lanes) * lanes; // round to the nearest multiple of the vector size
+
+    size_t mappable_size = buffer_size * BF_VERBS_NPKTBUF * BF_VERBS_NQP;
+    // std::cout<<"mappable size: "<<mappable_size<<std::endl;
+    auto mmapable = hwy::AllocateAligned<uint8_t>(mappable_size);
+
+    // find the nearest boundary
+    auto hdr_size = sizeof(chips_hdr_type) + BF_VERBS_PAYLOAD_OFFSET;
+    int offset = ceil(float(hdr_size) / lanes) * lanes - hdr_size;
+
+    auto verbs = Verbs(sockfd, buffer_size); //, mmapable.get(), offset);
+    uint8_t* ptr;
+    int total = 1;
+    int runs = 16 * total;
+    size_t counter = runs;
+    double time_elapsed = 0.;
+    double piecewise_time = 0.;
+
+#ifndef _VMA_
+    while (--counter) {
+        auto start = high_resolution_clock::now();
+        auto len = verbs.recv_packet(&ptr);
+        auto stop = high_resolution_clock::now();
+        // std::cout << "Received: " << len << " bytes\n";
+        const chips_hdr_type* pkt_hdr = (chips_hdr_type*)(ptr);
+        // std::cout<<((((uint64_t)ptr)+sizeof(chips_hdr_type))%lanes)<<std::endl;
+        time_elapsed += duration_cast<microseconds>(stop - start).count();
+        piecewise_time += duration_cast<microseconds>(stop - start).count();
+
+        if (counter % 10000 == 0) {
+            std::cout << "Piecewise: " << piecewise_time / double(10000) << " " << counter << std::endl;
+            piecewise_time = 0.;
+        }
+        std::cout << "Seq: " << be64toh(pkt_hdr->seq) << " chan0: " << ntohs(pkt_hdr->chan0) << " nrsc: "<<int(pkt_hdr->roach)<< "\n";
+        //  std::cout << "ROACH ID: " << (int)(pkt_hdr->roach) << " t\n";
+        //  std::cout << "nchan: " << (int)(pkt_hdr->nchan) << std::endl;
+        //  std::cout << "binary: ";
+        //  int n = 10;
+        //  for (auto i = 0; i < n; i++) {
+        //      std::cout << std::bitset<32>(*(size_t*)(ptr + i * 4));
+        //  }
+        //  std::cout<<"\n";
+    }
+    std::cout << "Average block time IBV (us): " << time_elapsed / float(total) << " us\n";
+    std::cout << "Average packet time IBV (us): " << time_elapsed / float(runs) << " us\n";
+#endif
+
+    uint8_t* pkt_ptr;
+    vma_packet_t* _pkt{ 0 };
+    vma_api_t* _api = vma_get_api();
+    int flags = 0;
+
+    time_elapsed = 0.;
+    total = 100000;
+    runs = 16 * total;
+    counter = runs;
+    std::cout << "Total runs: " << counter << std::endl;
+    uint8_t* useless;
+    // int buffer_size = 9000;
+    auto buffer2 = hwy::AllocateAligned<uint8_t>(9000);
+    auto buffer3 = std::unique_ptr<uint8_t>((uint8_t*)malloc(buffer_size));
+    unsigned long long nbytes=0;
+#ifdef _VMA_
+    uint8_t* buf_start = (buffer2.get() + 16);
+    while (--counter) {
+        auto start = high_resolution_clock::now();
+        flags = MSG_VMA_ZCOPY_FORCE;
+
+        auto ret = _api->recvfrom_zcopy(sockfd, buf_start, buffer_size, &flags, NULL, NULL);
+        _pkt = 0;
+        if (flags & MSG_VMA_ZCOPY) {
+            _pkt = &((vma_packets_t*)(buf_start))->pkts[0];
+            pkt_ptr = (uint8_t*)_pkt->iov[0].iov_base;
+
+        } else {
+            // std::cout<<"normal\n";
+            pkt_ptr = buf_start;
+        }
+
+        //auto ret = ::recvfrom(sockfd, buf_start, buffer_size, flags, NULL, NULL);
+        pkt_ptr = buf_start;
+        if (ret < 0) {
+            std::cout << "Error\n";
+        }
+
+        auto stop = high_resolution_clock::now();
+        nbytes += ret;
+        time_elapsed += duration_cast<microseconds>(stop - start).count();
+        piecewise_time += duration_cast<microseconds>(stop - start).count();
+
+        if (counter % 10000 == 0) {
+            std::cout << "Piecewise: " << piecewise_time / double(10000) << " " << counter <<" "<<nbytes<<std::endl;
+            piecewise_time = 0.;
+        }
+        // }
+        const chips_hdr_type* pkt_hdr = (chips_hdr_type*)(pkt_ptr);
+        // std::cout<<(((uint64_t)pkt_hdr)%32)<<" "<<(((uint64_t)pkt_hdr))<<std::endl;
+        // std::cout<<int(pkt_hdr->roach)<<" "<<be64toh(pkt_hdr->seq)<<"\n";
+
+        if (_pkt) {
+            _api->free_packets(sockfd, _pkt,1);// ((vma_packets_t*)(buf_start))->n_packet_num);
+            _pkt = 0;
+            // std::cout << "free\n";
+        }
+    }
+    // for (auto i = 0; i < 256; ++i) {
+    //     printf("%d %p ", i, (void*)(buffer2.get() + i));
+    // }
+    // // tag8 a, b;
+    // std::cout << "Total lanes: " << hn::Lanes(a) << std::endl;
+    // hn::Store(hn::Load(a, buffer2.get() + 256), a, buffer3.get());
+
+    std::cout << "Avg block time VMA (us)" << time_elapsed / double(total) << std::endl;
+    std::cout << "Avg packet time VMA (us)" << time_elapsed / double(runs) << std::endl;
+#endif
+    //_api->free_packets(sockfd, _pkt, 1);
+    //_pkt = 0;
+
+    /** execute the map **/
+    // m.exe();
+    close(sockfd);
+ 
+
+
+
+// /**
+//  * @brief Half-precision complex multipy scale
+//  * 
+//  * Multiply two complex numbers and optinally scale it with a scalar. The multiplication 
+//  * is an fma operation and uses the optimized half2 intrinsics.
+//  * 
+//  * @param a First input complex value
+//  * @param b Second input complex value
+//  * @param scale 
+//  * @return __half2 
+//  */
+// __device__ inline __half2
+// __half2cms(__half2 a, __half2 b, __half scale=__half(1))
+// {
+//     // printf("cms %f %f %f %f %f\n",__half2float(a.x), __half2float(a.y), __half2float(b.x), __half2float(b.y), __half2float(scale));
+
+//     // printf("cmd prod: %f %f\n", __half2float(a.x*b.x-a.y*b.y), __half2float(a.x*b.y+a.y*b.x));
+
+//     return __hmul2(__halves2half2(scale,scale),__halves2half2(a.x*b.x-a.y*b.y, a.x*b.y+a.y*b.x));
+// }
+
+// /**
+//  * @brief Generate the grid value for the specified point
+//  *
+//  * @tparam T Data type of gridded data
+//  * @tparam ImgMode Imaging mode: Can be SINGLE_POL or DUAL_POL. Only DUAL_POL is supported for now.
+//  * @param[out] pixel Output pointer to store the grid value
+//  * @param u U grid position for the grid point (0-based)
+//  * @param v V grid position for the grid point (0-based)
+//  * @param f_eng Pointer to the F-engine data
+//  * @param antpos Pointer to antenna position data stored with dimensions [stand, 3 (x, y, z)]
+//  * @param phases Pointer to the complex phases  with dimensions
+//  * @param support Half of the support size. Future versions will include support for antenna/pol dependent kernels
+//  * @param gcf_tex 2D texture object for the gcf kernel. Should be stored for u>=0, v>=0 with a lower-left origin
+//  * @param nstands Number of antennas
+//  * @return void
+//  */
+// template<class T, IMAGING_MODE ImgMode = DUAL_POL, std::enable_if_t<ImgMode == DUAL_POL, bool> = true>
+// __device__ inline void
+// get_grid_value(T& pixel,
+//                int u,
+//                int v,
+//                uint8_t* __restrict__ f_eng,
+//                float* __restrict__ antpos,
+//                float* __restrict__ phases,
+//                int half_support,
+//                cudaTextureObject_t gcf_tex,
+//                int nstands)
+// {
+//     // pixel = 0;
+//     float inv_half_support = 1.f / half_support;
+
+//     // make vectorized accesses
+//     auto f_eng_v = reinterpret_cast<cnib2*>(f_eng);
+//     auto ant_pos_v = reinterpret_cast<float3*>(antpos);
+//     auto phases_v = reinterpret_cast<float2*>(phases);
+//     // int i=0;
+// #pragma unroll
+//     for (int i = 0; i < nstands; ++i) {
+//         //  printf("x y u v: %f %f %d %d\n", ant_pos_v[i].x, ant_pos_v[i].y, u, v);
+//         // check if the antenna is outside the support
+//         float du = abs(ant_pos_v[i].x - u);
+//         if (du >= half_support)
+//             continue;
+
+//         float dv = abs(ant_pos_v[i].y - v);
+//         if (dv >= half_support)
+//             continue;
+
+//         // use normalized coordinates to ensure texture fetching is independent of
+//         // gcf texture's resolution
+//         // for now, use a single kernel for all ant-pols
+//         half scale = tex2D<float>(gcf_tex, du * inv_half_support, dv * inv_half_support);
+//         // printf("scale:  %f du: %f dv: %f\n", __half2float(scale), du, dv);
+//         auto grid_val_X = __half2cms(__float22half2_rn(phases_v[i]), half2(f_eng_v[i].X.re, f_eng_v[i].X.im), scale);
+
+//         auto grid_val_Y = __half2cms(__float22half2_rn(phases_v[i + 1]), half2(f_eng_v[i].Y.re, f_eng_v[i].Y.im), scale);
+
+//         // printf("final prod: %f %f %f %f\n",__half2float(grid_val_X.x), __half2float(grid_val_Y.x),__half2float(grid_val_X.y),__half2float(grid_val_Y.y));
+//         // the complex half2 type used in cuFFTdx stores the data in RRII layout
+//         pixel.x.x += grid_val_X.x;
+//         pixel.x.y += grid_val_Y.x;
+//         pixel.y.x += grid_val_X.y;
+//         pixel.y.y += grid_val_Y.y;
+//     }
+// }
+
+// __device__ void gridder_dx
