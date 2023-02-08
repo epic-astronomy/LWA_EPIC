@@ -8,6 +8,7 @@
 #include <memory>
 #include <vector>
 #include "exceptions.hpp"
+#include <glog/logging.h>
 
 
 /**
@@ -75,21 +76,23 @@ LFBufMngr<Buffer>::LFBufMngr(size_t p_nbufs, size_t p_buf_size, size_t p_max_tri
   , m_max_iters(p_nbufs * p_max_tries)
   , m_page_lock(p_page_lock)
 {
-    std::cout<<"Nbufs: "<<p_nbufs<<std::endl;
-    std::cout<<"buf size: "<<p_buf_size<<std::endl;
-    if (p_nbufs <= 0) {
-        throw(InvalidSize("Number of buffers must be at least one", p_nbufs));
-    }
+    DLOG(INFO)<<"Nbufs in LFBuffer manager: "<<p_nbufs;
+    DLOG(INFO)<<"Buf size: "<<p_buf_size;
+    CHECK(p_nbufs>0)<<"Number of buffers must be at least one";
+    // if (p_nbufs <= 0) {
+    //     throw(InvalidSize("Number of buffers must be at least one", p_nbufs));
+    // }
 
-    if (p_buf_size <= 0) {
-        throw(InvalidSize("Buffer size must be non-negative", p_buf_size));
-    }
+    CHECK(p_buf_size>=0)<<"Buffer size must be non-negative";
+    // if (p_buf_size <= 0) {
+    //     throw(InvalidSize("Buffer size must be non-negative", p_buf_size));
+    // }
     // allocate space for buffers
     m_buf_vec.reserve(p_nbufs);
     for (size_t i = 0; i < p_nbufs; ++i) {
         m_buf_vec[i] = std::make_shared<mbuf_t>(p_buf_size, p_page_lock);
     }
-    std::cout<<"Allocated space\n";
+    DLOG(INFO)<<"Allocated space for the buffer";
 }
 
 template<class Buffer>
@@ -99,7 +102,7 @@ LFBufMngr<Buffer>::acquire_buf(size_t p_max_tries)
     auto cur_cursor = m_cursor.load(); // postion where buffer was available previously
     auto orig_cursor = cur_cursor;
     size_t counter = 0;
-    std::cout<<"cursor: "<<cur_cursor<<"\n";
+    DLOG(INFO)<<"Initial cursor: "<<cur_cursor;
     while (true) {
         ++counter;
         cur_cursor = (cur_cursor+1)% m_nbufs;

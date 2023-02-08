@@ -4,11 +4,12 @@
 #include "constants.h"
 #include "exceptions.hpp"
 #include "helper_traits.hpp"
-#include "hwy/aligned_allocator.h"
 #include "host_helpers.h"
+#include "hwy/aligned_allocator.h"
 #include <atomic>
 #include <cstdint>
 #include <cstring>
+#include <glog/logging.h>
 #include <map>
 #include <sys/mman.h>
 #include <thread>
@@ -16,10 +17,9 @@
 
 // namespace hn = HWY::HWY_NAMESPACE;
 
-
 /**
  * @brief Mixin class to hold the metadata for buffers
- * 
+ *
  * @tparam Num Unused.
  */
 template<typename Num = double>
@@ -39,19 +39,19 @@ class BufMetaData
      * @brief Get a numeric value from the map
      * @deprecated Use `get_metadataref` to directly fetch/store metadata
      * @param key Name of the key
-     * @return Num 
+     * @return Num
      */
     Num get_meta_num(std::string key);
     /**
      * @brief Get a pointer to the metadata object
      * @deprecated Use `get_metadataref`
-     * @return varmap_t* 
+     * @return varmap_t*
      */
     varmap_t* get_metadata();
     /**
      * @brief Get a reference to the metadata object
-     * 
-     * @return varmap_t& 
+     *
+     * @return varmap_t&
      */
     varmap_t& get_metadataref()
     {
@@ -60,30 +60,30 @@ class BufMetaData
     /**
      * @brief Get the meta str object
      * @deprecated Use `get_metadataref`
-     * @param key 
-     * @return std::string 
+     * @param key
+     * @return std::string
      */
     std::string get_meta_str(std::string key);
     /**
      * @brief Set the meta num object
      * @deprecated Use `get_metadataref`
-     * @param key 
-     * @param value 
+     * @param key
+     * @param value
      */
     void set_meta_num(std::string key, Num value);
     /**
      * @brief Set the meta str object
      * @deprecated Use `get_metadataref`
-     * 
-     * @param key 
-     * @param value 
+     *
+     * @param key
+     * @param value
      */
     void set_meta_str(std::string key, std::string value);
 };
 
 /**
  * @brief A generic class for buffer types
- * 
+ *
  * @tparam Buffer Buffer type
  */
 template<typename Buffer>
@@ -106,14 +106,14 @@ class GenericBuffer : public BufMetaData<double>
     GenericBuffer(){};
     /**
      * @brief Construct a new Generic Buffer object
-     * 
+     *
      * @param p_buf_size Number of elements in the buffer
      */
     GenericBuffer(size_t p_buf_size);
     /**
      * @brief Allocator for the buffer. This function must be implemented by all the derived
      * classes
-     * 
+     *
      * @param buf_size Number of elements in the buffer
      * @param p_reallocate Flag to indicate whether to release the old memory and reallocate
      * @param p_page_lock Whether to page lock the allocated buffer. cuHostRegister will be used
@@ -121,14 +121,14 @@ class GenericBuffer : public BufMetaData<double>
     virtual void allocate(size_t buf_size, bool p_reallocate = false, bool p_page_lock = true) = 0;
     /**
      * @brief Get the buffer size
-     * 
+     *
      * @return  Number of elements in the buffer
      */
     size_t buf_size() { return m_bufsize; };
     /**
      * @brief Get the buffer
-     * 
-     * @return Pointer to the buffer 
+     *
+     * @return Pointer to the buffer
      */
     elem_t* get_data_ptr();
     // double get_meta_num(std::string key);
@@ -139,9 +139,9 @@ class GenericBuffer : public BufMetaData<double>
 
 /**
  * @brief Aligned buffer type.
- * 
+ *
  * The allocated buffer is guaranteed to be aligned to the maximum available vector size.
- * 
+ *
  * @tparam dtype Type of data. Must be one a POD type
  */
 template<typename dtype>
@@ -161,8 +161,8 @@ class AlignedBuffer : public GenericBuffer<hwy::AlignedFreeUniquePtr<dtype[]>>
 
 /**
  * @brief Unaligned buffer type.
- * 
- * @tparam dtype 
+ *
+ * @tparam dtype
  */
 template<typename dtype>
 class UnalignedBuffer : protected GenericBuffer<std::unique_ptr<dtype[], void (*)(void*)>>
@@ -174,10 +174,9 @@ class UnalignedBuffer : protected GenericBuffer<std::unique_ptr<dtype[], void (*
     void allocate(size_t buf_size, bool p_reallocate = false);
 };
 
-
 /**
  * @brief Payload object that can be passed around kernels
- * 
+ *
  * @tparam MBuf Type of the managed buffer
  */
 template<typename MBuf>
@@ -193,32 +192,31 @@ struct Payload
     friend MBuf; // obnoxious! There is a better way, but works for now
 
   public:
-  /**
-   * @brief Construct a new Payload object
-   * 
-   * @param p_mbuf shared pointer to the managed buffer
-   */
+    /**
+     * @brief Construct a new Payload object
+     *
+     * @param p_mbuf shared pointer to the managed buffer
+     */
     Payload(std::shared_ptr<MBuf> p_mbuf);
     ~Payload();
     /**
      * @brief Get the managed buffer in this payload
-     * 
+     *
      * @return MBuf* Pointer to the shared buffer
      */
     MBuf* get_mbuf();
     /**
      * @brief Check if the buffer is valid
-     * 
-     * @return bool 
+     *
+     * @return bool
      */
     operator bool() const { return bool(m_mbuf); }
 };
 
-
 /**
  * @brief A wrapper to manage the buffer
- * 
- * @tparam Buffer 
+ *
+ * @tparam Buffer
  */
 template<typename Buffer>
 struct ManagedBuf : public Buffer
@@ -233,18 +231,18 @@ struct ManagedBuf : public Buffer
     using mbuf_sptr_t = std::shared_ptr<mbuf_t>;
 
   public:
-  /**
-   * @brief Construct a new managed buffer
-   * 
-   * @param p_size Number of elements in the buffer
-   * @param p_page_lock Flag to indicate if the buffer has to be page locked
-   */
+    /**
+     * @brief Construct a new managed buffer
+     *
+     * @param p_size Number of elements in the buffer
+     * @param p_page_lock Flag to indicate if the buffer has to be page locked
+     */
     ManagedBuf(size_t p_size, bool p_page_lock = true)
       : Buffer(p_size, p_page_lock){};
     // void unlock();
     /**
      * @brief Attempt to acquire a lock on the buffer
-     * 
+     *
      * @return True if successful else false
      */
     bool lock();
@@ -359,10 +357,8 @@ AlignedBuffer<dtype>::allocate(size_t p_buf_size, bool p_reallocate, bool p_page
         throw(MemoryAllocationFailure(p_buf_size));
     }
     if (m_page_lock) {
-        auto res=cu_mlock(this->m_buffer.get(), p_buf_size * sizeof(dtype));
-        if(res!=0){
-            std::cout<<"unable to mlock the buffer\n";
-        }
+        auto res = cu_mlock(this->m_buffer.get(), p_buf_size * sizeof(dtype));
+        CHECK(res == 0) << "Unable to mlock the buffer";
     }
 }
 
@@ -420,7 +416,7 @@ Payload<Mbuf>::~Payload()
     // without unlocking it.
     // std::cout<<"Mbuf has "<<m_mbuf.use_count()<<" pointers\n";
     if (m_mbuf.use_count() == 2) {
-        std::cout<<"unlocking\n";
+        std::cout << "unlocking\n";
         unlock(true);
     }
 }

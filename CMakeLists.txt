@@ -51,6 +51,9 @@ include_directories(src/extern/highway)
 add_subdirectory(src/extern/pybind11)
 OPTION(PYTHON_EXECUTABLE "/home/epic/anaconda/envs/esp38/bin/python")
 
+#glog
+add_subdirectory(src/extern/glog)
+
 ### cuFFTDx
 include_directories(src/extern/nvidia/mathdx/22.11/include)
 
@@ -88,7 +91,10 @@ set_target_properties( epic++
   
 
 add_dependencies(epic++ raft hwy epiclib)
-target_link_libraries(epic++ PRIVATE pybind11::embed raft hwy epiclib ibverbs epic_cu cudart 
+add_compile_definitions(EPIC_VERSION="${CMAKE_PROJECT_VERSION}")
+target_link_libraries(epic++ PRIVATE pybind11::embed raft hwy epiclib 
+ibverbs epic_cu cudart 
+glog::glog
 #OpenMP::OpenMP_CXX
 )
 

@@ -5,6 +5,7 @@
 #include <cmath>
 #include <pybind11/embed.h>
 #include <pybind11/numpy.h>
+#include <glog/logging.h>
 
 namespace py = pybind11;
 using namespace py::literals;
@@ -113,15 +114,15 @@ void
 get_lwasv_phases(T* out_ptr, int nchan, int chan0)
 {
     // py::initialize_interpreter();
-    std::cout << "before numpy\n";
+    // std::cout << "before numpy\n";
 
     auto np = py::module_::import("numpy");
-    std::cout << "after numpy\n";
+    // std::cout << "after numpy\n";
     // dimensions: chan, pol, ant, real_imag
     auto phases_arr = py::module_::import("epic_utils")
                         .attr("gen_phases_lwasv")(nchan, chan0)
                         .cast<py::array_t<std::complex<double>, py::array::c_style | py::array::forcecast>>();
-    std::cout << "Received phases\n";
+    DLOG(INFO) << "Received phases data";
     // return
 
     auto phases_ptr = static_cast<double*>(phases_arr.request().ptr);

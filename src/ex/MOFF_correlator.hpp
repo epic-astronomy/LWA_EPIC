@@ -23,7 +23,7 @@ class MOFFCorrelator : public MOFFCuHandler
 {
     using mbuf_t = typename BuffMngr::mbuf_t;
     using payload_t = Payload<mbuf_t>;
-    /// Data type to store the auxiliary data for imaging. The precision will be fixed to float. 
+    /// Data type to store the auxiliary data for imaging. The precision will be fixed to float.
     using aux_t = hwy::AlignedFreeUniquePtr<float[]>;
 
     // private:
@@ -81,16 +81,16 @@ class MOFFCorrelator : public MOFFCuHandler
     void reset_gcf_kernel2D(int p_gcf_tex_dim);
 
   public:
-  /**
-   * @brief Construct a new MOFFCorrelator object
-   * 
-   * @param p_accum_time Total accumulation time
-   * @param p_npol Number of polarizations to process
-   * @param p_grid_size Size of the grid in pixels
-   * @param p_grid_res Resolution of the grid in degrees
-   * @param p_support Support size
-   * @param p_rm_autocorr Flag to remove autocorrelations
-   */
+    /**
+     * @brief Construct a new MOFFCorrelator object
+     *
+     * @param p_accum_time Total accumulation time
+     * @param p_npol Number of polarizations to process
+     * @param p_grid_size Size of the grid in pixels
+     * @param p_grid_res Resolution of the grid in degrees
+     * @param p_support Support size
+     * @param p_rm_autocorr Flag to remove autocorrelations
+     */
     MOFFCorrelator(float p_accum_time, int p_npol, int p_grid_size, double p_grid_res, int p_support, bool p_rm_autocorr = false)
       : m_accum_time(p_accum_time)
       , m_npol(p_npol)
@@ -105,7 +105,7 @@ class MOFFCorrelator : public MOFFCuHandler
       };
     /**
      * @brief Reset the auxiliary data required for imaging
-     * 
+     *
      * @param p_nchan Total channels
      * @param p_chan0 First channel's number
      * @param p_npol Total number of polarizations
@@ -130,25 +130,25 @@ MOFFCorrelator<Dtype, BuffMngr>::reset(int p_nchan, int p_chan0, int p_npol, int
         m_grid_size = p_grid_size;
         m_grid_res = p_grid_res;
 
-        std::cout << "resetting antpos\n";
+        LOG(INFO) << "Resetting antpos. Grid size: " << m_grid_size << " grid res: " << m_grid_res << " nchan: " << p_nchan << " chan0: " << p_chan0;
         reset_antpos(m_grid_size, m_grid_res, p_nchan, p_chan0);
-        std::cout << "resetting phases\n";
+        LOG(INFO) << "Resetting phases";
         // try{
         reset_phases(p_nchan, p_chan0);
         // }catch(const std::exception &e){
-        //   std::cout<<"test\n";
-        //   std::cerr<<e.what()<<"\n";
+        //   LOG(INFO)<<"test";
+        //   std::cerr<<e.what()<<"";
         // }
         chan_flag = true;
     }
 
     if (m_gcf_tex_dim != p_gcf_kernel_dim) {
-        std::cout << "resetting kernel\n";
+        LOG(INFO) << "Resetting GCF kernel";
         m_gcf_tex_dim = p_gcf_kernel_dim;
         reset_gcf_kernel2D(p_gcf_kernel_dim);
         gcf_flag = true;
     }
-    std::cout << "sending to gpu\n";
+    LOG(INFO) << "Sending imaging context information to gpu";
 
     if (chan_flag || gcf_flag) {
         this->reset_data(
@@ -179,24 +179,25 @@ MOFFCorrelator<Dtype, BuffMngr>::reset_antpos(int p_grid_size, double p_grid_res
 
     m_ant_pos_freq.reset();
     m_ant_pos_freq = std::move(hwy::AllocateAligned<float>(pitch * p_nchan));
-    if (!m_ant_pos_freq) {
-        std::cout << "wth\n";
-    }
+    CHECK_NOTNULL(m_ant_pos_freq)<<"Unable to allocate antenna position memory";
+    // if (!m_ant_pos_freq) {
+    //     DLOG(INFO) << "wth";
+    // }
 
     m_delta = get_lwasv_locs<float>(m_raw_ant_pos.get(), p_grid_size, p_grid_res);
     auto chan0 = p_chan0;
     for (auto chan = 0; chan < p_nchan; ++chan) {
         double wavenumber = double((p_chan0 + chan) * BANDWIDTH) / double(SOL);
         for (auto pos = 0; pos < pitch; ++pos) {
-            // std::cout<<chan<<" "<<pos<<"\n";
+            // DLOG(INFO)<<chan<<" "<<pos<<"";
             m_ant_pos_freq[chan * pitch + pos] = half_grid + m_raw_ant_pos[pos] * wavenumber;
         }
     }
 
-    // std::cout<<"antpos[0] CPU: "<<m_ant_pos_freq[0]<<" "<<m_ant_pos_freq[1]<<" "<<m_ant_pos_freq[2]<<"\n";
+    // DLOG(INFO)<<"antpos[0] CPU: "<<m_ant_pos_freq[0]<<" "<<m_ant_pos_freq[1]<<" "<<m_ant_pos_freq[2]<<"";
     printf("antpos_raw[0] CPU: %f %f %f\n", m_raw_ant_pos[0], m_raw_ant_pos[1], m_raw_ant_pos[2]);
     printf("antpos[0] CPU: %f %f %f\n", m_ant_pos_freq[0], m_ant_pos_freq[1], m_ant_pos_freq[2]);
-    std::cout << "chan0: " << float((p_chan0)*BANDWIDTH) << "\n";
+    DLOG(INFO) << "chan0: " << float((p_chan0)*BANDWIDTH) << "\n";
 
     // if (uint64_t(m_raw_ant_pos.get()) % HWY_LANES(T)) {
     //     hn::ScalableTag<uint8_t> tag8;
@@ -217,7 +218,7 @@ MOFFCorrelator<Dtype, BuffMngr>::reset_phases(int p_nchan, int p_chan0)
     m_phases = std::move(hwy::AllocateAligned<float>(pitch * LWA_SV_NPOLS * p_nchan));
 
     get_lwasv_phases<float>(m_phases.get(), p_nchan, p_chan0);
-    std::cout << "Phases[0] cpu: " << m_phases[0] << " " << m_phases[1] << "\n";
+    DLOG(INFO) << "Phases[0] cpu: " << m_phases[0] << " " << m_phases[1];
 }
 
 template<typename Dtype, typename BuffMngr>

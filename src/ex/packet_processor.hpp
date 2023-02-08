@@ -11,6 +11,17 @@
 #include <omp.h>
 #include <string>
 #include <thread>
+// #include "include/packet_processor.h"
+#include "hwy/highway.h"
+// #include "include/constants.h"
+// #include "include/formats.h"
+#include "math.h"
+#include <arpa/inet.h>
+#include <cassert>
+#include <cstdint>
+#include <numeric>
+
+namespace hn = hwy::HWY_NAMESPACE;
 
 using namespace std::string_literals;
 
@@ -76,17 +87,7 @@ class AlignedCopier<chips_hdr_type, uint8_t, Order>
 };
 
 /////////////////////////////////////////////////////
-// #include "include/packet_processor.h"
-#include "hwy/highway.h"
-// #include "include/constants.h"
-// #include "include/formats.h"
-#include "math.h"
-#include <arpa/inet.h>
-#include <cassert>
-#include <cstdint>
-#include <numeric>
 
-namespace hn = hwy::HWY_NAMESPACE;
 
 // template<typename Hdr, typename T>
 // int

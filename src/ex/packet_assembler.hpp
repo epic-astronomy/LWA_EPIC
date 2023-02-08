@@ -14,6 +14,7 @@
 #include <chrono>
 #include <cmath>
 #include <functional>
+#include <glog/logging.h>
 #include <memory>
 // #include <chrono>
 
@@ -21,7 +22,7 @@ using namespace std::chrono;
 
 /**
  * @brief Interface to sort and assemble the packets into gulps
- * 
+ *
  * @tparam BufferMngr Type of the buffer manager
  * @tparam Receiver Type of receiver
  * @tparam PktProcessor Type of the packet processor
@@ -82,7 +83,7 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::PacketAssembler(std::string
   , m_buf_size(p_nseq_per_gulp * p_seq_size)
   , m_buf_ngulps(p_buf_ngulps)
 {
-    std::cout << "start\n";
+    // std::cout << "start\n";
     // m_valid_pkt_stats.reserve(PktProcessor::nsrc);
     // std::atomic<int> a_i(1);
     for (int i = 0; i < PktProcessor::nsrc; ++i) {
@@ -91,11 +92,11 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::PacketAssembler(std::string
     m_reset_pkt_stats();
     m_recent_hdr.seq = 0;
     m_seq_end = m_seq_start + m_nseq_per_gulp;
-    std::cout << "setting address\n";
+    DLOG(INFO) << "Setting address";
     m_receiver->set_address(p_ip, p_port);
-    std::cout << "binding address\n";
+    std::cout << "Binding address";
     m_receiver->bind_socket();
-    std::cout << "initing receiver address\n";
+    // std::cout << "initing receiver address\n";
     if (Receiver::type == VERBS) {
         std::cout << alignment_offset<chips_hdr_type, uint8_t, BF_VERBS_PAYLOAD_OFFSET>::value << "\n";
         m_receiver->init_receiver(alignment_offset<chips_hdr_type, uint8_t, BF_VERBS_PAYLOAD_OFFSET>::value);
@@ -152,7 +153,7 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::get_gulp()
                 //   string_format("Failed to receive data %d : %s", errno, strerror(errno))));
             }
             if (!PktProcessor::is_pkt_valid(m_recent_pkt, m_recent_hdr, m_recent_data, nbytes)) {
-                std::cout << "bad_header\n";
+                DLOG(INFO) << "Bad header";
                 continue;
             }
             if (m_recent_hdr.seq < m_seq_start) {
@@ -169,20 +170,19 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::get_gulp()
             // std::cout<<"sure\n";
             if (m_seq_start == 0) { // packet assembling hasn't begun yet
                 m_seq_start = m_recent_hdr.seq;
-                std::cout << "nudging\n";
+                DLOG(INFO) << "Nudging packet sequence to the nearest second";
                 m_nudge_seq_start();
                 continue;
             } else {
                 // ThPool::t_pool().wait_for_tasks();
                 // m_pool.wait_for_tasks();
-                std::cout << "returning packet\n";
-                std::cout << "mvalid packets: " << m_n_valid_pkts << " 16000"
-                          << " " << recvd_pkts
-                          << "\n";
-                std::cout << m_seq_start << " " << m_seq_end << " " << m_recent_hdr.seq << "\n";
+                DLOG(INFO) << "returning packet\n";
+                DLOG(INFO) << "mvalid packets: " << m_n_valid_pkts << " 16000"
+                           << " " << recvd_pkts;
+                DLOG(INFO) << m_seq_start << " " << m_seq_end << " " << m_recent_hdr.seq;
                 m_last_pkt_available = true;
-                std::cout << "Nseqs: " << int(m_seq_start - m_seq_end) << "\n";
-                std::cout << "data: " << int(mbuf->get_data_ptr()[0]) << " " << int(mbuf->get_data_ptr()[1]) << "\n";
+                DLOG(INFO) << "Nseqs: " << int(m_seq_start - m_seq_end);
+                DLOG(INFO) << "data: " << int(mbuf->get_data_ptr()[0]) << " " << int(mbuf->get_data_ptr()[1]);
                 if (m_recent_hdr.seq >= (m_seq_end + m_nseq_per_gulp)) {
                     // m_seq_start = m_recent_hdr.seq;
                     // m_nudge_seq_start();
@@ -199,7 +199,7 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::get_gulp()
                 //     continue;
                 // }
                 if (m_n_valid_pkts < m_min_pkt_limit) {
-                    std::cout << "returning null pkt\n";
+                    DLOG(INFO) << "returning null pkt";
                     m_n_valid_pkts = 0;
                     return payload_t(nullptr);
                 }

@@ -28,11 +28,13 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <x86intrin.h>
+#include <glog/logging.h>
 // #include "ex/packet_assembler.h"
 using namespace std::chrono;
 using namespace std::string_literals;
 namespace hn = hwy::HWY_NAMESPACE;
 using tag8 = hn::ScalableTag<uint8_t>;
+
 
 int
 get_chan0(std::string ip, int port)
@@ -54,15 +56,19 @@ namespace py = pybind11;
 // #define _VMA_ 1
 int
 main(int argc, char** argv)
-{
-    //
-
+{   
+    FLAGS_logtostderr = 1;
+    google::InitGoogleLogging(argv[0]);
+    LOG(INFO)<<"E-Field Parallel Imaging Correlator (EPIC) v"<<EPIC_VERSION;
     // std::cout<<pro_sph_cv(0,0,8.413185126313465);
     // return 0;
     std::string ip = "239.168.40.11";
     int port = 4015;
+
+    LOG(INFO)<<"Initializing Verbs packet assembler";
     auto gulper = verbs_pkt_assembler(ip, port);
-    std::cout << int(HWY_LANES(uint8_t)) << "\n";
+    DLOG(INFO) <<"Number of 8-bit lanes"<<int(HWY_LANES(uint8_t));
+    LOG(INFO)<<"Initializing MOFF Correlator";
     MOFFCorrelator_t moff_correlator(1.5, 2, 64, 2.0, 8);
     // py::scoped_interpreter guard{};
 
@@ -93,7 +99,7 @@ main(int argc, char** argv)
 
     auto stop = high_resolution_clock::now();
     auto begin = high_resolution_clock::now();
-    std::cout << "assembler start\n";
+    // std::cout << "assembler start\n";
     auto scipy_spl = py::module_::import("scipy.special");
     start = high_resolution_clock::now();
     auto cv = pro_sph_cv(scipy_spl, 0, 0, 8.413185126313465);
@@ -153,33 +159,6 @@ main(int argc, char** argv)
 
     return 0;
 
-    // auto start = high_resolution_clock::now();
-    // auto gulp = gulper.get_gulp();
-    // auto stop = high_resolution_clock::now();
-    // std::cout<<"40ms gulp time: "<<duration_cast<milliseconds>(stop - start).count()<<"\n";
-
-    // start = high_resolution_clock::now();
-    // gulp = gulper.get_gulp();
-    // stop = high_resolution_clock::now();
-    // std::cout<<"40ms gulp time: "<<duration_cast<milliseconds>(stop - start).count()<<"\n";
-
-    // try{
-    //     auto gulper = default_pkt_assembler(ip, port);
-    //     auto start = high_resolution_clock::now();
-    // auto gulp = gulper.get_gulp();
-    // auto stop = high_resolution_clock::now();
-    // std::cout<<"40ms gulp time: "<<duration_cast<milliseconds>(stop - start).count()<<"\n";
-    // }
-    // catch(const BindFailure &e){
-    //     std::cout<<"Bind failure\n";
-    //     e.print();
-    // }
-    // auto gulper = default_pkt_assembler(ip, port);
-    try {
-        auto test_buffer = AlignedBuffer<uint8_t>(10);
-    } catch (const MemoryAllocationFailure& e) {
-        e.print();
-    }
     auto receiver = VMAReceiver<uint8_t, AlignedBuffer, MultiCastUDPSocket>();
 
     auto ip_addrs = std::vector<std::string>{
@@ -202,58 +181,7 @@ main(int argc, char** argv)
         }
         return (0);
     }
-    // return(0);
-
-    /*auto udp_socket = MultiCastUDPSocket("239.168.40.12",4015);
-    int sockfd = udp_socket.get_fd();
-    tag8 _8bit_tag;
-    auto lanes = hn::Lanes(_8bit_tag);
-    size_t buffer_size = ceil(float(9000) / lanes) * lanes; // round to the nearest multiple of the vector size
-
-    size_t mappable_size = buffer_size * BF_VERBS_NPKTBUF * BF_VERBS_NQP;
-    // std::cout<<"mappable size: "<<mappable_size<<"\n";
-    auto mmapable = hwy::AllocateAligned<uint8_t>(mappable_size);
-
-    // find the nearest boundary
-    auto hdr_size = sizeof(chips_hdr_type) + BF_VERBS_PAYLOAD_OFFSET;
-    std::cout<<"hdr_size: "<<hdr_size<<"\n";
-    int offset = ceil(float(hdr_size) / lanes) * lanes - hdr_size;
-    std::cout<<"offset main: "<<offset<<"\n";
-
-    auto verbs = Verbs(sockfd, buffer_size); // , mmapable.get(), offset);
-    uint8_t* ptr;
-    int total = 100000;
-    int runs = 16 * total;
-    size_t counter = runs;
-    double time_elapsed = 0.;
-    double piecewise_time = 0.;
-
-#ifndef _VMA_
-    while (--counter) {
-        auto start = high_resolution_clock::now();
-        auto len = verbs.recv_packet(ptr);
-        auto stop = high_resolution_clock::now();
-        // std::cout << "Received: " << len << " bytes\n";
-        const chips_hdr_type* pkt_hdr = (chips_hdr_type*)(ptr);
-        // std::cout<<"len: "<<len<<"\n";
-        // if(len>1)std::cout<<"seq: "<<int((pkt_hdr->roach))<<"\n";
-        if(len<1) std::cout<<"holy\n";
-        // else std::cout<<
-        // std::cout<<((((uint64_t)ptr)+sizeof(chips_hdr_type))%lanes)<<"\n";
-        time_elapsed += duration_cast<microseconds>(stop - start).count();
-        piecewise_time += duration_cast<microseconds>(stop - start).count();
-
-        if (counter % 10000 == 0) {
-            // std::cout << "Piecewise: " << piecewise_time / double(10000) << " " << counter << "\n";
-            piecewise_time = 0.;
-        }
-    }
-    std::cout << "Average block time IBV (us): " << time_elapsed / float(total) << " us\n";
-    std::cout << "Average packet time IBV (us): " << time_elapsed / float(runs) << " us\n";
-#endif*/
-    // ThPool::exit_copier().store(false);
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-
+    
     return (EXIT_SUCCESS);
     // #endif
 }

@@ -2,12 +2,13 @@
 #define _PACKET_RECEIVER_H
 
 #include "bf_ibverbs.hpp"
-#include "exceptions.hpp"
 #include "buffer.hpp"
 #include "constants.h"
+#include "exceptions.hpp"
 #include "formats.h"
 #include "helper_traits.hpp"
 #include "sockets.h"
+#include <glog/logging.h>
 #include <mellanox/vma_extra.h>
 #include <memory>
 
@@ -34,9 +35,9 @@ class VMAReceiver : public GenericPktReceiver<Dtype, Buffer, Socket, Zcopy>
     void free_pkts();
 
   public:
-  static constexpr int type=VMA;
+    static constexpr int type = VMA;
     VMAReceiver(size_t buf_size = MAX_PACKET_SIZE);
-    void init_receiver(int p_offset=0){};
+    void init_receiver(int p_offset = 0){};
     size_t recv_packet(Dtype*& p_out_buf, int p_buf_offset = 0);
 };
 
@@ -53,9 +54,9 @@ class VerbsReceiver : public GenericPktReceiver<Dtype, Buffer, Socket, Zcopy>
     // hwy::AlignedFreeUniquePtr<uint8_t[]> _uptr{nullptr};
 
   public:
-  static constexpr int type=VERBS;
+    static constexpr int type = VERBS;
     VerbsReceiver(size_t buf_size = MAX_PACKET_SIZE);
-    void init_receiver(int p_offset=0);
+    void init_receiver(int p_offset = 0);
     size_t recv_packet(Dtype*& p_out_buf, int /**/);
 };
 
@@ -72,9 +73,10 @@ template<typename Dtype, template<class> class Buffer, class Socket, bool Zcopy>
 size_t
 VMAReceiver<Dtype, Buffer, Socket, Zcopy>::recv_packet(Dtype*& p_out_buf, int p_buf_offset)
 {
-    if (!this->m_is_bound) {
-        throw(NotConnected("Failed to fetch data. Did you forget to bind the socket?"));
-    }
+    CHECK(this->m_is_bound) << "Failed to fetch data. Did you forget to bind the socket?";
+    // if (!this->m_is_bound) {
+    //     throw(NotConnected("Failed to fetch data. Did you forget to bind the socket?"));
+    // }
     size_t nbytes;
     int flags = 0;
     Dtype* pkt_buffer = this->m_buffer.get() + p_buf_offset;
@@ -120,18 +122,20 @@ VMAReceiver<Dtype, Buffer, Socket, Zcopy>::free_pkts()
 
 template<typename Dtype, template<class> class Buffer, class Socket, bool Zcopy>
 VerbsReceiver<Dtype, Buffer, Socket, Zcopy>::VerbsReceiver(size_t p_buf_size)
-  :m_pkt_size(nearest_integral_vec_size<Dtype>(p_buf_size)), GenericPktReceiver<Dtype, Buffer, Socket, Zcopy>(nearest_integral_vec_size<Dtype>(p_buf_size) * BF_VERBS_NPKTBUF * BF_VERBS_NQP, false)
+  : m_pkt_size(nearest_integral_vec_size<Dtype>(p_buf_size))
+  , GenericPktReceiver<Dtype, Buffer, Socket, Zcopy>(nearest_integral_vec_size<Dtype>(p_buf_size) * BF_VERBS_NPKTBUF * BF_VERBS_NQP, false)
 {
-  std::cout<<"p_buf_size: "<<p_buf_size<<std::endl;
+    DLOG(INFO) << "p_buf_size: " << p_buf_size;
 }
 
 template<typename Dtype, template<class> class Buffer, class Socket, bool Zcopy>
 void
 VerbsReceiver<Dtype, Buffer, Socket, Zcopy>::check_connection()
 {
-    if (!this->m_is_bound) {
-        throw(NotConnected("Invalid socket. Did you set the address and port? Did you bind?"));
-    }
+  // CHECK(this->m_is_bound)<<"Invalid socket. Did you set the address and port? Did you bind?";
+  //   if (!this->m_is_bound) {
+  //       throw(NotConnected("Invalid socket. Did you set the address and port? Did you bind?"));
+  //   }
 }
 
 template<typename Dtype, template<class> class Buffer, class Socket, bool Zcopy>

@@ -2,6 +2,7 @@
 #define HOST_HELPERS_H
 
 #include <iostream>
+#inlcude < glog / logging.h>
 
 #define cuda_check_err(ans)                    \
     {                                          \
@@ -20,7 +21,7 @@ inline void
 gpu_assert(cudaError_t code, const char* file, int line, bool abort = true)
 {
     if (code != cudaSuccess) {
-        fprintf(stderr, "GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
+        LOG(ERROR) << "GPUassert: " << cudaGetErrorString(code) << file << line;
         if (abort)
             exit(code);
     }
@@ -28,13 +29,14 @@ gpu_assert(cudaError_t code, const char* file, int line, bool abort = true)
 
 /**
  * @brief Register (pin) the memory allocated on host
- * 
+ *
  * @tparam T Type of the data
  * @param ptr Pointer to the host data
  * @param nbytes Number of bytes to register
  * @return int Returns 0 on success
  */
 template<typename T>
-int cu_mlock(T* ptr, size_t nbytes);
+int
+cu_mlock(T* ptr, size_t nbytes);
 
 #endif
