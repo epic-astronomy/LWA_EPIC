@@ -17,16 +17,19 @@ For a generalized implementation of EPIC please see [our EPIC repo](https://gith
 Download the source code with all the dependencies. 
 ```bash
 git clone -b dev-epic++ --recurse-submodules -j5 https://github.com/epic-astronomy/LWA_EPIC.git
-cd LWA_EPIC
 ```
 
-It is recommended to build and run EPIC in a separate conda environment. 
+It is recommended to build and run EPIC in a separate conda environment.
 ```bash
 conda create -n epic python=3.8 --file pylib-specs.txt
+pip install git+https://github.com/lwa-project/lsl
 ```
+
+Within this environment, 
 
 Run the following shell commands to build EPIC
 ```bash
+cd LWA_EPIC
 mkdir build && cd build
 cmake ..
 make
