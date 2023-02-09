@@ -1,8 +1,8 @@
 #ifndef HOST_HELPERS_H
 #define HOST_HELPERS_H
 
+// #include <glog/logging.h>
 #include <iostream>
-#inlcude < glog / logging.h>
 
 #define cuda_check_err(ans)                    \
     {                                          \
@@ -21,7 +21,8 @@ inline void
 gpu_assert(cudaError_t code, const char* file, int line, bool abort = true)
 {
     if (code != cudaSuccess) {
-        LOG(ERROR) << "GPUassert: " << cudaGetErrorString(code) << file << line;
+        // LOG(ERROR) << "GPUassert: " << cudaGetErrorString(code) << file << line;
+        fprintf(stderr, "GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
         if (abort)
             exit(code);
     }

@@ -133,12 +133,7 @@ MOFFCorrelator<Dtype, BuffMngr>::reset(int p_nchan, int p_chan0, int p_npol, int
         LOG(INFO) << "Resetting antpos. Grid size: " << m_grid_size << " grid res: " << m_grid_res << " nchan: " << p_nchan << " chan0: " << p_chan0;
         reset_antpos(m_grid_size, m_grid_res, p_nchan, p_chan0);
         LOG(INFO) << "Resetting phases";
-        // try{
         reset_phases(p_nchan, p_chan0);
-        // }catch(const std::exception &e){
-        //   LOG(INFO)<<"test";
-        //   std::cerr<<e.what()<<"";
-        // }
         chan_flag = true;
     }
 
@@ -179,33 +174,20 @@ MOFFCorrelator<Dtype, BuffMngr>::reset_antpos(int p_grid_size, double p_grid_res
 
     m_ant_pos_freq.reset();
     m_ant_pos_freq = std::move(hwy::AllocateAligned<float>(pitch * p_nchan));
-    CHECK_NOTNULL(m_ant_pos_freq)<<"Unable to allocate antenna position memory";
-    // if (!m_ant_pos_freq) {
-    //     DLOG(INFO) << "wth";
-    // }
+    CHECK_EQ(m_ant_pos_freq.get(), static_cast<float*>(NULL))<<"Unable to allocate antenna position memory";
 
     m_delta = get_lwasv_locs<float>(m_raw_ant_pos.get(), p_grid_size, p_grid_res);
     auto chan0 = p_chan0;
     for (auto chan = 0; chan < p_nchan; ++chan) {
         double wavenumber = double((p_chan0 + chan) * BANDWIDTH) / double(SOL);
         for (auto pos = 0; pos < pitch; ++pos) {
-            // DLOG(INFO)<<chan<<" "<<pos<<"";
             m_ant_pos_freq[chan * pitch + pos] = half_grid + m_raw_ant_pos[pos] * wavenumber;
         }
     }
 
-    // DLOG(INFO)<<"antpos[0] CPU: "<<m_ant_pos_freq[0]<<" "<<m_ant_pos_freq[1]<<" "<<m_ant_pos_freq[2]<<"";
     printf("antpos_raw[0] CPU: %f %f %f\n", m_raw_ant_pos[0], m_raw_ant_pos[1], m_raw_ant_pos[2]);
     printf("antpos[0] CPU: %f %f %f\n", m_ant_pos_freq[0], m_ant_pos_freq[1], m_ant_pos_freq[2]);
     DLOG(INFO) << "chan0: " << float((p_chan0)*BANDWIDTH) << "\n";
-
-    // if (uint64_t(m_raw_ant_pos.get()) % HWY_LANES(T)) {
-    //     hn::ScalableTag<uint8_t> tag8;
-    //     auto half_grid = hwy::Set(tag8, float(p_grid_size) / 2.0);
-    //     for (auto i = 0; i < p_nchan; ++i) {
-
-    //     }
-    // }
 }
 
 template<typename Dtype, typename BuffMngr>

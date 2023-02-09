@@ -12,8 +12,6 @@
 #include <mellanox/vma_extra.h>
 #include <memory>
 
-// namespace hn = HWY_NAMESPACE;
-
 template<typename Dtype, template<class> class Buffer, class Socket, bool zcopy = false>
 class GenericPktReceiver : protected Buffer<Dtype>
   , public Socket
@@ -51,7 +49,6 @@ class VerbsReceiver : public GenericPktReceiver<Dtype, Buffer, Socket, Zcopy>
     int m_hdr_offset{ 0 };
     void check_connection();
     int m_pkt_size;
-    // hwy::AlignedFreeUniquePtr<uint8_t[]> _uptr{nullptr};
 
   public:
     static constexpr int type = VERBS;
@@ -74,9 +71,6 @@ size_t
 VMAReceiver<Dtype, Buffer, Socket, Zcopy>::recv_packet(Dtype*& p_out_buf, int p_buf_offset)
 {
     CHECK(this->m_is_bound) << "Failed to fetch data. Did you forget to bind the socket?";
-    // if (!this->m_is_bound) {
-    //     throw(NotConnected("Failed to fetch data. Did you forget to bind the socket?"));
-    // }
     size_t nbytes;
     int flags = 0;
     Dtype* pkt_buffer = this->m_buffer.get() + p_buf_offset;

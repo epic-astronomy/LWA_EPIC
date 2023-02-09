@@ -112,32 +112,3 @@ class MOFFCuHandler
 };
 
 #endif // MOFF_CU_HANDLER_H
-
-
-// cudaChannelFormatDesc m_antpos_chan_desc
-// {
-//     cudaCreateChannelDesc(32, 32, 32, 0, cudaChannelFormatKindFloat)
-// };
-// cudaChannelFormatDesc m_phase_chan_desc
-// {
-//     cudaCreateChannelDesc(32, 32, 0, 0, cudaChannelFormatKindFloat)
-// };
-
-// bool is_host_gcf_texture_set{ false };
-// bool is_antpos_tex_set{ false };
-// bool is_phases_tex_set{ false };
-// cudaArray_t m_antpos_tex_arr;
-// cudaTextureObject_t m_antpos_tex{0};
-// cudaResourceDesc m_antpos_res_desc;
-// cudaTextureDesc m_antpos_tex_desc;
-
-// cudaArray_t m_phases_tex_arr;
-// cudaTextureObject_t m_phases_tex{0};
-// cudaResourceDesc m_phases_res_desc;
-// cudaTextureDesc m_phases_tex_desc;
-
-// void reset_antpos_tex(int p_nchan, float* p_antpos_ptr);
-// void reset_phases_tex(int p_nchan, float* p_phases);
-
-// void reset_1D_texture(bool p_reallocate, cudaArray_t& p_tex_arr, cudaTextureObject_t& p_tex_obj, cudaChannelFormatDesc& p_chan_desc, cudaResourceDesc& p_res_desc, cudaTextureDesc& p_tex_desc, int p_width, int p_depth, float* p_host_ptr);
-// void set_default_tex_res_desc(cudaResourceDesc& p_res_desc, cudaTextureDesc& p_tex_desc, cudaArray_t& p_tex_arr);

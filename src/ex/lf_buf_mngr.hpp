@@ -61,12 +61,6 @@ class LFBufMngr // : Buffer<T, Allocator>
     Payload<mbuf_t> acquire_buf(size_t p_max_tries = 5);
 };
 
-// #include "include/lf_buf_mngr.h"
-// #include "exceptions.hpp"
-// #include "include/buffer.h"
-// #include "include/constants.h"
-// #include <atomic>
-
 
 
 template<typename Buffer>
@@ -79,14 +73,8 @@ LFBufMngr<Buffer>::LFBufMngr(size_t p_nbufs, size_t p_buf_size, size_t p_max_tri
     DLOG(INFO)<<"Nbufs in LFBuffer manager: "<<p_nbufs;
     DLOG(INFO)<<"Buf size: "<<p_buf_size;
     CHECK(p_nbufs>0)<<"Number of buffers must be at least one";
-    // if (p_nbufs <= 0) {
-    //     throw(InvalidSize("Number of buffers must be at least one", p_nbufs));
-    // }
-
     CHECK(p_buf_size>=0)<<"Buffer size must be non-negative";
-    // if (p_buf_size <= 0) {
-    //     throw(InvalidSize("Buffer size must be non-negative", p_buf_size));
-    // }
+    
     // allocate space for buffers
     m_buf_vec.reserve(p_nbufs);
     for (size_t i = 0; i < p_nbufs; ++i) {
@@ -111,7 +99,7 @@ LFBufMngr<Buffer>::acquire_buf(size_t p_max_tries)
             break;
         }
         if (counter > m_max_iters) {
-            // std::cout<<"Buffer still full after "<<max_tries<<"\n";
+            //Buffer still full after max_tries
             return mbuf_sptr_t(nullptr);
         }
     }

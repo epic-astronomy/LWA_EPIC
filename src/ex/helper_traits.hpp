@@ -25,13 +25,6 @@ struct is_unique_ptr<std::unique_ptr<T, D>> : std::true_type
 {
 };
 
-// template<typename T>
-// bool
-// is_in_bounds(const T& value, const T& low, const T& high)
-// {
-//     return !(value < low) && (value < high); // low<=val<high
-// };
-
 template<size_t A>
 struct assert_gt_zero
 {

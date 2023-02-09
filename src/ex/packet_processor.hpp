@@ -5,21 +5,16 @@
 #include "formats.h"
 #include "helper_traits.hpp"
 #include "hwy/cache_control.h"
-#include "math.h"
-// #include <BS_thread_pool.hpp>
-#include <atomic>
-#include <omp.h>
-#include <string>
-#include <thread>
-// #include "include/packet_processor.h"
 #include "hwy/highway.h"
-// #include "include/constants.h"
-// #include "include/formats.h"
 #include "math.h"
 #include <arpa/inet.h>
+#include <atomic>
 #include <cassert>
 #include <cstdint>
 #include <numeric>
+#include <omp.h>
+#include <string>
+#include <thread>
 
 namespace hn = hwy::HWY_NAMESPACE;
 
@@ -33,7 +28,6 @@ class PacketProcessor : public Copier<Frmt, Dtype, Order>
     using data_t = Dtype;
     static size_t nsrc;
     static constexpr int hdr_size = sizeof(Frmt);
-    // static size_t constexpr alignment_offset = ::ceil(sizeof(Frmt));
     static constexpr int align_offset = alignment_offset<Frmt, Dtype>::value;
     inline static bool is_pkt_valid(Dtype* p_pkt, header_t& p_out_hdr, Dtype*& p_out_data, int p_nbytes);
     template<class Buffer>
@@ -48,26 +42,6 @@ class DefaultCopier
   public:
     inline static void copy_to_buffer(const Frmt& p_hdr, Dtype* p_in_data, Dtype* p_out_data, std::vector<std::shared_ptr<std::atomic_ullong>>& p_pkt_stats, int p_tidx, int p_nseq_per_gulp = 0);
 };
-
-// class ThPool
-// {
-//   public:
-//     enum
-//     {
-//         nthreads = 11,
-//         exit_cpy = false
-//     };
-//     static BS::thread_pool& t_pool()
-//     {
-//         static BS::thread_pool _t_pool(nthreads);
-//         return _t_pool;
-//     };
-//     static std::atomic<bool>& exit_copier()
-//     {
-//         static std::atomic<bool> _exit_copier{ false };
-//         return _exit_copier;
-//     };
-// };
 
 template<typename Frmt, typename Dtype, PKT_DATA_ORDER Order>
 class AlignedCopier
@@ -88,17 +62,6 @@ class AlignedCopier<chips_hdr_type, uint8_t, Order>
 
 /////////////////////////////////////////////////////
 
-
-// template<typename Hdr, typename T>
-// int
-// PacketProcessor<Hdr, T>::alignment_offset()
-// {
-//     hn::ScalableTag<T> tag;
-//     auto nlanes = hn::Lanes(tag);
-//     auto hdr_size = sizeof(Hdr);
-
-//     return ::ceil(hdr_size / nlanes) * nlanes - hdr_size;
-// };
 //////////////////////////////////////////////////////////
 ///////////////////////////// CHIPS //////////////////////
 //////////////////////////////////////////////////////////
@@ -111,7 +74,6 @@ class PacketProcessor<chips_hdr_type, uint8_t, Copier, Order> : public Copier<ch
     using data_t = uint8_t;
     static size_t nsrc; // = size_t(NROACH_BOARDS);
     static constexpr int hdr_size = sizeof(header_t);
-    // static size_t constexpr alignment_offset = ::ceil(sizeof(header_t));
     static constexpr int align_offset = alignment_offset<header_t, data_t>::value;
     inline static bool is_pkt_valid(data_t* p_pkt, header_t& p_out_hdr, data_t*& p_out_data, int p_nbytes = 0);
     template<class Buffer>
@@ -141,7 +103,6 @@ PacketProcessor<chips_hdr_type, uint8_t, Copier, Order>::is_pkt_valid(
     }
     p_out_data = p_pkt + sizeof(chips_hdr_type);
     p_out_hdr.seq = be64toh(pkt_hdr->seq);
-    // std::cout<<"pkt xvalid\n";
     p_out_hdr.roach = (pkt_hdr->roach - 1);
     p_out_hdr.nchan = pkt_hdr->nchan;
     p_out_hdr.chan0 = ntohs(pkt_hdr->chan0);
@@ -166,8 +127,6 @@ AlignedCopier<chips_hdr_type, uint8_t, Order>::copy_to_buffer(const chips_hdr_ty
     auto vec_start = reinterpret_cast<v256_t*>(p_out_data);
     auto vec_pkt = reinterpret_cast<v256_t*>(p_in_data);
 
-    // std::cout<<"inside copier\n";
-
     int idx_multiplier = 1;
     if (Order == TIME_MAJOR) {
         // data dimensions = time, chan, ant, pol, real_imag
@@ -183,12 +142,12 @@ AlignedCopier<chips_hdr_type, uint8_t, Order>::copy_to_buffer(const chips_hdr_ty
     }
 
     std::atomic<bool> direction{ true };
-    int nsteps=8;
-    int chan=0;
+    int nsteps = 8;
+    int chan = 0;
     if (!direction.load()) {
         nsteps = -nsteps;
         chan = p_hdr.nchan - 1;
-    } 
+    }
     // nsteps=4;
     // chan=0;
     for (; chan < p_hdr.nchan && chan >= 0; chan += nsteps) {
@@ -233,9 +192,7 @@ template<class Buffer>
 void
 PacketProcessor<chips_hdr_type, uint8_t, Copier, Order>::set_metadata(Buffer* p_mbuf, chips_hdr_type& p_hdr, uint64_t p_seq_start, uint64_t p_seq_end)
 {
-    // auto metadata = p_mbuf->get_metadata(); // by reference
     auto& mref = p_mbuf->get_metadataref();
-    // mref["useless"]=int64_t(10);
     mref["seq_start"] = p_seq_start;
     mref["seq_end"] = p_seq_end;
     mref["nchan"] = p_hdr.nchan;
@@ -285,12 +242,7 @@ PacketProcessor<chips_hdr_type, uint8_t, Copier, Order>::nullify_ill_sources(Buf
     }
 
     metadata["data_quality"] = double(npkts) / double(p_exp_pkts_per_source * p_pkt_stats.size());
-    // std::accumulate(p_pkt_stats.begin(), p_pkt_stats.end(), 0) / double(p_exp_pkts_per_source * p_pkt_stats.size());
 }
-
-// template class AlignedCopier<chips_hdr_type, uint8_t, TIME_MAJOR>;
-// template class PacketProcessor<chips_hdr_type, uint8_t, AlignedCopier, TIME_MAJOR>;
-// auto a = PacketProcessor<chips_hdr_type, uint8_t, AlignedCopier, TIME_MAJOR>::nsrc;
 
 ////////////////////////////////////////////////////
 #endif // PACKET_PROCESSOR

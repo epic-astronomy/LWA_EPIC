@@ -10,8 +10,6 @@
 namespace py = pybind11;
 using namespace py::literals;
 
-// auto scipy_spl = py::module_::import("scipy.special");
-
 // prolate spheroid eigen (characteristic) value
 // m,n mode:  parameters. n>=m
 // c: spheroidal parameter
@@ -27,7 +25,7 @@ pro_sph_ang1_cv(py::module_& scipy_spl, int m, int n, float c, float cv, float x
 {
     for (auto it : scipy_spl.attr("pro_ang1_cv")(m, n, c, cv, x)) {
         // unsure how to access the first element of the tuple
-        // .first and [0] throw a seg fault.
+        // .first and [0] throws a seg fault.
         return it.cast<double>();
     }
 }
@@ -43,17 +41,14 @@ template<typename T>
 void
 prolate_spheroidal_to_tex2D(int m, int n, float alpha, T* out, int dim, float c = 5.356 * PI / 2.0)
 {
-    // py::initialize_interpreter(); // guard{};
 
     auto scipy_spl = py::module_::import("scipy.special");
-    // float half_dim = dim / 2;
     auto cv = pro_sph_cv(scipy_spl, m, n, c);
     for (auto i = dim-1; i >=0; --i) { // for a left-bottom origin
         for (auto j = 0; j < dim; ++j) {
             T u = T(i) / dim;
             T v = T(j) / dim;
 
-            // std::cout<<i<<" "<<j<<std::endl;
 
             out[i * dim + j] = ::pow((1 - u * u), alpha) * ::pow((1 - v * v), alpha) * pro_sph_ang1_cv(scipy_spl, m, n, c, cv, u) * pro_sph_ang1_cv(scipy_spl, m, n, c, cv, v);
 
@@ -67,14 +62,12 @@ prolate_spheroidal_to_tex2D(int m, int n, float alpha, T* out, int dim, float c 
         }
     }
     
-    // py::finalize_interpreter(); // guard{};
 }
 
 template<typename T>
 void
 prolate_spheroidal_to_tex1D(int m, int n, float alpha, T* out, int dim, float c = 5.356 * PI / 2.0)
 {
-    // py::initialize_interpreter();
     auto scipy_spl = py::module_::import("scipy.special");
     float half_dim = dim / 2;
     auto cv = pro_sph_cv(scipy_spl, m, n, c);
@@ -82,14 +75,12 @@ prolate_spheroidal_to_tex1D(int m, int n, float alpha, T* out, int dim, float c 
         T u = T(i) / dim;
         out[i] = ::pow((1 - u * u), alpha) * pro_sph_ang1_cv(scipy_spl, m, n, c, cv, u);
     }
-    // py::finalize_interpreter(); // guard{};
 }
 
 template<typename T>
 double
 get_lwasv_locs(T* out_ptr, int grid_size, double grid_resolution)
 {
-    // py::initialize_interpreter();
     auto np = py::module_::import("numpy");
     std::cout << "after numpy\n";
 
@@ -104,7 +95,6 @@ get_lwasv_locs(T* out_ptr, int grid_size, double grid_resolution)
     for (auto i = 0; i < LWA_SV_NSTANDS * 3; ++i) {
         out_ptr[i] = static_cast<T>(loc_ptr[i]);
     }
-    // py::finalize_interpreter(); // guard{};
     std::cout << "returning antpos\n";
     return delta;
 }
@@ -113,12 +103,7 @@ template<typename T>
 void
 get_lwasv_phases(T* out_ptr, int nchan, int chan0)
 {
-    // py::initialize_interpreter();
-    // std::cout << "before numpy\n";
-
     auto np = py::module_::import("numpy");
-    // std::cout << "after numpy\n";
-    // dimensions: chan, pol, ant, real_imag
     auto phases_arr = py::module_::import("epic_utils")
                         .attr("gen_phases_lwasv")(nchan, chan0)
                         .cast<py::array_t<std::complex<double>, py::array::c_style | py::array::forcecast>>();
@@ -130,11 +115,7 @@ get_lwasv_phases(T* out_ptr, int nchan, int chan0)
 
     for (int i = 0; i < nvalues; ++i) {
         out_ptr[i] = static_cast<T>(phases_ptr[i]);
-        // if(i<10 && i%2==0){
-        //     std::cout<<phases_ptr[i]<<" "<<phases_ptr[i+1]<<std::endl;
-        // }
     }
-    // py::finalize_interpreter(); // guard{};
 }
 
 template<typename T>
@@ -145,10 +126,5 @@ void save_image(size_t grid_size, size_t nchan, T* data, std::string filename){
         std::cout<<data[i]<<std::endl;
     }
 }
-
-// template pro_sp_to_tex2D<float>;
-// template pro_sp_to_tex1D<float>;
-// template pro_sp_to_tex2D<double>;
-// template pro_sp_to_tex1D<double>;
 
 #endif // PY_FUNCS

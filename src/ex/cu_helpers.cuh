@@ -8,28 +8,6 @@
 #include <stdexcept>
 #include "host_helpers.h"
 
-// #define cuda_check_err(ans)                    \
-//     {                                          \
-//         gpu_assert((ans), __FILE__, __LINE__); \
-//     }
-
-// /**
-//  * @brief Error handler for cuda functions
-//  *
-//  * @param code cuda result
-//  * @param file File name
-//  * @param line Line number
-//  * @param abort Whether to abort upon failure
-//  */
-// inline void
-// gpu_assert(cudaError_t code, const char* file, int line, bool abort = true)
-// {
-//     if (code != cudaSuccess) {
-//         fprintf(stderr, "GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
-//         if (abort)
-//             exit(code);
-//     }
-// };
 
 /**
  * @brief Half-precision complex multipy scale
@@ -45,10 +23,6 @@
 __device__ inline __half2
 __half2cms(__half2 a, __half2 b, __half scale = __half(1))
 {
-    // printf("cms %f %f %f %f %f\n",__half2float(a.x), __half2float(a.y), __half2float(b.x), __half2float(b.y), __half2float(scale));
-
-    // printf("cmd prod: %f %f\n", __half2float(a.x*b.x-a.y*b.y), __half2float(a.x*b.y+a.y*b.x));
-
     return __hmul2(__halves2half2(scale, scale), __halves2half2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x));
 }
 
@@ -74,13 +48,6 @@ __cms_f(T& out, const float2 a, const cnib b, float& scale)
     out.y = __fmul_rz(scale, __fadd_rz(__fmul_rz(a.x, b.im), __fmul_rz(a.y, b.re)));
 }
 
-// template<typename T>
-// __device__ inline void
-// __cms_f(T& out, const float2& a, const cnib& b, float scale)
-// {
-//     out.x += __fmul_rz(scale, __fadd_rz(__fmul_rz(a.x, b.re), -__fmul_rz(a.y, b.im)));
-//     out.y += __fmul_rz(scale, __fadd_rz(__fmul_rz(a.x, b.im), __fmul_rz(a.y, b.re)));
-// }
 
 /**
  * @brief Mixed-precision complex multiply using built-in intrinsics
@@ -101,14 +68,6 @@ __cm_f(T& out, const float2& a, const cnib& b)
     out.x += __fadd_rz(__fmul_rz(a.x, b.re), -__fmul_rz(a.y, b.im));
     out.y += __fadd_rz(__fmul_rz(a.x, b.im), __fmul_rz(a.y, b.re));
 }
-
-// template<typename T>
-// __device__ inline void
-// __cm_f(T& out, float3& a, cnib& b)
-// {
-//     out.x += __fadd_rz(__fmul_rz(a.x, b.re), -__fmul_rz(a.y, b.im));
-//     out.y += __fadd_rz(__fmul_rz(a.x, b.im), __fmul_rz(a.y, b.re));
-// }
 
 
 

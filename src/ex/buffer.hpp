@@ -18,8 +18,6 @@
 #include <any>
 #include "types.hpp"
 
-// namespace hn = HWY::HWY_NAMESPACE;
-
 /**
  * @brief Mixin class to hold the metadata for buffers
  *
@@ -34,8 +32,6 @@ class BufMetaData
   protected:
     std::map<std::string, Num> m_meta_num;
     std::map<std::string, std::string> m_meta_str;
-    /// std::map to store the metadata. The value type can be string or numeric
-    //std::map<std::string, var_t> m_metadata;
     varmap_t m_metadata;
 
   public:
@@ -251,20 +247,6 @@ struct ManagedBuf : public Buffer
      */
     bool lock();
 };
-//////////////////////////////////////////////////////////////////
-// #include "include/buffer.h"
-// #include "../exceptions.hpp"
-// #include "hwy/aligned_allocator.h"
-// #include <iostream>
-// #include <atomic>
-
-// template<typename Buffer>
-// GenericBuffer<Buffer>::GenericBuffer(size_t p_buf_size)
-// {std::cout<<"Constructor\n";
-//     this->m_bufsize = p_buf_size;
-//     this->allocate(p_buf_size);
-//     this->m_is_allocated = true;
-// }
 
 template<typename Buffer>
 typename GenericBuffer<Buffer>::elem_t*
@@ -441,33 +423,5 @@ Payload<Mbuf>::get_mbuf()
 {
     return m_mbuf.get();
 }
-
-// template class AlignedBuffer<uint8_t>;
-// template class ManagedBuf<AlignedBuffer<uint8_t>>;
-// template class Payload<ManagedBuf<AlignedBuffer<uint8_t>>>;
-
-// template<typename dtype>
-// AlignedBuffer<dtype>::AlignedBuffer(size_t p_buf_size)
-// {
-//     this->m_bufsize = p_buf_size;
-//     this->allocate(p_buf_size);
-//     this->m_is_allocated = true;
-// }
-
-// template<typename dtype>
-// void
-// AlignedBuffer<dtype>::allocate(size_t p_buf_size, bool p_reallocate)
-// {
-//     if (this->m_is_allocated && !p_reallocate) {
-//         throw(MemoryAllocationFailure(p_buf_size, true));
-//     }
-//     this->m_bufsize = p_buf_size;
-//     this->m_is_allocated = true;
-//     this->m_buffer.reset();
-//     this->m_buffer = std::move(hwy::AllocateAligned<dtype>(p_buf_size));
-//     if (!this->m_buffer) {
-//         throw(MemoryAllocationFailure(p_buf_size));
-//     }
-// };
 
 #endif

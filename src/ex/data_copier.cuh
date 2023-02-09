@@ -64,26 +64,20 @@ copy_lwasv_imaging_data(cg::thread_block tb, const uint8_t* f_eng_in, const floa
 {
 
     // copy F-engine data using the first thread group
-    // printf("copying feng\n");
     memcpy_dx<uint8_t, ThreadTileSize>(tb, shared_mem, get_f_eng_sample<Order>(f_eng_in, gulp, chan_idx, ngulps_per_seq, nchan), LWA_SV_NSTANDS * LWA_SV_NPOLS, 0);
     f_eng_out = reinterpret_cast<uint8_t*>(shared_mem);
 
     // copy antenna data using the second thread group
-    // printf("copying antenna\n");
     auto antenna_data_start = f_eng_out + LWA_SV_NSTANDS * LWA_SV_NPOLS;
     memcpy_dx<float3, ThreadTileSize>(tb, antenna_data_start, get_ant_pos(antpos_in, chan_idx), LWA_SV_NSTANDS, 1);
     ant_pos_out = reinterpret_cast<float*>(antenna_data_start);
     if (tb.thread_rank() == 0) {
-        // printf("ant pos cp[0]: %f %f %f\n", ant_pos_out[0], ant_pos_out[1], ant_pos_out[2]);
     }
 
     // copy phases data using the third thread group
-    // printf("copying phases");
     auto phases_data_start = ant_pos_out + LWA_SV_NSTANDS * 3;
     memcpy_dx<float2, ThreadTileSize>(tb, phases_data_start, get_phases(phases_in, chan_idx), LWA_SV_NSTANDS * LWA_SV_NPOLS, 2);
     phases_out = phases_data_start;
-
-    // tb.sync();
 
     f_eng_x_phases_out = reinterpret_cast<T*>(phases_out + LWA_SV_NSTANDS * 2);
     float2* phases_v = reinterpret_cast<float2*>(phases_out);
@@ -104,10 +98,8 @@ copy_lwasv_imaging_data(cg::thread_block tb, const uint8_t* f_eng_in, const floa
         f_eng_x_phases_out[idx].y.x += grid_val_X.y;
         f_eng_x_phases_out[idx].y.y += grid_val_Y.y;
     }
-    // auto tile4 = cg::tiled_partition<4>(tb);
 
     if (tb.thread_rank() == 0) {
-        // printf(" phases cp[0]: %f %f\n", phases_out[0], phases_out[1]);
     }
 
     tb.sync();
