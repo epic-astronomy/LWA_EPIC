@@ -14,6 +14,9 @@
 #include <sys/mman.h>
 #include <thread>
 #include <variant>
+#include <unordered_map>
+#include <any>
+#include "types.hpp"
 
 // namespace hn = HWY::HWY_NAMESPACE;
 
@@ -26,13 +29,14 @@ template<typename Num = double>
 class BufMetaData
 {
     using var_t = std::variant<int64_t, uint64_t, uint8_t, uint16_t, double, std::string>;
-    using varmap_t = std::map<std::string, var_t>;
+    using varmap_t = dict_t; //std::map<std::string, var_t>;
 
   protected:
     std::map<std::string, Num> m_meta_num;
     std::map<std::string, std::string> m_meta_str;
     /// std::map to store the metadata. The value type can be string or numeric
-    std::map<std::string, var_t> m_metadata;
+    //std::map<std::string, var_t> m_metadata;
+    varmap_t m_metadata;
 
   public:
     /**

@@ -134,8 +134,8 @@ main(int argc, char** argv)
                 for (auto& it : *metadata) {
                     std::cout << it.first << "\n";
                 }
-                int nchan = std::get<uint8_t>((*metadata)["nchan"]);
-                int chan0 = std::get<int64_t>((*metadata)["chan0"]);
+                int nchan = std::any_cast<uint8_t>((*metadata)["nchan"]);
+                int chan0 = std::any_cast<int64_t>((*metadata)["chan0"]);
                 std::cout << "nchan: " << nchan << " chan0: " << chan0 << "\n";
                 moff_correlator.reset(nchan, chan0, 2, 64, 2.0, 32, 1000);
                 moff_correlator.allocate_f_eng_gpu(gulp.get_mbuf()->buf_size());

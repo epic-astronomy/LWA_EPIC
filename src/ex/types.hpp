@@ -4,6 +4,9 @@
 #include "constants.h"
 #include <endian.h>
 #include <cstdint>
+#include <unordered_map>
+#include <any>
+#include <cstring>
 
 /**
  * @brief Complex nibble. Independent of the host's endianness.
@@ -30,6 +33,9 @@ struct __attribute__((aligned(2))) cnib2
 {
     cnib X, Y;
 };
+
+typedef std::unordered_map<std::string, std::any> dict_t;
+
 
 // template<typename T>
 // using const_restrict_q = const __restrict__ T;
