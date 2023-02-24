@@ -3,10 +3,13 @@
 
 #include "MOFF_cu_handler.h"
 #include "buffer.hpp"
+#include "constants.h"
 #include "hwy/highway.h"
 #include "lf_buf_mngr.hpp"
 #include "packet_assembler.hpp"
 #include "py_funcs.hpp"
+#include "types.hpp"
+#include <cmath>
 #include <iostream>
 #include <memory>
 
@@ -54,12 +57,14 @@ class MOFFCorrelator : public MOFFCuHandler
     int m_support_size;
     int m_gcf_tex_dim;
     bool m_rm_autocorrs{ false };
-    int m_nchan{ 0 };
+    // int m_nchan_in{ 132 };
+    int m_nchan_out { 112 };
     int m_chan0{ 0 };
     size_t m_nseq_per_gulp;
-    int m_npol{ 2 };
+    IMAGING_POL_MODE m_pol_mode{ DUAL_POL };
     float m_delta;
     float m_accum_time;
+    int m_ngulps_per_img;
 
     bool is_raw_ant_pos_set{ false };
 
@@ -79,81 +84,170 @@ class MOFFCorrelator : public MOFFCuHandler
     /// @param p_gcf_tex_dim Resolution of the kernel.
     /// @note This is different from the support size
     void reset_gcf_kernel2D(int p_gcf_tex_dim);
+    /**
+     * @brief Set the up GPU for imaging
+     *
+     * Allocate memory block for the output image and setup texture(s) for GCF
+     */
+    void setup_GPU();
 
   public:
+    // /**
+    //  * @brief Construct a new MOFFCorrelator object
+    //  *
+    //  * @param p_accum_time Total accumulation time in ms
+    //  * @param p_nseq_per_gulp Number of sequences per gulp
+    //  * @param p_npol Number of polarizations to process
+    //  * @param p_grid_size Size of the grid in pixels
+    //  * @param p_grid_res Resolution of the grid in degrees
+    //  * @param p_support Support size
+    //  * @param p_rm_autocorr Flag to remove autocorrelations
+    //  */
+    // [[deprecated]] MOFFCorrelator(float p_accum_time, size_t p_nseq_per_gulp, int p_npol, int p_grid_size, double p_grid_res, int p_support = 2, bool p_rm_autocorr = false)
+    //   : m_accum_time(p_accum_time)
+    //   , m_npol(p_npol)
+    //   , m_grid_size(p_grid_size)
+    //   , m_grid_res(p_grid_res)
+    //   , m_support_size(p_support)
+    //   , m_nseq_per_gulp(p_nseq_per_gulp)
+    //   // , m_gcf_tex_dim(p_gcf_tex_dim)
+    //   , m_rm_autocorrs(p_rm_autocorr)
+    // {
+    //     float gulp_len_ms = float(p_nseq_per_gulp * SAMPLING_LEN /*us*/ * 1e3);
+    //     float ngulps = p_accum_time / gulp_len_ms;
+    //     m_ngulps_per_img = std::ceil(ngulps);
+
+    //     LOG_IF(WARNING, std::abs(std::floor(ngulps) - ngulps) < 1e-5) << "The accumulation time (" << p_accum_time << " ms) is not an integer multiple of the gulp size (" << gulp_len_ms << " ms). Adjusting it to " << m_ngulps_per_img * gulp_len_ms << " ms";
+    // };
+
     /**
      * @brief Construct a new MOFFCorrelator object
      *
-     * @param p_accum_time Total accumulation time
-     * @param p_npol Number of polarizations to process
-     * @param p_grid_size Size of the grid in pixels
-     * @param p_grid_res Resolution of the grid in degrees
-     * @param p_support Support size
-     * @param p_rm_autocorr Flag to remove autocorrelations
+     * @param p_desc MOFFCorrelator description
      */
-    MOFFCorrelator(float p_accum_time, int p_npol, int p_grid_size, double p_grid_res, int p_support, bool p_rm_autocorr = false)
-      : m_accum_time(p_accum_time)
-      , m_npol(p_npol)
-      , m_grid_size(p_grid_size)
-      , m_grid_res(p_grid_res)
-      , m_support_size(p_support)
-      // , m_gcf_tex_dim(p_gcf_tex_dim)
-      , m_rm_autocorrs(p_rm_autocorr){
-          // if (((p_grid_size) & (p_grid_size - 1)) != 0) {
-          //     throw(InvalidSize("The grid size must be a power of 2"));
-          // }
-      };
+    MOFFCorrelator(MOFFCorrelatorDesc p_desc);
     /**
      * @brief Reset the auxiliary data required for imaging
      *
      * @param p_nchan Total channels
      * @param p_chan0 First channel's number
-     * @param p_npol Total number of polarizations
-     * @param p_grid_size Size of the grid in pixels
-     * @param p_grid_res Resolution of the grid in degrees
-     * @param p_gcf_kernel_dim Size of the kernel
-     * @param p_nseq_per_gulp Number of sequences per gulp
      */
-    void reset(int p_nchan, int p_chan0, int p_npol, int p_grid_size, double p_grid_res, int p_gcf_kernel_dim, size_t p_nseq_per_gulp);
+    bool reset(int p_nchan, int p_chan0);
+    // , int p_npol, int p_grid_size, double p_grid_res, int p_gcf_kernel_dim);
+
+    size_t get_nseq_per_gulp() { return m_nseq_per_gulp; }
 };
 
 template<typename Dtype, typename BuffMngr>
-void
-MOFFCorrelator<Dtype, BuffMngr>::reset(int p_nchan, int p_chan0, int p_npol, int p_grid_size, double p_grid_res, int p_gcf_kernel_dim, size_t p_nseq_per_gulp)
+MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc)
 {
-    bool chan_flag = false;
-    bool gcf_flag = false;
-    if (p_nchan != m_nchan || p_chan0 != m_chan0) {
-        m_nchan = p_nchan;
-        m_chan0 = p_chan0;
-        m_nseq_per_gulp = p_nseq_per_gulp;
-        m_grid_size = p_grid_size;
-        m_grid_res = p_grid_res;
+    m_accum_time = p_desc.accum_time_ms;
+    LOG_IF(FATAL, m_accum_time <= 0) << "Total accumulation time must be >0.";
 
-        LOG(INFO) << "Resetting antpos. Grid size: " << m_grid_size << " grid res: " << m_grid_res << " nchan: " << p_nchan << " chan0: " << p_chan0;
-        reset_antpos(m_grid_size, m_grid_res, p_nchan, p_chan0);
-        LOG(INFO) << "Resetting phases";
-        reset_phases(p_nchan, p_chan0);
-        chan_flag = true;
+    m_pol_mode = p_desc.pol_mode;
+
+    m_gcf_tex_dim = p_desc.gcf_kernel_dim;
+    LOG_IF(FATAL, m_gcf_tex_dim <= 0) << "GCF texture size must be >0.";
+
+    // m_npol = p_desc.npol;
+    // LOG_IF(FATAL, !(m_npol >= 1 && m_npol <= 2)) << "Invalid number of polarizations: " << m_npol;
+
+    m_grid_size = p_desc.img_size;
+    LOG_IF(FATAL, m_grid_size <= 0) << "Grid size must be >0.";
+
+    m_grid_res = p_desc.grid_res_deg;
+    LOG_IF(FATAL, m_grid_res <= 0) << "Grid resolution must be >0.";
+
+    m_support_size = p_desc.support_size;
+    LOG_IF(FATAL, m_support_size <= 0) << "Gridding support must be >0.";
+
+    m_nchan_out = p_desc.nchan_out;
+    LOG_IF(FATAL, m_nchan_out <= 0) << "Number of output channels must be >0.";
+
+    m_out_img_desc.img_size = p_desc.img_size;
+    m_out_img_desc.nchan_out = m_nchan_out;
+    m_out_img_desc.pol_mode = m_pol_mode;
+
+    if ((m_support_size & (m_support_size - 1)) != 0) {
+        LOG(WARNING) << "Support is not a power of 2.";
+        m_support_size = std::pow(2, int(std::log2(m_support_size)));
+        LOG(WARNING) << "Adjusting it to " << m_support_size;
     }
 
-    if (m_gcf_tex_dim != p_gcf_kernel_dim) {
-        LOG(INFO) << "Resetting GCF kernel";
-        m_gcf_tex_dim = p_gcf_kernel_dim;
-        reset_gcf_kernel2D(p_gcf_kernel_dim);
-        gcf_flag = true;
-    }
-    LOG(INFO) << "Sending imaging context information to gpu";
+    m_nseq_per_gulp = p_desc.nseq_per_gulp;
+    LOG_IF(FATAL, m_nseq_per_gulp <= 0) << "Number of sequences per gulp must be >0.";
 
-    if (chan_flag || gcf_flag) {
-        this->reset_data(
-          p_nchan,
-          m_nseq_per_gulp,
-          m_gcf_tex_dim,
-          m_ant_pos_freq.get(),
-          m_phases.get(),
-          m_gcf_kernel2D.get());
+    m_rm_autocorrs = p_desc.is_remove_autocorr;
+    LOG_IF(ERROR, m_rm_autocorrs) << "Autocorrelation removal is not supported yet.";
+
+    m_nstreams = p_desc.nstreams;
+    LOG_IF(FATAL, !(m_nstreams < 1 || m_nstreams > MAX_GULP_STREAMS)) << "Number of streams must  be between 1 and " << MAX_GULP_STREAMS;
+    LOG_IF(FATAL, m_nchan_out % m_nstreams != 0) << "The number of output channels must be divisible by the number of streams to process a gulp.";
+
+    //TODO: Check if the GPU can image the specified number of output channels 
+    
+
+    float gulp_len_ms = float(m_nseq_per_gulp * SAMPLING_LEN /*us*/ * 1e3);
+    float ngulps = m_accum_time / gulp_len_ms;
+    m_ngulps_per_img = std::ceil(ngulps);
+
+    LOG_IF(WARNING, std::abs(std::ceil(ngulps) - ngulps) > 1e-5) << "The accumulation time (" << m_accum_time << " ms) is not an integer multiple of the gulp size (" << gulp_len_ms << " ms). Adjusting it to " << m_ngulps_per_img * gulp_len_ms << " ms";
+
+    setup_GPU();
+};
+
+template<typename Dtype, typename BuffMngr>
+bool
+MOFFCorrelator<Dtype, BuffMngr>::reset(int p_nchan, int p_chan0)
+// , int p_npol, int p_grid_size, double p_grid_res, int p_gcf_kernel_dim)
+{
+    // bool chan_flag = false;
+    // bool gcf_flag = false;
+    if (p_nchan == m_nchan_in && p_chan0 == m_chan0) {
+        return false;
     }
+
+    if (p_nchan != m_nchan_in) {
+        this->allocate_f_eng_gpu(m_nchan_in * LWA_SV_INP_PER_CHAN * m_nseq_per_gulp);
+    }
+
+    m_nchan_in = p_nchan;
+    m_chan0 = p_chan0;
+    // m_nseq_per_gulp = p_nseq_per_gulp;
+    // m_grid_size = p_grid_size;
+    // m_grid_res = p_grid_res;
+
+    VLOG(3) << "Resetting antpos. Grid size: " << m_grid_size << " grid res: " << m_grid_res << " nchan: " << p_nchan << " chan0: " << p_chan0;
+    reset_antpos(m_grid_size, m_grid_res, p_nchan, p_chan0);
+    VLOG(3) << "Resetting phases";
+    reset_phases(p_nchan, p_chan0);
+    // chan_flag = true;
+
+    VLOG(3) << "Sending imaging context information to gpu";
+    this->reset_data(
+      p_nchan,
+      m_nseq_per_gulp,
+      //   m_gcf_tex_dim,
+      m_ant_pos_freq.get(),
+      m_phases.get()
+      //   m_gcf_kernel2D.get()
+    );
+
+    return true;
+
+    // if (m_gcf_tex_dim != p_gcf_kernel_dim) {
+    //     LOG(INFO) << "Resetting GCF kernel";
+    //     m_gcf_tex_dim = p_gcf_kernel_dim;
+    //     reset_gcf_kernel2D(p_gcf_kernel_dim);
+    //     gcf_flag = true;
+    // }
+
+    // if (chan_flag) {
+
+    //     return true;
+    // }
+
+    // return false;
 }
 
 template<typename Dtype, typename BuffMngr>
@@ -162,10 +256,10 @@ MOFFCorrelator<Dtype, BuffMngr>::reset_antpos(int p_grid_size, double p_grid_res
 {
     int pitch = 3 * LWA_SV_NSTANDS;
     float half_grid = float(p_grid_size) / 2.0f;
-    m_grid_size = p_grid_size;
-    m_grid_res = p_grid_res;
-    m_nchan = p_nchan;
-    m_chan0 = p_chan0;
+    // m_grid_size = p_grid_size;
+    // m_grid_res = p_grid_res;
+    // m_nchan_in = p_nchan;
+    // m_chan0 = p_chan0;
 
     if (!is_raw_ant_pos_set) {
         m_raw_ant_pos.reset();
@@ -174,7 +268,7 @@ MOFFCorrelator<Dtype, BuffMngr>::reset_antpos(int p_grid_size, double p_grid_res
 
     m_ant_pos_freq.reset();
     m_ant_pos_freq = std::move(hwy::AllocateAligned<float>(pitch * p_nchan));
-    CHECK_EQ(m_ant_pos_freq.get(), static_cast<float*>(NULL))<<"Unable to allocate antenna position memory";
+    CHECK_EQ(m_ant_pos_freq.get(), static_cast<float*>(NULL)) << "Unable to allocate antenna position memory";
 
     m_delta = get_lwasv_locs<float>(m_raw_ant_pos.get(), p_grid_size, p_grid_res);
     auto chan0 = p_chan0;
@@ -207,7 +301,7 @@ template<typename Dtype, typename BuffMngr>
 void
 MOFFCorrelator<Dtype, BuffMngr>::reset_gcf_kernel2D(int p_gcf_tex_dim)
 {
-    m_gcf_tex_dim = p_gcf_tex_dim;
+    // m_gcf_tex_dim = p_gcf_tex_dim;
     m_gcf_kernel2D.reset();
     m_gcf_kernel2D = std::move(hwy::AllocateAligned<float>(p_gcf_tex_dim * p_gcf_tex_dim));
 
@@ -217,7 +311,23 @@ MOFFCorrelator<Dtype, BuffMngr>::reset_gcf_kernel2D(int p_gcf_tex_dim)
       ProSphPars::alpha,
       m_gcf_kernel2D.get(),
       p_gcf_tex_dim,
-      ProSphPars::c);
+      ProSphPars::c);}
+
+template<typename Dtype, typename BuffMngr>
+void
+MOFFCorrelator<Dtype, BuffMngr>::setup_GPU()
+{
+    this->allocate_out_img(m_nchan_out * std::pow(m_grid_size, 2) * std::pow(int(m_pol_mode), 2) * sizeof(float));
+    reset_gcf_kernel2D(m_gcf_tex_dim);
+    this->reset_gcf_tex(m_gcf_tex_dim, m_gcf_kernel2D.get());
+
+    // calculate the appropriate offsets to image the gulp in streams
+    this->m_nchan_per_stream = m_nchan_out/m_nstreams;
+    this->m_nbytes_f_eng_per_stream = m_f_eng_bytes/m_nstreams;
+    this->m_nbytes_out_img_per_stream = m_out_img_bytes/m_nstreams;
+
+    create_gulp_custreams();
+    set_imaging_kernel();
 }
 
 using MOFFCorrelator_t = MOFFCorrelator<uint8_t, default_buf_mngr_t>;

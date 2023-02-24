@@ -2,11 +2,11 @@
 #define TYPES_H
 
 #include "constants.h"
-#include <endian.h>
-#include <cstdint>
-#include <unordered_map>
 #include <any>
+#include <cstdint>
 #include <cstring>
+#include <endian.h>
+#include <unordered_map>
 
 /**
  * @brief Complex nibble. Independent of the host's endianness.
@@ -36,5 +36,29 @@ struct __attribute__((aligned(2))) cnib2
 
 /// Python dict-like data structure to describe Meta data
 typedef std::unordered_map<std::string, std::any> dict_t;
+
+struct MOFFCorrelatorDesc
+{
+    /// @brief Accumulation (integration) time in ms
+    float accum_time_ms{ 80 };
+    int nseq_per_gulp{ 1000 };
+    IMAGING_POL_MODE pol_mode{ DUAL_POL };
+    IMAGE_SIZE img_size{ HALF };
+    float grid_res_deg{ 1.8 };
+    int support_size{ 2 };
+    bool is_remove_autocorr{ false };
+    /// @brief Number of streams to split a gulp into. Can be at most MAX_GULP_STREAMS
+    int nstreams{ 1 };
+    int nchan_out{ 96 };
+    int gcf_kernel_dim{ 32 };
+    int device_id{ 0 };
+};
+
+struct OutImgDesc
+{
+    IMAGING_POL_MODE pol_mode{ DUAL_POL };
+    IMAGE_SIZE img_size{ HALF };
+    int nchan_out;
+};
 
 #endif // TYPES_H

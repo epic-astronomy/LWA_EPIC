@@ -21,10 +21,9 @@ _temp(float* ant_pos, cudaTextureObject_t gcf)
     }
 }
 
-
 /**
  * @brief Block fft specialization for half precision
- * 
+ *
  * For half-precision, the data will be stored as a complex<half2>
  * with an RRII (real real img img) layout.
  * This can be exploited to speedup the computation.
@@ -33,7 +32,7 @@ _temp(float* ant_pos, cudaTextureObject_t gcf)
  * at the same grid point, respectively, and cuFFTDx takes care of doing FFT/IFFT
  * on individual grids. This enables storing data for both the polarizations at a single place
  * allowing fast computation of XX, YY, XY*, X*Y products.
- * 
+ *
  * @tparam FFT FFT type constructed using cufftdx
  * @tparam Order Packet data ordering type
  * @param f_eng_g Pointer to the F-Engine data in global memory
@@ -42,10 +41,11 @@ _temp(float* ant_pos, cudaTextureObject_t gcf)
  * @param nseq_per_gulp Number of sequences in each gulp
  * @param nchan Number of channels in each sequence
  * @param gcf_tex GCF texture object
- * @param output_g[out] Pointer to the output image. Must have dimensions of 
+ * @param output_g[out] Pointer to the output image. Must have dimensions of
  *                  \p nseq_per_gulp, \p nchan, \p grid_size, \p grid_size, 2.
  *                  The grid size will be automatically deduced from the FFT object.
- * 
+ * @param chan_offset Offset to the first channel in the current stream.
+ * @param is_first_gulp Flag if the passed data belongs to the first gulp. It determines whether to assign or increment the output image block.
  */
 template<typename FFT, PKT_DATA_ORDER Order = CHAN_MAJOR, std::enable_if_t<std::is_same<__half2, typename FFT::output_type::value_type>::value, bool> = true>
 __launch_bounds__(FFT::max_threads_per_block)
@@ -56,8 +56,9 @@ __launch_bounds__(FFT::max_threads_per_block)
     size_t nseq_per_gulp,
     size_t nchan,
     cudaTextureObject_t gcf_tex,
-    float* output_g /* for future extensions*/
-  )
+    float* output_g,
+    size_t chan_offset = 0,
+    bool is_first_gulp=true)
 {
 
     using complex_type = typename FFT::value_type;
@@ -65,9 +66,9 @@ __launch_bounds__(FFT::max_threads_per_block)
 
     complex_type thread_data[FFT::storage_size];
 
-   
-    for (int sample_no = 0; sample_no < 1000; ++sample_no) {
+    for (int seq_no = 0; seq_no < nseq_per_gulp; ++seq_no) {
         volatile int idx = 0;
+        volatile int channel_idx = blockIdx.x + chan_offset;
 
         constexpr int stride = size_of<FFT>::value / FFT::elements_per_thread;
         constexpr int row_size = size_of<FFT>::value; // blockDim.x * FFT::elements_per_thread;
@@ -80,9 +81,9 @@ __launch_bounds__(FFT::max_threads_per_block)
           thread_data,
           reinterpret_cast<const cnib2*>(
             get_f_eng_sample<Order>(
-              f_eng_g, sample_no, blockDim.x, nseq_per_gulp, nchan)),
-          reinterpret_cast<const float3*>(get_ant_pos(antpos_g, blockDim.x)),
-          reinterpret_cast<const float4*>(get_phases(phases_g, blockDim.x)),
+              f_eng_g, seq_no, channel_idx, nseq_per_gulp, nchan)),
+          reinterpret_cast<const float3*>(get_ant_pos(antpos_g, channel_idx)),
+          reinterpret_cast<const float4*>(get_phases(phases_g, channel_idx)),
           shared_mem,
           gcf_tex);
 
@@ -92,7 +93,7 @@ __launch_bounds__(FFT::max_threads_per_block)
             thread_data[_reg] = shared_mem[index];
         }
 
-        // if (threadIdx.x == 0 && threadIdx.y == 0 && blockIdx.x == 0 && i == idx)
+        // if (threadIdx.x == 0 && threadIdx.y == 0 && channel_idx == 0 && i == idx)
         //     printf("thread: %f\n", __half2float(thread_data[idx].x.x));
 
         // Execute IFFT (row-wise)
@@ -126,15 +127,14 @@ __launch_bounds__(FFT::max_threads_per_block)
         for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
             auto index = (threadIdx.x + _reg * stride) + threadIdx.y * row_size;
             auto xx_yy = thread_data[_reg].x * thread_data[_reg].x + thread_data[_reg].y * thread_data[_reg].y;
-            if(sample_no==0){
-                output_g[blockIdx.x*row_size*row_size+index] = float(xx_yy.x+xx_yy.y);
-            }
-            else{
-                output_g[blockIdx.x*row_size*row_size+index]+=float(xx_yy.x+xx_yy.y);
+            if (seq_no == 0) {
+                output_g[channel_idx * row_size * row_size + index] = float(xx_yy.x + xx_yy.y);
+            } else {
+                output_g[channel_idx * row_size * row_size + index] += float(xx_yy.x + xx_yy.y);
             }
         }
 
-        if (blockIdx.x == 0 && sample_no == idx) {
+        if (channel_idx == 0 && seq_no == idx) {
             // for (int i = 0; i < FFT::elements_per_thread; ++i) {
             //     printf("thread: %f %f %d %d %d\n",__half2float(thread_data[i].x.x), __half2float(thread_data[i].y.x), threadIdx.x, threadIdx.y, i);
             // }
