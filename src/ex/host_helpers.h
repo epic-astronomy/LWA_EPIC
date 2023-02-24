@@ -40,4 +40,15 @@ template<typename T>
 int
 cu_mlock(T* ptr, size_t nbytes);
 
+
+/**
+ * @brief Unregister host memory
+ * 
+ * @tparam T Type of the data
+ * @param ptr Pointer to unregister
+ * @return int Returns 0 on success
+ */
+template<typename T>
+int cu_munlock(T* ptr);
+
 #endif
