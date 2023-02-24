@@ -59,6 +59,9 @@ class LFBufMngr // : Buffer<T, Allocator>
      * @return Payload<mbuf_t> 
      */
     Payload<mbuf_t> acquire_buf(size_t p_max_tries = 5);
+    // ~LFBufMngr(){
+    //   LOG(INFO)<<"D LFBuffer";
+    // }
 };
 
 
@@ -70,17 +73,17 @@ LFBufMngr<Buffer>::LFBufMngr(size_t p_nbufs, size_t p_buf_size, size_t p_max_tri
   , m_max_iters(p_nbufs * p_max_tries)
   , m_page_lock(p_page_lock)
 {
-    DLOG(INFO)<<"Nbufs in LFBuffer manager: "<<p_nbufs;
-    DLOG(INFO)<<"Buf size: "<<p_buf_size;
+    VLOG(1)<<"Nbufs in LFBuffer manager: "<<p_nbufs;
+    VLOG(1)<<"Buf size: "<<p_buf_size;
     CHECK(p_nbufs>0)<<"Number of buffers must be at least one";
     CHECK(p_buf_size>=0)<<"Buffer size must be non-negative";
     
     // allocate space for buffers
     m_buf_vec.reserve(p_nbufs);
     for (size_t i = 0; i < p_nbufs; ++i) {
-        m_buf_vec[i] = std::make_shared<mbuf_t>(p_buf_size, p_page_lock);
+        m_buf_vec.push_back(std::move(std::make_shared<mbuf_t>(p_buf_size, p_page_lock, i)));
     }
-    DLOG(INFO)<<"Allocated space for the buffer";
+    VLOG(1)<<"Allocated space for the buffer";
 }
 
 template<class Buffer>
@@ -90,7 +93,7 @@ LFBufMngr<Buffer>::acquire_buf(size_t p_max_tries)
     auto cur_cursor = m_cursor.load(); // postion where buffer was available previously
     auto orig_cursor = cur_cursor;
     size_t counter = 0;
-    DLOG(INFO)<<"Initial cursor: "<<cur_cursor;
+    VLOG(2)<<"Initial cursor: "<<cur_cursor;
     while (true) {
         ++counter;
         cur_cursor = (cur_cursor+1)% m_nbufs;
@@ -100,7 +103,8 @@ LFBufMngr<Buffer>::acquire_buf(size_t p_max_tries)
         }
         if (counter > m_max_iters) {
             //Buffer still full after max_tries
-            return mbuf_sptr_t(nullptr);
+            // return mbuf_sptr_t(nullptr);
+            return Payload<mbuf_t>(nullptr);
         }
     }
     // CAS if it was not changed by another thread already

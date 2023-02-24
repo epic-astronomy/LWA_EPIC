@@ -6,6 +6,8 @@
 #include "helper_traits.hpp"
 #include "host_helpers.h"
 #include "hwy/aligned_allocator.h"
+#include "types.hpp"
+#include <any>
 #include <atomic>
 #include <cstdint>
 #include <cstring>
@@ -13,10 +15,8 @@
 #include <map>
 #include <sys/mman.h>
 #include <thread>
-#include <variant>
 #include <unordered_map>
-#include <any>
-#include "types.hpp"
+#include <variant>
 
 /**
  * @brief Mixin class to hold the metadata for buffers
@@ -27,7 +27,7 @@ template<typename Num = double>
 class BufMetaData
 {
     using var_t = std::variant<int64_t, uint64_t, uint8_t, uint16_t, double, std::string>;
-    using varmap_t = dict_t; //std::map<std::string, var_t>;
+    using varmap_t = dict_t; // std::map<std::string, var_t>;
 
   protected:
     std::map<std::string, Num> m_meta_num;
@@ -198,7 +198,22 @@ struct Payload
      * @param p_mbuf shared pointer to the managed buffer
      */
     Payload(std::shared_ptr<MBuf> p_mbuf);
+    Payload()
+    {
+        VLOG(1) << "Creating an empty payload";
+    };
+    Payload(const Payload& p_pld)
+    {
+        VLOG(1) << "Copying payload " << m_mbuf.use_count();
+        VLOG_IF(2, m_mbuf.get() != nullptr) << " with ID " << m_mbuf.get()->m_id;
+        this->m_mbuf = p_pld.m_mbuf;
+        VLOG(2) << "Copied payload " << m_mbuf.use_count();
+        VLOG_IF(2, m_mbuf.get() != nullptr) << " with ID " << m_mbuf.get()->m_id;
+    }
     ~Payload();
+    // void mbuf_shared_count() const{
+    //     DLOG(INFO)<<"MBuf shared count: "<<m_mbuf.use_count();
+    // }
     /**
      * @brief Get the managed buffer in this payload
      *
@@ -231,14 +246,16 @@ struct ManagedBuf : public Buffer
     using mbuf_sptr_t = std::shared_ptr<mbuf_t>;
 
   public:
+    const size_t m_id;
     /**
      * @brief Construct a new managed buffer
      *
      * @param p_size Number of elements in the buffer
      * @param p_page_lock Flag to indicate if the buffer has to be page locked
      */
-    ManagedBuf(size_t p_size, bool p_page_lock = true)
-      : Buffer(p_size, p_page_lock){};
+    ManagedBuf(size_t p_size, bool p_page_lock = true, size_t p_id = 0)
+      : Buffer(p_size, p_page_lock)
+      , m_id(p_id){};
     // void unlock();
     /**
      * @brief Attempt to acquire a lock on the buffer
@@ -246,6 +263,9 @@ struct ManagedBuf : public Buffer
      * @return True if successful else false
      */
     bool lock();
+    // ~ManagedBuf(){
+    //     DLOG(INFO)<<"D ManagedBuf";
+    // };
 };
 
 template<typename Buffer>
@@ -339,6 +359,7 @@ AlignedBuffer<dtype>::allocate(size_t p_buf_size, bool p_reallocate, bool p_page
     this->m_is_allocated = true;
     this->m_buffer.reset();
     this->m_buffer = std::move(hwy::AllocateAligned<dtype>(p_buf_size));
+    std::fill(this->m_buffer.get(), this->m_buffer.get() + p_buf_size, 0);
     if (!this->m_buffer) {
         throw(MemoryAllocationFailure(p_buf_size));
     }
@@ -352,7 +373,12 @@ template<typename dtype>
 AlignedBuffer<dtype>::~AlignedBuffer()
 {
     if (m_page_lock) {
-        munlock(this->m_buffer.get(), this->m_bufsize);
+        // DLOG(INFO)<<"D Aligned buffer";
+        auto res = cu_munlock(this->m_buffer.get());
+        // DLOG(INFO)<<"Unregistering buffer";
+        // this->m_buffer.reset();
+        // DLOG(INFO)<<"Buffer reset";
+        CHECK(res == 0) << "Unable to unregister the buffer";
     }
 }
 
@@ -390,7 +416,14 @@ ManagedBuf<Buffer>::lock()
 
 template<typename MBuf>
 Payload<MBuf>::Payload(std::shared_ptr<MBuf> p_mbuf)
-  : m_mbuf(p_mbuf){};
+//   : m_mbuf(p_mbuf)
+{
+    VLOG(1)<<"C payload";
+    if (p_mbuf) {
+        VLOG(2) << "Creating a payload with a managed buffer ID " << p_mbuf.get()->m_id;
+        m_mbuf = p_mbuf;
+    }
+};
 
 template<typename Mbuf>
 Payload<Mbuf>::~Payload()
@@ -401,9 +434,12 @@ Payload<Mbuf>::~Payload()
     // This allows the same buffer to be passed around multiple processing blocks
     // without unlocking it.
     // std::cout<<"Mbuf has "<<m_mbuf.use_count()<<" pointers\n";
-    if (m_mbuf.use_count() == 2) {
-        std::cout << "unlocking\n";
+    VLOG_IF(1, m_mbuf!=nullptr) << "D Payload shared mbuf count: " << m_mbuf.use_count() << " ID: " << m_mbuf.get()->m_id;
+    // DLOG(INFO)<<"D Payload";
+    if (m_mbuf && m_mbuf.use_count() == 2) {
+        VLOG(2) << "unlocking";
         unlock(true);
+        VLOG(2) << "Unlocked";
     }
 }
 
@@ -421,7 +457,11 @@ template<typename Mbuf>
 Mbuf*
 Payload<Mbuf>::get_mbuf()
 {
-    return m_mbuf.get();
+    if (m_mbuf) {
+        return m_mbuf.get();
+    } else {
+        return nullptr;
+    }
 }
 
 #endif
