@@ -29,6 +29,10 @@
 #include <sys/types.h>
 #include <x86intrin.h>
 #include <glog/logging.h>
+
+
+#include "raft_kernels/packet_gen.hpp"
+#include "raft_kernels/dummy_kernel.hpp"
 // #include "ex/packet_assembler.h"
 using namespace std::chrono;
 using namespace std::string_literals;
@@ -59,17 +63,44 @@ main(int argc, char** argv)
 {   
     FLAGS_logtostderr = 1;
     google::InitGoogleLogging(argv[0]);
+
+
     LOG(INFO)<<"E-Field Parallel Imaging Correlator (EPIC) v"<<EPIC_VERSION;
+    if(VLOG_IS_ON(1)){
+        VLOG(1)<<"Verbose logging";
+    }
+    else{
+        LOG(INFO)<<"VLOG(1) is off";
+    }
     // std::cout<<pro_sph_cv(0,0,8.413185126313465);
     // return 0;
     std::string ip = "239.168.40.11";
     int port = 4015;
 
     LOG(INFO)<<"Initializing Verbs packet assembler";
-    auto gulper = verbs_pkt_assembler(ip, port);
+    // auto gulper = verbs_pkt_assembler(ip, port);
     DLOG(INFO) <<"Number of 8-bit lanes"<<int(HWY_LANES(uint8_t));
     LOG(INFO)<<"Initializing MOFF Correlator";
-    MOFFCorrelator_t moff_correlator(1.5, 2, 64, 2.0, 8);
+    auto gulper_ptr = std::make_unique<default_pkt_assembler>(ip, port);
+    //const auto gulp = gulper_ptr.get()->get_gulp();
+    // gulp.mbuf_shared_count();
+    //DLOG(INFO)<<"Got the gulp";
+
+    auto gulper_rft = GulpGen_rft<default_pkt_assembler>(gulper_ptr, 5);
+    dummy<default_pkt_assembler::payload_t> dummy_rft;
+
+    raft::map m;
+
+    m+= gulper_rft >> dummy_rft;
+    m.exe();
+
+    LOG(INFO)<<"END";
+
+    return 0;
+
+#ifdef _UNUSED_
+
+    MOFFCorrelator_t moff_correlator(1.5, 1000, 2, 64, 2.0, 8);
     // py::scoped_interpreter guard{};
 
     // std::cout << "wtf\n";
@@ -137,7 +168,7 @@ main(int argc, char** argv)
                 int nchan = std::any_cast<uint8_t>((*metadata)["nchan"]);
                 int chan0 = std::any_cast<int64_t>((*metadata)["chan0"]);
                 std::cout << "nchan: " << nchan << " chan0: " << chan0 << "\n";
-                moff_correlator.reset(nchan, chan0, 2, 64, 2.0, 32, 1000);
+                //moff_correlator.reset(nchan, chan0, 2, 64, 2.0, 32, 1000);
                 moff_correlator.allocate_f_eng_gpu(gulp.get_mbuf()->buf_size());
                 int npixels = 64*64*nchan;
                 moff_correlator.allocate_out_img(npixels*sizeof(float));
@@ -184,4 +215,5 @@ main(int argc, char** argv)
     
     return (EXIT_SUCCESS);
     // #endif
+#endif
 }
