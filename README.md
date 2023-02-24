@@ -35,4 +35,20 @@ cmake ..
 make
 ```
 
+To create a debug build:
+```bash
+cmake -DCMAKE_BUILD_TYPE=Debug ..
+make
+```
+
+Memory errors can be detected using the following valgrind command
+```bash
+valgrind --leak-check=full \
+         --show-leak-kinds=all \
+         --track-origins=yes  \
+         --verbose \
+         --log-file=valgrind-out.txt \
+          ./epic++
+```
+
 This creates an executable called `epic++`. If it needs to executed from a different directory please also copy all the python files from the build directory or ensure they are visible to the interpreter.
