@@ -30,13 +30,24 @@ pro_sph_ang1_cv(py::module_& scipy_spl, int m, int n, float c, float cv, float x
     }
 }
 
-// Create a generic 2D texture for a prolate spheroidal kernel
-// The output texture represents only the u>=0 and v>=0 part of the kernel.
-// Because the kernel is symmetric, one can obtain the kernel value at negative coordinates
-// simply by passing in their absolute values. That means u and v must be normalized
-// with half the support size. Furthermore, the dim parameter does not need to equal
-// the half support size. As long as it's a large enough number, for example, 512,
-// tex2D should provide reasonably accurate values with interpolation.
+/**
+ * @brief Create a generic 2D texture for a prolate spheroidal kernel
+ * 
+ * The output texture represents only the u>=0 and v>=0 part of the kernel.
+ * Because the kernel is symmetric, one can obtain the kernel value at negative coordinates
+ * simply by passing in their absolute values. That means u and v must be normalized
+ * with half the support size. Furthermore, the dim parameter does not need to equal
+ * the half support size. As long as it's a large enough number, for example, 512,
+ * tex2D should provide reasonably accurate values with interpolation.
+ * 
+ * @tparam T Data type for the texture
+ * @param m Mode parameter m
+ * @param n Mode parameter n
+ * @param alpha Order of the wave functions
+ * @param out Output array to store the texture
+ * @param dim Size of the texture
+ * @param c Spheroidal parameter
+ */
 template<typename T>
 void
 prolate_spheroidal_to_tex2D(int m, int n, float alpha, T* out, int dim, float c = 5.356 * PI / 2.0)

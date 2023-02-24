@@ -63,6 +63,11 @@ class PacketAssembler : public PktProcessor
       size_t p_ngulps = 20,
       size_t p_seq_size = SINGLE_SEQ_SIZE);
     payload_t get_gulp();
+    size_t get_nseq_per_gulp(){return m_nseq_per_gulp;};
+    // ~PacketAssembler(){
+    //     LOG(INFO)<<"D assembler";
+    // }
+
 };
 
 template<typename BufferMngr, class Receiver, class PktProcessor>
@@ -79,13 +84,13 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::PacketAssembler(std::string
     m_reset_pkt_stats();
     m_recent_hdr.seq = 0;
     m_seq_end = m_seq_start + m_nseq_per_gulp;
-    DLOG(INFO) << "Setting address";
+    VLOG(3) << "Setting address";
     m_receiver->set_address(p_ip, p_port);
-    DLOG(INFO) << "Binding address";
+    VLOG(3) << "Binding address";
     m_receiver->bind_socket();
     // std::cout << "initing receiver address\n";
     if (Receiver::type == VERBS) {
-        std::cout << alignment_offset<chips_hdr_type, uint8_t, BF_VERBS_PAYLOAD_OFFSET>::value << "\n";
+        VLOG(2) << alignment_offset<chips_hdr_type, uint8_t, BF_VERBS_PAYLOAD_OFFSET>::value << "\n";
         m_receiver->init_receiver(alignment_offset<chips_hdr_type, uint8_t, BF_VERBS_PAYLOAD_OFFSET>::value);
     }
     m_min_pkt_limit = float(ALLOWED_PKT_DROP) * 0.01 * PktProcessor::nsrc * m_nseq_per_gulp;
@@ -116,11 +121,13 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::get_gulp()
 {
     auto payload = m_buf_mngr->acquire_buf();
     auto mbuf = payload.get_mbuf();
+    // payload.mbuf_shared_count();
     auto start = high_resolution_clock::now();
     auto stop = high_resolution_clock::now();
     int nbytes;
     int once = 0;
     int recvd_pkts = 0;
+    VLOG(1)<<"Generating a gulp";
     while (true) {
         if (!m_last_pkt_available) { // fetch a new one
             start = high_resolution_clock::now();
@@ -132,7 +139,7 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::get_gulp()
                 continue;
             }
             if (!PktProcessor::is_pkt_valid(m_recent_pkt, m_recent_hdr, m_recent_data, nbytes)) {
-                DLOG(INFO) << "Bad header";
+                VLOG(3) << "Bad header";
                 continue;
             }
             if (m_recent_hdr.seq < m_seq_start) {
@@ -144,17 +151,17 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::get_gulp()
         if (std::greater_equal<uint64_t>{}(m_recent_hdr.seq, m_seq_end)) {
             if (m_seq_start == 0) { // packet assembling hasn't begun yet
                 m_seq_start = m_recent_hdr.seq;
-                DLOG(INFO) << "Nudging packet sequence to the nearest second";
+                VLOG(2) << "Nudging packet sequence to the nearest second";
                 m_nudge_seq_start();
                 continue;
             } else {
-                DLOG(INFO) << "returning packet\n";
-                DLOG(INFO) << "mvalid packets: " << m_n_valid_pkts << " 16000"
+                VLOG(3) << "returning packet\n";
+                VLOG(3) << "mvalid packets: " << m_n_valid_pkts << " 16000"
                            << " " << recvd_pkts;
-                DLOG(INFO) << m_seq_start << " " << m_seq_end << " " << m_recent_hdr.seq;
+                VLOG(3) << m_seq_start << " " << m_seq_end << " " << m_recent_hdr.seq;
                 m_last_pkt_available = true;
-                DLOG(INFO) << "Nseqs: " << int(m_seq_start - m_seq_end);
-                DLOG(INFO) << "data: " << int(mbuf->get_data_ptr()[0]) << " " << int(mbuf->get_data_ptr()[1]);
+                VLOG(3) << "Nseqs: " << int(m_seq_start - m_seq_end);
+                VLOG(3) << "data: " << int(mbuf->get_data_ptr()[0]) << " " << int(mbuf->get_data_ptr()[1]);
 
                 if (m_recent_hdr.seq >= (m_seq_end + m_nseq_per_gulp)) {
                     m_seq_start = std::ceil(double(m_recent_hdr.seq) / double(NSEQ_PER_SEC)) * NSEQ_PER_SEC; // m_recent_hdr.seq;
@@ -165,7 +172,7 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::get_gulp()
                 }
 
                 if (m_n_valid_pkts < m_min_pkt_limit) {
-                    DLOG(INFO) << "returning null pkt";
+                    VLOG(3) << "returning null pkt";
                     m_n_valid_pkts = 0;
                     return payload_t(nullptr);
                 }
@@ -174,6 +181,7 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::get_gulp()
                 PktProcessor::nullify_ill_sources(mbuf, m_recent_hdr, m_valid_pkt_stats, m_nseq_per_gulp);
 
                 m_n_valid_pkts = 0;
+                // DLOG(INFO)<<"Returning payload";
                 return payload;
             }
         }

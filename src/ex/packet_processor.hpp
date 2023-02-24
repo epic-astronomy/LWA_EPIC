@@ -15,6 +15,7 @@
 #include <omp.h>
 #include <string>
 #include <thread>
+#include <glog/logging.h>
 
 namespace hn = hwy::HWY_NAMESPACE;
 
@@ -80,6 +81,9 @@ class PacketProcessor<chips_hdr_type, uint8_t, Copier, Order> : public Copier<ch
     inline static void set_metadata(Buffer* p_mbuf, header_t& p_hdr, uint64_t p_seq_start, uint64_t p_seq_end);
     template<class Buffer>
     inline static void nullify_ill_sources(Buffer* p_mbuf, header_t& p_hdr, std::vector<std::shared_ptr<std::atomic_ullong>>& p_pkt_stats, size_t p_exp_pkts_per_source);
+    // ~PacketProcessor(){
+    //     DLOG(INFO)<<"D PktProcessor";
+    // }
 };
 
 template<template<class, class, PKT_DATA_ORDER> class Copier, PKT_DATA_ORDER Order>
@@ -195,9 +199,13 @@ PacketProcessor<chips_hdr_type, uint8_t, Copier, Order>::set_metadata(Buffer* p_
     auto& mref = p_mbuf->get_metadataref();
     mref["seq_start"] = p_seq_start;
     mref["seq_end"] = p_seq_end;
+    int nseqs = p_seq_end - p_seq_end;
+    mref["nseqs"] = nseqs;
+    mref["gulp_len_ms"] = (p_seq_end - p_seq_end) * SAMPLING_LEN /*us*/ * 1e3;
     mref["nchan"] = p_hdr.nchan;
     mref["chan0"] = int64_t(p_hdr.chan0); // to meet alignment requirements
     mref["data_order"] = (Order == TIME_MAJOR ? "t_maj"s : "c_maj"s);
+    mref["nbytes"] = p_hdr.nchan * LWA_SV_NPOLS * nseqs * LWA_SV_NSTANDS * 1/*bytes*/;
 }
 
 template<template<class, class, PKT_DATA_ORDER> class Copier, PKT_DATA_ORDER Order>
