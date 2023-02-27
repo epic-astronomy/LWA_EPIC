@@ -157,7 +157,7 @@ transpose_tri(typename FFT::value_type thread_reg[FFT::elements_per_thread],
         }
         // The index for the upper triangle element in the shared memory is the original index
         // offset by the left triangle and diagonal elements.
-        int upper_smem_idx = threadIdx.y * size_of<FFT>::value + col - (threadIdx.y + 1) * (threadIdx.y + 2) * 0.5;
+        int upper_smem_idx = threadIdx.y * cufftdx::size_of<FFT>::value + col - (threadIdx.y + 1) * (threadIdx.y + 2) * 0.5;
         shared_mem[upper_smem_idx] = thread_reg[i];
     }
 
@@ -171,7 +171,7 @@ transpose_tri(typename FFT::value_type thread_reg[FFT::elements_per_thread],
         }
         // The index for the lower triangle element is the same as the upper triangle but
         // with the row and columns exchanged.
-        int lower_smem_idx = col * size_of<FFT>::value + threadIdx.y - (col + 1) * (col + 2) * 0.5;
+        int lower_smem_idx = col * cufftdx::size_of<FFT>::value + threadIdx.y - (col + 1) * (col + 2) * 0.5;
         auto _temp = thread_reg[i];
         thread_reg[i] = shared_mem[lower_smem_idx];
         shared_mem[lower_smem_idx] = _temp;
@@ -186,7 +186,7 @@ transpose_tri(typename FFT::value_type thread_reg[FFT::elements_per_thread],
         if (col <= threadIdx.y) {
             continue;
         }
-        int upper_smem_idx = threadIdx.y * size_of<FFT>::value + col - (threadIdx.y + 1) * (threadIdx.y + 2) * 0.5;
+        int upper_smem_idx = threadIdx.y * cufftdx::size_of<FFT>::value + col - (threadIdx.y + 1) * (threadIdx.y + 2) * 0.5;
         thread_reg[i] = shared_mem[upper_smem_idx];
     }
 
