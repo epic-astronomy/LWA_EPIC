@@ -33,27 +33,43 @@ class Correlator_rft : public raft::kernel
     {
         _Payload pld;
         input["gulp"].pop(pld);
+
+        if (!pld) {
+            return raft::proceed;
+        }
+
+        auto& gulp_metadata = pld.get_mbuf()->get_metadataref();
+        auto nchan = std::any_cast<uint8_t>(metadata["nchan"]);
+        auto chan0 = std::any_cast<int64_t>(metadata["chan0"]);
+
+        // initialization or change in the spectral window
+        if (m_correlator.get()->reset(nchan, chan0)) {
+            m_gulp_counter = 1;
+        }
+
         m_is_first = m_gulp_counter == 1 ? true : false;
         m_is_last = m_gulp_counter == m_ngulps_per_img ? true : false;
 
         if (m_is_first) {
-            auto& first_metadata = pld.get_mbuf()->get_metadataref();
-            m_seq_start_id = std::any_cast<uint64_t>(first_metadata["seq_start"]);
+            m_seq_start_id = std::any_cast<uint64_t>(gulp_metadata["seq_start"]);
         }
 
         float out_ptr = nullptr;
         if (m_is_last) {
-            // prepare the metadata for the last gulp
+            // prepare the metadata for the image
             auto buf = m_correlator.get()->get_buffer();
-            auto& last_metadata = buf.get_mbuf()->get_metadataref();
-            last_metadata = pld.get_mbuf()->get_metadataref();
-            last_metadata["seq_start"] = m_seq_start_id;
-            last_metadata["nseqs"] = std::any_cast<int>(last_metadata["nseqs"]) * m_ngulps_per_img;
-            last_metadata["gulp_len_ms"] = std::any_cast<int>(last_metadata["gulp_len_ms"]) * m_ngulps_per_img;
+            auto& img_metadata = buf.get_mbuf()->get_metadataref();
+            img_metadata = gulp_metadata; // pld.get_mbuf()->get_metadataref();
+            img_metadata["seq_start"] = m_seq_start_id;
+            img_metadata["nseqs"] = std::any_cast<int>(img_metadata["nseqs"]) * m_ngulps_per_img;
+            img_metadata["gulp_len_ms"] = std::any_cast<int>(img_metadata["gulp_len_ms"]) * m_ngulps_per_img;
 
             m_correlator.get()->process_gulp(
-              pld.get_mbuf()->get_data_ptr(), buf.get_mbuf()->get_data_ptr(), m_is_first, m_is_last);
-            
+              pld.get_mbuf()->get_data_ptr(),
+              buf.get_mbuf()->get_data_ptr(),
+              m_is_first,
+              m_is_last);
+
             m_gulp_counter = 1;
             output["gulp"].push(buf);
 
