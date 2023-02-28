@@ -52,6 +52,10 @@ struct MOFFCorrelatorDesc
     int nchan_out{ 96 };
     int gcf_kernel_dim{ 32 };
     int device_id{ 0 };
+    int nbuffers{ 20 };
+    int buf_size{ 64 * 64 * 132 /*chan*/ * 4 /*floating precision*/ * 2 /*complex*/ * 4 /*pols*/ };
+    bool page_lock_bufs{ true };
+    int max_tries_acq_buf{ 5 };
 };
 
 struct OutImgDesc
