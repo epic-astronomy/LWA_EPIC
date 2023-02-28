@@ -13,6 +13,7 @@ namespace cg = cooperative_groups;
 void
 MOFFCuHandler::reset_antpos(int p_nchan, float* p_antpos_ptr)
 {
+    cudaSetDevice(m_device_id);
     if (is_antpos_set) {
         cudaFree(m_antpos_cu);
     }
@@ -25,6 +26,7 @@ MOFFCuHandler::reset_antpos(int p_nchan, float* p_antpos_ptr)
 void
 MOFFCuHandler::reset_phases(int p_nchan, float* p_phases_ptr)
 {
+    cudaSetDevice(m_device_id);
     if (is_phases_set) {
         cudaFree(m_phases_cu);
     }
@@ -39,6 +41,7 @@ MOFFCuHandler::reset_phases(int p_nchan, float* p_phases_ptr)
 void
 MOFFCuHandler::reset_gcf_tex(int p_gcf_tex_dim, float* p_gcf_2D_ptr)
 {
+    cudaSetDevice(m_device_id);
     if (is_gcf_tex_set) {
         cudaFreeArray(m_gcf_tex_arr);
         cudaDestroyTextureObject(m_gcf_tex);
@@ -74,6 +77,7 @@ MOFFCuHandler::reset_gcf_tex(int p_gcf_tex_dim, float* p_gcf_2D_ptr)
 void
 MOFFCuHandler::create_gulp_custreams()
 {
+    cudaSetDevice(m_device_id);
     m_gulp_custreams.reset();
     m_gulp_custreams = std::make_unique<cudaStream_t[]>(m_nstreams);
     for (int i = 0; i < m_nstreams; ++i) {
@@ -84,6 +88,7 @@ MOFFCuHandler::create_gulp_custreams()
 void
 MOFFCuHandler::reset_data(int p_nchan, size_t p_nseq_per_gulp, float* p_antpos_ptr, float* p_phases_ptr)
 {
+    cudaSetDevice(m_device_id);
     m_nseq_per_gulp = p_nseq_per_gulp;
     m_nchan_in = p_nchan;
     std::cout << "GPU resetting antpos\n";
@@ -113,6 +118,7 @@ MOFFCuHandler::reset_data(int p_nchan, size_t p_nseq_per_gulp, float* p_antpos_p
 void
 MOFFCuHandler::set_imaging_kernel()
 {
+    cudaSetDevice(m_device_id);
     assert(m_out_img_desc.img_size == HALF);
     if (m_out_img_desc.img_size == HALF) {
         m_imaging_kernel = (void*)block_fft_kernel<FFT64x64>;
@@ -130,6 +136,7 @@ MOFFCuHandler::set_imaging_kernel()
 void
 MOFFCuHandler::allocate_f_eng_gpu(size_t nbytes)
 {
+    cudaSetDevice(m_device_id);
     if (is_f_eng_cu_allocated) {
         cudaFree(m_f_eng_cu);
         is_f_eng_cu_allocated = false;
@@ -142,6 +149,7 @@ MOFFCuHandler::allocate_f_eng_gpu(size_t nbytes)
 void
 MOFFCuHandler::allocate_out_img(size_t p_nbytes)
 {
+    cudaSetDevice(m_device_id);
     if (is_out_mem_set) {
         cudaFree(m_output_cu);
         is_out_mem_set = false;
@@ -154,6 +162,7 @@ MOFFCuHandler::allocate_out_img(size_t p_nbytes)
 void
 MOFFCuHandler::set_img_grid_dim()
 {
+    cudaSetDevice(m_device_id);
     assert((void("Number of channels per stream cannot be zero"), m_nchan_per_stream > 0));
     if (m_nchan_per_stream > 0) {
         m_img_grid_dim = dim3(m_nchan_per_stream, 1, 1);
@@ -163,6 +172,7 @@ MOFFCuHandler::set_img_grid_dim()
 void
 MOFFCuHandler::process_gulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, bool p_last)
 {
+    cudaSetDevice(m_device_id);
     for (int i = 0; i < m_nstreams; ++i) {
         int f_eng_dat_offset = i * m_nbytes_f_eng_per_stream;
         int output_img_offset = i * m_nbytes_out_img_per_stream;
@@ -193,12 +203,14 @@ MOFFCuHandler::process_gulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first,
 void
 MOFFCuHandler::destroy_textures(cudaArray_t& p_tex_arr, cudaTextureObject_t& p_tex_obj)
 {
+    cudaSetDevice(m_device_id);
     cudaFreeArray(p_tex_arr);
     cudaDestroyTextureObject(p_tex_obj);
 }
 
 MOFFCuHandler::~MOFFCuHandler()
 {
+    cudaSetDevice(m_device_id);
     // destroy_textures(m_antpos_tex_arr, m_antpos_tex);
     // destroy_textures(m_phases_tex_arr, m_phases_tex);
     if (is_antpos_set) {

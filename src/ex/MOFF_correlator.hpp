@@ -171,6 +171,8 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc)
     LOG_IF(WARNING, std::abs(std::ceil(ngulps) - ngulps) > 1e-5) << "The accumulation time (" << m_accum_time << " ms) is not an integer multiple of the gulp size (" << gulp_len_ms << " ms). Adjusting it to " << m_ngulps_per_img * gulp_len_ms << " ms";
 
     setup_GPU();
+    LOG_IF(FATAL, p_desc.device_id<0)<<"Invalid GPU device ID: "<<p_desc.device_id;
+    m_device_id = p_desc.device_id;
 
     LOG_IF(FATAL, p_desc.nbuffers <= 0) << "Total numbers of buffers must be >0";
     LOG_IF(FATAL, p_desc.buf_size <= 0) << "Buffer size must be at least one byte.";

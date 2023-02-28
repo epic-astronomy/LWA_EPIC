@@ -1,8 +1,8 @@
 #ifndef MOFF_CU_HANDLER_H
 #define MOFF_CU_HANDLER_H
 #include "channel_descriptor.h"
-#include "types.hpp"
 #include "constants.h"
+#include "types.hpp"
 #include <memory>
 
 #include <stdint.h>
@@ -48,9 +48,9 @@ class MOFFCuHandler
     cudaTextureObject_t m_gcf_tex{ 0 };
     /// GCF texture's resource description
     cudaResourceDesc m_gcf_res_desc;
-    /** GCF texture's description object. 
+    /** GCF texture's description object.
      * The address mode is set to clamp, texture access to
-    normalized float, filter mode to linear, and read mode to element 
+    normalized float, filter mode to linear, and read mode to element
     */
     cudaTextureDesc m_gcf_tex_desc;
 
@@ -85,20 +85,21 @@ class MOFFCuHandler
     int m_nseq_per_gulp;
     OutImgDesc m_out_img_desc;
     /// Channels to be processed per stream
-    int m_nchan_per_stream{0};
+    int m_nchan_per_stream{ 0 };
     /// Byte-size of voltage data to be copied per stream
-    int m_nbytes_f_eng_per_stream{0};
+    int m_nbytes_f_eng_per_stream{ 0 };
     /// Byte-size of output image data to be copied per stream
-    int m_nbytes_out_img_per_stream{0};
+    int m_nbytes_out_img_per_stream{ 0 };
+
+    int m_device_id{ 0 };
 
     /// Pointer to the imaging kernel
-    void* m_imaging_kernel{nullptr};
+    void* m_imaging_kernel{ nullptr };
     dim3 m_img_grid_dim;
     dim3 m_img_block_dim;
     int m_shared_mem_size;
     void set_imaging_kernel();
     void set_img_grid_dim();
-
 
   public:
     MOFFCuHandler(){};
@@ -125,12 +126,12 @@ class MOFFCuHandler
     /**
      * @brief Image a gulp of data
      *
-     * @param p_data_ptr Host pointer to the F-Engine data
-     * @param p_out_ptr Device pointer to store the output data
+     * @param[in] p_data_ptr Host pointer to the F-Engine data
+     * @param[out] p_out_ptr Device pointer to store the output data
      * @param p_first Flag if the gulp is the first one in the accumulation
      * @param p_last Flag if the gulp is the last one in the accumulation
      */
-    void process_gulp(uint8_t* p_data_ptr, float* p_out_ptr=nullptr, bool p_first = true, bool p_last = false);
+    void process_gulp(uint8_t* p_data_ptr, float* p_out_ptr = nullptr, bool p_first = true, bool p_last = false);
 
     /**
      * @brief Image a gulp of data
