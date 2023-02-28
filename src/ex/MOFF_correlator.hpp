@@ -24,6 +24,7 @@
 template<typename Dtype, typename BuffMngr>
 class MOFFCorrelator : public MOFFCuHandler
 {
+  public:
     using mbuf_t = typename BuffMngr::mbuf_t;
     using payload_t = Payload<mbuf_t>;
     /// Data type to store the auxiliary data for imaging. The precision will be fixed to float.
@@ -58,7 +59,7 @@ class MOFFCorrelator : public MOFFCuHandler
     int m_gcf_tex_dim;
     bool m_rm_autocorrs{ false };
     // int m_nchan_in{ 132 };
-    int m_nchan_out { 112 };
+    int m_nchan_out{ 112 };
     int m_chan0{ 0 };
     size_t m_nseq_per_gulp;
     IMAGING_POL_MODE m_pol_mode{ DUAL_POL };
@@ -92,7 +93,6 @@ class MOFFCorrelator : public MOFFCuHandler
     void setup_GPU();
 
   public:
-
     /**
      * @brief Construct a new MOFFCorrelator object
      *
@@ -109,7 +109,15 @@ class MOFFCorrelator : public MOFFCuHandler
     // , int p_npol, int p_grid_size, double p_grid_res, int p_gcf_kernel_dim);
 
     size_t get_nseq_per_gulp() { return m_nseq_per_gulp; }
+    payload_t get_buffer();
 };
+
+template<typename Dtype, typename BuffMngr>
+typename MOFFCorrelator<Dtype, BuffMngr>::payload_t
+MOFFCorrelator<Dtype, BuffMngr>::get_buffer()
+{
+    return m_mbuf_mngr.get()->acquire_buf();
+}
 
 template<typename Dtype, typename BuffMngr>
 MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc)
@@ -154,8 +162,7 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc)
     LOG_IF(FATAL, !(m_nstreams < 1 || m_nstreams > MAX_GULP_STREAMS)) << "Number of streams must  be between 1 and " << MAX_GULP_STREAMS;
     LOG_IF(FATAL, m_nchan_out % m_nstreams != 0) << "The number of output channels must be divisible by the number of streams to process a gulp.";
 
-    //TODO: Check if the GPU can image the specified number of output channels 
-    
+    // TODO: Check if the GPU can image the specified number of output channels
 
     float gulp_len_ms = float(m_nseq_per_gulp * SAMPLING_LEN /*us*/ * 1e3);
     float ngulps = m_accum_time / gulp_len_ms;
@@ -164,6 +171,10 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc)
     LOG_IF(WARNING, std::abs(std::ceil(ngulps) - ngulps) > 1e-5) << "The accumulation time (" << m_accum_time << " ms) is not an integer multiple of the gulp size (" << gulp_len_ms << " ms). Adjusting it to " << m_ngulps_per_img * gulp_len_ms << " ms";
 
     setup_GPU();
+
+    LOG_IF(FATAL, p_desc.nbuffers <= 0) << "Total numbers of buffers must be >0";
+    LOG_IF(FATAL, p_desc.buf_size <= 0) << "Buffer size must be at least one byte.";
+    m_mbuf_mngr = std::make_unique<BuffMngr>(p_desc.nbuffers, p_desc.buf_size, p_desc.max_tries_acq_buf, p_desc.page_lock_bufs);
 };
 
 template<typename Dtype, typename BuffMngr>
@@ -192,8 +203,7 @@ MOFFCorrelator<Dtype, BuffMngr>::reset(int p_nchan, int p_chan0)
       p_nchan,
       m_nseq_per_gulp,
       m_ant_pos_freq.get(),
-      m_phases.get()
-    );
+      m_phases.get());
 
     return true;
 }
@@ -259,7 +269,8 @@ MOFFCorrelator<Dtype, BuffMngr>::reset_gcf_kernel2D(int p_gcf_tex_dim)
       ProSphPars::alpha,
       m_gcf_kernel2D.get(),
       p_gcf_tex_dim,
-      ProSphPars::c);}
+      ProSphPars::c);
+}
 
 template<typename Dtype, typename BuffMngr>
 void
@@ -270,9 +281,9 @@ MOFFCorrelator<Dtype, BuffMngr>::setup_GPU()
     this->reset_gcf_tex(m_gcf_tex_dim, m_gcf_kernel2D.get());
 
     // calculate the appropriate offsets to image the gulp in streams
-    this->m_nchan_per_stream = m_nchan_out/m_nstreams;
-    this->m_nbytes_f_eng_per_stream = m_f_eng_bytes/m_nstreams;
-    this->m_nbytes_out_img_per_stream = m_out_img_bytes/m_nstreams;
+    this->m_nchan_per_stream = m_nchan_out / m_nstreams;
+    this->m_nbytes_f_eng_per_stream = m_f_eng_bytes / m_nstreams;
+    this->m_nbytes_out_img_per_stream = m_out_img_bytes / m_nstreams;
 
     create_gulp_custreams();
     set_imaging_kernel();
