@@ -183,7 +183,9 @@ MOFFCuHandler::process_gulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first,
     }
 
     if (p_last) {
-        cudaDeviceSynchronize();
+        for (int i = 0; i < m_nstreams; ++i) {
+            cudaStreamSynchronize(*(m_gulp_custreams.get() + i));
+        }
         cuda_check_err(cudaPeekAtLastError());
     }
 }
