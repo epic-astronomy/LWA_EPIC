@@ -40,7 +40,7 @@ typedef std::unordered_map<std::string, std::any> dict_t;
 struct MOFFCorrelatorDesc
 {
     /// @brief Accumulation (integration) time in ms
-    float accum_time_ms{ 80 };
+    float accum_time_ms{ 40 };
     int nseq_per_gulp{ 1000 };
     IMAGING_POL_MODE pol_mode{ DUAL_POL };
     IMAGE_SIZE img_size{ HALF };
@@ -49,7 +49,7 @@ struct MOFFCorrelatorDesc
     bool is_remove_autocorr{ false };
     /// @brief Number of streams to split a gulp into. Can be at most MAX_GULP_STREAMS
     int nstreams{ 1 };
-    int nchan_out{ 96 };
+    int nchan_out{ 112 };
     int gcf_kernel_dim{ 32 };
     int device_id{ 0 };
     int nbuffers{ 20 };

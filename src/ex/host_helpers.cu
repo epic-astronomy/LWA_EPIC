@@ -18,3 +18,5 @@ int cu_munlock(T* ptr){
 
 template int cu_mlock<uint8_t>(uint8_t*, size_t);
 template int cu_munlock<uint8_t>(uint8_t*);
+template int cu_mlock<float>(float*, size_t);
+template int cu_munlock<float>(float*);

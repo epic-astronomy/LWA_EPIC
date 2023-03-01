@@ -197,6 +197,7 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::get_gulp()
 
 // define
 using default_buf_mngr_t = LFBufMngr<AlignedBuffer<uint8_t>>;
+using float_buf_mngr_t = LFBufMngr<AlignedBuffer<float>>;
 using default_receiver_t = VMAReceiver<uint8_t, AlignedBuffer, MultiCastUDPSocket, REG_COPY>;
 using verbs_receiver_t = VerbsReceiver<uint8_t, AlignedBuffer, MultiCastUDPSocket, REG_COPY>;
 using default_pkt_processor_t = PacketProcessor<chips_hdr_type, uint8_t, AlignedCopier, CHAN_MAJOR>;

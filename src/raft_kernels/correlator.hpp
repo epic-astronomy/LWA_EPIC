@@ -37,7 +37,7 @@ class Correlator_rft : public raft::kernel
         output.addPort<_Payload>("img");
     }
 
-    virtual raft::status run() override
+    virtual raft::kstatus run()
     {
         _Payload pld;
         input["gulp"].pop(pld);
@@ -47,8 +47,8 @@ class Correlator_rft : public raft::kernel
         }
 
         auto& gulp_metadata = pld.get_mbuf()->get_metadataref();
-        auto nchan = std::any_cast<uint8_t>(metadata["nchan"]);
-        auto chan0 = std::any_cast<int64_t>(metadata["chan0"]);
+        auto nchan = std::any_cast<uint8_t>(gulp_metadata["nchan"]);
+        auto chan0 = std::any_cast<int64_t>(gulp_metadata["chan0"]);
 
         // initialization or change in the spectral window
         if (m_correlator.get()->reset(nchan, chan0)) {
@@ -62,7 +62,7 @@ class Correlator_rft : public raft::kernel
             m_seq_start_id = std::any_cast<uint64_t>(gulp_metadata["seq_start"]);
         }
 
-        float out_ptr = nullptr;
+        // float* out_ptr = nullptr;
         if (m_is_last) {
             // prepare the metadata for the image
             auto buf = m_correlator.get()->get_empty_buffer();
@@ -91,7 +91,7 @@ class Correlator_rft : public raft::kernel
         // If it's anything other than the final gulp, proceed right away. The process_gulp function
         // images the data in streams with asynchronous reads/writes. Hence the next gulp won't have to
         // wait for the current one to complete thereby keeping the GPU completely occupied.
-        m_correlator.process_gulp(pld.get_mbuf()->get_data_ptr(), nullptr, m_is_first, m_is_last);
+        m_correlator.get()->process_gulp(pld.get_mbuf()->get_data_ptr(), (float*)nullptr, m_is_first, m_is_last);
         ++m_gulp_counter;
         return raft::proceed;
     }

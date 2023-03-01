@@ -33,6 +33,8 @@
 
 #include "raft_kernels/packet_gen.hpp"
 #include "raft_kernels/dummy_kernel.hpp"
+#include "raft_kernels/correlator.hpp"
+#include "raft_kernels/disk_saver.hpp"
 // #include "ex/packet_assembler.h"
 using namespace std::chrono;
 using namespace std::string_literals;
@@ -64,6 +66,7 @@ main(int argc, char** argv)
     FLAGS_logtostderr = 1;
     google::InitGoogleLogging(argv[0]);
 
+    py::scoped_interpreter guard{};
 
     LOG(INFO)<<"E-Field Parallel Imaging Correlator (EPIC) v"<<EPIC_VERSION;
     if(VLOG_IS_ON(1)){
@@ -82,16 +85,24 @@ main(int argc, char** argv)
     DLOG(INFO) <<"Number of 8-bit lanes"<<int(HWY_LANES(uint8_t));
     LOG(INFO)<<"Initializing MOFF Correlator";
     auto gulper_ptr = std::make_unique<default_pkt_assembler>(ip, port);
+    using payload_t =typename  default_pkt_assembler::payload_t;
+
+    auto correlator_options = MOFFCorrelatorDesc();
+    auto corr_ptr = std::make_unique<MOFFCorrelator_t>(correlator_options);
+
+
     //const auto gulp = gulper_ptr.get()->get_gulp();
     // gulp.mbuf_shared_count();
     //DLOG(INFO)<<"Got the gulp";
 
     auto gulper_rft = GulpGen_rft<default_pkt_assembler>(gulper_ptr, 5);
+    auto corr_rft = Correlator_rft<payload_t, MOFFCorrelator_t>(corr_ptr);
+    auto saver_rft = DiskSaver_rft<payload_t>();
     dummy<default_pkt_assembler::payload_t> dummy_rft;
 
     raft::map m;
 
-    m+= gulper_rft >> dummy_rft;
+    m+= gulper_rft >> corr_rft >> saver_rft;
     m.exe();
 
     LOG(INFO)<<"END";

@@ -109,6 +109,7 @@ class MOFFCorrelator : public MOFFCuHandler
     // , int p_npol, int p_grid_size, double p_grid_res, int p_gcf_kernel_dim);
 
     size_t get_nseq_per_gulp() { return m_nseq_per_gulp; }
+    size_t get_ngulps_per_img() { return m_ngulps_per_img; }
     size_t get_grid_size() { return m_grid_size; }
     double get_grid_res() { return m_grid_res; }
     int get_npols() { return m_pol_mode & m_pol_mode; }
@@ -168,7 +169,7 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc)
 
     // TODO: Check if the GPU can image the specified number of output channels
 
-    float gulp_len_ms = float(m_nseq_per_gulp * SAMPLING_LEN /*us*/ * 1e3);
+    float gulp_len_ms = float(m_nseq_per_gulp * SAMPLING_LEN_uS * 1e3);
     float ngulps = m_accum_time / gulp_len_ms;
     m_ngulps_per_img = std::ceil(ngulps);
 
@@ -295,6 +296,6 @@ MOFFCorrelator<Dtype, BuffMngr>::setup_GPU()
     set_imaging_kernel();
 }
 
-using MOFFCorrelator_t = MOFFCorrelator<uint8_t, default_buf_mngr_t>;
+using MOFFCorrelator_t = MOFFCorrelator<uint8_t, float_buf_mngr_t>;
 
 #endif // MOFF_CORRELATOR_HPP

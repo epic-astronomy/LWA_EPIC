@@ -201,7 +201,7 @@ PacketProcessor<chips_hdr_type, uint8_t, Copier, Order>::set_metadata(Buffer* p_
     mref["seq_end"] = p_seq_end;
     int nseqs = p_seq_end - p_seq_end;
     mref["nseqs"] = nseqs;
-    mref["gulp_len_ms"] = (p_seq_end - p_seq_end) * SAMPLING_LEN /*us*/ * 1e3;
+    mref["gulp_len_ms"] = (p_seq_end - p_seq_end) * SAMPLING_LEN_uS * 1e3;
     mref["nchan"] = p_hdr.nchan;
     mref["chan0"] = int64_t(p_hdr.chan0); // to meet alignment requirements
     mref["data_order"] = (Order == TIME_MAJOR ? "t_maj"s : "c_maj"s);
