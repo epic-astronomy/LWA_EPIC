@@ -17,6 +17,10 @@ class Correlator_rft : public raft::kernel
     int m_gulp_counter{ 1 };
     bool m_is_first{ false };
     bool m_is_last{ false };
+    int m_grid_size{ 0 };
+    float m_grid_res{ 0 };
+    int m_npols{ 0 };
+    int m_support{ 0 };
     uint64_t m_seq_start_id{ 0 };
 
   public:
@@ -25,6 +29,10 @@ class Correlator_rft : public raft::kernel
       , raft::kernel()
     {
         m_ngulps_per_img = m_correlator.get()->get_ngulps_per_img();
+        m_grid_res = m_correlator.get()->get_grid_res();
+        m_grid_size = m_correlator.get()->get_grid_size();
+        m_npols = m_correlator.get()->get_npols();
+        m_support = m_correlator.get()->get_support();
         input.addPort<_Payload>("gulp");
         output.addPort<_Payload>("img");
     }
@@ -57,12 +65,16 @@ class Correlator_rft : public raft::kernel
         float out_ptr = nullptr;
         if (m_is_last) {
             // prepare the metadata for the image
-            auto buf = m_correlator.get()->get_buffer();
+            auto buf = m_correlator.get()->get_empty_buffer();
             auto& img_metadata = buf.get_mbuf()->get_metadataref();
             img_metadata = gulp_metadata; // pld.get_mbuf()->get_metadataref();
             img_metadata["seq_start"] = m_seq_start_id;
             img_metadata["nseqs"] = std::any_cast<int>(img_metadata["nseqs"]) * m_ngulps_per_img;
             img_metadata["gulp_len_ms"] = std::any_cast<int>(img_metadata["gulp_len_ms"]) * m_ngulps_per_img;
+            img_metadata["grid_size"] = m_grid_size;
+            img_metadata["grid_res"] = m_grid_res;
+            img_metadata["npols"] = m_npols;
+            img_metadata["support_size"] = m_support;
 
             m_correlator.get()->process_gulp(
               pld.get_mbuf()->get_data_ptr(),

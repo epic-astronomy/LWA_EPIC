@@ -109,12 +109,16 @@ class MOFFCorrelator : public MOFFCuHandler
     // , int p_npol, int p_grid_size, double p_grid_res, int p_gcf_kernel_dim);
 
     size_t get_nseq_per_gulp() { return m_nseq_per_gulp; }
-    payload_t get_buffer();
+    size_t get_grid_size() { return m_grid_size; }
+    double get_grid_res() { return m_grid_res; }
+    int get_npols() { return m_pol_mode & m_pol_mode; }
+    int get_support() { return m_support_size; }
+    payload_t get_empty_buffer();
 };
 
 template<typename Dtype, typename BuffMngr>
 typename MOFFCorrelator<Dtype, BuffMngr>::payload_t
-MOFFCorrelator<Dtype, BuffMngr>::get_buffer()
+MOFFCorrelator<Dtype, BuffMngr>::get_empty_buffer()
 {
     return m_mbuf_mngr.get()->acquire_buf();
 }
@@ -171,7 +175,7 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc)
     LOG_IF(WARNING, std::abs(std::ceil(ngulps) - ngulps) > 1e-5) << "The accumulation time (" << m_accum_time << " ms) is not an integer multiple of the gulp size (" << gulp_len_ms << " ms). Adjusting it to " << m_ngulps_per_img * gulp_len_ms << " ms";
 
     setup_GPU();
-    LOG_IF(FATAL, p_desc.device_id<0)<<"Invalid GPU device ID: "<<p_desc.device_id;
+    LOG_IF(FATAL, p_desc.device_id < 0) << "Invalid GPU device ID: " << p_desc.device_id;
     m_device_id = p_desc.device_id;
 
     LOG_IF(FATAL, p_desc.nbuffers <= 0) << "Total numbers of buffers must be >0";
