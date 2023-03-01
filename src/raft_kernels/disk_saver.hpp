@@ -23,7 +23,7 @@ class DiskSaver_rft: public raft::kernel{
         input["gulp"].pop(pld);
 
         if(!pld){
-            LOG(WARNING)<<"Empty image received."
+            LOG(WARNING)<<"Empty image received.";
             return raft::proceed;
         }
 
