@@ -2,10 +2,11 @@
 #define PY_FUNCS
 
 #include "constants.h"
+#include <chrono>
 #include <cmath>
+#include <glog/logging.h>
 #include <pybind11/embed.h>
 #include <pybind11/numpy.h>
-#include <glog/logging.h>
 
 namespace py = pybind11;
 using namespace py::literals;
@@ -32,14 +33,14 @@ pro_sph_ang1_cv(py::module_& scipy_spl, int m, int n, float c, float cv, float x
 
 /**
  * @brief Create a generic 2D texture for a prolate spheroidal kernel
- * 
+ *
  * The output texture represents only the u>=0 and v>=0 part of the kernel.
  * Because the kernel is symmetric, one can obtain the kernel value at negative coordinates
  * simply by passing in their absolute values. That means u and v must be normalized
  * with half the support size. Furthermore, the dim parameter does not need to equal
  * the half support size. As long as it's a large enough number, for example, 512,
  * tex2D should provide reasonably accurate values with interpolation.
- * 
+ *
  * @tparam T Data type for the texture
  * @param m Mode parameter m
  * @param n Mode parameter n
@@ -55,24 +56,22 @@ prolate_spheroidal_to_tex2D(int m, int n, float alpha, T* out, int dim, float c 
 
     auto scipy_spl = py::module_::import("scipy.special");
     auto cv = pro_sph_cv(scipy_spl, m, n, c);
-    for (auto i = dim-1; i >=0; --i) { // for a left-bottom origin
+    for (auto i = dim - 1; i >= 0; --i) { // for a left-bottom origin
         for (auto j = 0; j < dim; ++j) {
             T u = T(i) / dim;
             T v = T(j) / dim;
 
-
             out[i * dim + j] = ::pow((1 - u * u), alpha) * ::pow((1 - v * v), alpha) * pro_sph_ang1_cv(scipy_spl, m, n, c, cv, u) * pro_sph_ang1_cv(scipy_spl, m, n, c, cv, v);
 
-            if(i==0){
-                std::cout<<out[j]<<",";
+            if (i == 0) {
+                std::cout << out[j] << ",";
             }
 
-            if(i==dim-1 || j==dim-1){
-                out[i * dim + j]=0;
+            if (i == dim - 1 || j == dim - 1) {
+                out[i * dim + j] = 0;
             }
         }
     }
-    
 }
 
 template<typename T>
@@ -130,12 +129,22 @@ get_lwasv_phases(T* out_ptr, int nchan, int chan0)
 }
 
 template<typename T>
-void save_image(size_t grid_size, size_t nchan, T* data, std::string filename){
-    auto result = py::array_t<T>(grid_size*grid_size*nchan, data);
+void
+save_image(size_t grid_size, size_t nchan, T* data, std::string filename)
+{
+    auto result = py::array_t<T>(grid_size * grid_size * nchan, data);
     auto utils = py::module_::import("epic_utils").attr("save_output")(result, grid_size, nchan, filename);
-    for(int i=0;i<10;++i){
-        std::cout<<data[i]<<std::endl;
+    for (int i = 0; i < 10; ++i) {
+        std::cout << data[i] << std::endl;
     }
+}
+
+double
+get_ADP_time_from_unix_epoch()
+{
+    return py::module_::import("epic_utils")
+      .attr("get_ADP_time_from_unix_epoch")()
+      .cast<double>();
 }
 
 #endif // PY_FUNCS

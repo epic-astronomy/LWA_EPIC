@@ -3,6 +3,14 @@ from lsl.common.stations import lwasv
 from astropy.constants import c as speed_of_light
 import matplotlib.image
 
+import datetime
+import time
+from  MCS2 import Communicator
+DATE_FORMAT = "%Y_%m_%dT%H_%M_%S"
+FS = 196.0e6
+CHAN_BW = 25.0e3
+ADP_EPOCH = datetime.datetime(1970, 1, 1)
+
 
 def gen_loc_lwasv(grid_size, grid_resolution):
     """
@@ -86,6 +94,20 @@ def save_output(output_arr, grid_size, nchan, filename):
     matplotlib.image.imsave(filename, output_arr[0,:,:].T/1000)
 
 
+
+def get_ADP_time_from_unix_epoch():
+    got_utc_start = False
+    while not got_utc_start:
+        try:
+            with Communicator() as adp_control:
+                utc_start = adp_control.report('UTC_START')
+                # Check for valid timestamp
+                utc_start_dt = datetime.datetime.strptime(utc_start, DATE_FORMAT)
+            got_utc_start = True
+        except Exception as ex:
+            print(ex)
+            time.sleep(0.1)
+    return (utc_start_dt-ADP_EPOCH).total_seconds()
 
 
 
