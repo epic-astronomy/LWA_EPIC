@@ -103,7 +103,9 @@ glog::glog
 #OpenMP::OpenMP_CXX
 )
 
-configure_file(src/python/epic_utils.py ${CMAKE_CURRENT_BINARY_DIR}/epic_utils.py COPYONLY)
+file(GLOB PY_FILES "src/python/*.py")
+file(COPY ${PY_FILES} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+# configure_file(${files} ${CMAKE_CURRENT_BINARY_DIR}/epic_utils.py COPYONLY)
 
 
 
