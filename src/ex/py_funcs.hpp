@@ -7,6 +7,8 @@
 #include <glog/logging.h>
 #include <pybind11/embed.h>
 #include <pybind11/numpy.h>
+#include <glog/logging.h>
+#include <iostream>
 
 namespace py = pybind11;
 using namespace py::literals;
@@ -53,7 +55,7 @@ template<typename T>
 void
 prolate_spheroidal_to_tex2D(int m, int n, float alpha, T* out, int dim, float c = 5.356 * PI / 2.0)
 {
-
+    py::gil_scoped_acquire acquire;
     auto scipy_spl = py::module_::import("scipy.special");
     auto cv = pro_sph_cv(scipy_spl, m, n, c);
     for (auto i = dim - 1; i >= 0; --i) { // for a left-bottom origin
@@ -78,6 +80,7 @@ template<typename T>
 void
 prolate_spheroidal_to_tex1D(int m, int n, float alpha, T* out, int dim, float c = 5.356 * PI / 2.0)
 {
+    py::gil_scoped_acquire acquire;
     auto scipy_spl = py::module_::import("scipy.special");
     float half_dim = dim / 2;
     auto cv = pro_sph_cv(scipy_spl, m, n, c);
@@ -91,11 +94,14 @@ template<typename T>
 double
 get_lwasv_locs(T* out_ptr, int grid_size, double grid_resolution)
 {
+    py::gil_scoped_acquire acquire;
     auto np = py::module_::import("numpy");
-    std::cout << "after numpy\n";
+    LOG(INFO) << "after numpy\n";
+    LOG(INFO)<<"Grid size: "<<grid_size<<" grid res: "<<grid_resolution;
 
     auto ret_dict = py::module_::import("epic_utils")
                       .attr("gen_loc_lwasv")(grid_size, grid_resolution);
+    LOG(INFO)<<"Generated locations.";
 
     double delta = ret_dict["delta"].cast<double>();
     // dimensions: NSTANDS, 3
@@ -113,6 +119,7 @@ template<typename T>
 void
 get_lwasv_phases(T* out_ptr, int nchan, int chan0)
 {
+    py::gil_scoped_acquire acquire;
     auto np = py::module_::import("numpy");
     auto phases_arr = py::module_::import("epic_utils")
                         .attr("gen_phases_lwasv")(nchan, chan0)
@@ -132,6 +139,7 @@ template<typename T>
 void
 save_image(size_t grid_size, size_t nchan, T* data, std::string filename)
 {
+    py::gil_scoped_acquire acquire;
     auto result = py::array_t<T>(grid_size * grid_size * nchan, data);
     auto utils = py::module_::import("epic_utils").attr("save_output")(result, grid_size, nchan, filename);
     for (int i = 0; i < 10; ++i) {
@@ -142,6 +150,7 @@ save_image(size_t grid_size, size_t nchan, T* data, std::string filename)
 double
 get_ADP_time_from_unix_epoch()
 {
+    py::gil_scoped_acquire acquire;
     return py::module_::import("epic_utils")
       .attr("get_ADP_time_from_unix_epoch")()
       .cast<double>();

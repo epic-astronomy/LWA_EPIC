@@ -3,6 +3,7 @@
 
 // #include <glog/logging.h>
 #include <iostream>
+#include <cuda_runtime.h>
 
 #define cuda_check_err(ans)                    \
     {                                          \
