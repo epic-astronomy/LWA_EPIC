@@ -164,12 +164,12 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc)
     LOG_IF(ERROR, m_rm_autocorrs) << "Autocorrelation removal is not supported yet.";
 
     m_nstreams = p_desc.nstreams;
-    LOG_IF(FATAL, !(m_nstreams < 1 || m_nstreams > MAX_GULP_STREAMS)) << "Number of streams must  be between 1 and " << MAX_GULP_STREAMS;
+    LOG_IF(FATAL, (m_nstreams < 1 || m_nstreams > MAX_GULP_STREAMS)) << "Number of streams must  be between 1 and " << MAX_GULP_STREAMS;
     LOG_IF(FATAL, m_nchan_out % m_nstreams != 0) << "The number of output channels must be divisible by the number of streams to process a gulp.";
 
     // TODO: Check if the GPU can image the specified number of output channels
 
-    float gulp_len_ms = float(m_nseq_per_gulp * SAMPLING_LEN_uS * 1e3);
+    float gulp_len_ms = float(m_nseq_per_gulp * SAMPLING_LEN_uS * 1e-3);
     float ngulps = m_accum_time / gulp_len_ms;
     m_ngulps_per_img = std::ceil(ngulps);
 
@@ -193,10 +193,12 @@ MOFFCorrelator<Dtype, BuffMngr>::reset(int p_nchan, int p_chan0)
     }
 
     if (p_nchan != m_nchan_in) {
-        this->allocate_f_eng_gpu(m_nchan_in * LWA_SV_INP_PER_CHAN * m_nseq_per_gulp);
+        m_nchan_in = p_nchan;
+        this->m_f_eng_bytes = m_nchan_in * LWA_SV_INP_PER_CHAN * m_nseq_per_gulp;
+        LOG(INFO) << "Allocating F-eng data on the GPU. Size: " << this->m_f_eng_bytes << " bytes";
+        this->allocate_f_eng_gpu(m_f_eng_bytes);
     }
 
-    m_nchan_in = p_nchan;
     m_chan0 = p_chan0;
 
     VLOG(3) << "Resetting antpos. Grid size: " << m_grid_size << " grid res: " << m_grid_res << " nchan: " << p_nchan << " chan0: " << p_chan0;
@@ -233,7 +235,7 @@ MOFFCorrelator<Dtype, BuffMngr>::reset_antpos(int p_grid_size, double p_grid_res
 
     m_ant_pos_freq.reset();
     m_ant_pos_freq = std::move(hwy::AllocateAligned<float>(pitch * p_nchan));
-    CHECK_EQ(m_ant_pos_freq.get(), static_cast<float*>(NULL)) << "Unable to allocate antenna position memory";
+    CHECK_NE(m_ant_pos_freq.get(), static_cast<float*>(NULL)) << "Unable to allocate antenna position memory";
 
     m_delta = get_lwasv_locs<float>(m_raw_ant_pos.get(), p_grid_size, p_grid_res);
     auto chan0 = p_chan0;

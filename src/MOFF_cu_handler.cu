@@ -183,12 +183,18 @@ MOFFCuHandler::process_gulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first,
             &m_f_eng_cu, &m_antpos_cu, &m_phases_cu, &m_nseq_per_gulp, &m_nchan_in, &m_gcf_tex, &m_output_cu, &chan_offset, &p_first
         };
 
-        cudaMemcpyAsync(m_f_eng_cu + f_eng_dat_offset, p_data_ptr + f_eng_dat_offset, m_nbytes_f_eng_per_stream, cudaMemcpyHostToDevice, stream_i);
+        cuda_check_err(
+          cudaMemcpyAsync(
+            (void*)(m_f_eng_cu + f_eng_dat_offset),
+            (void*)(p_data_ptr + f_eng_dat_offset),
+            m_nbytes_f_eng_per_stream,
+            cudaMemcpyHostToDevice,
+            stream_i));
 
         cudaLaunchKernel(m_imaging_kernel, m_img_grid_dim, m_img_block_dim, args, m_shared_mem_size, stream_i);
 
         if (p_last) {
-            cudaMemcpyAsync(p_out_ptr + output_img_offset, m_output_cu + output_img_offset, m_nbytes_out_img_per_stream, cudaMemcpyDeviceToHost, stream_i);
+            cuda_check_err(cudaMemcpyAsync(p_out_ptr + output_img_offset, m_output_cu + output_img_offset, m_nbytes_out_img_per_stream, cudaMemcpyDeviceToHost, stream_i));
         }
     }
 

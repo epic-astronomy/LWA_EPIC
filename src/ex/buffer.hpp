@@ -320,7 +320,7 @@ BufMetaData<Num>::get_meta_str(std::string key)
 {
     auto value = m_meta_str.find(key);
     if (value == m_meta_str.end()) {
-        throw(InvalidKey(value));
+        throw(InvalidKey(key));
     }
     return m_meta_str[key];
 }

@@ -38,9 +38,9 @@ class MOFFCuHandler
     /// Device pointer to the F-Engine memory block
     uint8_t* m_f_eng_cu;
     /// Byte-size of the voltage data gulp
-    int m_f_eng_bytes;
+    int m_f_eng_bytes{ 0 };
     /// Byte-size of the output image
-    int m_out_img_bytes;
+    int m_out_img_bytes{ 0 };
 
     /// CUDA texture array to store the GCF kernel
     cudaArray_t m_gcf_tex_arr;

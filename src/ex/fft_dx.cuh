@@ -1,7 +1,7 @@
 #ifndef FFTDX_CUH
 #define FFTDX_CUH
 #include "constants.h"
-#include "data_copier.cuh"
+//#include "data_copier.cuh"
 #include "gridder.cuh"
 #include "types.hpp"
 #include <cooperative_groups.h>

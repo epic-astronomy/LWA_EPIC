@@ -48,6 +48,12 @@ nearest_integral_vec_size(size_t p_buf_size)
     return ceil(double(p_buf_size) / lanes) * lanes;
 };
 
+constexpr int int_ceil(float f)
+{
+    const int i = static_cast<int>(f);
+    return f > i ? i + 1 : i;
+}
+
 /**
  * @brief Expression template to determine the offset required to align the data part
  * of the received packet
@@ -66,7 +72,7 @@ struct alignment_offset
     static constexpr bool _valid_hdr = assert_gt_zero<_hdr_size>::value;
 
   public:
-    static constexpr int value = std::ceil((_hdr_size + ExtraOffset) / double(_nlanes)) * _nlanes - (_hdr_size + ExtraOffset);
+    static constexpr int value = int_ceil((_hdr_size + ExtraOffset) / double(_nlanes)) * _nlanes - (_hdr_size + ExtraOffset);
 };
 
 template struct alignment_offset<chips_hdr_type, uint8_t>;
