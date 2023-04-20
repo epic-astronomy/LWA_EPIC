@@ -1,9 +1,11 @@
 cmake_minimum_required(VERSION 3.10...3.19)
 include(CMakePrintHelpers)
 
-
 project(epic++ VERSION "0.0.1" LANGUAGES CXX CUDA)
+set(CMAKE_INSTALL_PREFIX "/home/batman/epic/lib/")
+set(PKG_CONFIG_PATH "/home/batman/epic/lib/pkgconfig")
 
+# set(CMAKE_CXX_COMPILER "/home/batman/miniconda3/envs/epic310/bin/g++")
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -51,7 +53,7 @@ include_directories(src/extern/highway)
 
 ### pybind11
 add_subdirectory(src/extern/pybind11)
-OPTION(PYTHON_EXECUTABLE "/home/epic/anaconda/envs/esp38/bin/python")
+OPTION(PYTHON_EXECUTABLE "/home/batman/miniconda3/envs/epicv2/bin/python")
 
 # include_directories(src/extern/glog/src)
 
@@ -76,18 +78,18 @@ add_library(epiclib
 # )
 
 # cmake_print_variables(outVar)
-set(CUDA_NVCC_EXECUTABLE "/usr/local/cuda-11.6/bin/nvcc")
-set(CMAKE_CUDA_COMPILER "/usr/local/cuda-11.6/bin/nvcc")
+set(CUDA_NVCC_EXECUTABLE "/home/batman/miniconda3/envs/epic310/bin/nvcc")
+set(CMAKE_CUDA_COMPILER "/home/batman/miniconda3/envs/epic310/bin/nvcc")
 
 add_library(epic_cu STATIC src/MOFF_cu_handler.cu src/ex/host_helpers.cu)
 target_compile_features(epic_cu PUBLIC cxx_std_17)
-target_compile_options(epic_cu PRIVATE -O3 -use_fast_math )
+target_compile_options(epic_cu PRIVATE -O3 -use_fast_math --ptxas-options=-v)
 # add_dependencies(epic_cu glog)
 # target_include_directories(epic_cu PRIVATE src/extern/glog)
 # set(CUDA_INCLUDE_DIRS src/extern/glog)
 set_target_properties( epic_cu
                        PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-set_target_properties(epic_cu PROPERTIES CUDA_ARCHITECTURES "86")
+set_target_properties(epic_cu PROPERTIES CUDA_ARCHITECTURES "89")
 
 
 add_executable(epic++ src/main.cpp)
@@ -97,8 +99,7 @@ set_target_properties( epic++
 
 add_dependencies(epic++ raft hwy epiclib)
 add_compile_definitions(EPIC_VERSION="${CMAKE_PROJECT_VERSION}")
-target_link_libraries(epic++ PRIVATE pybind11::embed raft hwy epiclib
-ibverbs epic_cu cudart
+target_link_libraries(epic++ PRIVATE pybind11::embed raft hwy epiclib epic_cu cudart
 glog::glog
 #OpenMP::OpenMP_CXX
 )
@@ -108,7 +109,9 @@ file(COPY ${PY_FILES} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 # configure_file(${files} ${CMAKE_CURRENT_BINARY_DIR}/epic_utils.py COPYONLY)
 
 
+# cmake -DCMAKE_CXX_COMPILER=/home/batman/miniconda3/envs/epic310/bin/g++  -DCMAKE_C_COMPILER=/home/batman/miniconda3/envs/epic310/bin/gcc  ..
 
+# cmake -DCMAKE_CXX_COMPILER=/usr/bin/gcc-12/bin/g++  -DCMAKE_C_COMPILER=/usr/bin/gcc-12/bin/gcc  ..
 
 # add_library(pkt_assembler
 #    src/packet_assembler.cpp
