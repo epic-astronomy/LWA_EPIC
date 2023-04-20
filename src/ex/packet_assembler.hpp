@@ -90,7 +90,7 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::PacketAssembler(std::string
     m_receiver->bind_socket();
     // std::cout << "initing receiver address\n";
     if (Receiver::type == VERBS) {
-        VLOG(2) << alignment_offset<chips_hdr_type, uint8_t, BF_VERBS_PAYLOAD_OFFSET>::value << "\n";
+        VLOG(4) << alignment_offset<chips_hdr_type, uint8_t, BF_VERBS_PAYLOAD_OFFSET>::value << "\n";
         m_receiver->init_receiver(alignment_offset<chips_hdr_type, uint8_t, BF_VERBS_PAYLOAD_OFFSET>::value);
     }
     m_min_pkt_limit = float(ALLOWED_PKT_DROP) * 0.01 * PktProcessor::nsrc * m_nseq_per_gulp;

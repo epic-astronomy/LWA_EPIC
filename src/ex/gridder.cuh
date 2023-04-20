@@ -49,7 +49,7 @@ grid_dual_pol_dx5(cg::thread_block tb,
     constexpr float half_support = Support / 2.f;
     constexpr float inv_support = 1.f / float(Support);
     constexpr float inv_half_support = 1.f / float(half_support);
-    auto tile = cg::experimental::tiled_partition<Support * Support>(tb);
+    auto tile = cg::tiled_partition<Support * Support>(tb);
 
     for (int ant = tile.meta_group_rank(); ant < NStands; ant += tile.meta_group_size()) {
         float scale = 1;

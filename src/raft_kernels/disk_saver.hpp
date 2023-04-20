@@ -18,10 +18,12 @@ class DiskSaver_rft: public raft::kernel{
     public:
     DiskSaver_rft():raft::kernel(){
         input.addPort<Payload>("image");
-        m_ADP_time_from_unix_epoch_s = get_ADP_time_from_unix_epoch();
+        //m_ADP_time_from_unix_epoch_s = get_ADP_time_from_unix_epoch();
     }
 
     virtual raft::kstatus run() override{
+        VLOG(2)<<"Inside saver rft";
+
         Payload pld;
         input["image"].pop(pld);
 

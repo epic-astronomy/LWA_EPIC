@@ -4,7 +4,7 @@
 #include "formats.h"
 // #include "hwy/aligned_allocator.h"
 // #include "hwy/base.h"
-#include "bf_ibverbs.hpp"
+// #include "bf_ibverbs.hpp"
 #include "constants.h"
 #include "hwy/highway.h"
 #include <cmath>
@@ -76,6 +76,6 @@ struct alignment_offset
 };
 
 template struct alignment_offset<chips_hdr_type, uint8_t>;
-template struct alignment_offset<chips_hdr_type, uint8_t, BF_VERBS_PAYLOAD_OFFSET>;
+template struct alignment_offset<chips_hdr_type, uint8_t, 42>;
 
 #endif // HELPER_TRAITS

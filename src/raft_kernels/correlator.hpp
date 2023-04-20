@@ -37,16 +37,22 @@ class Correlator_rft : public raft::kernel
         output.addPort<_Payload>("img");
     }
 
-    virtual raft::kstatus run()
+    virtual raft::kstatus run ()override
     {
+        VLOG(2)<<"Inside correlator rft";
         _Payload pld;
         input["gulp"].pop(pld);
+        VLOG(2)<<"Payload received";
 
         if (!pld) {
             return raft::proceed;
         }
 
         auto& gulp_metadata = pld.get_mbuf()->get_metadataref();
+        VLOG(2)<<"Acquiring metadata";
+        for(auto it=gulp_metadata.begin();it!=gulp_metadata.end();++it){
+          VLOG(2)<<"Key: "<<it->first;
+        }
         auto nchan = std::any_cast<uint8_t>(gulp_metadata["nchan"]);
         auto chan0 = std::any_cast<int64_t>(gulp_metadata["chan0"]);
 
@@ -60,11 +66,13 @@ class Correlator_rft : public raft::kernel
         m_is_first = m_gulp_counter == 1 ? true : false;
         m_is_last = m_gulp_counter == m_ngulps_per_img ? true : false;
 
+        VLOG(2)<<"Setting the start id";
         if (m_is_first) {
             m_seq_start_id = std::any_cast<uint64_t>(gulp_metadata["seq_start"]);
         }
 
         if (m_is_last) {
+          VLOG(2)<<"Last gulp. Preparing metadata";
             // prepare the metadata for the image
             auto buf = m_correlator.get()->get_empty_buffer();
             CHECK(bool(buf))<<"Correlator buffer allocation failed";
@@ -85,6 +93,7 @@ class Correlator_rft : public raft::kernel
               m_is_last);
 
             m_gulp_counter = 1;
+            VLOG(3)<<"Pushing the output image";
             output["img"].push(buf);
 
             return raft::proceed;
