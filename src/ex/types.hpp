@@ -7,6 +7,7 @@
 #include <cstring>
 #include <endian.h>
 #include <unordered_map>
+#include <string>
 
 /**
  * @brief Complex nibble. Independent of the host's endianness.
@@ -49,7 +50,7 @@ struct MOFFCorrelatorDesc
     bool is_remove_autocorr{ false };
     /// @brief Number of streams to split a gulp into. Can be at most MAX_GULP_STREAMS
     int nstreams{ 1 };
-    int nchan_out{ 112 };
+    int nchan_out{ 128 };
     int gcf_kernel_dim{ 32 };
     int device_id{ 0 };
     int nbuffers{ 20 };

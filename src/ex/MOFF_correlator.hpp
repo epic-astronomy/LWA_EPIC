@@ -6,7 +6,7 @@
 #include "constants.h"
 #include "hwy/highway.h"
 #include "lf_buf_mngr.hpp"
-#include "packet_assembler.hpp"
+// #include "packet_assembler.hpp"
 #include "py_funcs.hpp"
 #include "types.hpp"
 #include <cmath>
@@ -175,13 +175,17 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc)
 
     LOG_IF(WARNING, std::abs(std::ceil(ngulps) - ngulps) > 1e-5) << "The accumulation time (" << m_accum_time << " ms) is not an integer multiple of the gulp size (" << gulp_len_ms << " ms). Adjusting it to " << m_ngulps_per_img * gulp_len_ms << " ms";
 
+    VLOG(3)<<"Setting up GPU for imaging.";
     setup_GPU();
+    VLOG(3)<<"Done";
     LOG_IF(FATAL, p_desc.device_id < 0) << "Invalid GPU device ID: " << p_desc.device_id;
     m_device_id = p_desc.device_id;
 
+    VLOG(3)<<"Setting up the buffer manager";
     LOG_IF(FATAL, p_desc.nbuffers <= 0) << "Total numbers of buffers must be >0";
     LOG_IF(FATAL, p_desc.buf_size <= 0) << "Buffer size must be at least one byte.";
     m_mbuf_mngr = std::make_unique<BuffMngr>(p_desc.nbuffers, p_desc.buf_size, p_desc.max_tries_acq_buf, p_desc.page_lock_bufs);
+    VLOG(3)<<"Done setting up the correlator";
 };
 
 template<typename Dtype, typename BuffMngr>
@@ -195,6 +199,7 @@ MOFFCorrelator<Dtype, BuffMngr>::reset(int p_nchan, int p_chan0)
     if (p_nchan != m_nchan_in) {
         m_nchan_in = p_nchan;
         this->m_f_eng_bytes = m_nchan_in * LWA_SV_INP_PER_CHAN * m_nseq_per_gulp;
+        this->m_nbytes_f_eng_per_stream = m_f_eng_bytes / m_nstreams;
         LOG(INFO) << "Allocating F-eng data on the GPU. Size: " << this->m_f_eng_bytes << " bytes";
         this->allocate_f_eng_gpu(m_f_eng_bytes);
     }
@@ -285,7 +290,9 @@ template<typename Dtype, typename BuffMngr>
 void
 MOFFCorrelator<Dtype, BuffMngr>::setup_GPU()
 {
+    VLOG(2)<<"Allocating output image";
     this->allocate_out_img(m_nchan_out * std::pow(m_grid_size, 2) * std::pow(int(m_pol_mode), 2) * sizeof(float));
+    VLOG(2)<<"Initializing GCF texture";
     reset_gcf_kernel2D(m_gcf_tex_dim);
     this->reset_gcf_tex(m_gcf_tex_dim, m_gcf_kernel2D.get());
 
@@ -294,10 +301,11 @@ MOFFCorrelator<Dtype, BuffMngr>::setup_GPU()
     this->m_nbytes_f_eng_per_stream = m_f_eng_bytes / m_nstreams;
     this->m_nbytes_out_img_per_stream = m_out_img_bytes / m_nstreams;
 
+    VLOG(2)<<"Setting up streams and initializing the imaging kernel";
     create_gulp_custreams();
     set_imaging_kernel();
 }
-
+using float_buf_mngr_t = LFBufMngr<AlignedBuffer<float>>;
 using MOFFCorrelator_t = MOFFCorrelator<uint8_t, float_buf_mngr_t>;
 
 #endif // MOFF_CORRELATOR_HPP
