@@ -1,59 +1,61 @@
-#include "ex/bf_ibverbs.hpp"
-#include "hwy/aligned_allocator.h"
-#include "hwy/base.h"
-#include "hwy/highway.h"
-#include "hwy/print.h"
-// #include "infinity/infinity.h"
+// // #include "ex/bf_ibverbs.hpp"
+// #include "hwy/aligned_allocator.h"
+// #include "hwy/base.h"
+// #include "hwy/highway.h"
+// #include "hwy/print.h"
+// // #include "infinity/infinity.h"
 #include "ex/MOFF_correlator.hpp"
+// #include "ex/buffer.hpp"
+// #include "ex/exceptions.hpp"
+// #include "ex/lf_buf_mngr.hpp"
+// #include "ex/packet_assembler.hpp"
+// #include "ex/packet_receiver.hpp"
+// #include "ex/py_funcs.hpp"
+// #include "ex/sockets.h"
+// #include <arpa/inet.h>
+// #include <bits/types/struct_iovec.h>
+// #include <bitset>
+// #include <cmath>
+// #include <cstdlib>
+// #include <glog/logging.h>
+// #include <infiniband/verbs.h>
+// #include <mellanox/vma_extra.h>
+// #include <netdb.h>
+// #include <netinet/in.h>
+// #include <pybind11/embed.h>
+// #include <raft>
+// #include <raftio>
+// #include <string>
+// #include <sys/socket.h>
+// #include <sys/types.h>
+// #include <x86intrin.h>
 #include "ex/buffer.hpp"
-#include "ex/exceptions.hpp"
-#include "ex/lf_buf_mngr.hpp"
-#include "ex/packet_assembler.hpp"
-#include "ex/packet_receiver.hpp"
-#include "ex/py_funcs.hpp"
-#include "ex/sockets.h"
-#include <arpa/inet.h>
-#include <bits/types/struct_iovec.h>
-#include <bitset>
-#include <cmath>
-#include <cstdlib>
-#include <glog/logging.h>
-#include <infiniband/verbs.h>
-#include <mellanox/vma_extra.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <pybind11/embed.h>
-#include <raft>
-#include <raftio>
-#include <string>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <x86intrin.h>
-
 #include "raft_kernels/correlator.hpp"
 #include "raft_kernels/disk_saver.hpp"
 #include "raft_kernels/dummy_kernel.hpp"
-#include "raft_kernels/packet_gen.hpp"
+#include "raft_kernels/dummy_packet_gen.hpp"
+#include "ex/lf_buf_mngr.hpp"
+// #include "raft_kernels/packet_gen.hpp"
 // #include "ex/packet_assembler.h"
 using namespace std::chrono;
 using namespace std::string_literals;
 namespace hn = hwy::HWY_NAMESPACE;
 using tag8 = hn::ScalableTag<uint8_t>;
 
-int
-get_chan0(std::string ip, int port)
-{
+// int
+// get_chan0(std::string ip, int port)
+// {
 
-    // std::cout<<"receiving\n";
-    auto receiver = VMAReceiver<uint8_t, AlignedBuffer, MultiCastUDPSocket, REG_COPY>();
-    uint8_t* buf;
-    receiver.set_address(ip, port);
-    receiver.bind_socket();
-    int nbytes = receiver.recv_packet(buf);
-    // std::cout<<nbytes;
-    const chips_hdr_type* pkt_hdr = (chips_hdr_type*)buf;
-    return (ntohs(pkt_hdr->chan0));
-}
+//     // std::cout<<"receiving\n";
+//     auto receiver = VMAReceiver<uint8_t, AlignedBuffer, MultiCastUDPSocket, REG_COPY>();
+//     uint8_t* buf;
+//     receiver.set_address(ip, port);
+//     receiver.bind_socket();
+//     int nbytes = receiver.recv_packet(buf);
+//     // std::cout<<nbytes;
+//     const chips_hdr_type* pkt_hdr = (chips_hdr_type*)buf;
+//     return (ntohs(pkt_hdr->chan0));
+// }
 
 namespace py = pybind11;
 
@@ -68,23 +70,32 @@ main(int argc, char** argv)
 
     LOG(INFO) << "E-Field Parallel Imaging Correlator (EPIC) v" << EPIC_VERSION;
     
-    std::string ip = "239.168.40.11";
-    int port = 4015;
+    // std::string ip = "239.168.40.11";
+    // int port = 4015;
 
-    auto gulper_ptr = std::make_unique<default_pkt_assembler>(ip, port);
-    using payload_t = typename default_pkt_assembler::payload_t;
+    // auto gulper_ptr = std::make_unique<default_pkt_assembler>(ip, port);
+    // LFBufMngr<AlignedBuffer<uint8_t>>
 
     auto correlator_options = MOFFCorrelatorDesc();
     auto corr_ptr = std::make_unique<MOFFCorrelator_t>(correlator_options);
 
-    auto gulper_rft = GulpGen_rft<default_pkt_assembler>(gulper_ptr, 5);
+    using mbuf_t = typename LFBufMngr<AlignedBuffer<uint8_t>>::mbuf_t;
+    using payload_t = Payload<mbuf_t>;
+    // auto gulper_rft = GulpGen_rft<default_pkt_assembler>(gulper_ptr, 5);
+    VLOG(1)<<"Initializing the Raft kernels";
+    VLOG(1)<<"Correlator";
     auto corr_rft = Correlator_rft<payload_t, MOFFCorrelator_t>(corr_ptr);
+    VLOG(1)<<"Saver";
     auto saver_rft = DiskSaver_rft<payload_t>();
-    dummy<default_pkt_assembler::payload_t> dummy_rft;
+    // dummy<default_pkt_assembler::payload_t> dummy_rft;
+    VLOG(1)<<"Dummy packet generator";
+    auto dummy_pkt_gen_rft =  dummy_pkt_gen<payload_t,LFBufMngr<AlignedBuffer<uint8_t>>>();
 
+    VLOG(1)<<"Setting up the Raft map";
     raft::map m;
 
-    m += gulper_rft >> corr_rft >> saver_rft;
+    m += dummy_pkt_gen_rft>> corr_rft >> saver_rft;
+    VLOG(1)<<"Done";
     m.exe();
 
     LOG(INFO) << "END";
