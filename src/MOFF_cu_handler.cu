@@ -121,7 +121,8 @@ MOFFCuHandler::set_imaging_kernel()
     cudaSetDevice(m_device_id);
     assert(m_out_img_desc.img_size == HALF);
     if (m_out_img_desc.img_size == HALF) {
-        m_imaging_kernel = (void*)block_fft_kernel<FFT64x64>;
+        std::cout<<"Setting the imaging kernel to 64x64\n";
+        m_imaging_kernel = (void*)(block_fft_kernel<FFT64x64>);
         cudaFuncSetAttribute(
           m_imaging_kernel,
           cudaFuncAttributeMaxDynamicSharedMemorySize,
@@ -173,9 +174,16 @@ void
 MOFFCuHandler::process_gulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, bool p_last)
 {
     cudaSetDevice(m_device_id);
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    cudaEventRecord(start);
+
+    std::cout<<"FEng bytes per stream: "<<m_nbytes_f_eng_per_stream<<". OutImg bytes per stream: "<<m_nbytes_out_img_per_stream<<". Chan per stream: "<<m_nchan_per_stream<<". NStreams: "<<m_nstreams<<"\n";
+    std::cout<<"Nseq per gulp: "<<m_nseq_per_gulp<<"\n";
     for (int i = 0; i < m_nstreams; ++i) {
         int f_eng_dat_offset = i * m_nbytes_f_eng_per_stream;
-        int output_img_offset = i * m_nbytes_out_img_per_stream;
+        int output_img_offset = i * m_nbytes_out_img_per_stream/sizeof(float);
         auto stream_i = *(m_gulp_custreams.get() + i);
         int chan_offset = i * m_nchan_per_stream;
 
@@ -190,20 +198,33 @@ MOFFCuHandler::process_gulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first,
             m_nbytes_f_eng_per_stream,
             cudaMemcpyHostToDevice,
             stream_i));
+        std::cout<<"Launching the kernel\n";
+        if(m_imaging_kernel==nullptr){
+            std::cout<<"Null imaging kernel\n";
+        }
+        cuda_check_err(cudaLaunchKernel(m_imaging_kernel, m_img_grid_dim, m_img_block_dim, args, m_shared_mem_size, stream_i));
 
-        cudaLaunchKernel(m_imaging_kernel, m_img_grid_dim, m_img_block_dim, args, m_shared_mem_size, stream_i);
 
+        std::cout<<i<<" "<<output_img_offset<<" "<<"\n";
         if (p_last) {
-            cuda_check_err(cudaMemcpyAsync(p_out_ptr + output_img_offset, m_output_cu + output_img_offset, m_nbytes_out_img_per_stream, cudaMemcpyDeviceToHost, stream_i));
+            cuda_check_err(cudaMemcpyAsync((void*)(p_out_ptr + output_img_offset), (void*)(m_output_cu + output_img_offset), m_nbytes_out_img_per_stream, cudaMemcpyDeviceToHost, stream_i));
         }
     }
 
     if (p_last) {
+        std::cout<<"Syncing the kernels\n";
         for (int i = 0; i < m_nstreams; ++i) {
-            cudaStreamSynchronize(*(m_gulp_custreams.get() + i));
+            cuda_check_err(cudaStreamSynchronize(*(m_gulp_custreams.get() + i)));
         }
+        std::cout<<"Syncing done\n";
         cuda_check_err(cudaPeekAtLastError());
     }
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    float milliseconds = 0;
+    cudaEventElapsedTime(&milliseconds, start, stop);
+    std::cout << "Gulp processing time (ms): " << milliseconds << std::endl;
+
 }
 
 void
