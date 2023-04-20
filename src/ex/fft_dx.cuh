@@ -19,7 +19,7 @@ _temp(float* ant_pos, cudaTextureObject_t gcf)
         printf("inside\n");
         printf("ant pos[0]: %f %f %f\n", ant_pos[0], ant_pos[1], ant_pos[2]);
     }
-}
+};
 
 /**
  * @brief Block fft specialization for half precision
@@ -53,11 +53,11 @@ __launch_bounds__(FFT::max_threads_per_block)
     const uint8_t* f_eng_g,
     const float* antpos_g,
     const float* phases_g,
-    size_t nseq_per_gulp,
-    size_t nchan,
+    int nseq_per_gulp,
+    int nchan,
     cudaTextureObject_t gcf_tex,
     float* output_g,
-    size_t chan_offset = 0,
+    int chan_offset = 0,
     bool is_first_gulp=true)
 {
 
@@ -143,5 +143,7 @@ __launch_bounds__(FFT::max_threads_per_block)
     }
 }
 
-using FFT64x64 = decltype(Size<64>() + Precision<half>() + Type<fft_type::c2c>() + Direction<fft_direction::inverse>() + SM<860>() + ElementsPerThread<8>() + FFTsPerBlock<128>() + Block());
+using FFT64x64 = decltype(Size<64>() + Precision<half>() + Type<fft_type::c2c>() + Direction<fft_direction::inverse>() + SM<890>() + ElementsPerThread<8>() + FFTsPerBlock<128>() + Block());
+
+using FFT128x128 = decltype(Size<128>() + Precision<half>() + Type<fft_type::c2c>() + Direction<fft_direction::inverse>() + SM<860>() + ElementsPerThread<16>() + FFTsPerBlock<256>() + Block());
 #endif // FFTDX_CUH
