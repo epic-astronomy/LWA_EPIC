@@ -162,9 +162,9 @@ void get_40ms_gulp(T* out_ptr){
     for(i=0;i<ncomplex_vals;++i){
         out_nib2[i].re = data_ptr[i];
         out_nib2[i].im = data_ptr[i+1];
-        if(i>100000 && i<100010){
-            VLOG(3)<<i<<" "<<int(out_nib2[i].re)<<" "<<int(out_nib2[i].im);
-        }
+        // if(i>100000 && i<100010){
+        //     VLOG(3)<<i<<" "<<int(out_nib2[i].re)<<" "<<int(out_nib2[i].im);
+        // }
     }
 
     VLOG(3)<<"Copied: "<<i<<" complex vals";

@@ -107,22 +107,6 @@ __launch_bounds__(FFT::max_threads_per_block)
         const  half _norm = half(1.) / half(row_size);
         transpose_tri<FFT>(thread_data, shared_mem, _norm);
 
-       /*  for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
-            auto index = (threadIdx.x + _reg * stride) * row_size + threadIdx.y;
-            shared_mem[index].x.x = thread_data[_reg].x.x * _norm;
-            shared_mem[index].x.y = thread_data[_reg].x.y * _norm;
-            shared_mem[index].y.x = thread_data[_reg].y.x * _norm;
-            shared_mem[index].y.y = thread_data[_reg].y.y * _norm;
-        }
-
-        __syncthreads();
-
-        // transpose the matrix
-        for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
-            auto index = (threadIdx.x + _reg * stride) + threadIdx.y * row_size;
-            thread_data[_reg] = shared_mem[index];
-        }
-        __syncthreads(); */
         // execute column-wise iFFT
         FFT().execute(thread_data, shared_mem);
 
