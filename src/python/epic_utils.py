@@ -87,11 +87,13 @@ def gen_phases_lwasv(nchan, chan0):
 
 def save_output(output_arr, grid_size, nchan, filename):
     output_arr = output_arr.reshape((nchan, grid_size, grid_size))
-    output_arr = np.fft.fftshift(output_arr, axes=(1,2))
+    output_arr_sft = np.fft.fftshift(output_arr, axes=(1,2))
 
+    # print(output_arr[0,:,:10])
     # output_arr = output_arr.sum(axis=0)
     # matplotlib.image.imsave(filename, output_arr[:,:].T/1000)
-    matplotlib.image.imsave(filename, output_arr[0,:,:].T/1000)
+    matplotlib.image.imsave(filename, np.log10(output_arr_sft[0,:,:].T/1000))
+    matplotlib.image.imsave("original_test_out.png",output_arr[0,:,:])
 
 
 
@@ -109,6 +111,15 @@ def get_ADP_time_from_unix_epoch():
             time.sleep(0.1)
     return (utc_start_dt-ADP_EPOCH).total_seconds()
 
+
+def get_40ms_gulp():
+    npfile=np.load("data/40ms_128chan_gulp_c64.npz")
+    meta=np.concatenate((npfile['meta'].ravel() , [npfile['data'].size], npfile['data'].shape))
+    _data=npfile["data"].copy()
+    for i in range(20):
+        print(i,np.min(_data[i,1,:,:]))
+    return dict(meta=meta.astype(np.double).ravel().copy(),\
+            data=npfile['data'].ravel().copy())
 
 
 if __name__=="__main__":
