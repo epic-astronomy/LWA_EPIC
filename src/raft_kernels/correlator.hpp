@@ -34,7 +34,8 @@ class Correlator_rft : public raft::kernel
         m_npols = m_correlator.get()->get_npols();
         m_support = m_correlator.get()->get_support();
         input.addPort<_Payload>("gulp");
-        output.addPort<_Payload>("img");
+        // using out_t = typ
+        output.addPort<typename _Correlator::payload_t>("img");
     }
 
     virtual raft::kstatus run ()override
