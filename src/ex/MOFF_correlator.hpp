@@ -304,6 +304,7 @@ MOFFCorrelator<Dtype, BuffMngr>::setup_GPU()
     VLOG(2)<<"Setting up streams and initializing the imaging kernel";
     create_gulp_custreams();
     set_imaging_kernel();
+    set_img_grid_dim();
 }
 using float_buf_mngr_t = LFBufMngr<AlignedBuffer<float>>;
 using MOFFCorrelator_t = MOFFCorrelator<uint8_t, float_buf_mngr_t>;
