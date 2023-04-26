@@ -9,6 +9,7 @@
 #include <pybind11/numpy.h>
 #include <glog/logging.h>
 #include <iostream>
+#include "types.hpp"
 
 namespace py = pybind11;
 using namespace py::literals;
@@ -136,15 +137,51 @@ get_lwasv_phases(T* out_ptr, int nchan, int chan0)
 }
 
 template<typename T>
+void get_40ms_gulp(T* out_ptr){
+    VLOG(3)<<"Grabbing a 40ms gulp";
+    py::gil_scoped_acquire acquire;
+    auto gulp_dict = py::module_::import("epic_utils")
+            .attr("get_40ms_gulp")();
+
+    auto meta_arr = gulp_dict["meta"].cast<py::array_t<double, py::array::c_style | py::array::forcecast>>();
+    auto data_arr = gulp_dict["data"].cast<py::array_t<std::complex<double>, py::array::c_style | py::array::forcecast>>();
+
+    //tstart, chan0, size, ntime, nchan, nstand, npol
+    auto meta_ptr = static_cast<double*>(meta_arr.request().ptr);
+
+    //dimensions ntime, nchan, nstand, npol
+    auto data_ptr = static_cast<double*>(data_arr.request().ptr);
+
+    //copy it to the out_ptr
+    auto out_nib2 = reinterpret_cast<cnib*>(out_ptr);
+
+    VLOG(3)<<"Copying "<<meta_ptr[2]<<" elements into the output array";
+    int ncomplex_vals = meta_ptr[2]/2;
+    CHECK(int(meta_ptr[2])%2==0)<<"Invalid gulp array. The total number of elements is an odd number.";
+    size_t i;
+    for(i=0;i<ncomplex_vals;++i){
+        out_nib2[i].re = data_ptr[i];
+        out_nib2[i].im = data_ptr[i+1];
+        if(i>100000 && i<100010){
+            VLOG(3)<<i<<" "<<int(out_nib2[i].re)<<" "<<int(out_nib2[i].im);
+        }
+    }
+
+    VLOG(3)<<"Copied: "<<i<<" complex vals";
+
+}
+
+template<typename T>
 void
 save_image(size_t grid_size, size_t nchan, T* data, std::string filename)
 {
     py::gil_scoped_acquire acquire;
+    VLOG(3)<<"type of output data type: "<<sizeof(T);
     auto result = py::array_t<T>(grid_size * grid_size * nchan, data);
     auto utils = py::module_::import("epic_utils").attr("save_output")(result, grid_size, nchan, filename);
-    for (int i = 0; i < 10; ++i) {
-        std::cout << data[i] << std::endl;
-    }
+    // for (int i = 0; i < 10; ++i) {
+    //     std::cout << data[i] << std::endl;
+    // }
 }
 
 double
