@@ -48,7 +48,7 @@ _temp(float* ant_pos, cudaTextureObject_t gcf)
  * @param chan_offset Offset to the first channel in the current stream.
  * @param is_first_gulp Flag if the passed data belongs to the first gulp. It determines whether to assign or increment the output image block.
  */
-template<typename FFT, PKT_DATA_ORDER Order = CHAN_MAJOR, std::enable_if_t<std::is_same<__half2, typename FFT::output_type::value_type>::value, bool> = true>
+template<typename FFT, PKT_DATA_ORDER Order = TIME_MAJOR, std::enable_if_t<std::is_same<__half2, typename FFT::output_type::value_type>::value, bool> = true>
 __launch_bounds__(FFT::max_threads_per_block)
   __global__ void block_fft_kernel(
     const uint8_t* f_eng_g,
@@ -61,12 +61,23 @@ __launch_bounds__(FFT::max_threads_per_block)
     int chan_offset = 0,
     bool is_first_gulp=true)
 {
-
+    // printf("start\n");
     using complex_type = typename FFT::value_type;
     extern __shared__ complex_type shared_mem[];
 
+
     complex_type thread_data[FFT::storage_size];
     int channel_idx = blockIdx.x + chan_offset;
+    float3 *antpos_smem = reinterpret_cast<float3*>(&shared_mem[size_of<FFT>::value * size_of<FFT>::value]);
+        // printf("okay %d\n",channel_idx);
+    
+    auto *_antpos_g = reinterpret_cast<const float3*>(get_ant_pos(antpos_g, channel_idx));
+
+    auto tb = cg::this_thread_block();
+    for(int i=tb.thread_rank();i<LWA_SV_NSTANDS;i+=tb.size()){
+        antpos_smem[i]=_antpos_g[i];
+    }
+    tb.sync();
     for (int seq_no = 0; seq_no < nseq_per_gulp; ++seq_no) {
         volatile int idx = 200;
 
@@ -76,7 +87,8 @@ __launch_bounds__(FFT::max_threads_per_block)
             shared_mem[(threadIdx.x + _reg * stride) * row_size + threadIdx.y] = __half2half2(0);
         }
 
-        grid_dual_pol_dx5<FFT, 2, LWA_SV_NSTANDS>(
+
+        /* grid_dual_pol_dx5<FFT, 2, LWA_SV_NSTANDS>(
           cg::this_thread_block(),
           thread_data,
           reinterpret_cast<const cnib2*>(
@@ -87,11 +99,22 @@ __launch_bounds__(FFT::max_threads_per_block)
           shared_mem,
           gcf_tex);
 
-        __syncthreads();
         for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
             auto index = (threadIdx.x + _reg * stride) * row_size + threadIdx.y;
             thread_data[_reg] = shared_mem[index];
         }
+        __syncthreads(); */
+
+        grid_dual_pol_dx6<FFT, 5, LWA_SV_NSTANDS>(
+            thread_data,
+            reinterpret_cast<const cnib2*>(
+            get_f_eng_sample<Order>(
+              f_eng_g, seq_no, channel_idx, nseq_per_gulp, nchan)),
+          //reinterpret_cast<const float3*>(get_ant_pos(antpos_g, channel_idx)),
+          antpos_smem,
+          reinterpret_cast<const float4*>(get_phases(phases_g, channel_idx)),
+          gcf_tex
+        );
 
         // if (threadIdx.x == 0 && threadIdx.y == 0 && channel_idx == 0 && seq_no == idx)
         //     printf("thread: %f\n", __half2float(thread_data[idx].x.x));
