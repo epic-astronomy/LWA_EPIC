@@ -4,6 +4,7 @@
 //#include "data_copier.cuh"
 #include "gridder.cuh"
 #include "types.hpp"
+#include "cu_helpers.cuh"
 #include <cooperative_groups.h>
 #include <cuda_fp16.h>
 #include <cufftdx.hpp>
@@ -65,10 +66,9 @@ __launch_bounds__(FFT::max_threads_per_block)
     extern __shared__ complex_type shared_mem[];
 
     complex_type thread_data[FFT::storage_size];
-
+    int channel_idx = blockIdx.x + chan_offset;
     for (int seq_no = 0; seq_no < nseq_per_gulp; ++seq_no) {
-        volatile int idx = 0;
-        volatile int channel_idx = blockIdx.x + chan_offset;
+        volatile int idx = 200;
 
         constexpr int stride = size_of<FFT>::value / FFT::elements_per_thread;
         constexpr int row_size = size_of<FFT>::value; // blockDim.x * FFT::elements_per_thread;
@@ -93,7 +93,7 @@ __launch_bounds__(FFT::max_threads_per_block)
             thread_data[_reg] = shared_mem[index];
         }
 
-        // if (threadIdx.x == 0 && threadIdx.y == 0 && channel_idx == 0 && i == idx)
+        // if (threadIdx.x == 0 && threadIdx.y == 0 && channel_idx == 0 && seq_no == idx)
         //     printf("thread: %f\n", __half2float(thread_data[idx].x.x));
 
         // Execute IFFT (row-wise)
@@ -103,8 +103,9 @@ __launch_bounds__(FFT::max_threads_per_block)
         //  equivalent to a column-wise IFFT.
         // Load everything into shared memory and normalize
         // this ensures there is no overflow
-        half _norm = half(1) / half(row_size);
-        // #pragma unroll
+
+        const  half _norm = half(1.) / half(row_size);
+
         for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
             auto index = (threadIdx.x + _reg * stride) * row_size + threadIdx.y;
             shared_mem[index].x.x = thread_data[_reg].x.x * _norm;
@@ -126,24 +127,33 @@ __launch_bounds__(FFT::max_threads_per_block)
 
         for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
             auto index = (threadIdx.x + _reg * stride) + threadIdx.y * row_size;
-            auto xx_yy = thread_data[_reg].x * thread_data[_reg].x + thread_data[_reg].y * thread_data[_reg].y;
+            // auto xx_yy = thread_data[_reg].x * thread_data[_reg].x + thread_data[_reg].y * thread_data[_reg].y;
+            // if (seq_no == 0) {
+            //     output_g[channel_idx * row_size * row_size + index] = float(xx_yy.x + xx_yy.y);
+            // } else {
+            //     output_g[channel_idx * row_size * row_size + index] += float(xx_yy.x + xx_yy.y);
+            // }
+            auto xx_yy = thread_data[_reg].x.x * thread_data[_reg].x.x + thread_data[_reg].y.x * thread_data[_reg].y.x;
             if (seq_no == 0) {
-                output_g[channel_idx * row_size * row_size + index] = float(xx_yy.x + xx_yy.y);
+                output_g[channel_idx * row_size * row_size + index] = float(xx_yy);
             } else {
-                output_g[channel_idx * row_size * row_size + index] += float(xx_yy.x + xx_yy.y);
+                output_g[channel_idx * row_size * row_size + index] += float(xx_yy);
             }
+
+           
         }
 
-        if (channel_idx == 0 && seq_no == idx) {
-            // for (int i = 0; i < FFT::elements_per_thread; ++i) {
-            //     printf("thread: %f %f %d %d %d\n",__half2float(thread_data[i].x.x), __half2float(thread_data[i].y.x), threadIdx.x, threadIdx.y, i);
-            // }
-            // printf("thread: %f\n", __half2float(thread_data[idx].x.x));
-        }
+        // if (channel_idx == 50 && seq_no == 200 /*&& threadIdx.x==3*/ && threadIdx.y==0) {
+        //     printf("Nseq per gulp=%d %d\n",nseq_per_gulp,seq_no);
+        //     for (int i = 0; i < FFT::elements_per_thread; ++i) {
+        //         printf("thread: %f %f %d %d %d\n",__half2float(thread_data[i].x.x), __half2float(thread_data[i].y.x), threadIdx.x, threadIdx.y, i);
+        //     }
+        //     // printf("thread: %f\n", __half2float(thread_data[idx].x.x));
+        // }
     }
 }
 
 using FFT64x64 = decltype(Size<64>() + Precision<half>() + Type<fft_type::c2c>() + Direction<fft_direction::inverse>() + SM<890>() + ElementsPerThread<8>() + FFTsPerBlock<128>() + Block());
 
-using FFT128x128 = decltype(Size<128>() + Precision<half>() + Type<fft_type::c2c>() + Direction<fft_direction::inverse>() + SM<860>() + ElementsPerThread<16>() + FFTsPerBlock<256>() + Block());
+using FFT128x128 = decltype(Size<128>() + Precision<half>() + Type<fft_type::c2c>() + Direction<fft_direction::inverse>() + SM<890>() + ElementsPerThread<16>() + FFTsPerBlock<256>() + Block());
 #endif // FFTDX_CUH
