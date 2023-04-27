@@ -7,6 +7,7 @@
 #include <cooperative_groups.h>
 #include <cuda_fp16.h>
 #include <iostream>
+#include <nvml.h>
 
 namespace cg = cooperative_groups;
 
@@ -119,18 +120,30 @@ void
 MOFFCuHandler::set_imaging_kernel()
 {
     cudaSetDevice(m_device_id);
-    assert(m_out_img_desc.img_size == HALF);
+    // assert(m_out_img_desc.img_size == HALF);
     if (m_out_img_desc.img_size == HALF) {
         std::cout<<"Setting the imaging kernel to 64x64\n";
+        std::cout<<"Shared memory size: "<<FFT64x64::shared_memory_size<<" bytes\n";
+        std::cout<<FFT64x64::block_dim.x<<" "<<FFT64x64::block_dim.y<<"\n";
         m_imaging_kernel = (void*)(block_fft_kernel<FFT64x64>);
         cudaFuncSetAttribute(
           m_imaging_kernel,
           cudaFuncAttributeMaxDynamicSharedMemorySize,
-          FFT64x64::shared_memory_size);
+          FFT64x64::shared_memory_size*2);
         m_img_block_dim = FFT64x64::block_dim;
-        m_shared_mem_size = FFT64x64::shared_memory_size;
+        m_shared_mem_size = FFT64x64::shared_memory_size*2;
     } else {
-        // not implemented yet
+         std::cout<<"Setting the imaging kernel to 128x128\n";
+        std::cout<<"Shared memory size: "<<FFT128x128::shared_memory_size<<" bytes "<<FFT128x128::elements_per_thread<<"\n";
+        std::cout<<FFT64x64::block_dim.x<<" "<<FFT128x128::block_dim.y<<"\n";
+        m_imaging_kernel = (void*)(block_fft_kernel<FFT128x128>);
+        cudaFuncSetAttribute(
+          m_imaging_kernel,
+          cudaFuncAttributeMaxDynamicSharedMemorySize,
+          FFT128x128::shared_memory_size*1.5);
+        m_img_block_dim = FFT128x128::block_dim;
+        m_shared_mem_size = FFT128x128::shared_memory_size*1.5;
+        cudaFuncSetCacheConfig(m_imaging_kernel, cudaFuncCachePreferL1);
     }
 }
 
@@ -202,6 +215,7 @@ MOFFCuHandler::process_gulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first,
         if(m_imaging_kernel==nullptr){
             std::cout<<"Null imaging kernel\n";
         }
+        std::cout<<m_img_grid_dim.x<<" "<<m_img_grid_dim.y<<" "<<m_img_block_dim.x<<" "<<m_img_block_dim.y<<" "<<m_shared_mem_size<<std::endl;
         cuda_check_err(cudaLaunchKernel(m_imaging_kernel, m_img_grid_dim, m_img_block_dim, args, m_shared_mem_size, stream_i));
 
 
