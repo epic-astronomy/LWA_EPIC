@@ -160,10 +160,10 @@ void get_40ms_gulp(T* out_ptr){
     CHECK(int(meta_ptr[2])%2==0)<<"Invalid gulp array. The total number of elements is an odd number.";
     size_t i;
     for(i=0;i<ncomplex_vals;++i){
-        out_nib2[i].re = data_ptr[i];
-        out_nib2[i].im = data_ptr[i+1];
-        // if(i>100000 && i<100010){
-        //     VLOG(3)<<i<<" "<<int(out_nib2[i].re)<<" "<<int(out_nib2[i].im);
+        out_nib2[i].re = data_ptr[2*i];
+        out_nib2[i].im = data_ptr[2*i+1];
+        // if(i==1){
+        //     VLOG(3)<<"GUlp data: "<<data_ptr
         // }
     }
 
