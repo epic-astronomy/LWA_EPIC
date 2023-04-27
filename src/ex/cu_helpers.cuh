@@ -20,7 +20,7 @@
  * @param scale
  * @return s* (A * B)
  */
-__device__ inline __half2
+__device__ __half2
 __half2cms(__half2 a, __half2 b, __half scale = __half(1))
 {
     return __hmul2(__halves2half2(scale, scale), __halves2half2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x));
@@ -41,7 +41,7 @@ __half2cms(__half2 a, __half2 b, __half scale = __half(1))
  * @relatesalso MOFFCuHandler
  */
 template<typename T>
-__device__ inline void
+__device__ void
 __cms_f(T& out, const float2 a, const cnib b, float& scale)
 {
     out.x = __fmul_rz(scale, __fadd_rz(__fmul_rz(a.x, b.re), -__fmul_rz(a.y, b.im)));
@@ -61,7 +61,7 @@ __cms_f(T& out, const float2 a, const cnib b, float& scale)
  * @relatesalso MOFFCuHandler
  */
 template<typename T>
-__device__ inline void
+__device__ void
 __cm_f(T& out, const float2& a, const cnib& b)
 {
     out.x += __fadd_rz(__fmul_rz(a.x, b.re), -__fmul_rz(a.y, b.im));
@@ -143,7 +143,7 @@ get_phases(const float* phases, size_t chan_idx)
  */
 template<class FFT, std::enable_if_t<std::is_same<__half2, typename FFT::output_type::value_type>::value, bool> = true>
 __device__ void
-transpose_tri(typename FFT::value_type thread_reg[FFT::elements_per_thread],
+transpose_tri(typename FFT::value_type (&thread_reg)[FFT::elements_per_thread],
               typename FFT::value_type* shared_mem,
               typename cufftdx::precision_of<FFT>::type norm = 1.)
 {

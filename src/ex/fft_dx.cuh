@@ -13,14 +13,14 @@
 using namespace cufftdx;
 namespace cg = cooperative_groups;
 
-__global__ void
-_temp(float* ant_pos, cudaTextureObject_t gcf)
-{
-    if (threadIdx.x == 0 && threadIdx.y == 0) {
-        printf("inside\n");
-        printf("ant pos[0]: %f %f %f\n", ant_pos[0], ant_pos[1], ant_pos[2]);
-    }
-};
+// __global__ void
+// _temp(float* ant_pos, cudaTextureObject_t gcf)
+// {
+//     if (threadIdx.x == 0 && threadIdx.y == 0) {
+//         printf("inside\n");
+//         printf("ant pos[0]: %f %f %f\n", ant_pos[0], ant_pos[1], ant_pos[2]);
+//     }
+// };
 
 /**
  * @brief Block fft specialization for half precision
@@ -65,10 +65,14 @@ __launch_bounds__(FFT::max_threads_per_block)
     using complex_type = typename FFT::value_type;
     extern __shared__ complex_type shared_mem[];
 
+    constexpr int support=1;
 
     complex_type thread_data[FFT::storage_size];
+    unsigned long long int valid_ants[4]={0,0,0,0};
     int channel_idx = blockIdx.x + chan_offset;
-    float3 *antpos_smem = reinterpret_cast<float3*>(&shared_mem[size_of<FFT>::value * size_of<FFT>::value]);
+
+    // copy antenna positions into shared memory
+    float3 *antpos_smem = reinterpret_cast<float3*>(shared_mem+FFT::shared_memory_size/sizeof(complex_type));
         // printf("okay %d\n",channel_idx);
     
     auto *_antpos_g = reinterpret_cast<const float3*>(get_ant_pos(antpos_g, channel_idx));
@@ -78,17 +82,30 @@ __launch_bounds__(FFT::max_threads_per_block)
         antpos_smem[i]=_antpos_g[i];
     }
     tb.sync();
+
+    // find what all antenna kernels overlap the pixels in this thread
+    find_valid_antennas_lwasv<FFT, support>(antpos_smem, valid_ants);
+    // if(channel_idx==0 && threadIdx.x==4 && threadIdx.y==33){
+    //     for(int i=0;i<4;++i){
+    //         printf("N valid antennas: %d\n",__popcll(valid_ants[i]));
+    //     }
+    // }
+    // return;
+
+
+    // loop over each sequence in the gulp for channel_idx channel
     for (int seq_no = 0; seq_no < nseq_per_gulp; ++seq_no) {
-        volatile int idx = 200;
+        // volatile int idx = 200;
 
         constexpr int stride = size_of<FFT>::value / FFT::elements_per_thread;
         constexpr int row_size = size_of<FFT>::value; // blockDim.x * FFT::elements_per_thread;
-        for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
+        /* for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
             shared_mem[(threadIdx.x + _reg * stride) * row_size + threadIdx.y] = __half2half2(0);
         }
+        __syncthreads();
 
 
-        /* grid_dual_pol_dx5<FFT, 2, LWA_SV_NSTANDS>(
+        grid_dual_pol_dx5<FFT, 4, LWA_SV_NSTANDS>(
           cg::this_thread_block(),
           thread_data,
           reinterpret_cast<const cnib2*>(
@@ -99,13 +116,15 @@ __launch_bounds__(FFT::max_threads_per_block)
           shared_mem,
           gcf_tex);
 
+        __syncthreads();
+
         for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
             auto index = (threadIdx.x + _reg * stride) * row_size + threadIdx.y;
             thread_data[_reg] = shared_mem[index];
         }
-        __syncthreads(); */
-
-        grid_dual_pol_dx6<FFT, 5, LWA_SV_NSTANDS>(
+        __syncthreads();
+ */
+        /* grid_dual_pol_dx6<FFT, 5, LWA_SV_NSTANDS>(
             thread_data,
             reinterpret_cast<const cnib2*>(
             get_f_eng_sample<Order>(
@@ -114,8 +133,31 @@ __launch_bounds__(FFT::max_threads_per_block)
           antpos_smem,
           reinterpret_cast<const float4*>(get_phases(phases_g, channel_idx)),
           gcf_tex
+        ); */
+
+        grid_dual_pol_dx7<FFT, support, LWA_SV_NSTANDS>(
+            thread_data,
+            reinterpret_cast<const cnib2*>(
+            get_f_eng_sample<Order>(
+              f_eng_g, seq_no, channel_idx, nseq_per_gulp, nchan)),
+          //reinterpret_cast<const float3*>(get_ant_pos(antpos_g, channel_idx)),
+          antpos_smem,
+          reinterpret_cast<const float4*>(get_phases(phases_g, channel_idx)),
+          gcf_tex,
+          valid_ants
         );
 
+        __syncthreads();
+
+        const  half _norm = half(1.) / half(row_size*row_size);
+        // for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
+        //     // auto index = (threadIdx.x + _reg * stride) * row_size + threadIdx.y;
+        //     thread_data[_reg].x.x *= _norm;
+        //     thread_data[_reg].x.y *= _norm;
+        //     thread_data[_reg].y.x *= _norm;
+        //     thread_data[_reg].y.y *= _norm;
+        // }
+        // __syncthreads();
         // if (threadIdx.x == 0 && threadIdx.y == 0 && channel_idx == 0 && seq_no == idx)
         //     printf("thread: %f\n", __half2float(thread_data[idx].x.x));
 
@@ -127,29 +169,45 @@ __launch_bounds__(FFT::max_threads_per_block)
         // Load everything into shared memory and normalize
         // this ensures there is no overflow
 
-        const  half _norm = half(1.) / half(row_size);
+        /* const  half _norm = half(1.) / half(row_size);
+        for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
+            auto index = (threadIdx.x + _reg * stride) * row_size + threadIdx.y;
+            shared_mem[index].x.x = thread_data[_reg].x.x * _norm;
+            shared_mem[index].x.y = thread_data[_reg].x.y * _norm;
+            shared_mem[index].y.x = thread_data[_reg].y.x * _norm;
+            shared_mem[index].y.y = thread_data[_reg].y.y * _norm;
+        }
+
+        __syncthreads(); */
+
+        /* // transpose the matrix
+        for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
+            auto index = (threadIdx.x + _reg * stride) + threadIdx.y * row_size;
+            thread_data[_reg] = shared_mem[index];
+        } */
         transpose_tri<FFT>(thread_data, shared_mem, _norm);
 
-        // execute column-wise iFFT
+        // // execute column-wise iFFT
         FFT().execute(thread_data, shared_mem);
 
         for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
             auto index = (threadIdx.x + _reg * stride) + threadIdx.y * row_size;
-            // auto xx_yy = thread_data[_reg].x * thread_data[_reg].x + thread_data[_reg].y * thread_data[_reg].y;
-            // if (seq_no == 0) {
-            //     output_g[channel_idx * row_size * row_size + index] = float(xx_yy.x + xx_yy.y);
-            // } else {
-            //     output_g[channel_idx * row_size * row_size + index] += float(xx_yy.x + xx_yy.y);
-            // }
-            auto xx_yy = thread_data[_reg].x.x * thread_data[_reg].x.x + thread_data[_reg].y.x * thread_data[_reg].y.x;
+            auto xx_yy = thread_data[_reg].x * thread_data[_reg].x + thread_data[_reg].y * thread_data[_reg].y;
             if (seq_no == 0) {
-                output_g[channel_idx * row_size * row_size + index] = float(xx_yy);
+                output_g[channel_idx * row_size * row_size + index] = float(xx_yy.x + xx_yy.y);
             } else {
-                output_g[channel_idx * row_size * row_size + index] += float(xx_yy);
+                output_g[channel_idx * row_size * row_size + index] += float(xx_yy.x + xx_yy.y);
             }
+            // auto xx_yy = thread_data[_reg].x.x * thread_data[_reg].x.x + thread_data[_reg].y.x * thread_data[_reg].y.x;
+            // if (seq_no == 0) {
+            //     output_g[channel_idx * row_size * row_size + index] = float(xx_yy);
+            // } else {
+            //     output_g[channel_idx * row_size * row_size + index] += float(xx_yy);
+            // }
 
            
         }
+        __syncthreads();
 
         // if (channel_idx == 50 && seq_no == 200 /*&& threadIdx.x==3*/ && threadIdx.y==0) {
         //     printf("Nseq per gulp=%d %d\n",nseq_per_gulp,seq_no);
@@ -161,7 +219,7 @@ __launch_bounds__(FFT::max_threads_per_block)
     }
 }
 
-using FFT64x64 = decltype(Size<64>() + Precision<half>() + Type<fft_type::c2c>() + Direction<fft_direction::inverse>() + SM<890>() + ElementsPerThread<8>() + FFTsPerBlock<128>() + Block());
+using FFT64x64 = decltype(Size<64>() + Precision<half>() + Type<fft_type::c2c>() + Direction<fft_direction::inverse>() + SM<890>() + ElementsPerThread<4>() + FFTsPerBlock<128>() + Block());
 
 using FFT128x128 = decltype(Size<128>() + Precision<half>() + Type<fft_type::c2c>() + Direction<fft_direction::inverse>() + SM<890>() + ElementsPerThread<16>() + FFTsPerBlock<256>() + Block());
 #endif // FFTDX_CUH
