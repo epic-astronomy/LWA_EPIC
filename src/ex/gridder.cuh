@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cuda_fp16.h>
 #include <cufftdx.hpp>
+#include <unistd.h>
 
 namespace cg = cooperative_groups;
 using namespace cufftdx;
@@ -236,7 +237,7 @@ __device__ void grid_dual_pol_dx7(
     const cnib2 *f_eng, const float3 *__restrict__ antpos,
     const float4 *__restrict__ phases, cudaTextureObject_t gcf_tex,
     const unsigned long long int (&valid_ants)[4]) {
-  constexpr float half_support = Support / 2.f;
+  constexpr float half_support = float(Support) / 2.f;
   constexpr float inv_half_support = 2. / float(Support);
   constexpr int stride = float(size_of<FFT>::value) / FFT::elements_per_thread;
   constexpr double inv_stride = 1. / double(stride);
@@ -259,11 +260,7 @@ __device__ void grid_dual_pol_dx7(
       offset -= pos;
       _temp_grp >>= pos;
 
-      //   if (blockIdx.x == 0 && threadIdx.x == 5 && threadIdx.y == 36) { //
-      //     printf("post: %d %d %d %d %d\n", __popcll(_temp_grp),
-      //            __ffsll(_temp_grp), pos, offset, ant);
-      //   }
-      //   continue;
+       ;
 
       if (ant < 0 || ant >= 256 || counter > 64) {
         return;
@@ -272,6 +269,8 @@ __device__ void grid_dual_pol_dx7(
 
       float antx = antpos[ant].x;
       float anty = antpos[ant].y;
+
+      
 
       // if (abs(anty - (threadIdx.y + 0.5)) >= half_support) {
       //     continue;
@@ -292,12 +291,18 @@ __device__ void grid_dual_pol_dx7(
       float ant_distx =
           abs(antx - (thread_pix_idx * stride + threadIdx.x + 0.5));
 
+    
+
       // if (ant_distx >= half_support) {
       //     continue;
       // }
+    //    if (blockIdx.x == 0 ) { //
+    //       printf("ant and element: %f %f %f %f\n", antx, anty, threadIdx.x+0.5+thread_pix_idx * stride, threadIdx.y+0.5);
+    //     }
+        // continue;
 
       auto phase_ant = phases[ant];
-      float scale =
+      float scale = 
           tex2D<float>(gcf_tex, abs(ant_distx * inv_half_support),
                        abs((anty - (threadIdx.y + 0.5)) * inv_half_support));
 
