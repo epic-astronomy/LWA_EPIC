@@ -124,7 +124,7 @@ get_ant_pos(const float* ant_pos, size_t chan_idx)
 __device__ const float*
 get_phases(const float* phases, size_t chan_idx)
 {
-    return phases + chan_idx * LWA_SV_NSTANDS * 2 /*real imag*/;
+    return phases + chan_idx * LWA_SV_NSTANDS * 2/*phases*/ * 2 /*real imag*/;
 };
 
 /**
