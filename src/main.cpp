@@ -86,7 +86,7 @@ main(int argc, char** argv)
     VLOG(1)<<"Correlator";
     auto corr_rft = Correlator_rft<payload_t, MOFFCorrelator_t>(corr_ptr);
     VLOG(1)<<"Saver";
-    auto saver_rft = DiskSaver_rft<payload_t>();
+    auto saver_rft = DiskSaver_rft<MOFFCorrelator_t::payload_t>();
     // dummy<default_pkt_assembler::payload_t> dummy_rft;
     VLOG(1)<<"Dummy packet generator";
     auto dummy_pkt_gen_rft =  dummy_pkt_gen<payload_t,LFBufMngr<AlignedBuffer<uint8_t>>>();
