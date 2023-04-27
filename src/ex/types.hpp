@@ -44,14 +44,14 @@ struct MOFFCorrelatorDesc
     float accum_time_ms{ 40 };
     int nseq_per_gulp{ 1000 };
     IMAGING_POL_MODE pol_mode{ DUAL_POL };
-    IMAGE_SIZE img_size{ HALF };
-    float grid_res_deg{ 1.8 };
+    IMAGE_SIZE img_size{ FULL };
+    float grid_res_deg{1};    
     int support_size{ 2 };
     bool is_remove_autocorr{ false };
     /// @brief Number of streams to split a gulp into. Can be at most MAX_GULP_STREAMS
     int nstreams{ 1 };
     int nchan_out{ 128 };
-    int gcf_kernel_dim{ 32 };
+    int gcf_kernel_dim{8 };
     int device_id{ 0 };
     int nbuffers{ 20 };
     int buf_size{ 64 * 64 * 132 /*chan*/ * 4 /*floating precision*/ * 2 /*complex*/ * 4 /*pols*/ };
@@ -65,5 +65,18 @@ struct OutImgDesc
     IMAGE_SIZE img_size{ HALF };
     int nchan_out;
 };
+
+struct FFTDxDesc{
+    uint8_t* f_eng_g;
+    float* antpos_g;
+    float* phases_g;
+    int nseq_per_gulp{1000};
+    int nchan;
+    cudaTextureObject_t gcf_tex;
+    float* output_g;
+    int chan_offset{0};
+    bool is_first_gulp=true;
+};
+
 
 #endif // TYPES_H
