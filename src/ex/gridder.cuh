@@ -253,14 +253,9 @@ __device__ void grid_dual_pol_dx7(
       ++counter;
       auto pos = __ffsll(_temp_grp);
       int ant = (offset + 63 + 1 - pos); // for 0-based indexing
-      //   if (blockIdx.x == 0 && threadIdx.x == 5 && threadIdx.y == 36) { //
-      //     printf("pre: %d %d %d %d %d\n", __popcll(_temp_grp),
-      //            __ffsll(_temp_grp), pos, offset, ant);
-      //   }
+
       offset -= pos;
       _temp_grp >>= pos;
-
-       ;
 
       if (ant < 0 || ant >= 256 || counter > 64) {
         return;
@@ -269,12 +264,6 @@ __device__ void grid_dual_pol_dx7(
 
       float antx = antpos[ant].x;
       float anty = antpos[ant].y;
-
-      
-
-      // if (abs(anty - (threadIdx.y + 0.5)) >= half_support) {
-      //     continue;
-      // }
 
       // Determine if any pixel falls within the antenna's kernel in this row
       // recall: pixels are arranged with a stride between them
@@ -290,16 +279,6 @@ __device__ void grid_dual_pol_dx7(
       thread_pix_idx = thread_pix_idx >= 0 ? thread_pix_idx : 0;
       float ant_distx =
           abs(antx - (thread_pix_idx * stride + threadIdx.x + 0.5));
-
-    
-
-      // if (ant_distx >= half_support) {
-      //     continue;
-      // }
-    //    if (blockIdx.x == 0 ) { //
-    //       printf("ant and element: %f %f %f %f\n", antx, anty, threadIdx.x+0.5+thread_pix_idx * stride, threadIdx.y+0.5);
-    //     }
-        // continue;
 
       auto phase_ant = phases[ant];
       float scale = 
