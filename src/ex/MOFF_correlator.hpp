@@ -266,7 +266,7 @@ MOFFCorrelator<Dtype, BuffMngr>::reset_phases(int p_nchan, int p_chan0)
     m_phases = std::move(hwy::AllocateAligned<float>(pitch * LWA_SV_NPOLS * p_nchan));
 
     get_lwasv_phases<float>(m_phases.get(), p_nchan, p_chan0);
-    DLOG(INFO) << "Phases[0] cpu: " << m_phases[0] << " " << m_phases[1];
+    DLOG(INFO) << "Phases[0] cpu: " << m_phases[0] << " " << m_phases[1]<<" "<<m_phases[2]<<" "<<m_phases[3];
 }
 
 template<typename Dtype, typename BuffMngr>
