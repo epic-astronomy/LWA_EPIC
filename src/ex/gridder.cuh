@@ -281,7 +281,7 @@ __device__ void grid_dual_pol_dx7(
           abs(antx - (thread_pix_idx * stride + threadIdx.x + 0.5));
 
       auto phase_ant = phases[ant];
-      float scale = 
+      float scale =
           tex2D<float>(gcf_tex, abs(ant_distx * inv_half_support),
                        abs((anty - (threadIdx.y + 0.5)) * inv_half_support));
 
@@ -299,6 +299,110 @@ __device__ void grid_dual_pol_dx7(
 
       thread_data[thread_pix_idx].x += temp.x;
       thread_data[thread_pix_idx].y += temp.y;
+    }
+  }
+}
+
+enum ImageDiv { UPPER, LOWER };
+
+/**
+ * @brief Grid the F-Engine data using shared-memory
+ *
+ * The thread block is tiled with a size of \p Support x \p Support and each
+ * tile computes the grid elements of a single antenna at a time. A half-grid is
+ * maintained in the shared memory and the grid elements are atomically added to
+ * the grid. This grid only works with half precision.
+ *
+ * @tparam FFT FFT object constructed using cuFFTDx
+ * @tparam Support Support Size. Must be a power of 2 for optimal performance
+ * @tparam NStands Number of antennas
+ * @param tb Thread block object
+ * @param thread_data Thread register array for use as temporary workspace
+ * @param f_eng Pointer to the F-Engine data to be gridded
+ * @param antpos Pointer to antenna position array
+ * @param phases Pointer to the phases array
+ * @param smem Pointer to shared memory
+ * @param gcf_tex GCF texture object
+ * @return void
+ *
+ * @relatesalso MOFFCuHandler
+ */
+template <
+    typename FFT, unsigned int Support, unsigned int NStands,
+    std::enable_if_t<
+        std::is_same<__half2, typename FFT::output_type::value_type>::value,
+        bool> = true>
+__device__ inline void grid_dual_pol_dx8(
+    cg::thread_block tb, const cnib2 *f_eng, const float3 *__restrict__ antpos,
+    const float4 *__restrict__ phases, typename FFT::value_type *smem,
+    cudaTextureObject_t gcf_tex, ImageDiv Div = UPPER) {
+  using complex_type = typename FFT::value_type;
+  constexpr float half_support = Support / 2.f;
+  constexpr float inv_support = 1.f / float(Support);
+  constexpr float inv_half_support = 1.f / float(half_support);
+  auto tile = cg::tiled_partition<Support * Support>(tb);
+  float im_ymid = blockDim.y / 2 - 0.5;
+
+  for (int ant = tile.meta_group_rank(); ant < NStands;
+       ant += tile.meta_group_size()) {
+    typename FFT::value_type temp_data; //__half2half2(0);
+    temp_data.x = __half2half2(0);
+    temp_data.y = __half2half2(0);
+    float antx = antpos[ant].x;
+    float anty = antpos[ant].y;
+
+    bool is_ant_out = (Div == UPPER ? ((anty - half_support) >= im_ymid)
+                                    : ((anty - half_support) <= im_ymid));
+
+    if (is_ant_out) {
+      continue;
+    }
+
+    float v = int(tile.thread_rank() * inv_support) - (half_support) + 0.5;
+    float u = tile.thread_rank() -
+              int(tile.thread_rank() * inv_support) * Support - (half_support) +
+              0.5;
+
+    bool is_cell_valid = true;
+    is_cell_valid &=
+        (0 <= int(antx + u)) && (int(antx + u) < size_of<FFT>::value);
+    is_cell_valid &=
+        (Div == UPPER ? (0 <= int(anty + v)) && (int(anty + v) < im_ymid)
+                      : (im_ymid + 1 < int(anty + v)) &&
+                            (int(anty + v) < size_of<FFT>::value));
+    is_cell_valid &= (abs(int(antx + u) + 0.5 - antx) < half_support &&
+                      abs(int(anty + v) + 0.5 - anty) < half_support);
+
+    if (is_cell_valid) {
+      float scale = tex2D<float>(
+          gcf_tex, abs((int(antx + u) + 0.5 - antx) * inv_half_support),
+          abs((int(anty + v) + 0.5 - anty) * inv_half_support));
+      // }
+      auto phase_ant = phases[ant];
+      __cms_f(temp_data.x, float2{phase_ant.x, phase_ant.y}, f_eng[ant].X,
+              scale);
+      __cms_f(temp_data.y, float2{phase_ant.z, phase_ant.w}, f_eng[ant].Y,
+              scale);
+
+      // Re-arrange into RRII layout
+      __half im = temp_data.x.y;
+      temp_data.x.y = temp_data.y.x;
+      temp_data.y.x = im;
+
+      int offset = Div == UPPER ? 0 : size_of<FFT>::value / 2;
+      if ((int(antx + u) + (int(anty + v) - offset) * size_of<FFT>::value) >
+          (size_of<FFT>::value * size_of<FFT>::value) / 2) {
+        printf("Invalid antenna: %f %f %f %f %f %f %d\n", antx, anty, u, v,
+               antx + u, anty + v, size_of<FFT>::value);
+      }
+      atomicAdd(
+          &smem[int(antx + u) + (int(anty + v) - offset) * size_of<FFT>::value]
+               .x,
+          temp_data.x);
+      atomicAdd(
+          &smem[int(antx + u) + (int(anty + v) - offset) * size_of<FFT>::value]
+               .y,
+          temp_data.y);
     }
   }
 }
