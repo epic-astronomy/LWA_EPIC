@@ -18,9 +18,9 @@ using namespace cufftdx;
  * @brief Grid the F-Engine data
  *
  * The thread block is tiled with a size of \p Support x \p Support and each
- * tile computes the grid elements of a single antenna at a time. A grid is
- * maintained in the shared memory and the grid elements are atomically added to
- * the grid. This grid only works with half precision.
+ * tile computes the grid elements of a single antenna at a time. A full image
+ * grid is maintained in the shared memory and the grid elements are atomically
+ * added to the grid. This grid only works with half precision.
  *
  * @tparam FFT FFT object constructed using cuFFTDx
  * @tparam Support Support Size. Must be a power of 2 for optimal performance
@@ -109,7 +109,7 @@ __device__ inline void grid_dual_pol_dx5(
  * @param antpos Pointer to antenna position array
  * @param phases Pointer to the phases array
  * @param gcf_tex
- * @return __device__
+ * @return
  */
 template <
     typename FFT, unsigned int Support, unsigned int NStands,
@@ -175,6 +175,16 @@ __device__ inline void grid_dual_pol_dx6(
   }
 }
 
+/**
+ * @brief For each thread pixel group, find overlaping antenna kernels.
+ *
+ * The list of antennas are stored as bit positions in four 64-bit integers
+ * @tparam FFT
+ * @tparam Support
+ * @param antpos
+ * @param valid_ants
+ * @return __device__
+ */
 template <typename FFT, unsigned int Support>
 __device__ void
 find_valid_antennas_lwasv(const float3 *antpos,
@@ -217,6 +227,7 @@ find_valid_antennas_lwasv(const float3 *antpos,
  * The gridder loops through all antennas in each thread and write gridded
  * values to thr appropriate registers.
  *
+ *
  * @tparam FFT FFT object constructed using cuFFTDx
  * @tparam Support Support Size
  * @tparam NStands Number of antennas
@@ -226,6 +237,12 @@ find_valid_antennas_lwasv(const float3 *antpos,
  * @param phases Pointer to the phases array
  * @param gcf_tex
  * @return __device__
+ *
+ * @note This can be potentially much more slower than the shared-memory based
+ * gridder. It is possible that only a few pixel groups have a large number of
+ * antennas compared to the rest, for example, at low frequencies and moderate
+ * resolutions. This causes only a few threads to spend larger times gridding
+ * the data thereby creating a bottleneck.
  */
 template <
     typename FFT, unsigned int Support, unsigned int NStands,
@@ -326,6 +343,7 @@ enum ImageDiv { UPPER, LOWER };
  * @return void
  *
  * @relatesalso MOFFCuHandler
+ * @see grid_dual_pol_dx5
  */
 template <
     typename FFT, unsigned int Support, unsigned int NStands,
@@ -343,6 +361,10 @@ __device__ inline void grid_dual_pol_dx8(
   auto tile = cg::tiled_partition<Support * Support>(tb);
   float im_ymid = blockDim.y / 2 - 0.5;
 
+  /* static_assert(
+      size_of<FFT>::value == 128,
+      "grid_dual_pol_dx8 (half-gridder) is only specialized for 128 sq. pix"); */
+
   for (int ant = tile.meta_group_rank(); ant < NStands;
        ant += tile.meta_group_size()) {
     typename FFT::value_type temp_data; //__half2half2(0);
@@ -358,11 +380,14 @@ __device__ inline void grid_dual_pol_dx8(
       continue;
     }
 
+    // calculate the position of the cell on the UV plane this thread will write
+    // to
     float v = int(tile.thread_rank() * inv_support) - (half_support) + 0.5;
     float u = tile.thread_rank() -
               int(tile.thread_rank() * inv_support) * Support - (half_support) +
               0.5;
 
+    // check if the cell falls within the current half of the image
     bool is_cell_valid = true;
     is_cell_valid &=
         (0 <= int(antx + u)) && (int(antx + u) < size_of<FFT>::value);
@@ -373,6 +398,10 @@ __device__ inline void grid_dual_pol_dx8(
     is_cell_valid &= (abs(int(antx + u) + 0.5 - antx) < half_support &&
                       abs(int(anty + v) + 0.5 - anty) < half_support);
 
+    // only calculate the grid value if it's valid
+    // This conditional causes thread divergence, which can be removed by
+    // setting the scale to zero for out of bound pixels. However, another
+    // conditional must be introduced for the atomic add.
     if (is_cell_valid) {
       float scale = tex2D<float>(
           gcf_tex, abs((int(antx + u) + 0.5 - antx) * inv_half_support),
@@ -404,5 +433,6 @@ __device__ inline void grid_dual_pol_dx8(
                .y,
           temp_data.y);
     }
+    tile.sync();
   }
 }
