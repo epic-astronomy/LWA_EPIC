@@ -93,7 +93,7 @@ def save_output(output_arr, grid_size, nchan, filename):
     print(output_arr_sft.min(), output_arr_sft.max())
     # output_arr = output_arr.sum(axis=0)
     # matplotlib.image.imsave(filename, output_arr[:,:].T/1000)
-    matplotlib.image.imsave(filename, (output_arr_sft[0,::-1,:].T))
+    matplotlib.image.imsave(filename, (output_arr_sft[50,::-1,:].T))
     matplotlib.image.imsave("original_test_out.png",(output_arr[0,:,:]))
 
 
