@@ -2,6 +2,7 @@
 #include "../ex/types.hpp"
 #include <chrono>
 #include <glog/logging.h>
+#include <cmath>
 #include <memory>
 #include <raft>
 #include <raftio>
@@ -81,11 +82,14 @@ class Correlator_rft : public raft::kernel
             img_metadata = gulp_metadata; // pld.get_mbuf()->get_metadataref();
             img_metadata["seq_start"] = m_seq_start_id;
             img_metadata["nseqs"] = std::any_cast<int>(img_metadata["nseqs"]) * m_ngulps_per_img;
-            img_metadata["gulp_len_ms"] = std::any_cast<double>(img_metadata["gulp_len_ms"]) * m_ngulps_per_img;
+            img_metadata["img_len_ms"] = std::any_cast<double>(img_metadata["gulp_len_ms"]) * m_ngulps_per_img;
             img_metadata["grid_size"] = m_grid_size;
             img_metadata["grid_res"] = m_grid_res;
             img_metadata["npols"] = m_npols;
             img_metadata["support_size"] = m_support;
+            img_metadata["nchan"]=nchan;
+            img_metadata["chan0"]=chan0;
+            // img_metadata["cfreq"] = int((chan0+ceil(nchan/2f))*BANDWIDTH);
 
             m_correlator.get()->process_gulp(
               pld.get_mbuf()->get_data_ptr(),
