@@ -414,12 +414,6 @@ __device__ inline void grid_dual_pol_dx8(
           gcf_tex, abs((int(antx + u) + 0.5 - antx) * pix2m),
           abs((int(anty + v) + 0.5 - anty) * pix2m));
 
-      //   if(blockIdx.x==2 && threadIdx.x==7 && threadIdx.y==0){
-      // printf("ant: %d x: %f  y: %f scale: %f\n", ant, abs((int(antx + u) + 0.5 - antx) * pix2m),
-      // abs((int(anty + v) + 0.5 - anty) * pix2m), scale
-      // );
-    // }
-      // }
       auto phase_ant = phases[ant];
       __cms_f(temp_data.x, float2{phase_ant.x, phase_ant.y}, f_eng[ant].X,
               scale);

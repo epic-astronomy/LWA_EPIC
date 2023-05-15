@@ -96,10 +96,6 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
       thread_data[_reg] = __half2half2(0);
     }
 
-    if(blockIdx.x==0 && threadIdx.x==0 && threadIdx.y==0 && seq_no==0){
-      printf("Wavelength: %f  scale: %f pix2m: %f\n", float(SOL)/float((channel_idx+chan0) * BANDWIDTH),lmbda_scale,float(SOL)/float((channel_idx+chan0) * BANDWIDTH)  * lmbda_scale*10 );
-    }
-
     grid_dual_pol_dx8<FFT, support, LWA_SV_NSTANDS>(
         tb,
         reinterpret_cast<const cnib2 *>(get_f_eng_sample<Order>(
