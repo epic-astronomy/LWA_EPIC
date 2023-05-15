@@ -114,6 +114,8 @@ class MOFFCorrelator : public MOFFCuHandler
     double get_grid_res() { return m_grid_res; }
     int get_npols() { return m_pol_mode & m_pol_mode; }
     int get_support() { return m_support_size; }
+    int get_gcf_kernel_size(){return m_gcf_tex_dim;}
+    float get_scaling_length(){return m_delta;}
     payload_t get_empty_buffer();
 };
 

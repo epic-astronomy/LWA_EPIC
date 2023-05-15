@@ -61,7 +61,7 @@ MOFFCuHandler::reset_gcf_tex(int p_gcf_tex_dim, float* p_gcf_2D_ptr)
     // m_gcf_tex_desc.filterMode = cudaFilterModePoint; //cudaFilterModeLinear;
     m_gcf_tex_desc.filterMode = cudaFilterModeLinear;
     m_gcf_tex_desc.readMode = cudaReadModeElementType;
-    m_gcf_tex_desc.normalizedCoords = 1;
+    m_gcf_tex_desc.normalizedCoords = 0;
 
     // m_gcf_res_desc.res.array.array = m_gcf_tex_arr;
     std::cout << "copying gcf\n";
@@ -118,7 +118,9 @@ MOFFCuHandler::reset_data(int p_nchan, size_t p_nseq_per_gulp, float* p_antpos_p
 
 void
 MOFFCuHandler::set_imaging_kernel()
-{
+{   int smemSize;
+    cudaDeviceGetAttribute(&smemSize, cudaDevAttrMaxSharedMemoryPerBlock, m_device_id);
+    std::cout<<"Max shared memory per block: "<<smemSize<<" bytes\n";
     cudaSetDevice(m_device_id);
     // assert(m_out_img_desc.img_size == HALF);
     if (m_out_img_desc.img_size == HALF) {
@@ -184,7 +186,7 @@ MOFFCuHandler::set_img_grid_dim()
 }
 
 void
-MOFFCuHandler::process_gulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, bool p_last)
+MOFFCuHandler::process_gulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, bool p_last, int p_chan0, float p_delta)
 {
     cudaSetDevice(m_device_id);
     cudaEvent_t start, stop;
@@ -201,7 +203,7 @@ MOFFCuHandler::process_gulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first,
         int chan_offset = i * m_nchan_per_stream;
 
         void* args[] = {
-            &m_f_eng_cu, &m_antpos_cu, &m_phases_cu, &m_nseq_per_gulp, &m_nchan_in, &m_gcf_tex, &m_output_cu, &chan_offset, &p_first
+            &m_f_eng_cu, &m_antpos_cu, &m_phases_cu, &m_nseq_per_gulp, &m_nchan_in, &m_gcf_tex, &m_output_cu, &chan_offset, &p_first, &p_chan0, &p_delta
         };
 
         cuda_check_err(
@@ -218,6 +220,7 @@ MOFFCuHandler::process_gulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first,
         std::cout<<m_img_grid_dim.x<<" "<<m_img_grid_dim.y<<" "<<m_img_block_dim.x<<" "<<m_img_block_dim.y<<" "<<m_shared_mem_size<<std::endl;
         cuda_check_err(cudaLaunchKernel(m_imaging_kernel, m_img_grid_dim, m_img_block_dim, args, m_shared_mem_size, stream_i));
 
+        std::cout<<"chan0: "<<p_chan0<<" delta: "<<p_delta<<"\n";
 
         std::cout<<i<<" "<<output_img_offset<<" "<<"\n";
         if (p_last) {

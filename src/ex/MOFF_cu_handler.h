@@ -131,7 +131,7 @@ class MOFFCuHandler
      * @param p_first Flag if the gulp is the first one in the accumulation
      * @param p_last Flag if the gulp is the last one in the accumulation
      */
-    void process_gulp(uint8_t* p_data_ptr, float* p_out_ptr = nullptr, bool p_first = true, bool p_last = false);
+    void process_gulp(uint8_t* p_data_ptr, float* p_out_ptr = nullptr, bool p_first = true, bool p_last = false,int p_chan0=0, float p_delta=1.0);
 
     /**
      * @brief Image a gulp of data
@@ -142,6 +142,8 @@ class MOFFCuHandler
      * @param p_out_size Size of the output in bytes
      * @param p_first Flag if the gulp is the first one in the accumulation
      * @param p_last Flag if the gulp is the last one in the accumulation
+     * @param p_chan0 Channel number for the first channel in the gulp
+     * @param p_delta Scaling length to convert wavelength in meters to meters/pixel
      */
     void process_gulp_old(uint8_t* p_data_ptr, size_t p_buf_size, float* p_out_ptr, size_t p_out_size, bool p_first = true, bool p_last = false);
 

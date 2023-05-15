@@ -340,6 +340,8 @@ enum ImageDiv { UPPER, LOWER };
  * @param phases Pointer to the phases array
  * @param smem Pointer to shared memory
  * @param gcf_tex GCF texture object
+ * @param Div Flag to indicate the divison of the image (UPPER OR LOWER)
+ * @param pix2m Multipler to convert pixels to meters
  * @return void
  *
  * @relatesalso MOFFCuHandler
@@ -353,7 +355,7 @@ template <
 __device__ inline void grid_dual_pol_dx8(
     cg::thread_block tb, const cnib2 *f_eng, const float3 *__restrict__ antpos,
     const float4 *__restrict__ phases, typename FFT::value_type *smem,
-    cudaTextureObject_t gcf_tex, ImageDiv Div = UPPER) {
+    cudaTextureObject_t gcf_tex, ImageDiv Div = UPPER, float pix2m=1.0) {
   using complex_type = typename FFT::value_type;
   constexpr float half_support = Support / 2.f;
   constexpr float inv_support = 1.f / float(Support);
@@ -364,6 +366,9 @@ __device__ inline void grid_dual_pol_dx8(
   /* static_assert(
       size_of<FFT>::value == 128,
       "grid_dual_pol_dx8 (half-gridder) is only specialized for 128 sq. pix"); */
+  // if(blockIdx.x==2 && threadIdx.x==0 && threadIdx.y==0){
+  //     printf("pix2m: %f\n", pix2m);
+  //   }
 
   for (int ant = tile.meta_group_rank(); ant < NStands;
        ant += tile.meta_group_size()) {
@@ -402,10 +407,18 @@ __device__ inline void grid_dual_pol_dx8(
     // This conditional causes thread divergence, which can be removed by
     // setting the scale to zero for out of bound pixels. However, another
     // conditional must be introduced for the atomic add.
+
+    
     if (is_cell_valid) {
       float scale = tex2D<float>(
-          gcf_tex, abs((int(antx + u) + 0.5 - antx) * inv_half_support),
-          abs((int(anty + v) + 0.5 - anty) * inv_half_support));
+          gcf_tex, abs((int(antx + u) + 0.5 - antx) * pix2m),
+          abs((int(anty + v) + 0.5 - anty) * pix2m));
+
+      //   if(blockIdx.x==2 && threadIdx.x==7 && threadIdx.y==0){
+      // printf("ant: %d x: %f  y: %f scale: %f\n", ant, abs((int(antx + u) + 0.5 - antx) * pix2m),
+      // abs((int(anty + v) + 0.5 - anty) * pix2m), scale
+      // );
+    // }
       // }
       auto phase_ant = phases[ant];
       __cms_f(temp_data.x, float2{phase_ant.x, phase_ant.y}, f_eng[ant].X,

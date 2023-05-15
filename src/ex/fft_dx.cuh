@@ -41,6 +41,8 @@ namespace cg = cooperative_groups;
  * @param chan_offset Offset to the first channel in the current stream.
  * @param is_first_gulp Flag if the passed data belongs to the first gulp. It
  * determines whether to assign or increment the output image block.
+ * @param chan0 Channel number of the first channel
+ * @param lmbda_scale Multiplier to convert wavelength from meters to meters/pixel aka sampling length
  */
 template <
     typename FFT, PKT_DATA_ORDER Order = TIME_MAJOR,
@@ -52,7 +54,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
                           const float *__restrict__ phases_g, int nseq_per_gulp,
                           int nchan, cudaTextureObject_t gcf_tex,
                           float *output_g, int chan_offset = 0,
-                          bool is_first_gulp = true) {
+                          bool is_first_gulp = true, int chan0=0, float lmbda_scale=1) {
   // printf("start\n");
   using complex_type = typename FFT::value_type;
   extern __shared__ complex_type shared_mem[];
@@ -94,6 +96,10 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
       thread_data[_reg] = __half2half2(0);
     }
 
+    if(blockIdx.x==0 && threadIdx.x==0 && threadIdx.y==0 && seq_no==0){
+      printf("Wavelength: %f  scale: %f pix2m: %f\n", float(SOL)/float((channel_idx+chan0) * BANDWIDTH),lmbda_scale,float(SOL)/float((channel_idx+chan0) * BANDWIDTH)  * lmbda_scale*10 );
+    }
+
     grid_dual_pol_dx8<FFT, support, LWA_SV_NSTANDS>(
         tb,
         reinterpret_cast<const cnib2 *>(get_f_eng_sample<Order>(
@@ -101,7 +107,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
         // reinterpret_cast<const float3 *>(get_ant_pos(antpos_g, channel_idx)),
         antpos_smem,
         reinterpret_cast<const float4 *>(get_phases(phases_g, channel_idx)),
-        shared_mem, gcf_tex, UPPER);
+        shared_mem, gcf_tex, UPPER, float(SOL)/float((channel_idx+chan0) * BANDWIDTH)  * lmbda_scale*10.);
 
     __syncthreads();
 
@@ -120,7 +126,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
         // reinterpret_cast<const float3 *>(get_ant_pos(antpos_g, channel_idx)),
         antpos_smem,
         reinterpret_cast<const float4 *>(get_phases(phases_g, channel_idx)),
-        shared_mem, gcf_tex, LOWER);
+        shared_mem, gcf_tex, LOWER, float(SOL)/float((channel_idx+chan0) * BANDWIDTH)  * lmbda_scale*10.);
 
     for (int i = tb.thread_rank();
          i < size_of<FFT>::value * size_of<FFT>::value / 2; i += tb.size()) {

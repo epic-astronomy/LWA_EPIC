@@ -51,7 +51,7 @@ struct MOFFCorrelatorDesc
     /// @brief Number of streams to split a gulp into. Can be at most MAX_GULP_STREAMS
     int nstreams{ 1 };
     int nchan_out{ 128 };
-    int gcf_kernel_dim{8 };
+    int gcf_kernel_dim{30}; // decimeters
     int device_id{ 0 };
     int nbuffers{ 20 };
     int buf_size{ 64 * 64 * 132 /*chan*/ * 4 /*floating precision*/ * 2 /*complex*/ * 4 /*pols*/ };

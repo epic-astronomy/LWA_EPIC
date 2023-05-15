@@ -23,6 +23,7 @@ class Correlator_rft : public raft::kernel
     int m_npols{ 0 };
     int m_support{ 0 };
     uint64_t m_seq_start_id{ 0 };
+    float m_delta{1};
 
   public:
     Correlator_rft(std::unique_ptr<_Correlator>& p_correlator)
@@ -34,6 +35,7 @@ class Correlator_rft : public raft::kernel
         m_grid_size = m_correlator.get()->get_grid_size();
         m_npols = m_correlator.get()->get_npols();
         m_support = m_correlator.get()->get_support();
+        m_delta = m_correlator.get()->get_scaling_length();
         input.addPort<_Payload>("gulp");
         // using out_t = typ
         output.addPort<typename _Correlator::payload_t>("img");
@@ -62,6 +64,7 @@ class Correlator_rft : public raft::kernel
 
         // initialization or change in the spectral window
         if (m_correlator.get()->reset(nchan, chan0)) {
+            m_delta = m_correlator.get()->get_scaling_length();
             m_gulp_counter = 1;
         }
 
@@ -95,7 +98,9 @@ class Correlator_rft : public raft::kernel
               pld.get_mbuf()->get_data_ptr(),
               buf.get_mbuf()->get_data_ptr(),
               m_is_first,
-              m_is_last);
+              m_is_last,
+              static_cast<int>(chan0),
+              m_delta);
 
             m_gulp_counter = 1;
             VLOG(3)<<"Pushing the output image";
