@@ -1,44 +1,15 @@
-// // #include "ex/bf_ibverbs.hpp"
-// #include "hwy/aligned_allocator.h"
-// #include "hwy/base.h"
-// #include "hwy/highway.h"
-// #include "hwy/print.h"
-// // #include "infinity/infinity.h"
+
 #include <cmath>
 #include "ex/MOFF_correlator.hpp"
 #include "ex/option_parser.hpp"
-// #include "ex/buffer.hpp"
-// #include "ex/exceptions.hpp"
-// #include "ex/lf_buf_mngr.hpp"
-// #include "ex/packet_assembler.hpp"
-// #include "ex/packet_receiver.hpp"
-// #include "ex/py_funcs.hpp"
-// #include "ex/sockets.h"
-// #include <arpa/inet.h>
-// #include <bits/types/struct_iovec.h>
-// #include <bitset>
-// #include <cmath>
-// #include <cstdlib>
-// #include <glog/logging.h>
-// #include <infiniband/verbs.h>
-// #include <mellanox/vma_extra.h>
-// #include <netdb.h>
-// #include <netinet/in.h>
-// #include <pybind11/embed.h>
-// #include <raft>
-// #include <raftio>
-// #include <string>
-// #include <sys/socket.h>
-// #include <sys/types.h>
-// #include <x86intrin.h>
+
 #include "ex/buffer.hpp"
 #include "raft_kernels/correlator.hpp"
 #include "raft_kernels/disk_saver.hpp"
 #include "raft_kernels/dummy_kernel.hpp"
 #include "raft_kernels/dummy_packet_gen.hpp"
 #include "ex/lf_buf_mngr.hpp"
-// #include "raft_kernels/packet_gen.hpp"
-// #include "ex/packet_assembler.h"
+
 using namespace std::chrono;
 using namespace std::string_literals;
 namespace hn = hwy::HWY_NAMESPACE;
@@ -101,7 +72,7 @@ main(int argc, char** argv)
     }
     correlator_options.grid_res_deg=options["imageres"].as<float>();
     correlator_options.support_size=options["support"].as<int>();
-    correlator_options.gcf_kernel_dim=std::sqrt(options["aeff"].as<float>())*10;//decimeters
+    correlator_options.gcf_kernel_dim=std::sqrt(options["aeff"].as<float>())*10;//radius of the kernel in decimeters
 
 
     auto corr_ptr = std::make_unique<MOFFCorrelator_t>(correlator_options);
