@@ -55,7 +55,7 @@ class MOFFCorrelator : public MOFFCuHandler
 
     int m_grid_size;
     double m_grid_res;
-    int m_support_size;
+    //int m_support_size;
     int m_gcf_tex_dim;
     bool m_rm_autocorrs{ false };
     // int m_nchan_in{ 132 };

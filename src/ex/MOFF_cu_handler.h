@@ -98,6 +98,7 @@ class MOFFCuHandler
     dim3 m_img_grid_dim;
     dim3 m_img_block_dim;
     int m_shared_mem_size;
+    int m_support_size;
     void set_imaging_kernel();
     void set_img_grid_dim();
 

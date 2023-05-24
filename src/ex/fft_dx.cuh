@@ -13,6 +13,20 @@
 using namespace cufftdx;
 namespace cg = cooperative_groups;
 
+// template<class FFT>
+// __device__ auto get_gridder(int support_size=2){
+//   auto gridder=grid_dual_pol_dx8<FFT, 2, LWA_SV_NSTANDS>;
+//   switch(support_size){
+//     case 4:
+//     gridder=grid_dual_pol_dx8<FFT, 4, LWA_SV_NSTANDS>;
+
+//     case 8:
+//     gridder=grid_dual_pol_dx8<FFT, 4, LWA_SV_NSTANDS>;
+//   }
+
+//   return gridder;
+// }
+
 /**
  * @brief Block fft specialization for half precision
  *
@@ -45,7 +59,7 @@ namespace cg = cooperative_groups;
  * @param lmbda_scale Multiplier to convert wavelength from meters to meters/pixel aka sampling length
  */
 template <
-    typename FFT, PKT_DATA_ORDER Order = TIME_MAJOR,
+    typename FFT,int support=2, PKT_DATA_ORDER Order = TIME_MAJOR,
     std::enable_if_t<
         std::is_same<__half2, typename FFT::output_type::value_type>::value,
         bool> = true>
@@ -59,7 +73,10 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
   using complex_type = typename FFT::value_type;
   extern __shared__ complex_type shared_mem[];
 
-  constexpr int support = 2;
+  //constexpr int support = 2;
+  auto gridder=grid_dual_pol_dx8<FFT, support, LWA_SV_NSTANDS>;
+
+
   volatile int fft_steps = 2;
 
   constexpr int stride = size_of<FFT>::value / FFT::elements_per_thread;
@@ -96,7 +113,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
       thread_data[_reg] = __half2half2(0);
     }
 
-    grid_dual_pol_dx8<FFT, support, LWA_SV_NSTANDS>(
+    gridder(
         tb,
         reinterpret_cast<const cnib2 *>(get_f_eng_sample<Order>(
             f_eng_g, seq_no, channel_idx, nseq_per_gulp, nchan)),
@@ -115,7 +132,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
       thread_data[_reg] = shared_mem[index];
     }
 
-    grid_dual_pol_dx8<FFT, support, LWA_SV_NSTANDS>(
+    gridder(
         tb,
         reinterpret_cast<const cnib2 *>(get_f_eng_sample<Order>(
             f_eng_g, seq_no, channel_idx, nseq_per_gulp, nchan)),
