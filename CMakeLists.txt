@@ -10,9 +10,6 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# set(CMAKE_CXX_CLANG_TIDY "${CLANGTIDY};-extra-arg=-Wno-unknown-warning-option;-header-filter=${CMAKE_SOURCE_DIR}/ex/*")
-
-
 ### Raftlib
 include_directories(src/ex)
 include_directories(src/extern/RaftLib/raftinc)
@@ -61,12 +58,9 @@ include_directories(src/extern/highway)
 add_subdirectory(src/extern/pybind11)
 OPTION(PYTHON_EXECUTABLE "/home/batman/miniconda3/envs/epicv2/bin/python")
 
-# include_directories(src/extern/glog/src)
 
 ### cuFFTDx
 include_directories(src/extern/nvidia/mathdx/22.11/include)
-
-# include_directories(src/extern/thread_pool)
 
 find_package(OpenMP REQUIRED)
 
@@ -78,11 +72,6 @@ add_library(epiclib
    src/sockets.cpp
 )
 
-# execute_process (
-#     COMMAND bash -c "nvcc -V"
-#     OUTPUT_VARIABLE outVar
-# )
-
 # cmake_print_variables(outVar)
 set(CUDA_NVCC_EXECUTABLE "/home/batman/miniconda3/envs/epic310/bin/nvcc")
 set(CMAKE_CUDA_COMPILER "/home/batman/miniconda3/envs/epic310/bin/nvcc")
@@ -90,9 +79,7 @@ set(CMAKE_CUDA_COMPILER "/home/batman/miniconda3/envs/epic310/bin/nvcc")
 add_library(epic_cu STATIC src/MOFF_cu_handler.cu src/ex/host_helpers.cu)
 target_compile_features(epic_cu PUBLIC cxx_std_17)
 target_compile_options(epic_cu PRIVATE -O3 -use_fast_math --ptxas-options=-v -Xptxas -v)
-# add_dependencies(epic_cu glog)
-# target_include_directories(epic_cu PRIVATE src/extern/glog)
-# set(CUDA_INCLUDE_DIRS src/extern/glog)
+
 set_target_properties( epic_cu
                        PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 set_target_properties(epic_cu PROPERTIES CUDA_ARCHITECTURES "89")
@@ -107,21 +94,8 @@ add_dependencies(epic++ raft hwy epiclib)
 add_compile_definitions(EPIC_VERSION="${CMAKE_PROJECT_VERSION}")
 target_link_libraries(epic++ PRIVATE pybind11::embed raft hwy epiclib epic_cu cudart
 glog::glog nvidia-ml
-#OpenMP::OpenMP_CXX
 )
 
 file(GLOB PY_FILES "src/python/*.py")
 file(COPY ${PY_FILES} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-# configure_file(${files} ${CMAKE_CURRENT_BINARY_DIR}/epic_utils.py COPYONLY)
 
-
-# cmake -DCMAKE_CXX_COMPILER=/home/batman/miniconda3/envs/epic310/bin/g++  -DCMAKE_C_COMPILER=/home/batman/miniconda3/envs/epic310/bin/gcc  ..
-
-# cmake -DCMAKE_CXX_COMPILER=/usr/bin/gcc-12/bin/g++  -DCMAKE_C_COMPILER=/usr/bin/gcc-12/bin/gcc  ..
-
-# add_library(pkt_assembler
-#    src/packet_assembler.cpp
-# )
-
-# add_dependencies(pkt_assembler epiclib)
-# target_link_libraries(pkt_assembler epiclib)
