@@ -4,7 +4,9 @@
 // #include "hwy/highway.h"
 // #include "hwy/print.h"
 // // #include "infinity/infinity.h"
+#include <cmath>
 #include "ex/MOFF_correlator.hpp"
+#include "ex/option_parser.hpp"
 // #include "ex/buffer.hpp"
 // #include "ex/exceptions.hpp"
 // #include "ex/lf_buf_mngr.hpp"
@@ -58,7 +60,6 @@ using tag8 = hn::ScalableTag<uint8_t>;
 // }
 
 namespace py = pybind11;
-
 // #define _VMA_ 1
 int
 main(int argc, char** argv)
@@ -67,6 +68,22 @@ main(int argc, char** argv)
     py::gil_scoped_release release;
     FLAGS_logtostderr = 1;
     google::InitGoogleLogging(argv[0]);
+
+    auto option_list = get_options();
+    VLOG(3)<<"Parsing options";
+    auto options = option_list.parse(argc,argv);
+    if(options.count("help")){
+        std::cout<<option_list.help()<<std::endl;
+        exit(0);
+    }
+
+    VLOG(3)<<"Validating options";
+    auto opt_valid = validate_options(options);
+
+    if(opt_valid.value_or("none")!="none"s){
+        std::cout<<opt_valid.value()<<"\n";
+        exit(0);
+    }
 
     LOG(INFO) << "E-Field Parallel Imaging Correlator (EPIC) v" << EPIC_VERSION;
     
@@ -77,6 +94,16 @@ main(int argc, char** argv)
     // LFBufMngr<AlignedBuffer<uint8_t>>
 
     auto correlator_options = MOFFCorrelatorDesc();
+    correlator_options.accum_time_ms = options["accumulate"].as<int>();
+    correlator_options.nseq_per_gulp = options["nts"].as<int>();
+    if(options["imagesize"].as<int>()==64){
+        correlator_options.img_size=HALF;//defaults to full
+    }
+    correlator_options.grid_res_deg=options["imageres"].as<float>();
+    correlator_options.support_size=options["support"].as<int>();
+    correlator_options.gcf_kernel_dim=std::sqrt(options["aeff"].as<float>())*10;//decimeters
+
+
     auto corr_ptr = std::make_unique<MOFFCorrelator_t>(correlator_options);
 
     using mbuf_t = typename LFBufMngr<AlignedBuffer<uint8_t>>::mbuf_t;
@@ -89,7 +116,7 @@ main(int argc, char** argv)
     auto saver_rft = DiskSaver_rft<MOFFCorrelator_t::payload_t>();
     // dummy<default_pkt_assembler::payload_t> dummy_rft;
     VLOG(1)<<"Dummy packet generator";
-    auto dummy_pkt_gen_rft =  dummy_pkt_gen<payload_t,LFBufMngr<AlignedBuffer<uint8_t>>>();
+    auto dummy_pkt_gen_rft =  dummy_pkt_gen<payload_t,LFBufMngr<AlignedBuffer<uint8_t>>>(1);
 
     VLOG(1)<<"Setting up the Raft map";
     raft::map m;
