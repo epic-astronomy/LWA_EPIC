@@ -8,6 +8,7 @@
 #include <endian.h>
 #include <unordered_map>
 #include <string>
+#include <variant>
 
 /**
  * @brief Complex nibble. Independent of the host's endianness.
@@ -36,7 +37,8 @@ struct __attribute__((aligned(2))) cnib2
 };
 
 /// Python dict-like data structure to describe Meta data
-typedef std::unordered_map<std::string, std::any> dict_t;
+typedef std::unordered_map<std::string,std::variant<int,int64_t, uint64_t, uint8_t, uint16_t, double, float, std::string>> dict_t;
+// typedef std::unordered_map<std::string, std::any> dict_t;
 
 struct MOFFCorrelatorDesc
 {
@@ -51,7 +53,7 @@ struct MOFFCorrelatorDesc
     /// @brief Number of streams to split a gulp into. Can be at most MAX_GULP_STREAMS
     int nstreams{ 1 };
     int nchan_out{ 128 };
-    int gcf_kernel_dim{30}; // decimeters
+    int gcf_kernel_dim{40}; // decimeters
     int device_id{ 0 };
     int nbuffers{ 20 };
     int buf_size{ 64 * 64 * 132 /*chan*/ * 4 /*floating precision*/ * 2 /*complex*/ * 4 /*pols*/ };

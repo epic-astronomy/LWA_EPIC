@@ -26,7 +26,7 @@
 template<typename Num = double>
 class BufMetaData
 {
-    using var_t = std::variant<int64_t, uint64_t, uint8_t, uint16_t, double, std::string>;
+    using var_t = std::variant<int64_t, uint64_t, uint8_t, uint16_t, double, float, std::string>;
     using varmap_t = dict_t; // std::map<std::string, var_t>;
 
   protected:

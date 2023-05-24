@@ -8,7 +8,7 @@
 #include <cstring>
 #include <raftio>
 #include <string>
-
+namespace py = pybind11;
 using namespace std::string_literals;
 
 template<class Payload>
@@ -33,9 +33,12 @@ class DiskSaver_rft: public raft::kernel{
         }
 
         auto& img_metadata = pld.get_mbuf()->get_metadataref();
-        auto imsize = std::any_cast<int>(img_metadata["grid_size"]);
-        auto nchan = std::any_cast<uint8_t>(img_metadata["nchan"]);
-        save_image(imsize, nchan, pld.get_mbuf()->get_data_ptr(), "test_image.png"s);
+        for(auto it=img_metadata.begin();it!=img_metadata.end();++it){
+            std::cout<<it->first<<std::endl;
+        }
+        auto imsize = std::get<int>(img_metadata["grid_size"]);
+        auto nchan = std::get<uint8_t>(img_metadata["nchan"]);
+        save_image(imsize, nchan, pld.get_mbuf()->get_data_ptr(), "test_image"s, img_metadata);
 
         return raft::proceed;
     }

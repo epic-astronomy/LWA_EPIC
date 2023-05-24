@@ -6,6 +6,7 @@
 #include <memory>
 #include <raft>
 #include <raftio>
+#include <variant>
 
 template<class _Payload, class _Correlator>
 class Correlator_rft : public raft::kernel
@@ -57,8 +58,8 @@ class Correlator_rft : public raft::kernel
         for(auto it=gulp_metadata.begin();it!=gulp_metadata.end();++it){
           VLOG(2)<<"Key: "<<it->first;
         }
-        auto nchan = std::any_cast<uint8_t>(gulp_metadata["nchan"]);
-        auto chan0 = std::any_cast<int64_t>(gulp_metadata["chan0"]);
+        auto nchan = std::get<uint8_t>(gulp_metadata["nchan"]);
+        auto chan0 = std::get<int64_t>(gulp_metadata["chan0"]);
 
         LOG(INFO)<<"nchan: "<<int(nchan)<<" chan0: "<<chan0;
 
@@ -73,7 +74,7 @@ class Correlator_rft : public raft::kernel
 
         VLOG(2)<<"Setting the start id";
         if (m_is_first) {
-            m_seq_start_id = std::any_cast<uint64_t>(gulp_metadata["seq_start"]);
+            m_seq_start_id = std::get<uint64_t>(gulp_metadata["seq_start"]);
         }
 
         if (m_is_last) {
@@ -84,8 +85,8 @@ class Correlator_rft : public raft::kernel
             auto& img_metadata = buf.get_mbuf()->get_metadataref();
             img_metadata = gulp_metadata; // pld.get_mbuf()->get_metadataref();
             img_metadata["seq_start"] = m_seq_start_id;
-            img_metadata["nseqs"] = std::any_cast<int>(img_metadata["nseqs"]) * m_ngulps_per_img;
-            img_metadata["img_len_ms"] = std::any_cast<double>(img_metadata["gulp_len_ms"]) * m_ngulps_per_img;
+            img_metadata["nseqs"] = std::get<int>(img_metadata["nseqs"]) * m_ngulps_per_img;
+            img_metadata["img_len_ms"] = std::get<double>(img_metadata["gulp_len_ms"]) * m_ngulps_per_img;
             img_metadata["grid_size"] = m_grid_size;
             img_metadata["grid_res"] = m_grid_res;
             img_metadata["npols"] = m_npols;
