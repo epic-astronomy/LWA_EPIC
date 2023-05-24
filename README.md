@@ -24,6 +24,7 @@ It is recommended to build and run EPIC in a separate conda environment.
 conda create -n epic python=3.8 --file pylib-specs.txt
 pip install git+https://github.com/lwa-project/lsl
 ```
+Additionally, download and extract [NVIDIA MathDx](https://developer.nvidia.com/mathdx#:~:text=wget%20https%3A//developer.download.nvidia.com/compute/mathdx/redist/mathdx/linux%2Dx86_64/nvidia%2Dmathdx%2D22.11.0%2DLinux.tar.gz) package to the `src/extern` folder. 
 
 Within this environment, 
 
@@ -51,4 +52,4 @@ valgrind --leak-check=full \
           ./epic++
 ```
 
-This creates an executable called `epic++`. If it needs to executed from a different directory please also copy all the python files from the build directory or ensure they are visible to the interpreter.
+This creates an executable called `epic++`. If it needs to executed from a different directory please also copy all the python files from the build directory or ensure they are visible to the embedded python interpreter.
