@@ -69,11 +69,9 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
                           int nchan, cudaTextureObject_t gcf_tex,
                           float *output_g, int chan_offset = 0,
                           bool is_first_gulp = true, int chan0=0, float lmbda_scale=1) {
-  // printf("start\n");
   using complex_type = typename FFT::value_type;
   extern __shared__ complex_type shared_mem[];
 
-  //constexpr int support = 2;
   auto gridder=grid_dual_pol_dx8<FFT, support, LWA_SV_NSTANDS>;
 
 
@@ -85,7 +83,6 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
 
   complex_type thread_data[FFT::elements_per_thread];
   float stokes_I[FFT::elements_per_thread] = {0};
-  //   unsigned long long int valid_ants[4] = {0};
   int channel_idx = blockIdx.x + chan_offset;
 
   //   copy antenna positions into shared memory
@@ -132,6 +129,12 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
       thread_data[_reg] = shared_mem[index];
     }
 
+    for (int i = tb.thread_rank();
+         i < size_of<FFT>::value * size_of<FFT>::value / 2; i += tb.size()) {
+      shared_mem[i].x = __half2half2(0);
+      shared_mem[i].y = __half2half2(0);
+    }
+
     gridder(
         tb,
         reinterpret_cast<const cnib2 *>(get_f_eng_sample<Order>(
@@ -141,11 +144,6 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
         reinterpret_cast<const float4 *>(get_phases(phases_g, channel_idx)),
         shared_mem, gcf_tex, LOWER, float(SOL)/float((channel_idx+chan0) * BANDWIDTH)  * lmbda_scale*10.);
 
-    for (int i = tb.thread_rank();
-         i < size_of<FFT>::value * size_of<FFT>::value / 2; i += tb.size()) {
-      shared_mem[i].x = __half2half2(0);
-      shared_mem[i].y = __half2half2(0);
-    }
 
     __syncthreads();
 
@@ -170,7 +168,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
         // Load everything into shared memory and normalize
         // this ensures there is no overflow
         transpose_tri<FFT>(thread_data, shared_mem,
-                           /*_norm=*/half(4.) / half(row_size * row_size));
+                           /*_norm=*/half(1.) / half(row_size));
       }
       __syncthreads();
     }
