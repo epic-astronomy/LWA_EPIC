@@ -10,6 +10,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# set(CMAKE_CXX_CLANG_TIDY "${CLANGTIDY};-extra-arg=-Wno-unknown-warning-option;-header-filter=${CMAKE_SOURCE_DIR}/ex/*")
 
 
 ### Raftlib
@@ -34,6 +35,11 @@ add_compile_options(-std=c++17  -DL1D_CACHE_LINE_SIZE=64 -DSTRING_NAMES=1)
 
 #glog
 add_subdirectory(src/extern/glog)
+
+
+#cxxopts
+add_subdirectory(src/extern/cxxopts)
+include_directories(src/extern/cxxopts/include)
 
 ### Google benchmark
 set(BENCHMARK_ENABLE_TESTING off CACHE BOOL "Disable GBenchmark's testing" FORCE)
@@ -83,7 +89,7 @@ set(CMAKE_CUDA_COMPILER "/home/batman/miniconda3/envs/epic310/bin/nvcc")
 
 add_library(epic_cu STATIC src/MOFF_cu_handler.cu src/ex/host_helpers.cu)
 target_compile_features(epic_cu PUBLIC cxx_std_17)
-target_compile_options(epic_cu PRIVATE -O3 -use_fast_math --ptxas-options=-v)
+target_compile_options(epic_cu PRIVATE -O3 -use_fast_math --ptxas-options=-v -Xptxas -v)
 # add_dependencies(epic_cu glog)
 # target_include_directories(epic_cu PRIVATE src/extern/glog)
 # set(CUDA_INCLUDE_DIRS src/extern/glog)
@@ -100,7 +106,7 @@ set_target_properties( epic++
 add_dependencies(epic++ raft hwy epiclib)
 add_compile_definitions(EPIC_VERSION="${CMAKE_PROJECT_VERSION}")
 target_link_libraries(epic++ PRIVATE pybind11::embed raft hwy epiclib epic_cu cudart
-glog::glog
+glog::glog nvidia-ml
 #OpenMP::OpenMP_CXX
 )
 
