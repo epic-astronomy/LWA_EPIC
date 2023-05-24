@@ -2,6 +2,7 @@ import numpy as np
 from lsl.common.stations import lwasv
 from astropy.constants import c as speed_of_light
 import matplotlib.image
+from astropy.io import fits
 
 import datetime
 import time
@@ -85,16 +86,29 @@ def gen_phases_lwasv(nchan, chan0):
     print("ok")
     return phases.ravel().copy()
 
-def save_output(output_arr, grid_size, nchan, filename):
+def save_output(output_arr, grid_size, nchan, filename, metadata):
     output_arr = output_arr.reshape((nchan, grid_size, grid_size))
     output_arr_sft = np.fft.fftshift(output_arr, axes=(1,2))
 
-    print(output_arr_sft[0,35,:])
+    print(metadata)
+
+
+
+    # print(output_arr_sft[0,35,:])
     print(output_arr_sft.min(), output_arr_sft.max())
     # output_arr = output_arr.sum(axis=0)
     # matplotlib.image.imsave(filename, output_arr[:,:].T/1000)
-    matplotlib.image.imsave(filename, (output_arr_sft[50,::-1,:].T))
-    matplotlib.image.imsave("original_test_out.png",(output_arr[0,:,:]))
+
+    phdu = fits.PrimaryHDU()
+    for k,v in metadata.items():
+        phdu.header[k] = v
+    
+    ihdu = fits.ImageHDU(np.transpose(output_arr_sft[:,::-1,::-1],(0,2,1)))
+    hdulist = fits.HDUList([phdu, ihdu])
+    hdulist.writeto(f"{filename}.fits", overwrite=True)
+
+    matplotlib.image.imsave(f"{filename}.png", (output_arr_sft[50,::-1,:].T))
+    matplotlib.image.imsave("original_test_out.png",(output_arr[50,:,:]))
 
 
 

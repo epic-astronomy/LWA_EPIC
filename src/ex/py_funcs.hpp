@@ -10,6 +10,7 @@
 #include <glog/logging.h>
 #include <iostream>
 #include "types.hpp"
+#include <variant>
 
 namespace py = pybind11;
 using namespace py::literals;
@@ -173,12 +174,22 @@ void get_40ms_gulp(T* out_ptr){
 
 template<typename T>
 void
-save_image(size_t grid_size, size_t nchan, T* data, std::string filename)
+save_image(size_t grid_size, size_t nchan, T* data, std::string filename, dict_t& metadata)
 {
     py::gil_scoped_acquire acquire;
     VLOG(3)<<"type of output data type: "<<sizeof(T);
     auto result = py::array_t<T>(grid_size * grid_size * nchan, data);
-    auto utils = py::module_::import("epic_utils").attr("save_output")(result, grid_size, nchan, filename);
+
+    py::dict meta_dict;
+    for(auto it=metadata.begin();it!=metadata.end(); ++it){
+
+        std::visit([&](auto&& v){
+            meta_dict[it->first.c_str()]=v;
+        },it->second);
+    }
+
+    LOG(INFO)<<"Sending to saver";
+    auto utils = py::module_::import("epic_utils").attr("save_output")(result, grid_size, nchan, filename, meta_dict);
     // for (int i = 0; i < 10; ++i) {
     //     std::cout << data[i] << std::endl;
     // }
