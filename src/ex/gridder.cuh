@@ -361,7 +361,8 @@ __device__ inline void grid_dual_pol_dx8(
   constexpr float inv_support = 1.f / float(Support);
   constexpr float inv_half_support = 1.f / float(half_support);
   auto tile = cg::tiled_partition<Support * Support>(tb);
-  float im_ymid = blockDim.y / 2 - 0.5;
+  constexpr float im_ymid = size_of<FFT>::value / 2 - 0.5;
+  constexpr int half_grid = size_of<FFT>::value / 2;
 
   /* static_assert(
       size_of<FFT>::value == 128,
@@ -378,8 +379,8 @@ __device__ inline void grid_dual_pol_dx8(
     float antx = antpos[ant].x;
     float anty = antpos[ant].y;
 
-    bool is_ant_out = (Div == UPPER ? ((anty - half_support) >= im_ymid)
-                                    : ((anty - half_support) <= im_ymid));
+    bool is_ant_out = (Div == UPPER ? ((anty - half_support) > im_ymid)
+                                    : ((anty + half_support) < (im_ymid+1)));
 
     if (is_ant_out) {
       continue;
@@ -397,8 +398,8 @@ __device__ inline void grid_dual_pol_dx8(
     is_cell_valid &=
         (0 <= int(antx + u)) && (int(antx + u) < size_of<FFT>::value);
     is_cell_valid &=
-        (Div == UPPER ? (0 <= int(anty + v)) && (int(anty + v) < im_ymid)
-                      : (im_ymid + 1 < int(anty + v)) &&
+        (Div == UPPER ? (0 <= int(anty + v)) && (int(anty + v) < half_grid)
+                      : (half_grid <= int(anty + v)) &&
                             (int(anty + v) < size_of<FFT>::value));
     is_cell_valid &= (abs(int(antx + u) + 0.5 - antx) < half_support &&
                       abs(int(anty + v) + 0.5 - anty) < half_support);
