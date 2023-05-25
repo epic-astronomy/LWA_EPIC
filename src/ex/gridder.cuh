@@ -415,6 +415,16 @@ __device__ inline void grid_dual_pol_dx8(
           gcf_tex, abs((int(antx + u) + 0.5 - antx) * pix2m),
           abs((int(anty + v) + 0.5 - anty) * pix2m));
 
+      // dirty beam calculation
+      // cnib _t;
+      // _t.re=1;
+      // _t.im=1;
+      // auto phase_ant = phases[ant];
+      // __cms_f(temp_data.x, float2{1,1}, _t,
+      //         scale);
+      // __cms_f(temp_data.y, float2{1,1}, _t,
+      //         scale);
+
       auto phase_ant = phases[ant];
       __cms_f(temp_data.x, float2{phase_ant.x, phase_ant.y}, f_eng[ant].X,
               scale);
