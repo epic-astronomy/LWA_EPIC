@@ -102,8 +102,9 @@ def save_output(output_arr, grid_size, nchan, filename, metadata):
     phdu = fits.PrimaryHDU()
     for k,v in metadata.items():
         phdu.header[k] = v
-    
-    ihdu = fits.ImageHDU(np.transpose(output_arr_sft[:,::-1,::-1],(0,2,1)))
+    img_data = np.transpose(output_arr_sft[:,::-1,::-1],(0,2,1))
+    img_data = img_data/img_data.max(axis=(1,2),keepdims=True)
+    ihdu = fits.ImageHDU(img_data)
     hdulist = fits.HDUList([phdu, ihdu])
     hdulist.writeto(f"{filename}.fits", overwrite=True)
 
