@@ -153,11 +153,11 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc)
     m_out_img_desc.nchan_out = m_nchan_out;
     m_out_img_desc.pol_mode = m_pol_mode;
 
-    if ((m_support_size & (m_support_size - 1)) != 0) {
-        LOG(WARNING) << "Support is not a power of 2.";
-        m_support_size = std::pow(2, int(std::log2(m_support_size)));
-        LOG(WARNING) << "Adjusting it to " << m_support_size;
-    }
+    // if ((m_support_size & (m_support_size - 1)) != 0) {
+    //     LOG(WARNING) << "Support is not a power of 2.";
+    //     m_support_size = std::pow(2, int(std::log2(m_support_size)));
+    //     LOG(WARNING) << "Adjusting it to " << m_support_size;
+    // }
 
     m_nseq_per_gulp = p_desc.nseq_per_gulp;
     LOG_IF(FATAL, m_nseq_per_gulp <= 0) << "Number of sequences per gulp must be >0.";
@@ -220,6 +220,8 @@ MOFFCorrelator<Dtype, BuffMngr>::reset(int p_nchan, int p_chan0)
       m_nseq_per_gulp,
       m_ant_pos_freq.get(),
       m_phases.get());
+
+    this->reset_gcf_elem(p_nchan, m_support_size, m_chan0, m_delta, m_grid_size);
 
     return true;
 }

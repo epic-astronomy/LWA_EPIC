@@ -79,6 +79,11 @@ class MOFFCuHandler
     std::unique_ptr<cudaStream_t[]> m_gulp_custreams{ nullptr };
     void create_gulp_custreams();
 
+    /// GCF kernel elements for each antenna and frequency
+    float *m_gcf_elem;
+    bool is_m_gcf_elem_set{false};
+    
+
     /// Total number of channels per sequence
     int m_nchan_in{ 0 };
     /// Number of sequences per gulp
@@ -113,7 +118,6 @@ class MOFFCuHandler
      * @param p_gcf_dim Dimensions of the GCF texture
      * @param p_ant_pos Host pointer to the antenna positions array
      * @param p_phases Host pointer to the phases array
-     * @param p_gcf_2D Host pointer to the GCF 2D kernel array
      */
     void reset_data(int p_nchan, size_t p_nseq_per_gulp, float* p_ant_pos, float* p_phases);
 
@@ -155,6 +159,8 @@ class MOFFCuHandler
      */
     void allocate_out_img(size_t nbytes);
 
+    void reset_gcf_elem(int p_nchan, int p_support, int p_chan0, float p_delta, int p_grid_size);
+    
     ~MOFFCuHandler();
 };
 

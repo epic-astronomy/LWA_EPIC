@@ -8,6 +8,12 @@
 #include <cufftdx.hpp>
 #include <iostream>
 #include <stdexcept>
+#include <cooperative_groups.h>
+// #include "fft_dx.cuh"
+#include <cassert>
+
+namespace cg = cooperative_groups;
+
 
 /**
  * @brief Half-precision complex multipy scale
@@ -198,5 +204,118 @@ transpose_tri(typename FFT::value_type (&thread_reg)[FFT::elements_per_thread],
         }
     }
 };
+
+/**
+ * @brief Perform Riemann integration of the GCF over a pixel
+ * 
+ * @param gcf_tex GCF texture object
+ * @param dx X-component of the vector between the antenna and the lower-left corner of the pixel (pix_x - antx).
+ * @param dy  Y-component of the vector between the antenna and the lower-left corner of the pixel (pix_y - anty).
+ * @param nsteps Number of integration steps. Defaults to 5.
+ * @return float 
+ */
+__device__ float gcf_pixel_integral(cudaTextureObject_t gcf_tex,float dx, float dy,unsigned int d_per_pixel, int nsteps=5){
+    float sum=0;
+    float delta = 1.f/float(nsteps);
+    float offset = 1.f/float(2 * nsteps); //nudges the texture point to the center of each dxy cell
+
+    #pragma unroll
+    for(float x=offset;x<1;x+=delta){
+        for(float y=offset;y<1;y+=delta){
+            sum+=tex2D<float>(gcf_tex, abs(dx+x)*d_per_pixel, abs(dy+y)*d_per_pixel);
+        }
+    }
+
+    return sum;
+}
+
+__global__ void compute_gcf_elements(float* out, float* antpos, int chan0, float lmbda_scale, cudaTextureObject_t gcf_tex,int grid_size, int support=3, int nants=LWA_SV_NSTANDS){
+    int nelements = support * support;
+    int half_support = support/2;
+    auto tb = cg::this_thread_block();
+    int grp_rank = tb.thread_rank()/nelements;
+    int offset=0;
+    int grp_size = tb.num_threads()/nelements;
+    int grp_thread_rank = tb.thread_rank() % nelements;
+
+    extern __shared__ float antenna_sum[];
+
+    
+    if(tb.thread_rank()<nants){
+        antenna_sum[tb.thread_rank()]=0;
+    }
+
+    assert(tb.size() % nelements ==0);
+
+    __syncthreads();
+    int channel_idx = blockIdx.x;
+    // auto active_threads = cg::coalesced_threads();
+    // if(channel_idx==0 && tb.thread_rank()==0){
+    //     printf("Active thread count: %d\n", active_threads.num_threads());
+    // }
+
+    // auto ant_group = labeled_partition(active_threads, grp_rank);
+    // if(ant_group.num_threads()<nelements){
+    //     return;
+    // }
+
+    // if(channel_idx==0 && tb.thread_rank()==0){
+    //     printf("INTEGRAL: %d %d %d\n",ant_group.meta_group_size(), ant_group.size(), tb.num_threads());
+    // }
+
+    auto *antpos_chan =
+      reinterpret_cast<const float3 *>(get_ant_pos(antpos, channel_idx));
+
+    float dist_scale = float(SOL)/float((channel_idx+chan0) * BANDWIDTH)  * lmbda_scale*10.;
+
+    for(int ant=grp_rank;ant<nants;ant+=grp_size){
+        
+        int dy = half_support - (grp_thread_rank) / (support);
+        int dx = (grp_thread_rank) % (support) - half_support;
+
+        float antx = antpos_chan[ant].x;
+        float anty = antpos_chan[ant].y;
+
+        // if(ant==0){
+        //     antx = int(antx)+0.5;
+        //     anty = int(anty)+0.5;
+        // }
+
+        int xpix = int(antx + dx);
+        int ypix = int(anty + dy);
+
+
+        bool is_pix_valid = true;
+        if(xpix<0 || xpix>=grid_size || ypix<0 || ypix>=grid_size){
+            is_pix_valid=false;
+        }
+
+        float integral = is_pix_valid ? gcf_pixel_integral(gcf_tex, (xpix-antx), (ypix-anty), dist_scale):0;
+
+        atomicAdd(&antenna_sum[ant], integral);
+        tb.sync();
+
+        
+        float norm = antenna_sum[ant]!=0 ? 1.f/antenna_sum[ant]:1.0;
+        if(channel_idx==0 && tb.thread_rank()<25 && ant==0){
+            printf("%d %d %f %f\n",dx, dy, integral, integral*norm);
+        //     printf("INTEGRAL PARAMS:%d %d %d %d %d %d %s %f %f %f %f %f %f %f %f %f %d %f %f %f\n",grp_thread_rank,dx,dy, xpix, ypix,ant, is_pix_valid? "true": "false",integral,dist_scale, (xpix-antx), (ypix-anty),antx, anty, antenna_sum[ant], norm, integral* norm,channel_idx * nants * nelements 
+        // + ant * nelements 
+        // + grp_thread_rank, tex2D<float>(gcf_tex, 0,0)
+        // , tex2D<float>(gcf_tex, 50,50)
+        // , tex2D<float>(gcf_tex, 0,50));
+        }
+        integral *= norm;
+
+        out[channel_idx * nants * nelements 
+        + ant * nelements 
+        + grp_thread_rank]=integral;
+
+        tb.sync();
+    }
+}
+
+
+
 
 #endif // CU_HELPERS_CUH

@@ -86,32 +86,59 @@ MOFFCuHandler::create_gulp_custreams()
     }
 }
 
+void MOFFCuHandler::reset_gcf_elem(int p_nchan, int p_support, int p_chan0, float p_delta, int p_grid_size){
+    cudaSetDevice(m_device_id);
+    if(is_m_gcf_elem_set){
+        cudaFree(m_gcf_elem);
+    }
+    auto nelements_gcf = (p_support) * (p_support);
+    auto nbytes = LWA_SV_NSTANDS * p_nchan * nelements_gcf * sizeof(float);
+
+    cudaMallocManaged(&m_gcf_elem, nbytes);
+    is_m_gcf_elem_set=true;
+
+    int block_size = int(MAX_THREADS_PER_BLOCK/nelements_gcf) * nelements_gcf;
+
+    std::cout<<"Pre-computing GCF elements\n"<<p_support<<std::endl;
+    compute_gcf_elements<<<p_nchan, block_size>>>(m_gcf_elem, m_antpos_cu, p_chan0, p_delta, m_gcf_tex,p_grid_size, (p_support), LWA_SV_NSTANDS);
+
+    cudaDeviceSynchronize();
+    // for(int i=0;i<nelements_gcf;++i){
+    //     std::cout<<m_gcf_elem[i]<<"\n";
+    // }
+    cuda_check_err(cudaPeekAtLastError());
+}
+
+
 void
 MOFFCuHandler::reset_data(int p_nchan, size_t p_nseq_per_gulp, float* p_antpos_ptr, float* p_phases_ptr)
 {
     cudaSetDevice(m_device_id);
     m_nseq_per_gulp = p_nseq_per_gulp;
     m_nchan_in = p_nchan;
+
     std::cout << "GPU resetting antpos\n";
     reset_antpos(p_nchan, p_antpos_ptr);
-    std::cout << "GPU resetting phases\n";
     cuda_check_err(cudaPeekAtLastError());
 
+    std::cout << "GPU resetting phases\n";
     reset_phases(p_nchan, p_phases_ptr);
     cuda_check_err(cudaPeekAtLastError());
 
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-    cudaEventRecord(start);
-    // test_gcf_texture<<<1, 1>>>(m_gcf_tex);
-    cuda_check_err(cudaPeekAtLastError());
-    cudaEventRecord(stop);
-    cuda_check_err(cudaPeekAtLastError());
-    cudaEventSynchronize(stop);
-    float milliseconds = 0;
-    cudaEventElapsedTime(&milliseconds, start, stop);
-    std::cout << "Single grid time: " << milliseconds << std::endl;
+    // cudaEvent_t start, stop;
+    // cudaEventCreate(&start);
+    // cudaEventCreate(&stop);
+    // cudaEventRecord(start);
+    // // test_gcf_texture<<<1, 1>>>(m_gcf_tex);
+    // cuda_check_err(cudaPeekAtLastError());
+    // cudaEventRecord(stop);
+    // cuda_check_err(cudaPeekAtLastError());
+    // cudaEventSynchronize(stop);
+    // float milliseconds = 0;
+    // cudaEventElapsedTime(&milliseconds, start, stop);
+    // std::cout << "Single grid time: " << milliseconds << std::endl;
+
+    
     cudaDeviceSynchronize();
     cuda_check_err(cudaPeekAtLastError());
 }
@@ -127,13 +154,13 @@ MOFFCuHandler::set_imaging_kernel()
         std::cout<<"Setting the imaging kernel to 64x64\n";
         std::cout<<"Shared memory size: "<<FFT64x64::shared_memory_size<<" bytes\n";
         std::cout<<FFT64x64::block_dim.x<<" "<<FFT64x64::block_dim.y<<"\n";
-        m_imaging_kernel = (void*)(block_fft_kernel<FFT64x64>);
-        if(m_support_size==4){
-            m_imaging_kernel = (void*)(block_fft_kernel<FFT64x64,4>);
-        }
-        if(m_support_size==8){
-            m_imaging_kernel = (void*)(block_fft_kernel<FFT64x64,8>);
-        }
+        m_imaging_kernel = get_imaging_kernel<FFT64x64>(m_support_size);
+        // if(m_support_size==4){
+        //     m_imaging_kernel = (void*)(block_fft_kernel<FFT64x64,4>);
+        // }
+        // if(m_support_size==8){
+        //     m_imaging_kernel = (void*)(block_fft_kernel<FFT64x64,8>);
+        // }
         cudaFuncSetAttribute(
           m_imaging_kernel,
           cudaFuncAttributeMaxDynamicSharedMemorySize,
@@ -144,13 +171,14 @@ MOFFCuHandler::set_imaging_kernel()
          std::cout<<"Setting the imaging kernel to 128x128\n";
         std::cout<<"Shared memory size: "<<FFT128x128::shared_memory_size<<" bytes "<<FFT128x128::elements_per_thread<<"\n";
         std::cout<<FFT64x64::block_dim.x<<" "<<FFT128x128::block_dim.y<<"\n";
-        m_imaging_kernel = (void*)(block_fft_kernel<FFT128x128>);
-        if(m_support_size==4){
-            m_imaging_kernel = (void*)(block_fft_kernel<FFT128x128,4>);
-        }
-        if(m_support_size==8){
-            m_imaging_kernel = (void*)(block_fft_kernel<FFT128x128,8>);
-        }
+        // m_imaging_kernel = (void*)(block_fft_kernel<FFT128x128>);
+        m_imaging_kernel = get_imaging_kernel<FFT128x128>(m_support_size);
+        // if(m_support_size==4){
+        //     m_imaging_kernel = (void*)(block_fft_kernel<FFT128x128,4>);
+        // }
+        // if(m_support_size==8){
+        //     m_imaging_kernel = (void*)(block_fft_kernel<FFT128x128,8>);
+        // }
         cudaFuncSetAttribute(
           m_imaging_kernel,
           cudaFuncAttributeMaxDynamicSharedMemorySize,
@@ -215,7 +243,7 @@ MOFFCuHandler::process_gulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first,
         int chan_offset = i * m_nchan_per_stream;
 
         void* args[] = {
-            &m_f_eng_cu, &m_antpos_cu, &m_phases_cu, &m_nseq_per_gulp, &m_nchan_in, &m_gcf_tex, &m_output_cu, &chan_offset, &p_first, &p_chan0, &p_delta
+            &m_f_eng_cu, &m_antpos_cu, &m_phases_cu, &m_nseq_per_gulp, &m_nchan_in, &m_gcf_tex, &m_output_cu, &chan_offset, &p_first, &p_chan0, &p_delta, &m_gcf_elem
         };
 
         cuda_check_err(
