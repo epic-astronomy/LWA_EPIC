@@ -229,6 +229,23 @@ __device__ float gcf_pixel_integral(cudaTextureObject_t gcf_tex,float dx, float 
     return sum;
 }
 
+/**
+ * @brief Compute gcf kernel cell scaling values for each antenna and frequency.
+ *  
+ * The gcf is integrated over each cell to estimate the scaling value and are normalized
+ * to 1. This ensures flux conservation even if the antenna illumination pattern does not 
+ * fit within the kernel dimensions.
+ *
+ * @param out 
+ * @param antpos 
+ * @param chan0 
+ * @param lmbda_scale 
+ * @param gcf_tex 
+ * @param grid_size 
+ * @param support 
+ * @param nants 
+ * @return  
+ */
 __global__ void compute_gcf_elements(float* out, float* antpos, int chan0, float lmbda_scale, cudaTextureObject_t gcf_tex,int grid_size, int support=3, int nants=LWA_SV_NSTANDS){
     int nelements = support * support;
     int half_support = support/2;
@@ -249,19 +266,6 @@ __global__ void compute_gcf_elements(float* out, float* antpos, int chan0, float
 
     __syncthreads();
     int channel_idx = blockIdx.x;
-    // auto active_threads = cg::coalesced_threads();
-    // if(channel_idx==0 && tb.thread_rank()==0){
-    //     printf("Active thread count: %d\n", active_threads.num_threads());
-    // }
-
-    // auto ant_group = labeled_partition(active_threads, grp_rank);
-    // if(ant_group.num_threads()<nelements){
-    //     return;
-    // }
-
-    // if(channel_idx==0 && tb.thread_rank()==0){
-    //     printf("INTEGRAL: %d %d %d\n",ant_group.meta_group_size(), ant_group.size(), tb.num_threads());
-    // }
 
     auto *antpos_chan =
       reinterpret_cast<const float3 *>(get_ant_pos(antpos, channel_idx));
@@ -275,11 +279,6 @@ __global__ void compute_gcf_elements(float* out, float* antpos, int chan0, float
 
         float antx = antpos_chan[ant].x;
         float anty = antpos_chan[ant].y;
-
-        // if(ant==0){
-        //     antx = int(antx)+0.5;
-        //     anty = int(anty)+0.5;
-        // }
 
         int xpix = int(antx + dx);
         int ypix = int(anty + dy);
@@ -297,14 +296,6 @@ __global__ void compute_gcf_elements(float* out, float* antpos, int chan0, float
 
         
         float norm = antenna_sum[ant]!=0 ? 1.f/antenna_sum[ant]:1.0;
-        if(channel_idx==0 && tb.thread_rank()<25 && ant==0){
-            printf("%d %d %f %f\n",dx, dy, integral, integral*norm);
-        //     printf("INTEGRAL PARAMS:%d %d %d %d %d %d %s %f %f %f %f %f %f %f %f %f %d %f %f %f\n",grp_thread_rank,dx,dy, xpix, ypix,ant, is_pix_valid? "true": "false",integral,dist_scale, (xpix-antx), (ypix-anty),antx, anty, antenna_sum[ant], norm, integral* norm,channel_idx * nants * nelements 
-        // + ant * nelements 
-        // + grp_thread_rank, tex2D<float>(gcf_tex, 0,0)
-        // , tex2D<float>(gcf_tex, 50,50)
-        // , tex2D<float>(gcf_tex, 0,50));
-        }
         integral *= norm;
 
         out[channel_idx * nants * nelements 

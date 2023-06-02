@@ -54,16 +54,14 @@ MOFFCuHandler::reset_gcf_tex(int p_gcf_tex_dim, float* p_gcf_2D_ptr)
     m_gcf_res_desc.resType = cudaResourceTypeArray;
     m_gcf_res_desc.res.array.array = m_gcf_tex_arr;
     // Specify texture object parameters
-    // struct cudaTextureDesc tex_desc;
     memset(&m_gcf_tex_desc, 0, sizeof(m_gcf_tex_desc));
     m_gcf_tex_desc.addressMode[0] = cudaAddressModeClamp;
     m_gcf_tex_desc.addressMode[1] = cudaAddressModeClamp;
-    // m_gcf_tex_desc.filterMode = cudaFilterModePoint; //cudaFilterModeLinear;
+    // m_gcf_tex_desc.filterMode = cudaFilterModePoint;
     m_gcf_tex_desc.filterMode = cudaFilterModeLinear;
     m_gcf_tex_desc.readMode = cudaReadModeElementType;
     m_gcf_tex_desc.normalizedCoords = 0;
 
-    // m_gcf_res_desc.res.array.array = m_gcf_tex_arr;
     std::cout << "copying gcf\n";
     const size_t spitch = p_gcf_tex_dim * sizeof(float);
     cudaMemcpy2DToArray(m_gcf_tex_arr, 0, 0, p_gcf_2D_ptr, spitch, p_gcf_tex_dim * sizeof(float), p_gcf_tex_dim, cudaMemcpyHostToDevice);
@@ -103,9 +101,6 @@ void MOFFCuHandler::reset_gcf_elem(int p_nchan, int p_support, int p_chan0, floa
     compute_gcf_elements<<<p_nchan, block_size>>>(m_gcf_elem, m_antpos_cu, p_chan0, p_delta, m_gcf_tex,p_grid_size, (p_support), LWA_SV_NSTANDS);
 
     cudaDeviceSynchronize();
-    // for(int i=0;i<nelements_gcf;++i){
-    //     std::cout<<m_gcf_elem[i]<<"\n";
-    // }
     cuda_check_err(cudaPeekAtLastError());
 }
 
@@ -125,20 +120,6 @@ MOFFCuHandler::reset_data(int p_nchan, size_t p_nseq_per_gulp, float* p_antpos_p
     reset_phases(p_nchan, p_phases_ptr);
     cuda_check_err(cudaPeekAtLastError());
 
-    // cudaEvent_t start, stop;
-    // cudaEventCreate(&start);
-    // cudaEventCreate(&stop);
-    // cudaEventRecord(start);
-    // // test_gcf_texture<<<1, 1>>>(m_gcf_tex);
-    // cuda_check_err(cudaPeekAtLastError());
-    // cudaEventRecord(stop);
-    // cuda_check_err(cudaPeekAtLastError());
-    // cudaEventSynchronize(stop);
-    // float milliseconds = 0;
-    // cudaEventElapsedTime(&milliseconds, start, stop);
-    // std::cout << "Single grid time: " << milliseconds << std::endl;
-
-    
     cudaDeviceSynchronize();
     cuda_check_err(cudaPeekAtLastError());
 }
@@ -155,12 +136,6 @@ MOFFCuHandler::set_imaging_kernel()
         std::cout<<"Shared memory size: "<<FFT64x64::shared_memory_size<<" bytes\n";
         std::cout<<FFT64x64::block_dim.x<<" "<<FFT64x64::block_dim.y<<"\n";
         m_imaging_kernel = get_imaging_kernel<FFT64x64>(m_support_size);
-        // if(m_support_size==4){
-        //     m_imaging_kernel = (void*)(block_fft_kernel<FFT64x64,4>);
-        // }
-        // if(m_support_size==8){
-        //     m_imaging_kernel = (void*)(block_fft_kernel<FFT64x64,8>);
-        // }
         cudaFuncSetAttribute(
           m_imaging_kernel,
           cudaFuncAttributeMaxDynamicSharedMemorySize,
@@ -171,14 +146,9 @@ MOFFCuHandler::set_imaging_kernel()
          std::cout<<"Setting the imaging kernel to 128x128\n";
         std::cout<<"Shared memory size: "<<FFT128x128::shared_memory_size<<" bytes "<<FFT128x128::elements_per_thread<<"\n";
         std::cout<<FFT64x64::block_dim.x<<" "<<FFT128x128::block_dim.y<<"\n";
-        // m_imaging_kernel = (void*)(block_fft_kernel<FFT128x128>);
+
         m_imaging_kernel = get_imaging_kernel<FFT128x128>(m_support_size);
-        // if(m_support_size==4){
-        //     m_imaging_kernel = (void*)(block_fft_kernel<FFT128x128,4>);
-        // }
-        // if(m_support_size==8){
-        //     m_imaging_kernel = (void*)(block_fft_kernel<FFT128x128,8>);
-        // }
+        
         cudaFuncSetAttribute(
           m_imaging_kernel,
           cudaFuncAttributeMaxDynamicSharedMemorySize,

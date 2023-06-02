@@ -72,7 +72,6 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
   using complex_type = typename FFT::value_type;
   extern __shared__ complex_type shared_mem[];
 
-  // auto gridder=grid_dual_pol_dx8<FFT, support, LWA_SV_NSTANDS>;
   auto gridder = grid_dual_pol_dx9<FFT, support, LWA_SV_NSTANDS>;
 
 
@@ -216,7 +215,13 @@ using FFT100x100 =
              ElementsPerThread<10>() + FFTsPerBlock<200>() + Block());
 
 
-
+/**
+ * @brief Get the imaging kernel object for a given support and image size
+ * 
+ * @tparam FFT cuFFTDx template for the FFT
+ * @param support Size of the support. Cannot be larger than MAX_ALLOWED_SUPPORT_SIZE
+ * @return void* Pointer to the imaging template instance
+ */
 template<class FFT>
 void* get_imaging_kernel(int support=3){
     switch(support){
