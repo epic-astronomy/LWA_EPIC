@@ -69,8 +69,8 @@ std::optional<std::string> validate_options(cxxopts::ParseResult& result){
     }
 
     int support = result["support"].as<int>();
-    if((support & (support-1))!=0 || support>8){
-        return "Invalid support size: "s+std::to_string(support)+". Supported sizes are 2, 4, 8."s;
+    if(support<=0 || support>MAX_ALLOWED_SUPPORT_SIZE){
+        return "Invalid support size: "s+std::to_string(support)+". Support can only be between 1-"s+std::to_string(MAX_ALLOWED_SUPPORT_SIZE);
     }
 
     return {};

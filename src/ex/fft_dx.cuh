@@ -68,14 +68,16 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
                           const float *__restrict__ phases_g, int nseq_per_gulp,
                           int nchan, cudaTextureObject_t gcf_tex,
                           float *output_g, int chan_offset = 0,
-                          bool is_first_gulp = true, int chan0=0, float lmbda_scale=1) {
+                          bool is_first_gulp = true, int chan0=0, float lmbda_scale=1, float* gcf_grid_elem=nullptr) {
   using complex_type = typename FFT::value_type;
   extern __shared__ complex_type shared_mem[];
 
-  auto gridder=grid_dual_pol_dx8<FFT, support, LWA_SV_NSTANDS>;
+  // auto gridder=grid_dual_pol_dx8<FFT, support, LWA_SV_NSTANDS>;
+  auto gridder = grid_dual_pol_dx9<FFT, support, LWA_SV_NSTANDS>;
 
 
-  volatile int fft_steps = 2;
+
+  constexpr int fft_steps = 2;
 
   constexpr int stride = size_of<FFT>::value / FFT::elements_per_thread;
   constexpr int row_size =
@@ -117,7 +119,10 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
         // reinterpret_cast<const float3 *>(get_ant_pos(antpos_g, channel_idx)),
         antpos_smem,
         reinterpret_cast<const float4 *>(get_phases(phases_g, channel_idx)),
-        shared_mem, gcf_tex, UPPER, float(SOL)/float((channel_idx+chan0) * BANDWIDTH)  * lmbda_scale*10.);
+        shared_mem,
+        //  gcf_tex,
+        gcf_grid_elem,
+          UPPER, float(SOL)/float((channel_idx+chan0) * BANDWIDTH)  * lmbda_scale*10.);
 
     __syncthreads();
 
@@ -142,7 +147,10 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
         // reinterpret_cast<const float3 *>(get_ant_pos(antpos_g, channel_idx)),
         antpos_smem,
         reinterpret_cast<const float4 *>(get_phases(phases_g, channel_idx)),
-        shared_mem, gcf_tex, LOWER, float(SOL)/float((channel_idx+chan0) * BANDWIDTH)  * lmbda_scale*10.);
+        shared_mem,
+        //  gcf_tex,
+        gcf_grid_elem,
+          LOWER, float(SOL)/float((channel_idx+chan0) * BANDWIDTH)  * lmbda_scale*10.);
 
 
     __syncthreads();
@@ -206,4 +214,35 @@ using FFT100x100 =
     decltype(Size<100>() + Precision<half>() + Type<fft_type::c2c>() +
              Direction<fft_direction::inverse>() + SM<890>() +
              ElementsPerThread<10>() + FFTsPerBlock<200>() + Block());
+
+
+
+template<class FFT>
+void* get_imaging_kernel(int support=3){
+    switch(support){
+        case 1:
+        return (void*) (block_fft_kernel<FFT,1>);
+        case 2:
+        return (void*) (block_fft_kernel<FFT,2>);
+        case 3:
+        return (void*) (block_fft_kernel<FFT,3>);
+        case 4:
+        return (void*) (block_fft_kernel<FFT,4>);
+        case 5:
+        return (void*) (block_fft_kernel<FFT,5>);
+        case 6:
+        return (void*) (block_fft_kernel<FFT,6>);
+        case 7:
+        return (void*) (block_fft_kernel<FFT,7>);
+        case 8:
+        return (void*) (block_fft_kernel<FFT,8>);
+        case 9:
+        return (void*) (block_fft_kernel<FFT,9>);
+        default:
+        assert(("Unsupported support size", false));
+    }
+};
+
+template void* get_imaging_kernel<FFT128x128>(int support);
+template void* get_imaging_kernel<FFT64x64>(int support);
 #endif // FFTDX_CUH

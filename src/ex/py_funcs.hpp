@@ -62,14 +62,14 @@ prolate_spheroidal_to_tex2D(int m, int n, float alpha, T* out, int dim, float c 
     auto cv = pro_sph_cv(scipy_spl, m, n, c);
     for (auto i = dim - 1; i >= 0; --i) { // for a left-bottom origin
         for (auto j = 0; j < dim; ++j) {
-            T u = T(i) / dim;
-            T v = T(j) / dim;
+            T u = T(i) / T(dim);
+            T v = T(j) / T(dim);
 
             out[i * dim + j] = ::pow((1 - u * u), alpha) * ::pow((1 - v * v), alpha) * pro_sph_ang1_cv(scipy_spl, m, n, c, cv, u) * pro_sph_ang1_cv(scipy_spl, m, n, c, cv, v);
 
-            if (i == 0) {
-                std::cout << out[j] << ",";
-            }
+            // if (i == 0) {
+            //     std::cout << out[j] << ",";
+            // }
 
             if (i == dim - 1 || j == dim - 1) {
                 out[i * dim + j] = 0;

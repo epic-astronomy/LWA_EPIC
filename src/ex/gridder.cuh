@@ -454,3 +454,76 @@ __device__ inline void grid_dual_pol_dx8(
     tile.sync();
   }
 }
+
+
+template <
+    typename FFT, unsigned int Support, unsigned int NStands,
+    std::enable_if_t<
+        std::is_same<__half2, typename FFT::output_type::value_type>::value,
+        bool> = true>
+__device__ inline void grid_dual_pol_dx9(
+    cg::thread_block tb, const cnib2 *f_eng, const float3 *__restrict__ antpos,
+    const float4 *__restrict__ phases, typename FFT::value_type *smem,
+    float* gcf_grid_elem, ImageDiv Div = UPPER, float pix2m=1.0) {
+      // auto tb = cg::this_thread_block();
+      constexpr int nelements = Support * Support;
+      constexpr float inv_nelements = 1.f/float(nelements);
+
+      // divide threads into groups of nelements. Each group grids one antenna at a time
+      int this_thread_ant = tb.thread_rank() * inv_nelements;
+      int this_thread_elem = tb.thread_rank() - this_thread_ant * nelements;
+      constexpr int half_support = Support/2;
+      constexpr int half_grid = size_of<FFT>::value/2;
+      constexpr int nants_per_pass = (FFT::block_dim.x * FFT::block_dim.y)/nelements;
+      int offset = Div == UPPER ? 0 : size_of<FFT>::value / 2;
+
+      if(this_thread_ant >= nants_per_pass){//cannot grid with these threads
+        return;
+      }
+      int channel_idx = blockIdx.x;
+
+      for(int ant=this_thread_ant;ant<NStands;ant+=nants_per_pass){
+
+        typename FFT::value_type temp_data; //__half2half2(0);
+        temp_data.x = __half2half2(0);
+        temp_data.y = __half2half2(0);
+
+
+        int dy = half_support - (this_thread_elem) / (Support);
+        int dx = (this_thread_elem) % (Support) - half_support;
+
+        float antx = antpos[ant].x;
+        float anty = antpos[ant].y;
+
+        int xpix = int(antx + dx);
+        int ypix = int(anty + dy);
+
+        if((Div==UPPER && ypix>=half_grid)|| (Div==LOWER && ypix<half_grid)){
+          continue;
+        }
+        if(xpix<0 || xpix>=size_of<FFT>::value){
+          continue;
+        }
+
+        float scale = gcf_grid_elem[channel_idx * NStands * nelements + ant * nelements + this_thread_elem];
+        auto phase_ant = phases[ant];
+        __cms_f(temp_data.x, float2{phase_ant.x, phase_ant.y}, f_eng[ant].X,
+                scale);
+        __cms_f(temp_data.y, float2{phase_ant.z, phase_ant.w}, f_eng[ant].Y,
+                scale);
+
+        // Re-arrange into RRII layout
+        __half im = temp_data.x.y;
+        temp_data.x.y = temp_data.y.x;
+        temp_data.y.x = im;
+
+        atomicAdd(&smem[xpix + (ypix-offset) * size_of<FFT>::value].x, temp_data.x);
+        atomicAdd(&smem[xpix + (ypix-offset) * size_of<FFT>::value].y, temp_data.y);
+      }
+
+
+      // constexpr offset = (FFT::block_dim.x * FFT::block_dim.y) % nelements == 0? 0:1;
+
+
+
+}
