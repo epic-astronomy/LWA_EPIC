@@ -88,7 +88,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
 
   //   copy antenna positions into shared memory
   float3 *antpos_smem = reinterpret_cast<float3 *>(
-      shared_mem + size_of<FFT>::value * size_of<FFT>::value / 2);
+      shared_mem + FFT::shared_memory_size/sizeof(complex_type));
 
   auto *_antpos_g =
       reinterpret_cast<const float3 *>(get_ant_pos(antpos_g, channel_idx));
@@ -181,9 +181,10 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
     }
 
     for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
-      auto xx_yy = thread_data[_reg].x * thread_data[_reg].x +
-                   thread_data[_reg].y * thread_data[_reg].y;
-      stokes_I[_reg] += float(xx_yy.x + xx_yy.y);
+      // auto xx_yy = thread_data[_reg].x * thread_data[_reg].x +
+      //              thread_data[_reg].y * thread_data[_reg].y;
+      // stokes_I[_reg] += float(xx_yy.x + xx_yy.y);
+      stokes_I[_reg] += float(thread_data[_reg].x.x * thread_data[_reg].x.x + thread_data[_reg].y.x * thread_data[_reg].y.x);
     }
     __syncthreads();
   }
