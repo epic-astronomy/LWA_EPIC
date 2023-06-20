@@ -57,6 +57,8 @@ namespace cg = cooperative_groups;
  * determines whether to assign or increment the output image block.
  * @param chan0 Channel number of the first channel
  * @param lmbda_scale Multiplier to convert wavelength from meters to meters/pixel aka sampling length
+ * @param gcf_grid_elem Individual kernel elements for each antenna/frequency
+ * @param gcf_correction_grid Pixel-based correction factors for each frequency
  */
 template <
     typename FFT,int support=2, PKT_DATA_ORDER Order = TIME_MAJOR,

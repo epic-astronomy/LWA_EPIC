@@ -20,6 +20,9 @@ lwasv_station = lwasv
 def gen_loc_lwasv(grid_size, grid_resolution):
     """
     Generate grid centered locations of LWASV stands compatible with DFT code.
+    The indices must be divided by the wavelength to transform the coordinates
+    to pixel units 
+
     grid_size: Dimension of the grid.
     grid_resolution: Grid resolution in degrees
     """
@@ -27,43 +30,35 @@ def gen_loc_lwasv(grid_size, grid_resolution):
     lsl_locsf = np.array(
         [(ant.stand.x, ant.stand.y, ant.stand.z) for ant in lwasv[::2]]
     )
-    # print(lsl_locsf[0,:])
-
     lsl_locsf[[i for i, a in enumerate(lwasv[::2]) if a.stand.id == 256], :] = 0.0
 
+    # adjusted to ensure the pixel size <= half the wavelength
     delta = (2 * grid_size * np.sin(np.pi * grid_resolution / 360)) ** -1
-    # chan_wavelengths = speed_of_light.value / frequencies
-    # sample_grid = chan_wavelengths * delta
-    # sll = sample_grid[0] / chan_wavelengths[0]
-    # lsl_locs = lsl_locs.T
-
     lsl_locsf = lsl_locsf / delta
-    # print(lsl_locsf[0,:])
-
-    # sample_grid[np.newaxis, np.newaxis, :, np.newaxis]
-    # print(np.min(lsl_locsf, axis=0, keepdims=True))
     lsl_locsf -= np.min(lsl_locsf, axis=0, keepdims=True)
-    # print(lsl_locsf[0,:])
 
     # Centre locations slightly
     # divide by wavelength and add grid_size/2 to get the correct grid positions
     lsl_locsf -= np.max(lsl_locsf, axis=0, keepdims=True) / 2.0
-    # print(lsl_locsf[0,:])
 
     # add ntime axis
     # final dimensions = 3, ntime, nchan, nant, npol
-    # locc = np.broadcast_to(lsl_locsf, (ntime, 3, npol, nchan, lsl_locs.shape[1])).transpose(1, 0, 3, 4, 2).copy()
     return dict(delta=delta, locations=lsl_locsf.astype(np.double).ravel().copy())
 
 
 def gen_phases_lwasv(nchan, chan0):
-    print("ok0")
+    """
+    Generate complex phases for the LWA-SV antennas 
+
+    nchan: Number of channels
+    chan0: Channel number of the first channel
+    """
     nstand = int(len(lwasv.antennas) / 2)
     npol = 2
     phases = np.zeros((nchan, nstand, npol), dtype=np.complex64)
-    bandwidth = 25000
+    bandwidth = CHAN_BW
     freq = np.arange(chan0, chan0 + nchan) * bandwidth
-    print("ok1")
+
     for i in range(nstand):
         # X
         a = lwasv.antennas[2 * i + 0]
@@ -87,22 +82,25 @@ def gen_phases_lwasv(nchan, chan0):
         # away with this at some point
         if a.stand.id == 256:
             phases[:, i, :] = 0.0
-    print("ok")
+
     return phases.ravel().copy()
 
 def save_output(output_arr, grid_size, nchan, filename, metadata):
+    """
+    Save image to disk
+
+    output_arr: Output image array
+    grid_size: X or Y Size of the grid in pixels
+    nchan: Number of output channlels in the image
+    filename: Name of the file to save
+    metadata: Dict with the metatadata to be written to the fits file
+    """
     output_arr = output_arr.reshape((nchan, grid_size, grid_size))
     output_arr_sft = np.fft.fftshift(output_arr, axes=(1,2))
 
     print(metadata)
 
-
-
-    # print(output_arr_sft[0,35,:])
     print(output_arr_sft.min(), output_arr_sft.max())
-    # output_arr = output_arr.sum(axis=0)
-    # matplotlib.image.imsave(filename, output_arr[:,:].T/1000)
-
     phdu = fits.PrimaryHDU()
     # for k,v in metadata.items():
     #     phdu.header[k] = v
@@ -204,6 +202,10 @@ def save_output(output_arr, grid_size, nchan, filename, metadata):
 
 
 def get_ADP_time_from_unix_epoch():
+    """
+    Get time in seconds from the unix epoch using the UTC start timestamp from the 
+    ADP service
+    """
     got_utc_start = False
     while not got_utc_start:
         try:
@@ -218,12 +220,20 @@ def get_ADP_time_from_unix_epoch():
     return (utc_start_dt-ADP_EPOCH).total_seconds()
 
 def get_time_from_unix_epoch(utcstart):
+    """
+    Get time difference in seconds from unix epoch
+
+    utcstart: Timestamp string
+    """
     utc_start_dt = datetime.datetime.strptime(utcstart, DATE_FORMAT)
     return (utc_start_dt-ADP_EPOCH).total_seconds()
 
 
 
 def get_40ms_gulp():
+    """
+    Generate a 40 ms gulp from an npz file
+    """
     # npfile=np.load("data/40ms_128chan_gulp_c64.npz")
     # npfile=np.load("data/40ms_128chan_gulp_c64_virtransit.npz")
     npfile=np.load("data/40ms_128chan_600offset_gulp_c64_virtransit.npz")
@@ -236,6 +246,14 @@ def get_40ms_gulp():
 
 
 def get_correction_grid(corr_ker_arr, grid_size, support, nchan):
+    """
+    Generates a correction grid based on the specified kernels
+
+    corr_ker_arr: Correction kernel array for each frequency
+    grid_size: 1D size of the correction grid
+    support: Support size
+    nchan: Number of channels in the correction grid
+    """
     corr_ker_arr = corr_ker_arr.reshape((nchan, support, support))
     corr_grid_arr = np.zeros((nchan, grid_size, grid_size))
 

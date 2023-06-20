@@ -313,6 +313,15 @@ __global__ void compute_gcf_elements(float* out, float* antpos, int chan0, float
     }
 }
 
+/**
+ * @brief Compute the antenna-averaged kernel for each frequency
+ * 
+ * @param grid_elems Individual anetenna gridding kernels stored in a row-major order
+ * @param[out] out_kernel Output gridding kernels
+ * @param nchan Number of channels
+ * @param support_size Support size of the kernel
+ * @return  
+ */
 __global__ void compute_avg_gridding_kernel(float *grid_elems, float *out_kernel, int nchan, int support_size){
     int nelems_per_ant = support_size * support_size;
     int ant = threadIdx.x;
@@ -333,7 +342,6 @@ __global__ void compute_avg_gridding_kernel(float *grid_elems, float *out_kernel
         for(int i=0;i<nelems_per_ant;++i){
             out_kernel[blockIdx.x * nelems_per_ant + i]/=sum;
         }
-
 
     }
 
