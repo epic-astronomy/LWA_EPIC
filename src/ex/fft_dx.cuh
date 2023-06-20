@@ -68,7 +68,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
                           const float *__restrict__ phases_g, int nseq_per_gulp,
                           int nchan, cudaTextureObject_t gcf_tex,
                           float *output_g, int chan_offset = 0,
-                          bool is_first_gulp = true, int chan0=0, float lmbda_scale=1, float* gcf_grid_elem=nullptr) {
+                          bool is_first_gulp = true, int chan0=0, float lmbda_scale=1, float* gcf_grid_elem=nullptr, float *gcf_correction_grid=nullptr) {
   using complex_type = typename FFT::value_type;
   extern __shared__ complex_type shared_mem[];
 
@@ -191,7 +191,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
 
   for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
     auto index = (threadIdx.x + _reg * stride) + threadIdx.y * row_size;
-    output_g[channel_idx * row_size * row_size + index] = stokes_I[_reg];
+    output_g[channel_idx * row_size * row_size + index] = stokes_I[_reg] * gcf_correction_grid[channel_idx * row_size * row_size + index];
   }
 }
 

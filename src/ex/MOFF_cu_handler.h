@@ -82,7 +82,17 @@ class MOFFCuHandler
     /// GCF kernel elements for each antenna and frequency
     float *m_gcf_elem;
     bool is_m_gcf_elem_set{false};
-    
+
+    /// GCF correction kernel
+    /// The inverse of the iFFT of this kernel must be multipled with the final image
+    /// The correction kernel can be the GCF itself or an average of the GCFs of
+    /// individual antennas
+    float *m_correction_kernel_d;
+    bool is_correction_kernel_set{false};
+    float *m_correction_grid_d;
+    bool is_correction_grid_set{false};
+    void get_correction_kernel(float* p_out_kernel);
+    void set_correction_grid(float* p_corr_grid, int p_grid_size, int p_nchan);
 
     /// Total number of channels per sequence
     int m_nchan_in{ 0 };
@@ -106,7 +116,7 @@ class MOFFCuHandler
     int m_support_size;
     void set_imaging_kernel();
     void set_img_grid_dim();
-
+    
   public:
     MOFFCuHandler(){};
     // __host__ void test();

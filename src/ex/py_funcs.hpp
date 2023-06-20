@@ -79,6 +79,26 @@ prolate_spheroidal_to_tex2D(int m, int n, float alpha, T* out, int dim, float c 
 }
 
 template<typename T>
+void gaussian_to_tex2D(T* out, float sigma, int dim){
+    for (auto i = dim - 1; i >= 0; --i) { // for a left-bottom origin
+        for (auto j = 0; j < dim; ++j) {
+            T u = T(i) / T(dim);
+            T v = T(j) / T(dim);
+
+            out[i * dim + j] =  exp(-(u*u + v*v)/(2*sigma*sigma));
+
+            if (i == 0) {
+                std::cout << out[j] << ",";
+            }
+
+            if (i == dim - 1 || j == dim - 1) {
+                out[i * dim + j] = 0;
+            }
+        }
+    }
+}
+
+template<typename T>
 void
 prolate_spheroidal_to_tex1D(int m, int n, float alpha, T* out, int dim, float c = 5.356 * PI / 2.0)
 {
@@ -195,12 +215,38 @@ save_image(size_t grid_size, size_t nchan, T* data, std::string filename, dict_t
     // }
 }
 
+template<typename T>
+void get_correction_grid(T* correction_kernel, T* out_correction_grid, int grid_size, int support, int nchan){
+    py::gil_scoped_acquire acquire;
+    auto corr_ker_arr = py::array_t<float>(support * support * nchan, correction_kernel);
+    // auto corr_grid_arr = py::array_t<T>(grid_size * grid_size * nchan, out_correction_grid);
+
+    auto corr_grid_res = py::module_::import("epic_utils").attr("get_correction_grid")(corr_ker_arr, grid_size, support, nchan);
+
+    auto corr_grid_arr = corr_grid_res.cast<
+        py::array_t<
+            double, py::array::c_style | py::array::forcecast>>();
+
+    auto *corr_grid_ptr = static_cast<double*>(corr_grid_arr.request().ptr);
+
+    for(int i=0;i<grid_size * grid_size * nchan;++i){
+        out_correction_grid[i] = corr_grid_ptr[i];
+    }
+}
+
 double
 get_ADP_time_from_unix_epoch()
 {
     py::gil_scoped_acquire acquire;
     return py::module_::import("epic_utils")
       .attr("get_ADP_time_from_unix_epoch")()
+      .cast<double>();
+}
+
+double get_time_from_unix_epoch(std::string utcstart){
+    py::gil_scoped_acquire acquire;
+    return py::module_::import("epic_utils")
+      .attr("get_time_from_unix_epoch")(utcstart)
       .cast<double>();
 }
 

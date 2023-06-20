@@ -28,6 +28,7 @@ enum CONSTANTS
     GULP_1K_SEQ_SIZE = 1000 * SINGLE_SEQ_SIZE,
     BANDWIDTH = 25000,
     FS = int(196e6),
+    SEQ_MULT_S = FS/BANDWIDTH,
     SAMPLING_LEN_uS = 40, // micro-seconds
     NSEQ_PER_SEC = int(1e6 / SAMPLING_LEN_uS),
     LWA_SV_NSTANDS = 256,

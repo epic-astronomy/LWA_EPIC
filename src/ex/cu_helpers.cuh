@@ -280,6 +280,9 @@ __global__ void compute_gcf_elements(float* out, float* antpos, int chan0, float
         float antx = antpos_chan[ant].x;
         float anty = antpos_chan[ant].y;
 
+        // antx=int(antx)+0.5;
+        // anty=int(anty)+0.5;
+
         int xpix = int(antx + dx);
         int ypix = int(anty + dy);
 
@@ -291,12 +294,16 @@ __global__ void compute_gcf_elements(float* out, float* antpos, int chan0, float
 
         float integral = is_pix_valid ? gcf_pixel_integral(gcf_tex, (xpix-antx), (ypix-anty), dist_scale):0;
 
+
         atomicAdd(&antenna_sum[ant], integral);
         tb.sync();
 
         
         float norm = antenna_sum[ant]!=0 ? 1.f/antenna_sum[ant]:1.0;
         integral *= norm;
+        if(blockIdx.x==0 && threadIdx.x<49 && ant==0){
+            printf("%d %d %f\n",dx, dy,  integral);
+        }
 
         out[channel_idx * nants * nelements 
         + ant * nelements 
@@ -304,6 +311,32 @@ __global__ void compute_gcf_elements(float* out, float* antpos, int chan0, float
 
         tb.sync();
     }
+}
+
+__global__ void compute_avg_gridding_kernel(float *grid_elems, float *out_kernel, int nchan, int support_size){
+    int nelems_per_ant = support_size * support_size;
+    int ant = threadIdx.x;
+    int chan = blockIdx.x;
+    int nelemns_per_chan = nelems_per_ant * blockDim.x;
+    int idx = ant * nelems_per_ant + chan * nelemns_per_chan;
+    
+    for(int i=0;i<nelems_per_ant;++i){
+        atomicAdd(&out_kernel[blockIdx.x * nelems_per_ant + i], grid_elems[idx + i]);
+    }
+
+    if(threadIdx.x==0){
+        float sum = 0;
+        for(int i=0;i<nelems_per_ant;++i){
+            sum+=out_kernel[blockIdx.x * nelems_per_ant + i];
+        }
+
+        for(int i=0;i<nelems_per_ant;++i){
+            out_kernel[blockIdx.x * nelems_per_ant + i]/=sum;
+        }
+
+
+    }
+
 }
 
 

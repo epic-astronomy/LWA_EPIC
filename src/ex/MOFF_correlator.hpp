@@ -53,13 +53,19 @@ class MOFFCorrelator : public MOFFCuHandler
     /// Array to store frequency dependent phases
     aux_t m_phases{ nullptr };
 
+    /// Array to store the averaged gridding kernel
+    aux_t m_correction_kernel_h{nullptr};
+
+    /// Array to store the correction grid
+    aux_t m_correction_grid_h{nullptr};
+
     int m_grid_size;
     double m_grid_res;
     //int m_support_size;
     int m_gcf_tex_dim;
     bool m_rm_autocorrs{ false };
     // int m_nchan_in{ 132 };
-    int m_nchan_out{ 112 };
+    int m_nchan_out{ 128 };
     int m_chan0{ 0 };
     size_t m_nseq_per_gulp;
     IMAGING_POL_MODE m_pol_mode{ DUAL_POL };
@@ -91,6 +97,8 @@ class MOFFCorrelator : public MOFFCuHandler
      * Allocate memory block for the output image and setup texture(s) for GCF
      */
     void setup_GPU();
+
+    void reset_correction_grid(int p_nchan);
 
   public:
     /**
@@ -145,9 +153,16 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc)
 
     m_support_size = p_desc.support_size;
     LOG_IF(FATAL, m_support_size <= 0) << "Gridding support must be >0.";
+    
+    
 
     m_nchan_out = p_desc.nchan_out;
     LOG_IF(FATAL, m_nchan_out <= 0) << "Number of output channels must be >0.";
+
+    // Allocate the arrays for the correction kernel and grid
+    m_correction_grid_h = std::move(hwy::AllocateAligned<float>(m_grid_size * m_grid_size * m_nchan_out));
+
+    m_correction_kernel_h = std::move(hwy::AllocateAligned<float>(m_nchan_out * m_support_size * m_support_size));
 
     m_out_img_desc.img_size = p_desc.img_size;
     m_out_img_desc.nchan_out = m_nchan_out;
@@ -216,6 +231,7 @@ MOFFCorrelator<Dtype, BuffMngr>::reset(int p_nchan, int p_chan0)
       m_phases.get());
 
     this->reset_gcf_elem(p_nchan, m_support_size, m_chan0, m_delta, m_grid_size);
+    reset_correction_grid(p_nchan);
 
     return true;
 }
@@ -274,6 +290,7 @@ MOFFCorrelator<Dtype, BuffMngr>::reset_gcf_kernel2D(int p_gcf_tex_dim)
     // m_gcf_tex_dim = p_gcf_tex_dim;
     m_gcf_kernel2D.reset();
     m_gcf_kernel2D = std::move(hwy::AllocateAligned<float>(p_gcf_tex_dim * p_gcf_tex_dim));
+    // gaussian_to_tex2D(m_gcf_kernel2D.get(), 0.15, p_gcf_tex_dim);
 
     prolate_spheroidal_to_tex2D<float>(
       ProSphPars::m,
@@ -303,6 +320,18 @@ MOFFCorrelator<Dtype, BuffMngr>::setup_GPU()
     create_gulp_custreams();
     set_imaging_kernel();
     set_img_grid_dim();
+}
+
+template<typename Dtype, typename BuffMngr>
+void
+MOFFCorrelator<Dtype, BuffMngr>:: reset_correction_grid(int p_nchan){
+    this->get_correction_kernel(m_correction_kernel_h.get());
+    // for(int i=0;i<9;++i){
+    //     std::cout<<"ker: "<<m_correction_kernel_h.get()[i]<<"\n";
+    // }
+    get_correction_grid<float>(m_correction_kernel_h.get(), m_correction_grid_h.get(), m_grid_size, m_support_size, p_nchan);
+
+    this->set_correction_grid(m_correction_grid_h.get(), m_grid_size, p_nchan);
 }
 using float_buf_mngr_t = LFBufMngr<AlignedBuffer<float>>;
 using MOFFCorrelator_t = MOFFCorrelator<uint8_t, float_buf_mngr_t>;

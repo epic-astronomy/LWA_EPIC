@@ -104,6 +104,40 @@ void MOFFCuHandler::reset_gcf_elem(int p_nchan, int p_support, int p_chan0, floa
     cuda_check_err(cudaPeekAtLastError());
 }
 
+void MOFFCuHandler::get_correction_kernel(float* p_out_kernel){
+    cudaSetDevice(m_device_id);
+    if(m_nchan_in==0){
+        std::cout<<"Number of input channels is not set. Unable to compute the averaged kernel\n";
+        exit(-1);
+    }
+    int nbytes = m_support_size * m_support_size * m_nchan_in * sizeof(float);
+    if(!is_correction_kernel_set){
+        cudaMalloc(&m_correction_kernel_d, nbytes);
+        is_correction_kernel_set = true;
+    }
+
+    
+
+    compute_avg_gridding_kernel<<<m_nchan_in, LWA_SV_NSTANDS>>>(m_gcf_elem, m_correction_kernel_d ,m_nchan_in, m_support_size);
+
+    cudaMemcpy(p_out_kernel, m_correction_kernel_d, nbytes, cudaMemcpyDeviceToHost);
+
+
+    cuda_check_err(cudaPeekAtLastError());
+}
+//void MOFFCuHandler::set_correction_grid(float* corr_grid);
+
+
+void MOFFCuHandler::set_correction_grid(float* p_in_correction_grid, int p_grid_size, int p_nchan){
+    int nbytes = p_grid_size * p_grid_size * p_nchan * sizeof(float);
+    if(!is_correction_grid_set){
+        cudaMalloc(&m_correction_grid_d, nbytes);
+        is_correction_grid_set = true;
+    }
+
+    cuda_check_err(cudaMemcpy(m_correction_grid_d, p_in_correction_grid, nbytes, cudaMemcpyHostToDevice));
+    
+}
 
 void
 MOFFCuHandler::reset_data(int p_nchan, size_t p_nseq_per_gulp, float* p_antpos_ptr, float* p_phases_ptr)
@@ -213,7 +247,7 @@ MOFFCuHandler::process_gulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first,
         int chan_offset = i * m_nchan_per_stream;
 
         void* args[] = {
-            &m_f_eng_cu, &m_antpos_cu, &m_phases_cu, &m_nseq_per_gulp, &m_nchan_in, &m_gcf_tex, &m_output_cu, &chan_offset, &p_first, &p_chan0, &p_delta, &m_gcf_elem
+            &m_f_eng_cu, &m_antpos_cu, &m_phases_cu, &m_nseq_per_gulp, &m_nchan_in, &m_gcf_tex, &m_output_cu, &chan_offset, &p_first, &p_chan0, &p_delta, &m_gcf_elem, &m_correction_grid_d
         };
 
         cuda_check_err(
