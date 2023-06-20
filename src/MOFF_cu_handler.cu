@@ -307,4 +307,24 @@ MOFFCuHandler::~MOFFCuHandler()
     if (is_phases_set) {
         cudaFree(m_phases_cu);
     }
+
+    if(is_correction_kernel_set){
+        cudaFree(m_correction_kernel_d);
+    }
+
+    if(is_correction_grid_set){
+        cudaFree(m_correction_grid_d);
+    }
+
+    if(is_m_gcf_elem_set){
+        cudaFree(m_gcf_elem_set);
+    }
+
+    if(is_out_mem_set){
+        cudaFree(m_output_cu);
+    }
+
+    if(is_f_eng_cu_allocated){
+        cudaFree(m_f_eng_cu);
+    }
 }
