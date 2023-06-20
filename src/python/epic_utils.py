@@ -3,6 +3,8 @@ from lsl.common.stations import lwasv
 from astropy.constants import c as speed_of_light
 import matplotlib.image
 from astropy.io import fits
+from astropy.time import Time, TimeDelta
+from astropy.coordinates import SkyCoord, FK5
 
 import datetime
 import time
@@ -11,6 +13,8 @@ DATE_FORMAT = "%Y_%m_%dT%H_%M_%S"
 FS = 196.0e6
 CHAN_BW = 25.0e3
 ADP_EPOCH = datetime.datetime(1970, 1, 1)
+
+lwasv_station = lwasv
 
 
 def gen_loc_lwasv(grid_size, grid_resolution):
@@ -100,11 +104,97 @@ def save_output(output_arr, grid_size, nchan, filename, metadata):
     # matplotlib.image.imsave(filename, output_arr[:,:].T/1000)
 
     phdu = fits.PrimaryHDU()
-    for k,v in metadata.items():
-        phdu.header[k] = v
+    # for k,v in metadata.items():
+    #     phdu.header[k] = v
+
+    phdu.header['DATE-OBS']=Time(
+        metadata["time_tag"]/FS + 1e-3 * metadata['img_len_ms']/2.0,
+        format="unix",
+        precision=6,
+    ).isot
+
+    sll = (2 * metadata["grid_size"] * np.sin(np.pi * metadata["grid_res"] / 360)) ** -1
+    cfreq = (metadata["chan0"] + metadata["nchan"]/2-1)*CHAN_BW
+
+    phdu.header["BUNITS"]="UNCALIB"
+    phdu.header["BSCALE"] = 1e0
+    phdu.header["BZERO"] = 0e0
+    phdu.header["EQUINOX"] = "J2000"
+    phdu.header["EXTNAME"] = "PRIMARY"
+    phdu.header["GRIDDIMX"] = metadata["grid_size"]
+    phdu.header["GRIDDIMY"] = metadata["grid_size"]
+    phdu.header["DGRIDX"] = sll
+    phdu.header["DGRIDY"] = sll
+    phdu.header["INTTIM"] = metadata["img_len_ms"] * 1e-3
+    phdu.header["INTTIMU"] = "SECONDS"
+    phdu.header["CFREQ"] = cfreq
+    phdu.header["CFREQU"] = "HZ"
+
+    dt = TimeDelta(1e-3 * metadata["img_len_ms"], format="sec")
+    dtheta_x = 2 * np.arcsin(0.5 / (metadata["grid_size"] * sll))
+    dtheta_y = 2 * np.arcsin(0.5 / (metadata["grid_size"] * sll))
+    crit_pix_x = float(metadata["grid_size"] / 2 + 1)
+
+    # Need to correct for shift in center pixel when we flipped dec dimension
+    # when writing npz, Only applies for even dimension size
+    crit_pix_y = float(metadata["grid_size"] / 2 + 1) - (metadata["grid_size"] + 1) % 2
+    delta_x = -dtheta_x * 180.0 / np.pi
+    delta_y = dtheta_y * 180.0 / np.pi
+    delta_f = CHAN_BW
+
+    crit_pix_f = (metadata["nchan"] - 1) * 0.5 + 1  # +1 for FITS numbering
+
+    t0 = Time(
+        metadata["time_tag"] / FS,
+        format="unix",
+        precision=6,
+        location=(lwasv_station.lon * 180. / np.pi, lwasv_station.lat * 180. / np.pi)
+    )
+
+    lsts = t0.sidereal_time("apparent")
+    coords = SkyCoord(
+        lsts.deg, lwasv_station.lat * 180. / np.pi, obstime=t0, unit="deg"
+    ).transform_to(FK5(equinox="J2000"))
+
+
+
     img_data = np.transpose(output_arr_sft[:,::-1,::-1],(0,2,1))
     img_data = img_data/img_data.max(axis=(1,2),keepdims=True)
     ihdu = fits.ImageHDU(img_data)
+
+    ihdu.header["DATETIME"]=t0.isot
+    ihdu.header["LST"]=lsts.hour
+    ihdu.header["EQUINOX"] = "J2000"
+
+    ihdu.header["CTYPE1"] = "RA---SIN"
+    ihdu.header["CRPIX1"] = crit_pix_x
+    ihdu.header["CDELT1"] = delta_x
+    ihdu.header["CRVAL1"] = coords.ra.deg
+    ihdu.header["CUNIT1"] = "deg"
+    ihdu.header["CTYPE2"] = "DEC--SIN"
+
+    ihdu.header["CRPIX2"] = crit_pix_y
+
+    ihdu.header["CDELT2"] = delta_y
+    ihdu.header["CRVAL2"] = coords.dec.deg
+    ihdu.header["CUNIT2"] = "deg"
+    # Coordinates - Freq
+    ihdu.header["CTYPE3"] = "FREQ"
+    ihdu.header["CRPIX3"] = crit_pix_f
+    ihdu.header["CDELT3"] = delta_f
+    ihdu.header["CRVAL3"] = cfreq
+    ihdu.header["CUNIT3"] = "Hz"
+    # # Coordinates - Stokes parameters
+    # ihdu.header["CTYPE4"] = "STOKES"
+    # ihdu.header["CRPIX4"] = 1
+    # ihdu.header["CDELT4"] = -1
+    # ihdu.header["CRVAL4"] = pol_nums[pol_order[0]]
+    # # Coordinates - Complex
+    # ihdu.header["CTYPE5"] = "COMPLEX"
+    # ihdu.header["CRVAL5"] = 1.0
+    # ihdu.header["CRPIX5"] = 1.0
+    # ihdu.header["CDELT5"] = 1.0
+
     hdulist = fits.HDUList([phdu, ihdu])
     hdulist.writeto(f"{filename}.fits", overwrite=True)
 
@@ -127,9 +217,16 @@ def get_ADP_time_from_unix_epoch():
             time.sleep(0.1)
     return (utc_start_dt-ADP_EPOCH).total_seconds()
 
+def get_time_from_unix_epoch(utcstart):
+    utc_start_dt = datetime.datetime.strptime(utcstart, DATE_FORMAT)
+    return (utc_start_dt-ADP_EPOCH).total_seconds()
+
+
 
 def get_40ms_gulp():
-    npfile=np.load("data/40ms_128chan_gulp_c64.npz")
+    # npfile=np.load("data/40ms_128chan_gulp_c64.npz")
+    # npfile=np.load("data/40ms_128chan_gulp_c64_virtransit.npz")
+    npfile=np.load("data/40ms_128chan_600offset_gulp_c64_virtransit.npz")
     meta=np.concatenate((npfile['meta'].ravel() , [npfile['data'].size], npfile['data'].shape))
     _data=npfile["data"].copy()
     # for i in range(20):
@@ -137,6 +234,31 @@ def get_40ms_gulp():
     return dict(meta=meta.astype(np.double).ravel().copy(),\
             data=npfile['data'].ravel().copy())
 
+
+def get_correction_grid(corr_ker_arr, grid_size, support, nchan):
+    corr_ker_arr = corr_ker_arr.reshape((nchan, support, support))
+    corr_grid_arr = np.zeros((nchan, grid_size, grid_size))
+
+    # corr_grid_arr[:,:,:]=5
+
+    kernel_offset=4
+    for i in range(nchan):
+        corr_grid_arr[i,5:5+support, 5:5+support] = corr_ker_arr[i,:,:]
+
+    corr_grid_arr = np.absolute(
+        np.fft.fftshift(
+            np.transpose(
+                np.fft.fftshift(
+                np.fft.ifft2(corr_grid_arr)
+                ), axes=(0,2,1)
+            )
+            )
+        )**2
+    matplotlib.image.imsave("gpu_corr.png",(corr_grid_arr[50,:,:]))
+    corr_grid_arr = np.reciprocal(corr_grid_arr)
+    corr_grid_arr = corr_grid_arr/corr_grid_arr.sum(axis=(1,2),keepdims=True)
+
+    return (corr_grid_arr).ravel().copy()
 
 if __name__=="__main__":
     # a = gen_phases_lwasv(132, 800)
