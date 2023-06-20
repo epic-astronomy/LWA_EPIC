@@ -464,7 +464,7 @@ template <
 __device__ inline void grid_dual_pol_dx9(
     cg::thread_block tb, const cnib2 *f_eng, const float3 *__restrict__ antpos,
     const float4 *__restrict__ phases, typename FFT::value_type *smem,
-    float* gcf_grid_elem, ImageDiv Div = UPPER, float pix2m=1.0) {
+    float* gcf_grid_elem, ImageDiv Div = UPPER) {
       // auto tb = cg::this_thread_block();
       constexpr int nelements = Support * Support;
       constexpr float inv_nelements = 1.f/float(nelements);
@@ -516,6 +516,10 @@ __device__ inline void grid_dual_pol_dx9(
         __half im = temp_data.x.y;
         temp_data.x.y = temp_data.y.x;
         temp_data.y.x = im;
+
+        // if(blockIdx.x==0 && (xpix>=64 || (ypix-offset)>=64 || xpix<0 || ypix<0) || (xpix + (ypix-offset) * size_of<FFT>::value)>=2048){
+        //   printf("xpix ypix antx anty dx dy: %d %d %f %f %d %d\n",xpix, ypix,antx,anty,dx,dy);
+        // }
 
         atomicAdd(&smem[xpix + (ypix-offset) * size_of<FFT>::value].x, temp_data.x);
         atomicAdd(&smem[xpix + (ypix-offset) * size_of<FFT>::value].y, temp_data.y);

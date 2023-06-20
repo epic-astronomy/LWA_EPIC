@@ -247,7 +247,7 @@ MOFFCuHandler::process_gulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first,
         int chan_offset = i * m_nchan_per_stream;
 
         void* args[] = {
-            &m_f_eng_cu, &m_antpos_cu, &m_phases_cu, &m_nseq_per_gulp, &m_nchan_in, &m_gcf_tex, &m_output_cu, &chan_offset, &p_first, &p_chan0, &p_delta, &m_gcf_elem, &m_correction_grid_d
+            &m_f_eng_cu, &m_antpos_cu, &m_phases_cu, &m_nseq_per_gulp, &m_nchan_in, &m_gcf_tex, &m_output_cu, &chan_offset, &p_first, &m_gcf_elem, &m_correction_grid_d
         };
 
         cuda_check_err(
