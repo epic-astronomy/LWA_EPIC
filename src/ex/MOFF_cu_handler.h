@@ -91,7 +91,7 @@ class MOFFCuHandler
     bool is_correction_kernel_set{false};
     float *m_correction_grid_d{nullptr};
     bool is_correction_grid_set{false};
-    void get_correction_kernel(float* p_out_kernel);
+    void get_correction_kernel(float* p_out_kernel, int p_support_size);
     void set_correction_grid(float* p_corr_grid, int p_grid_size, int p_nchan);
 
     /// Total number of channels per sequence

@@ -164,7 +164,7 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc)
     m_kernel_oversampling_factor = p_desc.kernel_oversampling_factor;
 
     // Allocate the arrays for the over-sampled correction kernel and grid
-    m_support_oversample = m_kernel_oversampling_factor>1 ? m_support_size * m_kernel_oversampling_factor -1: m_support_size;
+    m_support_oversample = m_kernel_oversampling_factor>1 ?m_support_size * m_kernel_oversampling_factor + 1: m_support_size;
     // (int(m_support_size/2)+m_kernel_oversampling_factor/2)*2+1;
     m_correction_grid_h = std::move(hwy::AllocateAligned<float>(m_grid_size * m_grid_size * m_nchan_out));
 
@@ -343,8 +343,8 @@ MOFFCorrelator<Dtype, BuffMngr>::setup_GPU()
 template<typename Dtype, typename BuffMngr>
 void
 MOFFCorrelator<Dtype, BuffMngr>:: reset_correction_grid(int p_nchan){
-    this->get_correction_kernel(m_correction_kernel_h.get());
-    get_correction_grid<float>(m_correction_kernel_h.get(), m_correction_grid_h.get(), m_grid_size, m_support_size, p_nchan, m_kernel_oversampling_factor);
+    this->get_correction_kernel(m_correction_kernel_h.get(), m_support_oversample);
+    get_correction_grid<float>(m_correction_kernel_h.get(), m_correction_grid_h.get(), m_grid_size, m_support_oversample, p_nchan, m_kernel_oversampling_factor);
     this->set_correction_grid(m_correction_grid_h.get(), m_grid_size, p_nchan);
 }
 using float_buf_mngr_t = LFBufMngr<AlignedBuffer<float>>;
