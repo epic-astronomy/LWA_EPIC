@@ -216,12 +216,12 @@ save_image(size_t grid_size, size_t nchan, T* data, std::string filename, dict_t
 }
 
 template<typename T>
-void get_correction_grid(T* correction_kernel, T* out_correction_grid, int grid_size, int support, int nchan){
+void get_correction_grid(T* correction_kernel, T* out_correction_grid, int grid_size, int support, int nchan, int oversample=4){
     py::gil_scoped_acquire acquire;
     auto corr_ker_arr = py::array_t<float>(support * support * nchan, correction_kernel);
     // auto corr_grid_arr = py::array_t<T>(grid_size * grid_size * nchan, out_correction_grid);
 
-    auto corr_grid_res = py::module_::import("epic_utils").attr("get_correction_grid")(corr_ker_arr, grid_size, support, nchan);
+    auto corr_grid_res = py::module_::import("epic_utils").attr("get_correction_grid")(corr_ker_arr, grid_size, support, nchan, oversample);
 
     auto corr_grid_arr = corr_grid_res.cast<
         py::array_t<

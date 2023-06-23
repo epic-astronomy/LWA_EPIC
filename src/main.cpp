@@ -73,6 +73,7 @@ main(int argc, char** argv)
     correlator_options.grid_res_deg=options["imageres"].as<float>();
     correlator_options.support_size=options["support"].as<int>();
     correlator_options.gcf_kernel_dim=std::sqrt(options["aeff"].as<float>())*10;//radius of the kernel in decimeters
+    correlator_options.kernel_oversampling_factor = options["kernel_oversample"].as<int>();
 
 
     auto corr_ptr = std::make_unique<MOFFCorrelator_t>(correlator_options);
@@ -87,7 +88,7 @@ main(int argc, char** argv)
     auto saver_rft = DiskSaver_rft<MOFFCorrelator_t::payload_t>();
     // dummy<default_pkt_assembler::payload_t> dummy_rft;
     VLOG(1)<<"Dummy packet generator";
-    auto dummy_pkt_gen_rft =  dummy_pkt_gen<payload_t,LFBufMngr<AlignedBuffer<uint8_t>>>(1);
+    auto dummy_pkt_gen_rft =  dummy_pkt_gen<payload_t,LFBufMngr<AlignedBuffer<uint8_t>>>(2);
 
     VLOG(1)<<"Setting up the Raft map";
     raft::map m;

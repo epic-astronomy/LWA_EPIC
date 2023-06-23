@@ -59,6 +59,7 @@ struct MOFFCorrelatorDesc
     int buf_size{ 64 * 64 * 132 /*chan*/ * 4 /*floating precision*/ * 2 /*complex*/ * 4 /*pols*/ };
     bool page_lock_bufs{ true };
     int max_tries_acq_buf{ 5 };
+    int kernel_oversampling_factor{2};
 };
 
 struct OutImgDesc

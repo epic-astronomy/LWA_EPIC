@@ -196,7 +196,12 @@ def save_output(output_arr, grid_size, nchan, filename, metadata):
     hdulist = fits.HDUList([phdu, ihdu])
     hdulist.writeto(f"{filename}.fits", overwrite=True)
 
-    matplotlib.image.imsave(f"{filename}.png", (output_arr_sft[50,::-1,:].T))
+    temp_im = output_arr_sft[50,::-1,:].T
+    # temp_im[:,0:4]=0
+    # temp_im[0:4,:]=0
+    # temp_im[:,-4:]=0
+    # temp_im[-4:,:]=0
+    matplotlib.image.imsave(f"{filename}.png", temp_im)
     matplotlib.image.imsave("original_test_out.png",(output_arr[50,:,:]))
 
 
@@ -244,8 +249,39 @@ def get_40ms_gulp():
     return dict(meta=meta.astype(np.double).ravel().copy(),\
             data=npfile['data'].ravel().copy())
 
+def gaussian(x, mu=0, sigma=4):
+    return np.exp(-(x-mu)**2/(2*sigma**2))
 
-def get_correction_grid(corr_ker_arr, grid_size, support, nchan):
+def integrate_pixel(fun,dx, dy,d_per_pixel=1, nsteps=5):
+    sum=0
+    delta = 1/float(nsteps)
+    offset = 1/float(2 * nsteps); 
+
+    #pragma unroll
+    xinit=offset
+    yinit=offset
+    for x in range(nsteps):
+        for y in range(nsteps):
+            xx=x*delta+offset
+            yy=y*delta+offset
+            sum+=fun((dx+xx)*d_per_pixel)*fun((dy+yy)*d_per_pixel)
+
+    return sum
+    
+    
+def get_gaussian_2D(support=3):
+    g = np.zeros((support, support))
+    for xx in range(support):
+        for yy in range(support):
+            x = xx - support/2
+            y = yy - support/2
+
+            g[xx, yy] =  integrate_pixel(gaussian, x, y)
+
+    g/=g.sum()
+    return g
+
+def get_correction_grid(corr_ker_arr, grid_size, support, nchan, oversample=4):
     """
     Generates a correction grid based on the specified kernels
 
@@ -254,29 +290,36 @@ def get_correction_grid(corr_ker_arr, grid_size, support, nchan):
     support: Support size
     nchan: Number of channels in the correction grid
     """
+    grid_size_orig = grid_size
+    grid_size = grid_size * oversample
     corr_ker_arr = corr_ker_arr.reshape((nchan, support, support))
     corr_grid_arr = np.zeros((nchan, grid_size, grid_size))
+
+    offset = (grid_size - grid_size_orig)//2
+
+    g2d = get_gaussian_2D(support)
 
     # corr_grid_arr[:,:,:]=5
 
     kernel_offset=4
     for i in range(nchan):
-        corr_grid_arr[i,5:5+support, 5:5+support] = corr_ker_arr[i,:,:]
+        corr_grid_arr[i,5:5+support, 5:5+support] = corr_ker_arr[i,:,:] #* g2d
 
     corr_grid_arr = np.absolute(
         np.fft.fftshift(
-            np.transpose(
+            np.transpose(# cuFFTDx generates the transpose of the image
                 np.fft.fftshift(
                 np.fft.ifft2(corr_grid_arr)
-                ), axes=(0,2,1)
+                )[:,offset:offset+grid_size_orig, offset:offset+grid_size_orig], axes=(0,2,1)
             )
             )
         )**2
-    matplotlib.image.imsave("gpu_corr.png",(corr_grid_arr[50,:,:]))
+    matplotlib.image.imsave("gpu_corr.png",(corr_grid_arr[9,:,:]))
+    matplotlib.image.imsave("gpu_corr_kernel.png",(corr_ker_arr[9,:,:]))
     corr_grid_arr = np.reciprocal(corr_grid_arr)
     corr_grid_arr = corr_grid_arr/corr_grid_arr.sum(axis=(1,2),keepdims=True)
 
-    return (corr_grid_arr).ravel().copy()
+    return (corr_grid_arr).copy().ravel()
 
 if __name__=="__main__":
     # a = gen_phases_lwasv(132, 800)

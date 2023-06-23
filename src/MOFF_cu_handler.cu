@@ -14,7 +14,7 @@ namespace cg = cooperative_groups;
 void
 MOFFCuHandler::reset_antpos(int p_nchan, float* p_antpos_ptr)
 {
-    cudaSetDevice(m_device_id);
+    cuda_check_err(cudaSetDevice(m_device_id));
     if (is_antpos_set) {
         cudaFree(m_antpos_cu);
     }
@@ -27,7 +27,7 @@ MOFFCuHandler::reset_antpos(int p_nchan, float* p_antpos_ptr)
 void
 MOFFCuHandler::reset_phases(int p_nchan, float* p_phases_ptr)
 {
-    cudaSetDevice(m_device_id);
+    cuda_check_err(cudaSetDevice(m_device_id));
     if (is_phases_set) {
         cudaFree(m_phases_cu);
     }
@@ -42,7 +42,7 @@ MOFFCuHandler::reset_phases(int p_nchan, float* p_phases_ptr)
 void
 MOFFCuHandler::reset_gcf_tex(int p_gcf_tex_dim, float* p_gcf_2D_ptr)
 {
-    cudaSetDevice(m_device_id);
+    cuda_check_err(cudaSetDevice(m_device_id));
     if (is_gcf_tex_set) {
         cudaFreeArray(m_gcf_tex_arr);
         cudaDestroyTextureObject(m_gcf_tex);
@@ -76,7 +76,7 @@ MOFFCuHandler::reset_gcf_tex(int p_gcf_tex_dim, float* p_gcf_2D_ptr)
 void
 MOFFCuHandler::create_gulp_custreams()
 {
-    cudaSetDevice(m_device_id);
+    cuda_check_err(cudaSetDevice(m_device_id));
     m_gulp_custreams.reset();
     m_gulp_custreams = std::make_unique<cudaStream_t[]>(m_nstreams);
     for (int i = 0; i < m_nstreams; ++i) {
@@ -85,14 +85,15 @@ MOFFCuHandler::create_gulp_custreams()
 }
 
 void MOFFCuHandler::reset_gcf_elem(int p_nchan, int p_support, int p_chan0, float p_delta, int p_grid_size){
-    cudaSetDevice(m_device_id);
+    cuda_check_err(cudaSetDevice(m_device_id));
+    std::cout<<"FINE6\n";
     if(is_m_gcf_elem_set){
-        cudaFree(m_gcf_elem);
+        cuda_check_err(cudaFree(m_gcf_elem));
+        is_m_gcf_elem_set = false;
     }
     auto nelements_gcf = (p_support) * (p_support);
     auto nbytes = LWA_SV_NSTANDS * p_nchan * nelements_gcf * sizeof(float);
-
-    cudaMallocManaged(&m_gcf_elem, nbytes);
+    cuda_check_err(cudaMalloc(&m_gcf_elem, nbytes));
     is_m_gcf_elem_set=true;
 
     int block_size = int(MAX_THREADS_PER_BLOCK/nelements_gcf) * nelements_gcf;
@@ -105,16 +106,18 @@ void MOFFCuHandler::reset_gcf_elem(int p_nchan, int p_support, int p_chan0, floa
 }
 
 void MOFFCuHandler::get_correction_kernel(float* p_out_kernel){
-    cudaSetDevice(m_device_id);
+    cuda_check_err(cudaSetDevice(m_device_id));
     if(m_nchan_in==0){
         std::cout<<"Number of input channels is not set. Unable to compute the averaged kernel\n";
         exit(-1);
     }
     int nbytes = m_support_size * m_support_size * m_nchan_in * sizeof(float);
-    if(!is_correction_kernel_set){
-        cudaMalloc(&m_correction_kernel_d, nbytes);
-        is_correction_kernel_set = true;
+    if(is_correction_kernel_set){
+        cudaFree(m_correction_kernel_d);
+        is_correction_kernel_set = false;
     }
+    cuda_check_err(cudaMalloc(&m_correction_kernel_d, nbytes));
+    is_correction_kernel_set = true;
 
     
 
@@ -122,27 +125,32 @@ void MOFFCuHandler::get_correction_kernel(float* p_out_kernel){
 
     cudaMemcpy(p_out_kernel, m_correction_kernel_d, nbytes, cudaMemcpyDeviceToHost);
 
-
+    cudaDeviceSynchronize();
     cuda_check_err(cudaPeekAtLastError());
 }
 //void MOFFCuHandler::set_correction_grid(float* corr_grid);
 
 
 void MOFFCuHandler::set_correction_grid(float* p_in_correction_grid, int p_grid_size, int p_nchan){
+    cuda_check_err(cudaSetDevice(m_device_id));
     int nbytes = p_grid_size * p_grid_size * p_nchan * sizeof(float);
-    if(!is_correction_grid_set){
-        cudaMalloc(&m_correction_grid_d, nbytes);
-        is_correction_grid_set = true;
+    if(is_correction_grid_set){
+        cudaFree(m_correction_grid_d);
+        is_correction_grid_set=false;
     }
+    cuda_check_err(cudaMalloc(&m_correction_grid_d, nbytes));
+    is_correction_grid_set = true;
 
     cuda_check_err(cudaMemcpy(m_correction_grid_d, p_in_correction_grid, nbytes, cudaMemcpyHostToDevice));
-    
+    std::cout<<"FINE3\n";
+    cudaDeviceSynchronize();
+    cuda_check_err(cudaPeekAtLastError());
 }
 
 void
 MOFFCuHandler::reset_data(int p_nchan, size_t p_nseq_per_gulp, float* p_antpos_ptr, float* p_phases_ptr)
 {
-    cudaSetDevice(m_device_id);
+    cuda_check_err(cudaSetDevice(m_device_id));
     m_nseq_per_gulp = p_nseq_per_gulp;
     m_nchan_in = p_nchan;
 
@@ -163,7 +171,7 @@ MOFFCuHandler::set_imaging_kernel()
 {   int smemSize;
     cudaDeviceGetAttribute(&smemSize, cudaDevAttrMaxSharedMemoryPerBlock, m_device_id);
     std::cout<<"Max shared memory per block: "<<smemSize<<" bytes\n";
-    cudaSetDevice(m_device_id);
+    cuda_check_err(cudaSetDevice(m_device_id));
     // assert(m_out_img_desc.img_size == HALF);
     if (m_out_img_desc.img_size == HALF) {
         std::cout<<"Setting the imaging kernel to 64x64\n";
@@ -196,7 +204,7 @@ MOFFCuHandler::set_imaging_kernel()
 void
 MOFFCuHandler::allocate_f_eng_gpu(size_t nbytes)
 {
-    cudaSetDevice(m_device_id);
+    cuda_check_err(cudaSetDevice(m_device_id));
     if (is_f_eng_cu_allocated) {
         cudaFree(m_f_eng_cu);
         is_f_eng_cu_allocated = false;
@@ -209,7 +217,7 @@ MOFFCuHandler::allocate_f_eng_gpu(size_t nbytes)
 void
 MOFFCuHandler::allocate_out_img(size_t p_nbytes)
 {
-    cudaSetDevice(m_device_id);
+    cuda_check_err(cudaSetDevice(m_device_id));
     if (is_out_mem_set) {
         cudaFree(m_output_cu);
         is_out_mem_set = false;
@@ -222,7 +230,7 @@ MOFFCuHandler::allocate_out_img(size_t p_nbytes)
 void
 MOFFCuHandler::set_img_grid_dim()
 {
-    cudaSetDevice(m_device_id);
+    cuda_check_err(cudaSetDevice(m_device_id));
     assert((void("Number of channels per stream cannot be zero"), m_nchan_per_stream > 0));
     if (m_nchan_per_stream > 0) {
         m_img_grid_dim = dim3(m_nchan_per_stream, 1, 1);
@@ -232,7 +240,7 @@ MOFFCuHandler::set_img_grid_dim()
 void
 MOFFCuHandler::process_gulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, bool p_last, int p_chan0, float p_delta)
 {
-    cudaSetDevice(m_device_id);
+    cuda_check_err(cudaSetDevice(m_device_id));
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
@@ -291,14 +299,14 @@ MOFFCuHandler::process_gulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first,
 void
 MOFFCuHandler::destroy_textures(cudaArray_t& p_tex_arr, cudaTextureObject_t& p_tex_obj)
 {
-    cudaSetDevice(m_device_id);
+    cuda_check_err(cudaSetDevice(m_device_id));
     cudaFreeArray(p_tex_arr);
     cudaDestroyTextureObject(p_tex_obj);
 }
 
 MOFFCuHandler::~MOFFCuHandler()
 {
-    cudaSetDevice(m_device_id);
+    cuda_check_err(cudaSetDevice(m_device_id));
     // destroy_textures(m_antpos_tex_arr, m_antpos_tex);
     // destroy_textures(m_phases_tex_arr, m_phases_tex);
     if (is_antpos_set) {
@@ -317,7 +325,7 @@ MOFFCuHandler::~MOFFCuHandler()
     }
 
     if(is_m_gcf_elem_set){
-        cudaFree(m_gcf_elem_set);
+        cudaFree(m_gcf_elem);
     }
 
     if(is_out_mem_set){

@@ -72,6 +72,7 @@ class MOFFCorrelator : public MOFFCuHandler
     float m_delta;
     float m_accum_time;
     int m_ngulps_per_img;
+    int m_kernel_oversampling_factor{2};
 
     bool is_raw_ant_pos_set{ false };
 
@@ -159,10 +160,13 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc)
     m_nchan_out = p_desc.nchan_out;
     LOG_IF(FATAL, m_nchan_out <= 0) << "Number of output channels must be >0.";
 
-    // Allocate the arrays for the correction kernel and grid
+    m_kernel_oversampling_factor = p_desc.kernel_oversampling_factor;
+
+    // Allocate the arrays for the over-sampled correction kernel and grid
+    int support_ovs = (int(m_support_size/2)+m_kernel_oversampling_factor/2)*2+1;
     m_correction_grid_h = std::move(hwy::AllocateAligned<float>(m_grid_size * m_grid_size * m_nchan_out));
 
-    m_correction_kernel_h = std::move(hwy::AllocateAligned<float>(m_nchan_out * m_support_size * m_support_size));
+    m_correction_kernel_h = std::move(hwy::AllocateAligned<float>(m_nchan_out * support_ovs * support_ovs));
 
     m_out_img_desc.img_size = p_desc.img_size;
     m_out_img_desc.nchan_out = m_nchan_out;
@@ -229,9 +233,21 @@ MOFFCorrelator<Dtype, BuffMngr>::reset(int p_nchan, int p_chan0)
       m_nseq_per_gulp,
       m_ant_pos_freq.get(),
       m_phases.get());
-
-    this->reset_gcf_elem(p_nchan, m_support_size, m_chan0, m_delta, m_grid_size);
+    
+    // compute gcf elements on a finer grid
+    int orig_support = m_support_size;
+    int finer_support = (int(orig_support/2)+m_kernel_oversampling_factor/2)*2+1;
+    m_support_size = finer_support;
+    this->reset_gcf_elem(p_nchan
+    , m_support_size
+    , m_chan0
+    , m_delta/float(m_kernel_oversampling_factor)
+    , m_grid_size);
     reset_correction_grid(p_nchan);
+    //recompute the gcf elements with the original support
+    m_support_size = orig_support;
+    this->reset_gcf_elem(p_nchan, m_support_size, m_chan0, m_delta, m_grid_size);
+
 
     return true;
 }
@@ -326,11 +342,7 @@ template<typename Dtype, typename BuffMngr>
 void
 MOFFCorrelator<Dtype, BuffMngr>:: reset_correction_grid(int p_nchan){
     this->get_correction_kernel(m_correction_kernel_h.get());
-    // for(int i=0;i<9;++i){
-    //     std::cout<<"ker: "<<m_correction_kernel_h.get()[i]<<"\n";
-    // }
-    get_correction_grid<float>(m_correction_kernel_h.get(), m_correction_grid_h.get(), m_grid_size, m_support_size, p_nchan);
-
+    get_correction_grid<float>(m_correction_kernel_h.get(), m_correction_grid_h.get(), m_grid_size, m_support_size, p_nchan, m_kernel_oversampling_factor);
     this->set_correction_grid(m_correction_grid_h.get(), m_grid_size, p_nchan);
 }
 using float_buf_mngr_t = LFBufMngr<AlignedBuffer<float>>;

@@ -246,7 +246,7 @@ __device__ float gcf_pixel_integral(cudaTextureObject_t gcf_tex,float dx, float 
  * @param nants 
  * @return  
  */
-__global__ void compute_gcf_elements(float* out, float* antpos, int chan0, float lmbda_scale, cudaTextureObject_t gcf_tex,int grid_size, int support=3, int nants=LWA_SV_NSTANDS){
+__global__ void compute_gcf_elements(float* out, float* antpos, int chan0, float lmbda_scale, cudaTextureObject_t gcf_tex,int grid_size/*unused*/, int support=3, int nants=LWA_SV_NSTANDS){
     int nelements = support * support;
     int half_support = support/2;
     auto tb = cg::this_thread_block();
@@ -301,7 +301,7 @@ __global__ void compute_gcf_elements(float* out, float* antpos, int chan0, float
         
         float norm = antenna_sum[ant]!=0 ? 1.f/antenna_sum[ant]:1.0;
         integral *= norm;
-        if(blockIdx.x==0 && threadIdx.x<49 && ant==0){
+        if(blockIdx.x==9 && threadIdx.x<49 && ant==0){
             printf("%d %d %f\n",dx, dy,  integral);
         }
 
@@ -327,11 +327,14 @@ __global__ void compute_avg_gridding_kernel(float *grid_elems, float *out_kernel
     int ant = threadIdx.x;
     int chan = blockIdx.x;
     int nelemns_per_chan = nelems_per_ant * blockDim.x;
-    int idx = ant * nelems_per_ant + chan * nelemns_per_chan;
+    int grid_idx = ant * nelems_per_ant + chan * nelemns_per_chan;
     
+    // each thread adds all elements of one antenna to the output grid
     for(int i=0;i<nelems_per_ant;++i){
-        atomicAdd(&out_kernel[blockIdx.x * nelems_per_ant + i], grid_elems[idx + i]);
+        atomicAdd(&out_kernel[blockIdx.x * nelems_per_ant + i], grid_elems[grid_idx + i]);
     }
+
+    __syncthreads();
 
     if(threadIdx.x==0){
         float sum = 0;

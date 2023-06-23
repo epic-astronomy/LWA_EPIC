@@ -24,7 +24,8 @@ cxxopts::Options get_options(){
     ("accumulate","Duration of the image accumulation in milliseconds",cxxopts::value<int>()->default_value("40"))
     ("channels","Number of channels in the output image",cxxopts::value<int>()->default_value("128"))
     ("support","Support size of the kernel. Must be a non-zero power of 2",cxxopts::value<int>()->default_value("2"))
-    ("aeff","Antenna effective area (experimental) in sq. m",cxxopts::value<float>()->default_value("25"));
+    ("aeff","Antenna effective area (experimental) in sq. m",cxxopts::value<float>()->default_value("25"))
+    ("kernel_oversample","Factor to over sample the kernel. Must be a power of 2.",cxxopts::value<int>()->default_value("2"));
 
     options.add_options()
     ("h,help","Print usage");
@@ -71,6 +72,11 @@ std::optional<std::string> validate_options(cxxopts::ParseResult& result){
     int support = result["support"].as<int>();
     if(support<=0 || support>MAX_ALLOWED_SUPPORT_SIZE){
         return "Invalid support size: "s+std::to_string(support)+". Support can only be between 1-"s+std::to_string(MAX_ALLOWED_SUPPORT_SIZE);
+    }
+
+    int kos = result["kernel_oversample"].as<int>();
+    if((kos & (kos-1))!=0){
+        return "Kernel oversampling factor must be a power of 2";
     }
 
     return {};

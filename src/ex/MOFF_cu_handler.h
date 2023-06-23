@@ -87,9 +87,9 @@ class MOFFCuHandler
     /// The inverse of the iFFT of this kernel must be multipled with the final image
     /// The correction kernel can be the GCF itself or an average of the GCFs of
     /// individual antennas
-    float *m_correction_kernel_d;
+    float *m_correction_kernel_d{nullptr};
     bool is_correction_kernel_set{false};
-    float *m_correction_grid_d;
+    float *m_correction_grid_d{nullptr};
     bool is_correction_grid_set{false};
     void get_correction_kernel(float* p_out_kernel);
     void set_correction_grid(float* p_corr_grid, int p_grid_size, int p_nchan);
