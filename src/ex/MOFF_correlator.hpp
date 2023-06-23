@@ -73,6 +73,7 @@ class MOFFCorrelator : public MOFFCuHandler
     float m_accum_time;
     int m_ngulps_per_img;
     int m_kernel_oversampling_factor{2};
+    int m_support_oversample{5};
 
     bool is_raw_ant_pos_set{ false };
 
@@ -163,10 +164,11 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc)
     m_kernel_oversampling_factor = p_desc.kernel_oversampling_factor;
 
     // Allocate the arrays for the over-sampled correction kernel and grid
-    int support_ovs = (int(m_support_size/2)+m_kernel_oversampling_factor/2)*2+1;
+    m_support_oversample = m_kernel_oversampling_factor>1 ? m_support_size * m_kernel_oversampling_factor -1: m_support_size;
+    // (int(m_support_size/2)+m_kernel_oversampling_factor/2)*2+1;
     m_correction_grid_h = std::move(hwy::AllocateAligned<float>(m_grid_size * m_grid_size * m_nchan_out));
 
-    m_correction_kernel_h = std::move(hwy::AllocateAligned<float>(m_nchan_out * support_ovs * support_ovs));
+    m_correction_kernel_h = std::move(hwy::AllocateAligned<float>(m_nchan_out * m_support_oversample * m_support_oversample));
 
     m_out_img_desc.img_size = p_desc.img_size;
     m_out_img_desc.nchan_out = m_nchan_out;
@@ -235,17 +237,17 @@ MOFFCorrelator<Dtype, BuffMngr>::reset(int p_nchan, int p_chan0)
       m_phases.get());
     
     // compute gcf elements on a finer grid
-    int orig_support = m_support_size;
-    int finer_support = (int(orig_support/2)+m_kernel_oversampling_factor/2)*2+1;
-    m_support_size = finer_support;
+    // int orig_support = m_support_size;
+    // int finer_support = (int(orig_support/2)+m_kernel_oversampling_factor/2)*2+1;
+    // m_support_size = finer_support;
     this->reset_gcf_elem(p_nchan
-    , m_support_size
+    , m_support_oversample
     , m_chan0
     , m_delta/float(m_kernel_oversampling_factor)
     , m_grid_size);
     reset_correction_grid(p_nchan);
     //recompute the gcf elements with the original support
-    m_support_size = orig_support;
+    // m_support_size = orig_support;
     this->reset_gcf_elem(p_nchan, m_support_size, m_chan0, m_delta, m_grid_size);
 
 
