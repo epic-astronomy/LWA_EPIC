@@ -1,5 +1,5 @@
-#ifndef _STATUSES_H
-#define _STATUSES_H
+#ifndef CONSTANTS
+#define CONSTANTS
 
 #define PI 3.141592653589793238
 #define SOL 299792458.0
@@ -76,4 +76,4 @@ struct ProSphPars{
 
 
 
-#endif
+#endif /* CONSTANTS */

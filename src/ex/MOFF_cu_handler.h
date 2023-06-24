@@ -1,5 +1,5 @@
-#ifndef MOFF_CU_HANDLER_H
-#define MOFF_CU_HANDLER_H
+#ifndef MOFF_CU_HANDLER
+#define MOFF_CU_HANDLER
 #include "channel_descriptor.h"
 #include "constants.h"
 #include "types.hpp"
@@ -174,4 +174,4 @@ class MOFFCuHandler
     ~MOFFCuHandler();
 };
 
-#endif // MOFF_CU_HANDLER_H
+#endif /* MOFF_CU_HANDLER */

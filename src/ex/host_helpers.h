@@ -1,5 +1,5 @@
-#ifndef HOST_HELPERS_H
-#define HOST_HELPERS_H
+#ifndef HOST_HELPERS
+#define HOST_HELPERS
 
 // #include <glog/logging.h>
 #include <iostream>
@@ -52,4 +52,4 @@ cu_mlock(T* ptr, size_t nbytes);
 template<typename T>
 int cu_munlock(T* ptr);
 
-#endif
+#endif /* HOST_HELPERS */

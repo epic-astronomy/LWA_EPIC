@@ -1,5 +1,5 @@
-#ifndef FFTDX_CUH
-#define FFTDX_CUH
+#ifndef FFT_DX
+#define FFT_DX
 #include "constants.h"
 // #include "data_copier.cuh"
 #include "cu_helpers.cuh"
@@ -253,4 +253,4 @@ void* get_imaging_kernel(int support=3){
 
 template void* get_imaging_kernel<FFT128x128>(int support);
 template void* get_imaging_kernel<FFT64x64>(int support);
-#endif // FFTDX_CUH
+#endif /* FFT_DX */

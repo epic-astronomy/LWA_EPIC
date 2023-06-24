@@ -1,5 +1,5 @@
-#ifndef CU_HELPERS_CUH
-#define CU_HELPERS_CUH
+#ifndef CU_HELPERS
+#define CU_HELPERS
 
 #include "constants.h"
 #include "host_helpers.h"
@@ -301,9 +301,9 @@ __global__ void compute_gcf_elements(float* out, float* antpos, int chan0, float
         
         float norm = antenna_sum[ant]!=0 ? 1.f/antenna_sum[ant]:1.0;
         integral *= norm;
-        if(blockIdx.x==9 && threadIdx.x<49 && ant==0){
-            printf("%d %d %f\n",dx, dy,  integral);
-        }
+        // if(blockIdx.x==9 && threadIdx.x<49 && ant==0){
+        //     printf("%d %d %f\n",dx, dy,  integral);
+        // }
 
         out[channel_idx * nants * nelements 
         + ant * nelements 
@@ -353,4 +353,4 @@ __global__ void compute_avg_gridding_kernel(float *grid_elems, float *out_kernel
 
 
 
-#endif // CU_HELPERS_CUH
+#endif /* CU_HELPERS */
