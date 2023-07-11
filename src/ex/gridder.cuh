@@ -507,17 +507,17 @@ __device__ inline void grid_dual_pol_dx9(
 
         float scale = gcf_grid_elem[channel_idx * NStands * nelements + ant * nelements + this_thread_elem];
         auto phase_ant = phases[ant];
-        // cnib _t;
-        // _t.re=1;
-        // _t.im=1;
+        cnib _t;
+        _t.re=1;
+        _t.im=0;
         //For some reason, there is a 1-pixel offset between epic and wsclean
         // images. For now, simply shift the epic sky by 1-pixel in the +y direction
         float c = cosf(3.14/64. * ypix);
         float s = sinf(3.14/64. * ypix); 
         __cms_f(temp_data.x, float2{phase_ant.x*c-phase_ant.y*s, phase_ant.y*c+phase_ant.x*s},f_eng[ant].X,
                 scale);
-        __cms_f(temp_data.y, float2{phase_ant.z, phase_ant.w}, f_eng[ant].Y,
-                scale);
+        __cms_f(temp_data.y, float2{phase_ant.z*c-phase_ant.w*s, phase_ant.w*c+phase_ant.z*s}, f_eng[ant].Y,
+                scale); 
 
         // Re-arrange into RRII layout
         __half im = temp_data.x.y;
