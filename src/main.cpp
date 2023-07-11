@@ -67,6 +67,7 @@ main(int argc, char** argv)
     auto correlator_options = MOFFCorrelatorDesc();
     correlator_options.accum_time_ms = options["accumulate"].as<int>();
     correlator_options.nseq_per_gulp = options["nts"].as<int>();
+    correlator_options.nchan_out = options["channels"].as<int>();
     if(options["imagesize"].as<int>()==64){
         correlator_options.img_size=HALF;//defaults to full
     }
