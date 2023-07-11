@@ -15,6 +15,8 @@ class dummy_pkt_gen : public raft::kernel
     unsigned int m_n_pkts{3};
     const int m_ngulps{20};
     const int m_ngulps_per_seq{1000};
+    const int m_nchan_in{1};
+    const int m_chan0{2000}; //1128+600
     std::unique_ptr<BufferMngr> m_buf_mngr{nullptr};
   public:
     dummy_pkt_gen(unsigned int p_n_pkts=1)
@@ -24,6 +26,7 @@ class dummy_pkt_gen : public raft::kernel
         VLOG(3)<<"Dummy pkt constructor";
         m_buf_mngr = std::make_unique<BufferMngr>(m_ngulps, m_ngulps_per_seq*SINGLE_SEQ_SIZE);
         output.addPort<Payload>("gulp");
+
     }
 
     virtual raft::kstatus run() override
@@ -32,6 +35,7 @@ class dummy_pkt_gen : public raft::kernel
             VLOG(3)<<"Generating a gulp";
             auto pld = m_buf_mngr.get()->acquire_buf();
             get_40ms_gulp(pld.get_mbuf()->get_data_ptr());
+            // std::this_thread::sleep_for( std::chrono::milliseconds( 40 ) );
 
             auto& mref=pld.get_mbuf()->get_metadataref();
             mref["seq_start"] = uint64_t(329008696996015680);
@@ -39,10 +43,10 @@ class dummy_pkt_gen : public raft::kernel
             int nseqs = m_ngulps_per_seq;
             mref["nseqs"] = nseqs;
             mref["gulp_len_ms"] = (m_ngulps_per_seq) * SAMPLING_LEN_uS * 1e3;
-            mref["nchan"] = uint8_t(128);
-            mref["chan0"] = int64_t(1128); // to meet alignment requirements
+            mref["nchan"] = uint8_t(m_nchan_in);
+            mref["chan0"] = int64_t(m_chan0); // to meet alignment requirements
             mref["data_order"] =  "t_maj"s;
-            mref["nbytes"] = 128 * LWA_SV_NPOLS * nseqs * LWA_SV_NSTANDS * 1/*bytes*/;
+            mref["nbytes"] = m_nchan_in * LWA_SV_NPOLS * nseqs * LWA_SV_NSTANDS * 1/*bytes*/;
 
 
             output["gulp"].push(pld);
