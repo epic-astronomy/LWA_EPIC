@@ -1,5 +1,5 @@
-#ifndef MOFF_CORRELATOR_HPP
-#define MOFF_CORRELATOR_HPP
+#ifndef MOFF_CORRELATOR
+#define MOFF_CORRELATOR
 
 #include "MOFF_cu_handler.h"
 #include "buffer.hpp"
@@ -164,7 +164,7 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc)
     m_kernel_oversampling_factor = p_desc.kernel_oversampling_factor;
 
     // Allocate the arrays for the over-sampled correction kernel and grid
-    m_support_oversample = m_kernel_oversampling_factor>1 ?m_support_size * m_kernel_oversampling_factor + 1: m_support_size;
+    m_support_oversample = m_kernel_oversampling_factor>1 ?m_support_size * m_kernel_oversampling_factor: m_support_size;
     // (int(m_support_size/2)+m_kernel_oversampling_factor/2)*2+1;
     m_correction_grid_h = std::move(hwy::AllocateAligned<float>(m_grid_size * m_grid_size * m_nchan_out));
 
@@ -324,7 +324,10 @@ void
 MOFFCorrelator<Dtype, BuffMngr>::setup_GPU()
 {
     VLOG(2)<<"Allocating output image";
-    this->allocate_out_img(m_nchan_out * std::pow(m_grid_size, 2) * std::pow(int(m_pol_mode), 2) * sizeof(float));
+    this->allocate_out_img(m_nchan_out * std::pow(m_grid_size, 2) 
+    //* std::pow(int(m_pol_mode), 2) 
+    * sizeof(float) * 6 /*XX_re, YY_re*, X*Y, XY* */
+    );
     VLOG(2)<<"Initializing GCF texture";
     reset_gcf_kernel2D(m_gcf_tex_dim);
     this->reset_gcf_tex(m_gcf_tex_dim, m_gcf_kernel2D.get());
@@ -350,4 +353,4 @@ MOFFCorrelator<Dtype, BuffMngr>:: reset_correction_grid(int p_nchan){
 using float_buf_mngr_t = LFBufMngr<AlignedBuffer<float>>;
 using MOFFCorrelator_t = MOFFCorrelator<uint8_t, float_buf_mngr_t>;
 
-#endif // MOFF_CORRELATOR_HPP
+#endif /* MOFF_CORRELATOR */
