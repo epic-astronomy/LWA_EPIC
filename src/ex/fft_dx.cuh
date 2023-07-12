@@ -85,7 +85,9 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
       size_of<FFT>::value; // blockDim.x * FFT::elements_per_thread;
 
   complex_type thread_data[FFT::elements_per_thread];
-  float stokes_I[FFT::elements_per_thread] = {0};
+  float XX[FFT::elements_per_thread] = {0};
+  float YY[FFT::elements_per_thread] = {0};
+  
   int channel_idx = blockIdx.x + chan_offset;
 
   //   copy antenna positions into shared memory
@@ -186,15 +188,23 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
       // auto xx_yy = thread_data[_reg].x * thread_data[_reg].x +
       //              thread_data[_reg].y * thread_data[_reg].y;
       // stokes_I[_reg] += float(xx_yy.x + xx_yy.y);
-      stokes_I[_reg] += float(thread_data[_reg].x.x * thread_data[_reg].x.x + thread_data[_reg].y.x * thread_data[_reg].y.x);
+      XX[_reg] += float(thread_data[_reg].x.x * thread_data[_reg].x.x + thread_data[_reg].y.x * thread_data[_reg].y.x);
+      YY[_reg] += float(thread_data[_reg].x.y * thread_data[_reg].x.y + thread_data[_reg].y.y * thread_data[_reg].y.y);
     }
     __syncthreads();
   }
 
   for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
     auto index = (threadIdx.x + _reg * stride) + threadIdx.y * row_size;
-    output_g[channel_idx * row_size * row_size + index] = stokes_I[_reg] * gcf_correction_grid[channel_idx * row_size * row_size + index];
+    output_g[ channel_idx * row_size * row_size + index] = XX[_reg] * gcf_correction_grid[channel_idx * row_size * row_size + index];  
   }
+
+  for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
+    auto index = (threadIdx.x + _reg * stride) + threadIdx.y * row_size;
+    output_g[gridDim.x * row_size * row_size + channel_idx * row_size * row_size + index] = YY[_reg] * gcf_correction_grid[channel_idx * row_size * row_size + index];  
+  }
+
+
 }
 
 using FFT64x64 =

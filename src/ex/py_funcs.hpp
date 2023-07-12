@@ -198,7 +198,7 @@ save_image(size_t grid_size, size_t nchan, T* data, std::string filename, dict_t
 {
     py::gil_scoped_acquire acquire;
     VLOG(3)<<"type of output data type: "<<sizeof(T);
-    auto result = py::array_t<T>(grid_size * grid_size * nchan, data);
+    auto result = py::array_t<T>(grid_size * grid_size * nchan * 2, data);
 
     py::dict meta_dict;
     for(auto it=metadata.begin();it!=metadata.end(); ++it){
