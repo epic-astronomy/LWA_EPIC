@@ -78,15 +78,19 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
 
 
 
-  constexpr int fft_steps = 2;
+  constexpr int fft_steps = 2; // row-wise followed by column-wise
 
   constexpr int stride = size_of<FFT>::value / FFT::elements_per_thread;
   constexpr int row_size =
       size_of<FFT>::value; // blockDim.x * FFT::elements_per_thread;
 
   complex_type thread_data[FFT::elements_per_thread];
-  float XX[FFT::elements_per_thread] = {0};
-  float YY[FFT::elements_per_thread] = {0};
+  // float XX[FFT::elements_per_thread] = {0};
+  // float YY[FFT::elements_per_thread] = {0};
+  using pol_t = float2;
+  pol_t stokes[FFT::elements_per_thread] = {0};
+  pol_t* out_g4 = reinterpret_cast<pol_t*>(output_g);
+  volatile float _temp;
   // float U[FFT::elements_per_thread] = {0};
   // float V[FFT::elements_per_thread] = {0};
   
@@ -185,13 +189,20 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
       }
       __syncthreads();
     }
+    _temp+=seq_no;
 
     for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
+      float xx = float(thread_data[_reg].x.x * thread_data[_reg].x.x + thread_data[_reg].y.x * thread_data[_reg].y.x);
+      float yy = float(thread_data[_reg].x.y * thread_data[_reg].x.y + thread_data[_reg].y.y * thread_data[_reg].y.y);
+      // float uu = float(thread_data[_reg].x.x * thread_data[_reg].y.x + thread_data[_reg].x.y * thread_data[_reg].y.y);
+      // float vv = float(thread_data[_reg].x.y * thread_data[_reg].y.x - thread_data[_reg].x.x * thread_data[_reg].y.y);
+      stokes[_reg]+=pol_t{xx, yy};
       // auto xx_yy = thread_data[_reg].x * thread_data[_reg].x +
       //              thread_data[_reg].y * thread_data[_reg].y;
       // stokes_I[_reg] += float(xx_yy.x + xx_yy.y);
-      XX[_reg] += float(thread_data[_reg].x.x * thread_data[_reg].x.x + thread_data[_reg].y.x * thread_data[_reg].y.x);
-      YY[_reg] += float(thread_data[_reg].x.y * thread_data[_reg].x.y + thread_data[_reg].y.y * thread_data[_reg].y.y);
+
+      // XX[_reg] += float(thread_data[_reg].x.x * thread_data[_reg].x.x + thread_data[_reg].y.x * thread_data[_reg].y.x);
+      // YY[_reg] += float(thread_data[_reg].x.y * thread_data[_reg].x.y + thread_data[_reg].y.y * thread_data[_reg].y.y);
 
       // U[_reg] += float(thread_data[_reg].x.x * thread_data[_reg].y.x + thread_data[_reg].x.y * thread_data[_reg].y.y);
 
@@ -199,18 +210,28 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
     }
     __syncthreads();
   }
-
   for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
     auto index = (threadIdx.x + _reg * stride) + threadIdx.y * row_size;
-    auto xx = XX[_reg] * gcf_correction_grid[channel_idx * row_size * row_size + index];  
-    output_g[ channel_idx * row_size * row_size + index] = is_first_gulp ? xx : output_g[ channel_idx * row_size * row_size + index] + xx;
+    auto gcf_corr = gcf_correction_grid[channel_idx * row_size * row_size + index];  
+    // output_g[ channel_idx * row_size * row_size + index] = is_first_gulp ? xx : output_g[ channel_idx * row_size * row_size + index] + xx;
+    if(is_first_gulp){
+      out_g4[channel_idx * row_size * row_size + index]=stokes[_reg]*gcf_corr;
+    }
+    else{
+      out_g4[channel_idx * row_size * row_size + index]+=stokes[_reg]*gcf_corr;
+    }
   }
+  // for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
+  //   auto index = (threadIdx.x + _reg * stride) + threadIdx.y * row_size;
+  //   auto xx = XX[_reg] * gcf_correction_grid[channel_idx * row_size * row_size + index];  
+  //   output_g[ channel_idx * row_size * row_size + index] = is_first_gulp ? xx : output_g[ channel_idx * row_size * row_size + index] + xx;
+  // }
 
-  for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
-    auto index = (threadIdx.x + _reg * stride) + threadIdx.y * row_size;
-    auto yy = YY[_reg] * gcf_correction_grid[channel_idx * row_size * row_size + index]; 
-    output_g[gridDim.x * row_size * row_size + channel_idx * row_size * row_size + index] = is_first_gulp ? yy :  output_g[gridDim.x * row_size * row_size + channel_idx * row_size * row_size + index] + yy;  
-  }
+  // for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
+  //   auto index = (threadIdx.x + _reg * stride) + threadIdx.y * row_size;
+  //   auto yy = YY[_reg] * gcf_correction_grid[channel_idx * row_size * row_size + index]; 
+  //   output_g[gridDim.x * row_size * row_size + channel_idx * row_size * row_size + index] = is_first_gulp ? yy :  output_g[gridDim.x * row_size * row_size + channel_idx * row_size * row_size + index] + yy;  
+  // }
   // for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
   //   auto index = (threadIdx.x + _reg * stride) + threadIdx.y * row_size;
   // auto uu = U[_reg] * gcf_correction_grid[channel_idx * row_size * row_size + index]; 
@@ -265,7 +286,7 @@ void* get_imaging_kernel(int support=3){
         return (void*) (block_fft_kernel<FFT,3>);
         case 4:
         return (void*) (block_fft_kernel<FFT,4>);
-        case 5:
+        case 5: 
         return (void*) (block_fft_kernel<FFT,5>);
         case 6:
         return (void*) (block_fft_kernel<FFT,6>);
