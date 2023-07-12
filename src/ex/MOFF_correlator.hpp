@@ -208,13 +208,16 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc)
 template<typename Dtype, typename BuffMngr>
 bool
 MOFFCorrelator<Dtype, BuffMngr>::reset(int p_nchan, int p_chan0)
-{
+{   
     if (p_nchan == m_nchan_in && p_chan0 == m_chan0) {
         return false;
     }
 
     if (p_nchan != m_nchan_in) {
         m_nchan_in = p_nchan;
+        if(m_nchan_out > m_nchan_in){
+            LOG(FATAL)<<"Number of output channels exceeds the input channels";
+        }
         this->m_f_eng_bytes = m_nchan_in * LWA_SV_INP_PER_CHAN * m_nseq_per_gulp;
         this->m_nbytes_f_eng_per_stream = m_f_eng_bytes / m_nstreams;
         LOG(INFO) << "Allocating F-eng data on the GPU. Size: " << this->m_f_eng_bytes << " bytes";
@@ -240,15 +243,15 @@ MOFFCorrelator<Dtype, BuffMngr>::reset(int p_nchan, int p_chan0)
     // int orig_support = m_support_size;
     // int finer_support = (int(orig_support/2)+m_kernel_oversampling_factor/2)*2+1;
     // m_support_size = finer_support;
-    this->reset_gcf_elem(p_nchan
+    this->reset_gcf_elem(m_nchan_out
     , m_support_oversample
     , m_chan0
     , m_delta/float(m_kernel_oversampling_factor)
     , m_grid_size);
-    reset_correction_grid(p_nchan);
+    reset_correction_grid(m_nchan_out);
     //recompute the gcf elements with the original support
     // m_support_size = orig_support;
-    this->reset_gcf_elem(p_nchan, m_support_size, m_chan0, m_delta, m_grid_size);
+    this->reset_gcf_elem(m_nchan_out, m_support_size, m_chan0, m_delta, m_grid_size);
 
 
     return true;
@@ -346,7 +349,7 @@ MOFFCorrelator<Dtype, BuffMngr>::setup_GPU()
 template<typename Dtype, typename BuffMngr>
 void
 MOFFCorrelator<Dtype, BuffMngr>:: reset_correction_grid(int p_nchan){
-    this->get_correction_kernel(m_correction_kernel_h.get(), m_support_oversample);
+    this->get_correction_kernel(m_correction_kernel_h.get(), m_support_oversample, p_nchan);
     get_correction_grid<float>(m_correction_kernel_h.get(), m_correction_grid_h.get(), m_grid_size, m_support_oversample, p_nchan, m_kernel_oversampling_factor);
     this->set_correction_grid(m_correction_grid_h.get(), m_grid_size, p_nchan);
 }

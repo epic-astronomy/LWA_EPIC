@@ -1,5 +1,5 @@
-#ifndef TYPES_H
-#define TYPES_H
+#ifndef TYPES
+#define TYPES
 
 #include "constants.h"
 #include <any>
@@ -33,7 +33,7 @@ struct __attribute__((aligned(1))) cnib
  */
 struct __attribute__((aligned(2))) cnib2
 {
-    cnib X, Y;
+    cnib X, Y; 
 };
 
 /// Python dict-like data structure to describe Meta data
@@ -56,7 +56,7 @@ struct MOFFCorrelatorDesc
     int gcf_kernel_dim{40}; // decimeters
     int device_id{ 0 };
     int nbuffers{ 20 };
-    int buf_size{ 64 * 64 * 132 /*chan*/ * 4 /*floating precision*/ * 2 /*complex*/ * 4 /*pols*/ };
+    int buf_size{ 64 * 64 * 132 /*chan*/ * sizeof(float) * 2 /*complex*/ * 4 /*pols*/ };
     bool page_lock_bufs{ true };
     int max_tries_acq_buf{ 5 };
     int kernel_oversampling_factor{2};
@@ -82,4 +82,4 @@ struct FFTDxDesc{
 };
 
 
-#endif // TYPES_H
+#endif /* TYPES */

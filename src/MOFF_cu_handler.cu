@@ -97,20 +97,21 @@ void MOFFCuHandler::reset_gcf_elem(int p_nchan, int p_support, int p_chan0, floa
 
     int block_size = int(MAX_THREADS_PER_BLOCK/nelements_gcf) * nelements_gcf;
 
-    std::cout<<"Pre-computing GCF elements\n"<<p_support<<std::endl;
+    std::cout<<"Pre-computing GCF elements\n"<<p_support<<" "<<block_size<<std::endl;
     compute_gcf_elements<<<p_nchan, block_size>>>(m_gcf_elem, m_antpos_cu, p_chan0, p_delta, m_gcf_tex,p_grid_size, (p_support), LWA_SV_NSTANDS);
+    std::cout<<"Done\n";
 
     cudaDeviceSynchronize();
     cuda_check_err(cudaPeekAtLastError());
 }
 
-void MOFFCuHandler::get_correction_kernel(float* p_out_kernel, int p_support){
+void MOFFCuHandler::get_correction_kernel(float* p_out_kernel, int p_support, int p_nchan){
     cuda_check_err(cudaSetDevice(m_device_id));
     if(m_nchan_in==0){
         std::cout<<"Number of input channels is not set. Unable to compute the averaged kernel\n";
         exit(-1);
     }
-    int nbytes = p_support * p_support * m_nchan_in * sizeof(float);
+    int nbytes = p_support * p_support * p_nchan * sizeof(float);
     if(is_correction_kernel_set){
         cudaFree(m_correction_kernel_d);
         is_correction_kernel_set = false;
@@ -120,7 +121,7 @@ void MOFFCuHandler::get_correction_kernel(float* p_out_kernel, int p_support){
 
     
 
-    compute_avg_gridding_kernel<<<m_nchan_in, LWA_SV_NSTANDS>>>(m_gcf_elem, m_correction_kernel_d ,m_nchan_in, p_support);
+    compute_avg_gridding_kernel<<<p_nchan, LWA_SV_NSTANDS>>>(m_gcf_elem, m_correction_kernel_d ,p_nchan, p_support);
 
     cudaMemcpy(p_out_kernel, m_correction_kernel_d, nbytes, cudaMemcpyDeviceToHost);
 
