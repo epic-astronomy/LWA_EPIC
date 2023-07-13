@@ -48,10 +48,10 @@ struct MOFFCorrelatorDesc
     IMAGING_POL_MODE pol_mode{ DUAL_POL };
     IMAGE_SIZE img_size{ FULL };
     float grid_res_deg{1};    
-    int support_size{ 2 };
+    int support_size{ 3 };
     bool is_remove_autocorr{ false };
     /// @brief Number of streams to split a gulp into. Can be at most MAX_GULP_STREAMS
-    int nstreams{ 1 };
+    int nstreams{ 4 };
     int nchan_out{ 128 };
     int gcf_kernel_dim{40}; // decimeters
     int device_id{ 0 };
