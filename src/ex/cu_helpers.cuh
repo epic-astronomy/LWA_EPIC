@@ -5,6 +5,7 @@
 #include "host_helpers.h"
 #include "types.hpp"
 #include <cuda_fp16.h>
+#include <cuda_bf16.h>
 #include <cufftdx.hpp>
 #include <iostream>
 #include <stdexcept>
@@ -376,6 +377,8 @@ inline __host__ __device__ void operator+=(float3 &a, float3 b)
     a.z += b.z;
 }
 
+
+
 inline __host__ __device__ float2 operator*(float2 a, float2 b)
 {
     return make_float2(a.x * b.x, a.y * b.y);
@@ -399,6 +402,16 @@ inline __host__ __device__ float4 operator*(float4 a, float4 b)
 inline __host__ __device__ float2 operator+(float2 a, float2 b)
 {
     return make_float2(a.x + b.x, a.y + b.y);
+}
+
+inline __host__ __device__ float3 operator+(float3 a, float3 b)
+{
+    return make_float3(a.x + b.x, a.y + b.y, a.z + b.z);
+}
+
+inline __host__ __device__ float4 operator*(float4 a, float b)
+{
+    return make_float4(a.x * b, a.y * b, a.z * b,  a.w * b);
 }
 
 

@@ -7,6 +7,7 @@
 #include "types.hpp"
 #include <cooperative_groups.h>
 #include <cuda_fp16.h>
+#include <cuda_bf16.h>
 #include <cufftdx.hpp>
 #include <type_traits>
 
@@ -88,7 +89,8 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
 
   using pol_t = float2;
   pol_t stokes[FFT::elements_per_thread] = {0};
-  pol_t* out_g4 = reinterpret_cast<pol_t*>(output_g);
+  // __nv_bfloat162 stokesb[FFT::elements_per_thread] = {__nv_bfloat162(0.,0.)};
+  pol_t* out_polv = reinterpret_cast<pol_t*>(output_g);
   volatile float _temp;
   
   int channel_idx = blockIdx.x + chan_offset;
@@ -188,19 +190,25 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
     }
     _temp+=seq_no;
 
+    // Accumulate cross-pols using on-chip memory.
+    // This would lead to spilling
     for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
       float xx = float(thread_data[_reg].x.x * thread_data[_reg].x.x + thread_data[_reg].y.x * thread_data[_reg].y.x);
       float yy = float(thread_data[_reg].x.y * thread_data[_reg].x.y + thread_data[_reg].y.y * thread_data[_reg].y.y);
       // float uu = float(thread_data[_reg].x.x * thread_data[_reg].y.x + thread_data[_reg].x.y * thread_data[_reg].y.y);
       // float vv = float(thread_data[_reg].x.y * thread_data[_reg].y.x - thread_data[_reg].x.x * thread_data[_reg].y.y);
+
       stokes[_reg]+=pol_t{xx, yy};
+      // stokesb[_reg]+=__nv_bfloat162(xx, yy);
     }
     __syncthreads();
   }
   for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
     auto index = (threadIdx.x + _reg * stride) + threadIdx.y * row_size;
     auto gcf_corr = gcf_correction_grid[channel_idx * row_size * row_size + index];  
-    out_g4[ channel_idx * row_size * row_size + index] = is_first_gulp ? stokes[_reg]*gcf_corr : out_g4[ channel_idx * row_size * row_size + index] + stokes[_reg]*gcf_corr;
+    // auto stk = __bfloat1622float2(stokesb[_reg]);
+    auto stk = stokes[_reg];
+    out_polv[ channel_idx * row_size * row_size + index] = is_first_gulp ? stk *gcf_corr : out_polv[ channel_idx * row_size * row_size + index] + stk *gcf_corr;
     
   }
 }
