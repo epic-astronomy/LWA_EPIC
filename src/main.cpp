@@ -39,6 +39,7 @@ main(int argc, char** argv)
     py::gil_scoped_release release;
     FLAGS_logtostderr = 1;
     google::InitGoogleLogging(argv[0]);
+    google::EnableLogCleaner(3);
 
     auto option_list = get_options();
     VLOG(3)<<"Parsing options";
