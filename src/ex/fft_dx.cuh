@@ -92,7 +92,6 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
   __nv_bfloat162 stokes_xx_yy[FFT::elements_per_thread] = {__nv_bfloat162(0.,0.)};
   __nv_bfloat162 stokes_U_V[FFT::elements_per_thread] = {__nv_bfloat162(0.,0.)};
   pol_t* out_polv = reinterpret_cast<pol_t*>(output_g);
-  volatile float _temp;
   
   int channel_idx = blockIdx.x + chan_offset;
 
@@ -114,8 +113,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
     // volatile int idx = 200;
     for (int i = tb.thread_rank();
          i < size_of<FFT>::value * size_of<FFT>::value / 2; i += tb.size()) {
-      shared_mem[i].x = __half2half2(0);
-      shared_mem[i].y = __half2half2(0);
+      shared_mem[i] = __half2half2(0);
     }
     for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
       thread_data[_reg] = __half2half2(0);
@@ -145,8 +143,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
 
     for (int i = tb.thread_rank();
          i < size_of<FFT>::value * size_of<FFT>::value / 2; i += tb.size()) {
-      shared_mem[i].x = __half2half2(0);
-      shared_mem[i].y = __half2half2(0);
+      shared_mem[i] = __half2half2(0);
     }
 
     gridder(
@@ -182,34 +179,30 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
         ///////////////////////////////////////
         // To complete the IFFT, transpose the grid and IFFT on it, which is
         //  equivalent to a column-wise IFFT.
-        // Load everything into shared memory and normalize
-        // this ensures there is no overflow
+        // Load everything into shared memory and normalize.
+        // This ensures there is no overflow.
         transpose_tri<FFT>(thread_data, shared_mem,
                            /*_norm=*/half(32.) / half(row_size));
       }
       __syncthreads();
     }
-    _temp+=seq_no;
 
     // Accumulate cross-pols using on-chip memory.
     // This would lead to spilling and may result in reduced occupancy
     // Using bf16 instead of f32 can alleviate this issue
     for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
       float xx = compute_xx<float, FFT>(thread_data[_reg]);
-      // float(thread_data[_reg].x.x * thread_data[_reg].x.x + thread_data[_reg].y.x * thread_data[_reg].y.x);
-      float yy = compute_yy<float,FFT>(thread_data[_reg]);
-      // float(thread_data[_reg].x.y * thread_data[_reg].x.y + thread_data[_reg].y.y * thread_data[_reg].y.y);
+      float yy = compute_yy<float, FFT>(thread_data[_reg]);
       float uu = compute_uu<float, FFT>(thread_data[_reg]);
-      // float(thread_data[_reg].x.x * thread_data[_reg].y.x + thread_data[_reg].x.y * thread_data[_reg].y.y);
       float vv = compute_vv<float, FFT>(thread_data[_reg]);
-      // float(thread_data[_reg].x.y * thread_data[_reg].y.x - thread_data[_reg].x.x * thread_data[_reg].y.y);
 
       // stokes[_reg]+=pol_t{xx, yy};
-      stokes_xx_yy[_reg]+=__nv_bfloat162(xx, yy);
-      stokes_U_V[_reg]+=__nv_bfloat162(uu,vv);
+      stokes_xx_yy[_reg] += __nv_bfloat162(xx, yy);
+      stokes_U_V[_reg] += __nv_bfloat162(uu,vv);
     }
     __syncthreads();
-  }
+  } // End of gulp loop
+
   for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
     auto index = (threadIdx.x + _reg * stride) + threadIdx.y * row_size;
     auto gcf_corr = gcf_correction_grid[channel_idx * row_size * row_size + index];  
