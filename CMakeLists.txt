@@ -78,7 +78,7 @@ set(CMAKE_CUDA_COMPILER "/home/batman/miniconda3/envs/epic310/bin/nvcc")
 
 add_library(epic_cu STATIC src/MOFF_cu_handler.cu src/ex/host_helpers.cu)
 target_compile_features(epic_cu PUBLIC cxx_std_17)
-target_compile_options(epic_cu PRIVATE -O3 -use_fast_math --ptxas-options=-v -Xptxas -v)
+target_compile_options(epic_cu PRIVATE -O3 -use_fast_math --ptxas-options=-v  -Xptxas -v -extra-device-vectorization)
 
 set_target_properties( epic_cu
                        PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
