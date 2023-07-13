@@ -484,10 +484,8 @@ __device__ inline void grid_dual_pol_dx9(
 
       for(int ant=this_thread_ant;ant<NStands;ant+=nants_per_pass){
 
-        typename FFT::value_type temp_data; //__half2half2(0);
-        temp_data.x = __half2half2(0);
-        temp_data.y = __half2half2(0);
-
+        typename FFT::value_type temp_data;
+        temp_data = __half2half2(0);
 
         int dy = half_support - (this_thread_elem) / (Support);
         int dx = (this_thread_elem) % (Support) - half_support;
@@ -507,9 +505,9 @@ __device__ inline void grid_dual_pol_dx9(
 
         float scale = gcf_grid_elem[channel_idx * NStands * nelements + ant * nelements + this_thread_elem];
         auto phase_ant = phases[ant];
-        cnib _t;
-        _t.re=1;
-        _t.im=0;
+        // cnib _t;
+        // _t.re=1;
+        // _t.im=0;
         //For some reason, there is a 1-pixel offset between epic and wsclean
         // images. For now, simply shift the epic sky by 1-pixel in the +y direction
         float c = cosf(3.14/64. * ypix);
