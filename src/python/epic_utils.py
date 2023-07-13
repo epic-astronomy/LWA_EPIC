@@ -105,7 +105,7 @@ def save_output(output_arr, grid_size, nchan, filename, metadata):
     metadata: Dict with the metatadata to be written to the fits file
     """
     start = time.time()
-    output_arr = output_arr.reshape((nchan, grid_size, grid_size, 2))
+    output_arr = output_arr.reshape((nchan, grid_size, grid_size, 4))
     # output_arr_sft = np.fft.fftshift(output_arr, axes=(2, 3))
 
     # print(metadata)
@@ -120,8 +120,6 @@ def save_output(output_arr, grid_size, nchan, filename, metadata):
         format="unix",
         precision=6,
     ).isot
-
-
 
     sll = (
         2 * metadata["grid_size"] * np.sin(np.pi * metadata["grid_res"] / 360)
@@ -174,9 +172,9 @@ def save_output(output_arr, grid_size, nchan, filename, metadata):
     ).transform_to(FK5(equinox="J2000"))
 
     # img_data = np.transpose(output_arr[:, :, :, :], (0, 1, 3, 2))
-    img_data = np.transpose(output_arr[:, :, :, :], (3,0,2,1))
-    img_data = np.fft.fftshift(img_data, axes=(2,3))[:, :, ::-1, :]
-    img_data = img_data / img_data.max(axis=(2,3), keepdims=True)
+    img_data = np.transpose(output_arr[:, :, :, :], (3, 0, 2, 1))
+    img_data = np.fft.fftshift(img_data, axes=(2, 3))[:, :, ::-1, :]
+    img_data = img_data / img_data.max(axis=(2, 3), keepdims=True)
     ihdu = fits.ImageHDU(img_data)
 
     ihdu.header["DATETIME"] = t0.isot
@@ -188,7 +186,7 @@ def save_output(output_arr, grid_size, nchan, filename, metadata):
     ihdu.header["CDELT1"] = delta_x
     ihdu.header["CRVAL1"] = coords.ra.deg
     ihdu.header["CUNIT1"] = "deg"
-    
+
     ihdu.header["CTYPE2"] = "DEC--SIN"
     ihdu.header["CRPIX2"] = crit_pix_y
     ihdu.header["CDELT2"] = delta_y
@@ -217,7 +215,7 @@ def save_output(output_arr, grid_size, nchan, filename, metadata):
 
     chan_out = 0
 
-    temp_im = (img_data[0, chan_out, :, :])
+    temp_im = img_data[0, chan_out, :, :]
     # temp_im[:,0:4]=0
     # temp_im[0:4,:]=0
     # temp_im[:,-4:]=0
@@ -382,8 +380,11 @@ def get_correction_grid(corr_ker_arr, grid_size, support, nchan, oversample=4):
         "gpu_corr.png", (np.fft.fftshift(corr_grid_arr[0, :, :]))
     )
     matplotlib.image.imsave("gpu_corr_kernel.png", (corr_ker_arr[0, :, :]))
-    ac = corr_ker_arr[0, :, :]/corr_ker_arr[0, :, :].sum()
-    np.savez('auto_corr.npz',arr=correlate2d(corr_ker_arr[0, :, :],corr_ker_arr[0, :, :]))
+    ac = corr_ker_arr[0, :, :] / corr_ker_arr[0, :, :].sum()
+    np.savez(
+        "auto_corr.npz",
+        arr=correlate2d(corr_ker_arr[0, :, :], corr_ker_arr[0, :, :]),
+    )
     corr_grid_arr = np.reciprocal(corr_grid_arr)
     corr_grid_arr = corr_grid_arr / corr_grid_arr.sum(
         axis=(1, 2), keepdims=True
