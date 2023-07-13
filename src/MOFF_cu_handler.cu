@@ -178,10 +178,6 @@ MOFFCuHandler::set_imaging_kernel()
         std::cout<<"Shared memory size: "<<FFT64x64::shared_memory_size<<" bytes\n";
         std::cout<<FFT64x64::block_dim.x<<" "<<FFT64x64::block_dim.y<<"\n";
         m_imaging_kernel = get_imaging_kernel<FFT64x64>(m_support_size);
-        cudaFuncSetAttribute(
-          m_imaging_kernel,
-          cudaFuncAttributeMaxDynamicSharedMemorySize,
-          FFT64x64::shared_memory_size*2);
         m_img_block_dim = FFT64x64::block_dim;
         m_shared_mem_size = FFT64x64::shared_memory_size*2;
     } else {
@@ -190,15 +186,13 @@ MOFFCuHandler::set_imaging_kernel()
         std::cout<<FFT64x64::block_dim.x<<" "<<FFT128x128::block_dim.y<<"\n";
 
         m_imaging_kernel = get_imaging_kernel<FFT128x128>(m_support_size);
-        
-        cudaFuncSetAttribute(
-          m_imaging_kernel,
-          cudaFuncAttributeMaxDynamicSharedMemorySize,
-          FFT128x128::shared_memory_size*1.5);
         m_img_block_dim = FFT128x128::block_dim;
         m_shared_mem_size = FFT128x128::shared_memory_size*1.5;
-        cudaFuncSetCacheConfig(m_imaging_kernel, cudaFuncCachePreferL1);
     }
+    cudaFuncSetAttribute(
+          m_imaging_kernel,
+          cudaFuncAttributeMaxDynamicSharedMemorySize,
+          m_shared_mem_size);
 }
 
 void
