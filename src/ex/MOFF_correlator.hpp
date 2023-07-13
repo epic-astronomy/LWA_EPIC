@@ -54,14 +54,14 @@ class MOFFCorrelator : public MOFFCuHandler
     aux_t m_phases{ nullptr };
 
     /// Array to store the averaged gridding kernel
-    aux_t m_correction_kernel_h{nullptr};
+    aux_t m_correction_kernel_h{ nullptr };
 
     /// Array to store the correction grid
-    aux_t m_correction_grid_h{nullptr};
+    aux_t m_correction_grid_h{ nullptr };
 
     int m_grid_size;
     double m_grid_res;
-    //int m_support_size;
+    // int m_support_size;
     int m_gcf_tex_dim;
     bool m_rm_autocorrs{ false };
     // int m_nchan_in{ 132 };
@@ -72,8 +72,8 @@ class MOFFCorrelator : public MOFFCuHandler
     float m_delta;
     float m_accum_time;
     int m_ngulps_per_img;
-    int m_kernel_oversampling_factor{2};
-    int m_support_oversample{5};
+    int m_kernel_oversampling_factor{ 2 };
+    int m_support_oversample{ 5 };
 
     bool is_raw_ant_pos_set{ false };
 
@@ -124,8 +124,8 @@ class MOFFCorrelator : public MOFFCuHandler
     double get_grid_res() { return m_grid_res; }
     int get_npols() { return m_pol_mode & m_pol_mode; }
     int get_support() { return m_support_size; }
-    int get_gcf_kernel_size(){return m_gcf_tex_dim;}
-    float get_scaling_length(){return m_delta;}
+    int get_gcf_kernel_size() { return m_gcf_tex_dim; }
+    float get_scaling_length() { return m_delta; }
     payload_t get_empty_buffer();
 };
 
@@ -155,8 +155,6 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc)
 
     m_support_size = p_desc.support_size;
     LOG_IF(FATAL, m_support_size <= 0) << "Gridding support must be >0.";
-    
-    
 
     m_nchan_out = p_desc.nchan_out;
     LOG_IF(FATAL, m_nchan_out <= 0) << "Number of output channels must be >0.";
@@ -164,7 +162,7 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc)
     m_kernel_oversampling_factor = p_desc.kernel_oversampling_factor;
 
     // Allocate the arrays for the over-sampled correction kernel and grid
-    m_support_oversample = m_kernel_oversampling_factor>1 ?m_support_size * m_kernel_oversampling_factor: m_support_size;
+    m_support_oversample = m_kernel_oversampling_factor > 1 ? m_support_size * m_kernel_oversampling_factor : m_support_size;
     // (int(m_support_size/2)+m_kernel_oversampling_factor/2)*2+1;
     m_correction_grid_h = std::move(hwy::AllocateAligned<float>(m_grid_size * m_grid_size * m_nchan_out));
 
@@ -192,31 +190,31 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc)
 
     LOG_IF(WARNING, std::abs(std::ceil(ngulps) - ngulps) > 1e-5) << "The accumulation time (" << m_accum_time << " ms) is not an integer multiple of the gulp size (" << gulp_len_ms << " ms). Adjusting it to " << m_ngulps_per_img * gulp_len_ms << " ms";
 
-    VLOG(3)<<"Setting up GPU for imaging.";
+    VLOG(3) << "Setting up GPU for imaging.";
     setup_GPU();
-    VLOG(3)<<"Done";
+    VLOG(3) << "Done";
     LOG_IF(FATAL, p_desc.device_id < 0) << "Invalid GPU device ID: " << p_desc.device_id;
     m_device_id = p_desc.device_id;
 
-    VLOG(3)<<"Setting up the buffer manager";
+    VLOG(3) << "Setting up the buffer manager";
     LOG_IF(FATAL, p_desc.nbuffers <= 0) << "Total numbers of buffers must be >0";
     LOG_IF(FATAL, p_desc.buf_size <= 0) << "Buffer size must be at least one byte.";
     m_mbuf_mngr = std::make_unique<BuffMngr>(p_desc.nbuffers, p_desc.buf_size, p_desc.max_tries_acq_buf, p_desc.page_lock_bufs);
-    VLOG(3)<<"Done setting up the correlator";
+    VLOG(3) << "Done setting up the correlator";
 };
 
 template<typename Dtype, typename BuffMngr>
 bool
 MOFFCorrelator<Dtype, BuffMngr>::reset(int p_nchan, int p_chan0)
-{   
+{
     if (p_nchan == m_nchan_in && p_chan0 == m_chan0) {
         return false;
     }
 
     if (p_nchan != m_nchan_in) {
         m_nchan_in = p_nchan;
-        if(m_nchan_out > m_nchan_in){
-            LOG(FATAL)<<"Number of output channels exceeds the input channels";
+        if (m_nchan_out > m_nchan_in) {
+            LOG(FATAL) << "Number of output channels exceeds the input channels";
         }
         this->m_f_eng_bytes = m_nchan_in * LWA_SV_INP_PER_CHAN * m_nseq_per_gulp;
         this->m_nbytes_f_eng_per_stream = m_f_eng_bytes / m_nstreams;
@@ -238,21 +236,16 @@ MOFFCorrelator<Dtype, BuffMngr>::reset(int p_nchan, int p_chan0)
       m_nseq_per_gulp,
       m_ant_pos_freq.get(),
       m_phases.get());
-    
+
     // compute gcf elements on a finer grid
     // int orig_support = m_support_size;
     // int finer_support = (int(orig_support/2)+m_kernel_oversampling_factor/2)*2+1;
     // m_support_size = finer_support;
-    this->reset_gcf_elem(m_nchan_out
-    , m_support_oversample
-    , m_chan0
-    , m_delta/float(m_kernel_oversampling_factor)
-    , m_grid_size);
+    this->reset_gcf_elem(m_nchan_out, m_support_oversample, m_chan0, m_delta / float(m_kernel_oversampling_factor), m_grid_size);
     reset_correction_grid(m_nchan_out);
-    //recompute the gcf elements with the original support
-    // m_support_size = orig_support;
+    // recompute the gcf elements with the original support
+    //  m_support_size = orig_support;
     this->reset_gcf_elem(m_nchan_out, m_support_size, m_chan0, m_delta, m_grid_size);
-
 
     return true;
 }
@@ -301,7 +294,7 @@ MOFFCorrelator<Dtype, BuffMngr>::reset_phases(int p_nchan, int p_chan0)
     m_phases = std::move(hwy::AllocateAligned<float>(pitch * LWA_SV_NPOLS * p_nchan));
 
     get_lwasv_phases<float>(m_phases.get(), p_nchan, p_chan0);
-    DLOG(INFO) << "Phases[0] cpu: " << m_phases[0] << " " << m_phases[1]<<" "<<m_phases[2]<<" "<<m_phases[3];
+    DLOG(INFO) << "Phases[0] cpu: " << m_phases[0] << " " << m_phases[1] << " " << m_phases[2] << " " << m_phases[3];
 }
 
 template<typename Dtype, typename BuffMngr>
@@ -326,12 +319,12 @@ template<typename Dtype, typename BuffMngr>
 void
 MOFFCorrelator<Dtype, BuffMngr>::setup_GPU()
 {
-    VLOG(2)<<"Allocating output image";
-    this->allocate_out_img(m_nchan_out * std::pow(m_grid_size, 2) 
-    //* std::pow(int(m_pol_mode), 2) 
-    * sizeof(float) * 6 /*XX_re, YY_re*, X*Y, XY* */
+    VLOG(2) << "Allocating output image";
+    this->allocate_out_img(m_nchan_out * std::pow(m_grid_size, 2)
+                           //* std::pow(int(m_pol_mode), 2)
+                           * sizeof(float) * 6 /*XX_re, YY_re*, X*Y, XY* */
     );
-    VLOG(2)<<"Initializing GCF texture";
+    VLOG(2) << "Initializing GCF texture";
     reset_gcf_kernel2D(m_gcf_tex_dim);
     this->reset_gcf_tex(m_gcf_tex_dim, m_gcf_kernel2D.get());
 
@@ -340,7 +333,7 @@ MOFFCorrelator<Dtype, BuffMngr>::setup_GPU()
     this->m_nbytes_f_eng_per_stream = m_f_eng_bytes / m_nstreams;
     this->m_nbytes_out_img_per_stream = m_out_img_bytes / m_nstreams;
 
-    VLOG(2)<<"Setting up streams and initializing the imaging kernel";
+    VLOG(2) << "Setting up streams and initializing the imaging kernel";
     create_gulp_custreams();
     set_imaging_kernel();
     set_img_grid_dim();
@@ -348,7 +341,8 @@ MOFFCorrelator<Dtype, BuffMngr>::setup_GPU()
 
 template<typename Dtype, typename BuffMngr>
 void
-MOFFCorrelator<Dtype, BuffMngr>:: reset_correction_grid(int p_nchan){
+MOFFCorrelator<Dtype, BuffMngr>::reset_correction_grid(int p_nchan)
+{
     this->get_correction_kernel(m_correction_kernel_h.get(), m_support_oversample, p_nchan);
     get_correction_grid<float>(m_correction_kernel_h.get(), m_correction_grid_h.get(), m_grid_size, m_support_oversample, p_nchan, m_kernel_oversampling_factor);
     this->set_correction_grid(m_correction_grid_h.get(), m_grid_size, p_nchan);
