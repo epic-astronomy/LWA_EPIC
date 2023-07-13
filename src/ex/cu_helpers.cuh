@@ -377,6 +377,15 @@ inline __host__ __device__ void operator+=(float3 &a, float3 b)
     a.z += b.z;
 }
 
+inline __host__ __device__ float4 make_float4(__nv_bfloat162 a, __nv_bfloat162 b)
+{
+    return make_float4(float(a.x),float(a.y),float(b.x),float(b.y));
+}
+
+inline __host__ __device__ float4 make_float4_s(__nv_bfloat162 a, __nv_bfloat162 b, float scale)
+{
+    return make_float4(float(a.x)*scale,float(a.y)*scale,float(b.x)*scale,float(b.y)*scale);
+}
 
 
 inline __host__ __device__ float2 operator*(float2 a, float2 b)
@@ -413,6 +422,71 @@ inline __host__ __device__ float4 operator*(float4 a, float b)
 {
     return make_float4(a.x * b, a.y * b, a.z * b,  a.w * b);
 }
+
+/// @brief Compute X*X.conj() 
+/// @tparam T Output data type
+/// @tparam FFT FFT object constructed using cuFFTDx
+/// @param pix Complex pixel value
+/// @return T
+template<typename T, class FFT,  std::enable_if_t<
+        std::is_same<__half2, typename FFT::output_type::value_type>::value,
+        bool> = true>
+inline __host__ __device__ T compute_xx(typename FFT::value_type pix)
+{   // half precision intrinsics reduce the performance here
+    // return T(__hfma(pix.x.x, pix.x.x, pix.y.x * pix.y.x));
+    return T(pix.x.x* pix.x.x + pix.y.x * pix.y.x);
+}
+
+/**
+ * @brief Compute Y*Y.conj()
+ * 
+ * @tparam T Output data type
+ * @tparam FFT FFT object constructed using cuFFTDx
+ * @param pix Complex pixel value
+ * @return T 
+ */
+template<typename T, class FFT, std::enable_if_t<
+        std::is_same<__half2, typename FFT::output_type::value_type>::value,
+        bool> = true>
+inline __host__ __device__ T compute_yy(typename FFT::value_type pix)
+{
+    return T(pix.x.y * pix.x.y + pix.y.y * pix.y.y);
+}
+
+/**
+ * @brief Compute Re(X*Y.conj())
+ * 
+ * @tparam T Output data type
+ * @tparam FFT FFT object constructed using cuFFTDx
+ * @param pix Complex pixel value
+ * @return T 
+ */
+template<typename T, class FFT, std::enable_if_t<
+        std::is_same<__half2, typename FFT::output_type::value_type>::value,
+        bool> = true>
+inline __host__ __device__ T compute_uu(typename FFT::value_type pix)
+{
+    return T(pix.x.x * pix.y.x +  pix.x.y * pix.y.y);
+}
+
+/**
+ * @brief Compute Im(X*Y.conj())
+ * 
+ * @tparam T Output data type
+ * @tparam FFT FFT object constructed using cuFFTDx
+ * @param pix Complex pixel value
+ * @return T 
+ */
+template<typename T, class FFT, std::enable_if_t<
+        std::is_same<__half2, typename FFT::output_type::value_type>::value,
+        bool> = true>
+inline __host__ __device__ T compute_vv(typename FFT::value_type pix)
+{
+    return T(pix.x.y * pix.y.x - pix.x.x * pix.y.y);
+}
+
+
+
 
 
 

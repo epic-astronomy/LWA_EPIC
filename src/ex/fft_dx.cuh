@@ -87,9 +87,10 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
 
   complex_type thread_data[FFT::elements_per_thread];
 
-  using pol_t = float2;
-  pol_t stokes[FFT::elements_per_thread] = {0};
-  // __nv_bfloat162 stokesb[FFT::elements_per_thread] = {__nv_bfloat162(0.,0.)};
+  using pol_t = float4;
+  // pol_t stokes[FFT::elements_per_thread] = {0};
+  __nv_bfloat162 stokes_xx_yy[FFT::elements_per_thread] = {__nv_bfloat162(0.,0.)};
+  __nv_bfloat162 stokes_U_V[FFT::elements_per_thread] = {__nv_bfloat162(0.,0.)};
   pol_t* out_polv = reinterpret_cast<pol_t*>(output_g);
   volatile float _temp;
   
@@ -184,22 +185,28 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
         // Load everything into shared memory and normalize
         // this ensures there is no overflow
         transpose_tri<FFT>(thread_data, shared_mem,
-                           /*_norm=*/half(1.) / half(row_size));
+                           /*_norm=*/half(32.) / half(row_size));
       }
       __syncthreads();
     }
     _temp+=seq_no;
 
     // Accumulate cross-pols using on-chip memory.
-    // This would lead to spilling
+    // This would lead to spilling and may result in reduced occupancy
+    // Using bf16 instead of f32 can alleviate this issue
     for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
-      float xx = float(thread_data[_reg].x.x * thread_data[_reg].x.x + thread_data[_reg].y.x * thread_data[_reg].y.x);
-      float yy = float(thread_data[_reg].x.y * thread_data[_reg].x.y + thread_data[_reg].y.y * thread_data[_reg].y.y);
-      // float uu = float(thread_data[_reg].x.x * thread_data[_reg].y.x + thread_data[_reg].x.y * thread_data[_reg].y.y);
-      // float vv = float(thread_data[_reg].x.y * thread_data[_reg].y.x - thread_data[_reg].x.x * thread_data[_reg].y.y);
+      float xx = compute_xx<float, FFT>(thread_data[_reg]);
+      // float(thread_data[_reg].x.x * thread_data[_reg].x.x + thread_data[_reg].y.x * thread_data[_reg].y.x);
+      float yy = compute_yy<float,FFT>(thread_data[_reg]);
+      // float(thread_data[_reg].x.y * thread_data[_reg].x.y + thread_data[_reg].y.y * thread_data[_reg].y.y);
+      float uu = compute_uu<float, FFT>(thread_data[_reg]);
+      // float(thread_data[_reg].x.x * thread_data[_reg].y.x + thread_data[_reg].x.y * thread_data[_reg].y.y);
+      float vv = compute_vv<float, FFT>(thread_data[_reg]);
+      // float(thread_data[_reg].x.y * thread_data[_reg].y.x - thread_data[_reg].x.x * thread_data[_reg].y.y);
 
-      stokes[_reg]+=pol_t{xx, yy};
-      // stokesb[_reg]+=__nv_bfloat162(xx, yy);
+      // stokes[_reg]+=pol_t{xx, yy};
+      stokes_xx_yy[_reg]+=__nv_bfloat162(xx, yy);
+      stokes_U_V[_reg]+=__nv_bfloat162(uu,vv);
     }
     __syncthreads();
   }
@@ -207,8 +214,8 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
     auto index = (threadIdx.x + _reg * stride) + threadIdx.y * row_size;
     auto gcf_corr = gcf_correction_grid[channel_idx * row_size * row_size + index];  
     // auto stk = __bfloat1622float2(stokesb[_reg]);
-    auto stk = stokes[_reg];
-    out_polv[ channel_idx * row_size * row_size + index] = is_first_gulp ? stk *gcf_corr : out_polv[ channel_idx * row_size * row_size + index] + stk *gcf_corr;
+    auto stk_corrected = make_float4_s(stokes_xx_yy[_reg], stokes_U_V[_reg], gcf_corr);
+    out_polv[ channel_idx * row_size * row_size + index] = is_first_gulp ? stk_corrected : out_polv[ channel_idx * row_size * row_size + index] + stk_corrected;
     
   }
 }
