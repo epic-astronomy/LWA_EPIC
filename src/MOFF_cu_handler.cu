@@ -10,6 +10,8 @@
 #include <nvml.h>
 
 namespace cg = cooperative_groups;
+typedef __half2 f16_accum_t;
+// typedef __nv_bfloat162 f16_accum_t;
 
 void
 MOFFCuHandler::reset_antpos(int p_nchan, float* p_antpos_ptr)
@@ -177,7 +179,11 @@ MOFFCuHandler::set_imaging_kernel()
         std::cout<<"Setting the imaging kernel to 64x64\n";
         std::cout<<"Shared memory size: "<<FFT64x64::shared_memory_size<<" bytes\n";
         std::cout<<FFT64x64::block_dim.x<<" "<<FFT64x64::block_dim.y<<"\n";
-        m_imaging_kernel = get_imaging_kernel<FFT64x64>(m_support_size);
+        if(use_bf16_accum){
+            m_imaging_kernel = get_imaging_kernel<FFT64x64, f16_accum_t>(m_support_size);
+        }else{
+            m_imaging_kernel = get_imaging_kernel<FFT64x64, float2>(m_support_size);
+        }
         m_img_block_dim = FFT64x64::block_dim;
         m_shared_mem_size = FFT64x64::shared_memory_size*2;
     } else {
@@ -185,7 +191,13 @@ MOFFCuHandler::set_imaging_kernel()
         std::cout<<"Shared memory size: "<<FFT128x128::shared_memory_size<<" bytes "<<FFT128x128::elements_per_thread<<"\n";
         std::cout<<FFT64x64::block_dim.x<<" "<<FFT128x128::block_dim.y<<"\n";
 
-        m_imaging_kernel = get_imaging_kernel<FFT128x128>(m_support_size);
+
+        if(use_bf16_accum){
+            std::cout<<"ACCUMULATING in 16BIT\n";
+            m_imaging_kernel = get_imaging_kernel<FFT128x128, f16_accum_t>(m_support_size);
+        }else{
+            m_imaging_kernel = get_imaging_kernel<FFT128x128, float2>(m_support_size);
+        }
         m_img_block_dim = FFT128x128::block_dim;
         m_shared_mem_size = FFT128x128::shared_memory_size*1.5;
     }

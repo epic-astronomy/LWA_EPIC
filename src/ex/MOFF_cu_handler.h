@@ -13,6 +13,7 @@
  */
 class MOFFCuHandler
 {
+
   protected:
     /// Channel format for the GCF. Defaults to float
     cudaChannelFormatDesc m_gcf_chan_desc{
@@ -116,6 +117,8 @@ class MOFFCuHandler
     int m_support_size;
     void set_imaging_kernel();
     void set_img_grid_dim();
+
+    bool use_bf16_accum{false};
     
   public:
     MOFFCuHandler(){};

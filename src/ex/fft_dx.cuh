@@ -64,6 +64,7 @@ namespace cg = cooperative_groups;
 template<
   typename FFT,
   int support = 2,
+  typename accum_oc_t=__half2,
   PKT_DATA_ORDER Order = TIME_MAJOR,
   std::enable_if_t<
     std::is_same<__half2, typename FFT::output_type::value_type>::value,
@@ -83,11 +84,14 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
 
     complex_type thread_data[FFT::elements_per_thread];
 
-    using pol_t = float4;
-    // pol_t stokes[FFT::elements_per_thread] = {0};
-    __nv_bfloat162 stokes_xx_yy[FFT::elements_per_thread] = { __nv_bfloat162(0., 0.) };
-    __nv_bfloat162 stokes_U_V[FFT::elements_per_thread] = { __nv_bfloat162(0., 0.) };
-    pol_t* out_polv = reinterpret_cast<pol_t*>(output_g);
+    using accum_g_t = float4; // precision for global memory accumulator
+
+    accum_oc_t stokes_xx_yy[FFT::elements_per_thread] = { accum_oc_t{0.,0.} };
+    accum_oc_t stokes_U_V[FFT::elements_per_thread] = { accum_oc_t{0.,0.} };
+
+    // Storage mode: nchan, x, y, npol
+    // This produces one write instruction per pixel for 4 cross-pols
+    accum_g_t* out_polv = reinterpret_cast<accum_g_t*>(output_g);
 
     int channel_idx = blockIdx.x + chan_offset;
 
@@ -179,7 +183,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
                 // Load everything into shared memory and normalize.
                 // This ensures there is no overflow.
                 transpose_tri<FFT>(thread_data, shared_mem,
-                                   /*_norm=*/half(32.) / half(row_size));
+                                   /*_norm=*/half(4.) / half(row_size));
             }
             __syncthreads();
         }
@@ -188,14 +192,15 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
         // This would lead to spilling and may result in reduced occupancy
         // Using bf16 instead of f32 can alleviate this issue
         for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
-            float xx = compute_xx<float, FFT>(thread_data[_reg]);
-            float yy = compute_yy<float, FFT>(thread_data[_reg]);
-            float uu = compute_uu<float, FFT>(thread_data[_reg]);
-            float vv = compute_vv<float, FFT>(thread_data[_reg]);
+            using _accum_t = decltype(accum_oc_t::x);
+            auto xx = compute_xx<_accum_t, FFT>(thread_data[_reg]);
+            auto yy = compute_yy<_accum_t, FFT>(thread_data[_reg]);
+            auto uu = compute_uu<_accum_t, FFT>(thread_data[_reg]);
+            auto vv = compute_vv<_accum_t, FFT>(thread_data[_reg]);
 
-            // stokes[_reg]+=pol_t{xx, yy};
-            stokes_xx_yy[_reg] += __nv_bfloat162(xx, yy);
-            stokes_U_V[_reg] += __nv_bfloat162(uu, vv);
+            // stokes[_reg]+=accum_g_t{xx, yy};
+            stokes_xx_yy[_reg] += accum_oc_t{xx, yy};
+            stokes_U_V[_reg] += accum_oc_t{uu, vv};
         }
         __syncthreads();
     } // End of gulp loop
@@ -204,7 +209,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
     for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
         auto index = (threadIdx.x + _reg * stride) + threadIdx.y * row_size;
         auto gcf_corr = gcf_correction_grid[channel_idx * row_size * row_size + index];
-        auto stk_corrected = make_float4_s(stokes_xx_yy[_reg], stokes_U_V[_reg], gcf_corr);
+        auto stk_corrected = make_v4_s<accum_oc_t, accum_g_t>(stokes_xx_yy[_reg], stokes_U_V[_reg], gcf_corr);
         out_polv[channel_idx * row_size * row_size + index] = is_first_gulp ? stk_corrected : out_polv[channel_idx * row_size * row_size + index] + stk_corrected;
     }
 }
@@ -236,36 +241,43 @@ using FFT100x100 =
  * @param support Size of the support. Cannot be larger than MAX_ALLOWED_SUPPORT_SIZE
  * @return void* Pointer to the imaging template instance
  */
-template<class FFT>
+template<class FFT, typename accum_oc_t>
 void*
 get_imaging_kernel(int support = 3)
 {
     switch (support) {
         case 1:
-            return (void*)(block_fft_kernel<FFT, 1>);
+            return (void*)(block_fft_kernel<FFT, 1, accum_oc_t>);
         case 2:
-            return (void*)(block_fft_kernel<FFT, 2>);
+            return (void*)(block_fft_kernel<FFT, 2, accum_oc_t>);
         case 3:
-            return (void*)(block_fft_kernel<FFT, 3>);
+            return (void*)(block_fft_kernel<FFT, 3, accum_oc_t>);
         case 4:
-            return (void*)(block_fft_kernel<FFT, 4>);
+            return (void*)(block_fft_kernel<FFT, 4, accum_oc_t>);
         case 5:
-            return (void*)(block_fft_kernel<FFT, 5>);
+            return (void*)(block_fft_kernel<FFT, 5, accum_oc_t>);
         case 6:
-            return (void*)(block_fft_kernel<FFT, 6>);
+            return (void*)(block_fft_kernel<FFT, 6, accum_oc_t>);
         case 7:
-            return (void*)(block_fft_kernel<FFT, 7>);
+            return (void*)(block_fft_kernel<FFT, 7, accum_oc_t>);
         case 8:
-            return (void*)(block_fft_kernel<FFT, 8>);
+            return (void*)(block_fft_kernel<FFT, 8, accum_oc_t>);
         case 9:
-            return (void*)(block_fft_kernel<FFT, 9>);
+            return (void*)(block_fft_kernel<FFT, 9, accum_oc_t>);
         default:
             assert(("Unsupported support size", false));
     }
 };
 
 template void*
-get_imaging_kernel<FFT128x128>(int support);
+get_imaging_kernel<FFT128x128, float2>(int support);
+
+// template void*
+// get_imaging_kernel<FFT128x128, __nv_bfloat162>(int support);
+
 template void*
-get_imaging_kernel<FFT64x64>(int support);
+get_imaging_kernel<FFT64x64, float2>(int support);
+
+// template void*
+// get_imaging_kernel<FFT64x64, __nv_bfloat162>(int support);
 #endif /* FFT_DX */

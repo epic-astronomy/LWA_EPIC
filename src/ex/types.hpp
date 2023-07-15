@@ -38,6 +38,7 @@ struct __attribute__((aligned(2))) cnib2
 
 /// Python dict-like data structure to describe Meta data
 typedef std::unordered_map<std::string, std::variant<int, int64_t, uint64_t, uint8_t, uint16_t, double, float, std::string>> dict_t;
+
 // typedef std::unordered_map<std::string, std::any> dict_t;
 
 struct MOFFCorrelatorDesc
@@ -60,6 +61,7 @@ struct MOFFCorrelatorDesc
     bool page_lock_bufs{ true };
     int max_tries_acq_buf{ 5 };
     int kernel_oversampling_factor{ 2 };
+    bool use_bf16_accum{ false };
 };
 
 struct OutImgDesc

@@ -190,9 +190,6 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc)
 
     LOG_IF(WARNING, std::abs(std::ceil(ngulps) - ngulps) > 1e-5) << "The accumulation time (" << m_accum_time << " ms) is not an integer multiple of the gulp size (" << gulp_len_ms << " ms). Adjusting it to " << m_ngulps_per_img * gulp_len_ms << " ms";
 
-    VLOG(3) << "Setting up GPU for imaging.";
-    setup_GPU();
-    VLOG(3) << "Done";
     LOG_IF(FATAL, p_desc.device_id < 0) << "Invalid GPU device ID: " << p_desc.device_id;
     m_device_id = p_desc.device_id;
 
@@ -201,6 +198,12 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc)
     LOG_IF(FATAL, p_desc.buf_size <= 0) << "Buffer size must be at least one byte.";
     m_mbuf_mngr = std::make_unique<BuffMngr>(p_desc.nbuffers, p_desc.buf_size, p_desc.max_tries_acq_buf, p_desc.page_lock_bufs);
     VLOG(3) << "Done setting up the correlator";
+
+    this->use_bf16_accum = p_desc.use_bf16_accum;
+    VLOG(3) << "Setting up GPU for imaging.";
+    setup_GPU();
+    VLOG(3) << "Done";
+
 };
 
 template<typename Dtype, typename BuffMngr>

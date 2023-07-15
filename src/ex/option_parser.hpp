@@ -25,7 +25,8 @@ cxxopts::Options get_options(){
     ("channels","Number of channels in the output image",cxxopts::value<int>()->default_value("128"))
     ("support","Support size of the kernel. Must be a non-zero power of 2",cxxopts::value<int>()->default_value("2"))
     ("aeff","Antenna effective area (experimental) in sq. m",cxxopts::value<float>()->default_value("25"))
-    ("kernel_oversample","Factor to over sample the kernel. Must be a power of 2.",cxxopts::value<int>()->default_value("2"));
+    ("kernel_oversample","Factor to over sample the kernel. Must be a power of 2.",cxxopts::value<int>()->default_value("2"))
+    ("accum_16bit", "Use 16-bit precision for on-chip memory accumulation. Faster but less precise.", cxxopts::value<bool>()->default_value("false"));
 
     options.add_options()
     ("h,help","Print usage");

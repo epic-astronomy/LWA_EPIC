@@ -76,6 +76,7 @@ main(int argc, char** argv)
     correlator_options.support_size=options["support"].as<int>();
     correlator_options.gcf_kernel_dim=std::sqrt(options["aeff"].as<float>())*10;//radius of the kernel in decimeters
     correlator_options.kernel_oversampling_factor = options["kernel_oversample"].as<int>();
+    correlator_options.use_bf16_accum = options["accum_16bit"].as<bool>();
 
 
     auto corr_ptr = std::make_unique<MOFFCorrelator_t>(correlator_options);

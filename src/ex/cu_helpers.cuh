@@ -385,9 +385,17 @@ make_float4(__nv_bfloat162 a, __nv_bfloat162 b)
 }
 
 inline __host__ __device__ float4
-make_float4_s(__nv_bfloat162 a, __nv_bfloat162 b, float scale)
+make_float4_s(__nv_bfloat162& a, __nv_bfloat162& b, float scale)
 {
-    return make_float4(float(a.x) * scale, float(a.y) * scale, float(b.x) * scale, float(b.y) * scale);
+    return float4{ float(a.x) * scale, float(a.y) * scale, float(b.x) * scale, float(b.y) * scale };
+}
+
+template<typename In, class Outv = float4>
+inline __host__ __device__ Outv
+make_v4_s(In& a, In& b, float scale)
+{
+    using Out = decltype(Outv::x);
+    return Outv{ Out(a.x) * scale, Out(a.y) * scale, Out(b.x) * scale, Out(b.y) * scale };
 }
 
 inline __host__ __device__ float2
