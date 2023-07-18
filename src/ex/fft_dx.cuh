@@ -183,7 +183,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
                 // Load everything into shared memory and normalize.
                 // This ensures there is no overflow.
                 transpose_tri<FFT>(thread_data, shared_mem,
-                                   /*_norm=*/half(4.) / half(row_size));
+                                   /*_norm=*/half(1.) / half(row_size));
             }
             __syncthreads();
         }
