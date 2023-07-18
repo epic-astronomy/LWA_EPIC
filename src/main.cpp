@@ -9,6 +9,8 @@
 #include "raft_kernels/dummy_kernel.hpp"
 #include "raft_kernels/dummy_packet_gen.hpp"
 #include "ex/lf_buf_mngr.hpp"
+#include <raftmanip>
+#include "ex/helper_traits.hpp"
 
 using namespace std::chrono;
 using namespace std::string_literals;
@@ -96,7 +98,12 @@ main(int argc, char** argv)
     VLOG(1)<<"Setting up the Raft map";
     raft::map m;
 
-    m += dummy_pkt_gen_rft>> corr_rft >> saver_rft;
+    // CPU id, Affinity group id
+    RftManip<1, 1>::bind(dummy_pkt_gen_rft);
+    RftManip<2, 1>::bind(corr_rft);
+    RftManip<3, 1>::bind(saver_rft);
+
+    m += dummy_pkt_gen_rft >> corr_rft >> saver_rft;
     VLOG(1)<<"Done";
     m.exe();
 

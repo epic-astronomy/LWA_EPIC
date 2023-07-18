@@ -11,6 +11,7 @@
 #include <glog/logging.h>
 #include <memory>
 #include <type_traits>
+#include <raftmanip>
 
 namespace hn = hwy::HWY_NAMESPACE;
 // using tag8 = hn::ScalableTag<uint8_t>;
@@ -77,5 +78,14 @@ struct alignment_offset
 
 template struct alignment_offset<chips_hdr_type, uint8_t>;
 template struct alignment_offset<chips_hdr_type, uint8_t, 42>;
+
+template<size_t N>
+using AffinityGrp = raft::parallel::affinity_group<N>;
+
+template <size_t N>
+using CPU = raft::parallel::device<raft::parallel::cpu, N>;
+
+template<size_t CPUID, size_t AffGrpID>
+using RftManip = raft::manip<AffinityGrp<AffGrpID>, CPU<CPUID>>;
 
 #endif // HELPER_TRAITS
