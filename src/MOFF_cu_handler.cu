@@ -11,6 +11,10 @@
 
 namespace cg = cooperative_groups;
 typedef __half2 f16_accum_t;
+
+// Note: For a 40 ms gulp, bfloat takes about a 36.8 ms while half takes about 38 ms.
+// However, the loss of precision is larger with bfloat compared to half.
+// Hence half is chosen for on-chip accumulation.
 // typedef __nv_bfloat162 f16_accum_t;
 
 void
