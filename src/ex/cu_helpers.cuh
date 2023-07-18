@@ -450,7 +450,7 @@ inline __host__ __device__ T
 compute_xx(typename FFT::value_type pix)
 { // half precision intrinsics reduce the performance here
     // return T(__hfma(pix.x.x, pix.x.x, pix.y.x * pix.y.x));
-    return T(pix.x.x * pix.x.x + pix.y.x * pix.y.x);
+    return static_cast<T>(pix.x.x * pix.x.x + pix.y.x * pix.y.x);
 }
 
 /**
@@ -465,7 +465,7 @@ template<typename T, class FFT, std::enable_if_t<std::is_same<__half2, typename 
 inline __host__ __device__ T
 compute_yy(typename FFT::value_type pix)
 {
-    return T(pix.x.y * pix.x.y + pix.y.y * pix.y.y);
+    return static_cast<T>(pix.x.y * pix.x.y + pix.y.y * pix.y.y);
 }
 
 /**
@@ -480,7 +480,7 @@ template<typename T, class FFT, std::enable_if_t<std::is_same<__half2, typename 
 inline __host__ __device__ T
 compute_uu(typename FFT::value_type pix)
 {
-    return T(pix.x.x * pix.y.x + pix.x.y * pix.y.y);
+    return static_cast<T>(pix.x.x * pix.y.x + pix.x.y * pix.y.y);
 }
 
 /**
@@ -495,7 +495,7 @@ template<typename T, class FFT, std::enable_if_t<std::is_same<__half2, typename 
 inline __host__ __device__ T
 compute_vv(typename FFT::value_type pix)
 {
-    return T(pix.x.y * pix.y.x - pix.x.x * pix.y.y);
+    return static_cast<T>(pix.x.y * pix.y.x - pix.x.x * pix.y.y);
 }
 
 #endif /* CU_HELPERS */
