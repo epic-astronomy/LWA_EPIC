@@ -10,8 +10,8 @@
 #include <cmath>
 #include <glog/logging.h>
 #include <memory>
-#include <type_traits>
 #include <raftmanip>
+#include <type_traits>
 
 namespace hn = hwy::HWY_NAMESPACE;
 // using tag8 = hn::ScalableTag<uint8_t>;
@@ -49,7 +49,8 @@ nearest_integral_vec_size(size_t p_buf_size)
     return ceil(double(p_buf_size) / lanes) * lanes;
 };
 
-constexpr int int_ceil(float f)
+constexpr int
+int_ceil(float f)
 {
     const int i = static_cast<int>(f);
     return f > i ? i + 1 : i;
@@ -80,12 +81,24 @@ template struct alignment_offset<chips_hdr_type, uint8_t>;
 template struct alignment_offset<chips_hdr_type, uint8_t, 42>;
 
 template<size_t N>
-using AffinityGrp = raft::parallel::affinity_group<N>;
+using affinity_grp = raft::parallel::affinity_group<N>;
 
-template <size_t N>
-using CPU = raft::parallel::device<raft::parallel::cpu, N>;
+template<size_t N>
+using device_cpu = raft::parallel::device<raft::parallel::cpu, N>;
 
 template<size_t CPUID, size_t AffGrpID>
-using RftManip = raft::manip<AffinityGrp<AffGrpID>, CPU<CPUID>>;
+using rft_manip = raft::manip<affinity_grp<AffGrpID>, device_cpu<CPUID>>;
 
-#endif // HELPER_TRAITS
+
+/// @brief Test if the Buffer class can be constructed using a config object
+/// @tparam Buf 
+/// @tparam  
+template<typename Buf, typename = void>
+struct has_config : std::false_type
+{};
+
+template<typename Buf>
+struct has_config<Buf, std::void_t<typename Buf::config_t>> : std::true_type
+{};
+
+#endif /* HELPER_TRAITS */

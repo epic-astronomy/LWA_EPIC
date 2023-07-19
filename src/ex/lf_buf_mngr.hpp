@@ -49,9 +49,12 @@ class LFBufMngr // : Buffer<T, Allocator>
      * @param p_nbufs Number of buffers to allocate
      * @param p_buf_size Number of elements in each buffer
      * @param p_max_tries Maximum number cycles through all the buffers before an empty buffer is returned
-     * @param p_page_lock Flage to indicate whether to page lock the buffer memory
+     * @param p_page_lock Flag to indicate whether to page lock the buffer memory
      */
+    template<typename _t = Buffer,
+             std::enable_if_t<!has_config<_t>::value, bool> = true>
     LFBufMngr(size_t p_nbufs = 1, size_t p_buf_size = MAX_PACKET_SIZE, size_t p_max_tries = 5, bool p_page_lock = true);
+
     /**
      * @brief Acquire a managed buffer
      *
@@ -63,14 +66,14 @@ class LFBufMngr // : Buffer<T, Allocator>
     /**
      * @brief Construct a new LFBufMngr object with a config object.
      *
-     * Available iff the buffer class defines a config_t can be constructed 
+     * Available iff the buffer class defines a config_t can be constructed
      * with it
      *
      * @tparam _t Buffer class
      * @param config Buffer config object
      */
     template<typename _t = Buffer,
-             std::enable_if_t<std::is_class_v<typename _t::config_t>, bool> = true>
+             std::enable_if_t<has_config<_t>::value, bool> = true>
     LFBufMngr(typename _t::config_t config);
     // ~LFBufMngr(){
     //   LOG(INFO)<<"D LFBuffer";
@@ -78,7 +81,8 @@ class LFBufMngr // : Buffer<T, Allocator>
 };
 
 template<typename Buffer>
-
+template<typename _t,
+         std::enable_if_t<!has_config<_t>::value, bool>>
 LFBufMngr<Buffer>::LFBufMngr(size_t p_nbufs, size_t p_buf_size, size_t p_max_tries, bool p_page_lock)
   : m_nbufs(p_nbufs)
   , m_buf_size(p_buf_size)
@@ -100,10 +104,10 @@ LFBufMngr<Buffer>::LFBufMngr(size_t p_nbufs, size_t p_buf_size, size_t p_max_tri
 
 template<class Buffer>
 template<typename _t,
-         std::enable_if_t<std::is_class_v<typename _t::config_t>, bool>>
+         std::enable_if_t<has_config<_t>::value, bool>>
 LFBufMngr<Buffer>::LFBufMngr(typename _t::config_t config)
 {
-    CHECK(config.check()) << "Invalid buffer config";
+    CHECK(config.check_opts()) << "Invalid buffer config";
     // allocate space for buffers
     m_buf_vec.reserve(config.p_nbufs);
     for (size_t i = 0; i < config.p_nbufs; ++i) {
