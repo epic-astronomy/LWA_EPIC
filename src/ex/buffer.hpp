@@ -17,6 +17,7 @@
 #include <thread>
 #include <unordered_map>
 #include <variant>
+#include <type_traits>
 
 /**
  * @brief Mixin class to hold the metadata for buffers
@@ -110,7 +111,7 @@ class GenericBuffer : public BufMetaData<double>
      * @param p_buf_size Number of elements in the buffer
      */
     GenericBuffer(size_t p_buf_size);
-    /**
+    /** 
      * @brief Allocator for the buffer. This function must be implemented by all the derived
      * classes
      *
@@ -250,12 +251,28 @@ struct ManagedBuf : public Buffer
     /**
      * @brief Construct a new managed buffer
      *
-     * @param p_size Number of elements in the buffer
+     * @param p_size Buffer size
      * @param p_page_lock Flag to indicate if the buffer has to be page locked
      */
     ManagedBuf(size_t p_size, bool p_page_lock = true, size_t p_id = 0)
       : Buffer(p_size, p_page_lock)
       , m_id(p_id){};
+
+    /**
+     * @brief Construct a new Managed Buf object using a config object
+     * defined in the buffer class
+     * 
+     * @tparam _t Buffer
+     * @param p_config Config object 
+     * @param p_id ID for the buffer
+     * 
+     * @relates LFBuffer
+     */
+    template<typename _t = Buffer,
+             std::enable_if_t<std::is_class_v<typename _t::config_t>, bool>>
+    ManagedBuf(typename _t::config_t p_config, size_t p_id=0)
+        : Buffer(p_config)
+        , m_id(p_id){};
     // void unlock();
     /**
      * @brief Attempt to acquire a lock on the buffer
