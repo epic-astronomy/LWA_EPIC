@@ -99,9 +99,9 @@ main(int argc, char** argv)
     raft::map m;
 
     // CPU id, Affinity group id
-    RftManip<1, 1>::bind(dummy_pkt_gen_rft);
-    RftManip<2, 1>::bind(corr_rft);
-    RftManip<3, 1>::bind(saver_rft);
+    rft_manip<1, 1>::bind(dummy_pkt_gen_rft);
+    rft_manip<2, 1>::bind(corr_rft);
+    rft_manip<3, 1>::bind(saver_rft);
 
     m += dummy_pkt_gen_rft >> corr_rft >> saver_rft;
     VLOG(1)<<"Done";
