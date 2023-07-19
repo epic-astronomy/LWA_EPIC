@@ -96,6 +96,10 @@ target_link_libraries(epic++ PRIVATE pybind11::embed raft hwy epiclib epic_cu cu
 glog::glog nvidia-ml
 )
 
-file(GLOB PY_FILES "src/python/*.py")
-file(COPY ${PY_FILES} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+# file(GLOB PY_FILES "src/python/*.py")
+# file(COPY ${PY_FILES} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+
+add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
+                   COMMAND ${CMAKE_COMMAND} -E create_symlink
+                   ${CMAKE_SOURCE_DIR}/src/python/epic_utils.py $<TARGET_FILE_DIR:${PROJECT_NAME}>/epic_utils.py)
 
