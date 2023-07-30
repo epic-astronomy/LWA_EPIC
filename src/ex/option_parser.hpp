@@ -21,12 +21,14 @@ cxxopts::Options get_options(){
     ("imagesize","1-D image size (can only be 64 or 128)",cxxopts::value<int>()->default_value("128"))
     ("imageres","Pixel resolution in degrees",cxxopts::value<float>()->default_value("1.0"))
     ("nts","Number of timestamps per span",cxxopts::value<int>()->default_value("1000"))
-    ("accumulate","Duration of the image accumulation in milliseconds",cxxopts::value<int>()->default_value("40"))
+    ("seq_accum","Duration of the sequence accumulation in milliseconds",cxxopts::value<int>()->default_value("40"))
+    ("nimg_accum", "Number of images to add before saving to the disk", cxxopts::value<int>()->default_value("1"))
     ("channels","Number of channels in the output image",cxxopts::value<int>()->default_value("128"))
     ("support","Support size of the kernel. Must be a non-zero power of 2",cxxopts::value<int>()->default_value("2"))
     ("aeff","Antenna effective area (experimental) in sq. m",cxxopts::value<float>()->default_value("25"))
     ("kernel_oversample","Factor to over sample the kernel. Must be a power of 2.",cxxopts::value<int>()->default_value("2"))
-    ("accum_16bit", "Use 16-bit precision for on-chip memory accumulation. Faster but less precise.", cxxopts::value<bool>()->default_value("false"));
+    ("accum_16bit", "Use 16-bit precision for on-chip memory accumulation. Faster but less precise.", cxxopts::value<bool>()->default_value("false"))
+    ("chan_nbin","Binning factor for the number of channels", cxxopts::value<int>()->default_value("4"));
 
     options.add_options()
     ("h,help","Print usage");
@@ -50,10 +52,10 @@ std::optional<std::string> validate_options(cxxopts::ParseResult& result){
     }
 
     int nts = result["nts"].as<int>() * 40e-3;
-    int accumulate = result["accumulate"].as<int>();
+    int accumulate = result["seq_accum"].as<int>();
 
     if(accumulate<nts){
-        return "Image accumulation time must be greater than the gulp size."s;
+        return "Sequence accumulation time must be greater than the gulp size."s;
     }
 
     int channels = result["channels"].as<int>();
@@ -78,6 +80,13 @@ std::optional<std::string> validate_options(cxxopts::ParseResult& result){
     int kos = result["kernel_oversample"].as<int>();
     if((kos & (kos-1))!=0){
         return "Kernel oversampling factor must be a power of 2";
+    }
+
+    int nbin = result["chan_nbin"].as<int>();
+    int nchan = result["channels"].as<int>();
+
+    if(nchan%nbin !=0){
+        return "Number of channels must be an integral multiple of the binning factor.";
     }
 
     return {};
