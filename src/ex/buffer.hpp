@@ -269,7 +269,7 @@ struct ManagedBuf : public Buffer
      * @relates LFBuffer
      */
     template<typename _t = Buffer,
-             std::enable_if_t<std::is_class_v<typename _t::config_t>, bool>>
+             std::enable_if_t<std::is_class_v<typename _t::config_t>, bool> = false>
     ManagedBuf(typename _t::config_t p_config, size_t p_id=0)
         : Buffer(p_config)
         , m_id(p_id){};

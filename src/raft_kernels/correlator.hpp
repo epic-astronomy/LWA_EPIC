@@ -94,8 +94,8 @@ class Correlator_rft : public raft::kernel
             img_metadata["nchan"]=nchan;
             img_metadata["chan0"]=chan0;
             // img_metadata["cfreq"] = int((chan0+ceil(nchan/2f))*BANDWIDTH);
-
-            m_correlator.get()->process_gulp(
+            LOG(INFO)<<"Processing gulp at: "<<std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+            m_correlator.get()->process_gulp( 
               pld.get_mbuf()->get_data_ptr(),
               buf.get_mbuf()->get_data_ptr(),
               m_is_first,
@@ -113,6 +113,7 @@ class Correlator_rft : public raft::kernel
         // If it's anything other than the final gulp, proceed right away. The process_gulp function
         // images the data in streams with asynchronous reads/writes. Hence the next gulp won't have to
         // wait for the current one to complete thereby keeping the GPU completely occupied.
+        
         m_correlator.get()->process_gulp(pld.get_mbuf()->get_data_ptr(), (float*)nullptr, m_is_first, m_is_last);
         ++m_gulp_counter;
         return raft::proceed;

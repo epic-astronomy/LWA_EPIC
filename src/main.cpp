@@ -12,6 +12,9 @@
 #include "raft_kernels/dummy_kernel.hpp"
 #include "raft_kernels/dummy_packet_gen.hpp"
 #include "raft_kernels/accumulator.cpp"
+#include "raft_kernels/pixel_extractor.cpp"
+#include "raft_kernels/db_ingester.cpp"
+#include "raft_kernels/index_fetcher.hpp"
 #include <raftmanip>
 
 using namespace std::chrono;
@@ -108,6 +111,20 @@ main(int argc, char** argv)
     auto accumulator_rft = Accumulator_rft<MOFFCorrelator_t::payload_t>(
         imsize, imsize, reduced_nchan, im_naccum
     );
+
+    using pixel_buf_t = LFBufMngr<EpicPixelTableDataRows<float>>;
+    using pixel_buf_config_t = typename EpicPixelTableDataRows<float>::config_t;
+    using pix_pld_t = Payload<typename pixel_buf_t::mbuf_t>;
+    pixel_buf_config_t config;
+    config.nchan=reduced_nchan;
+    config.ncoords=1;
+    auto dummy_meta = create_dummy_meta(imsize, imsize);
+    auto pixel_extractor_rft = PixelExtractor<MOFFCorrelator_t::payload_t, pix_pld_t, pixel_buf_t, pixel_buf_config_t>(config, dummy_meta, imsize, imsize, reduced_nchan);
+
+    auto index_fetcher_rft = IndexFetcher_rft();
+
+    auto db_injester_rft = DBIngester_rft<pix_pld_t>();
+
     VLOG(1) << "Setting up the Raft map";
     raft::map m;
 
@@ -115,8 +132,19 @@ main(int argc, char** argv)
     rft_manip<1, 1>::bind(dummy_pkt_gen_rft);
     rft_manip<2, 1>::bind(corr_rft);
     rft_manip<3, 1>::bind(saver_rft);
+    rft_manip<4, 1>::bind(chan_reducer_rft);
+    rft_manip<5, 1>::bind(accumulator_rft);
+    rft_manip<6,1>::bind(pixel_extractor_rft);
 
-    m += dummy_pkt_gen_rft >> corr_rft >> chan_reducer_rft >> accumulator_rft >> saver_rft;
+
+    m += dummy_pkt_gen_rft >> corr_rft >> chan_reducer_rft["in_img"]["out_img"] >> pixel_extractor_rft["in_img"];
+
+    m+= pixel_extractor_rft["out_img"]>> accumulator_rft >> saver_rft;
+
+    m+= pixel_extractor_rft["out_pix_rows"] >> db_injester_rft;
+
+    m+= chan_reducer_rft["seq_start_id"] >> index_fetcher_rft >> pixel_extractor_rft["meta_pixel_rows"];
+
     VLOG(1) << "Done";
     m.exe();
 

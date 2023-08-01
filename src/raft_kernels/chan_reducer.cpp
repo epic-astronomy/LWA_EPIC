@@ -35,7 +35,22 @@ class ChanReducer_rft : public raft::kernel
     size_t m_out_nchan{ 32 };
     PSTensor<float> m_in_tensor;
     PSTensor<float> m_out_tensor;
-    static constexpr int NSTOKES{4};
+    static constexpr int NSTOKES{ 4 };
+
+    using high_res_tp = typename std::chrono::time_point<std::chrono::high_resolution_clock>;
+    high_res_tp m_prev_refresh;
+    size_t m_refresh_interval{ 10 };
+
+    bool is_require_refresh()
+    {
+        auto now = std::chrono::high_resolution_clock::now();
+        if (std::chrono::duration_cast<std::chrono::seconds>(now - m_prev_refresh).count() >= m_refresh_interval) {
+            m_prev_refresh = now;
+            return true;
+        }
+
+        return false;
+    }
 
   public:
     /**
@@ -46,17 +61,19 @@ class ChanReducer_rft : public raft::kernel
      * @param p_ydim Y side of the image
      * @param p_in_nchan Number of input channels to the reducer
      */
-    ChanReducer_rft(int p_ncombine, int p_xdim, int p_ydim, int p_in_nchan)
+    ChanReducer_rft(int p_ncombine, int p_xdim, int p_ydim, int p_in_nchan, int p_refresh_interval = 10)
       : m_ncombine(p_ncombine)
       , m_xdim(p_xdim)
       , m_ydim(p_ydim)
       , m_in_nchan(p_in_nchan)
+      , m_refresh_interval(p_refresh_interval)
       , m_in_tensor(PSTensor<float>(m_in_nchan, m_xdim, m_ydim))
       , m_out_tensor(PSTensor<float>(m_out_nchan, m_xdim, m_ydim))
       , raft::kernel()
     {
         input.addPort<_PldIn>("in_img");
         output.addPort<_PldOut>("out_img");
+        output.addPort<uint64_t>("seq_start_id");
 
         if (m_in_nchan % m_ncombine != 0) {
             LOG(FATAL) << "The number of output channels: " << m_in_nchan << " cannot be binned by a factor of " << m_ncombine << ". ";
@@ -66,6 +83,8 @@ class ChanReducer_rft : public raft::kernel
         m_buf_mngr.reset(
           new BufferMngr(
             m_nbufs, m_xdim * m_ydim * m_out_nchan * NSTOKES, m_max_buf_reqs, false));
+
+        m_prev_refresh = std::chrono::high_resolution_clock::now();
     }
 
     virtual raft::kstatus run() override
@@ -90,6 +109,13 @@ class ChanReducer_rft : public raft::kernel
         m_in_tensor.combine_channels(m_out_tensor);
 
         output["out_img"].push(out_pld);
+        if (is_require_refresh()) { // update once very `m_refresh_interval` seconds
+            auto tstart = std::get<uint64_t>(out_meta["seq_start"]);
+            output["seq_start_id"].push(tstart);
+        }
+        else{
+          output["seq_start_id"].push(-1);
+        }
 
         return raft::proceed;
     }

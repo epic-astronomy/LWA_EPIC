@@ -3,6 +3,7 @@
 
 #include "hwy/aligned_allocator.h"
 #include "hwy/highway.h"
+#include "orm_types.hpp"
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -11,13 +12,13 @@
 #include <stddef.h>
 #include <type_traits>
 #include <utility>
+#include <glog/logging.h>
 
 namespace hn = hwy::HWY_NAMESPACE;
 
-
 /**
- * @brief Basic tensor (N-Dimensional array) 
- * 
+ * @brief Basic tensor (N-Dimensional array)
+ *
  * @tparam _Tp Data type
  * @tparam NDims Number of dimensions for the array
  */
@@ -38,10 +39,13 @@ class Tensor
   public:
     Tensor(auto... p_dims);
     void assign_data(_Tp* p_data_ptr);
+    void dissociate_data();
     _Tp& at(auto... p_idx) const;
     _Tp* const get_data_ptr() { return m_data_ptr; }
     std::array<int, NDims> shape() { return m_dims; }
+    size_t size() const { return m_size; }
     void allocate();
+    ~Tensor() { m_data_ptr = nullptr; }
 };
 
 template<typename _Tp, size_t NDims>
@@ -69,7 +73,7 @@ Tensor<_Tp, NDims>::Tensor(auto... p_dims)
 
 /**
  * @brief Assign a data pointer to the array
- * 
+ *
  * @tparam _Tp Data type
  * @tparam NDims Number of array dimensions
  * @param p_data_ptr Pointer to the data
@@ -81,13 +85,20 @@ Tensor<_Tp, NDims>::assign_data(_Tp* p_data_ptr)
     m_data_ptr = p_data_ptr;
 }
 
+template<typename _Tp, size_t NDims>
+void
+Tensor<_Tp, NDims>::dissociate_data()
+{
+    m_data_ptr = nullptr;
+}
+
 /**
- * @brief 
- * 
+ * @brief
+ *
  * @tparam _Tp Data type
  * @tparam NDims Number of array dimensions
  * @param p_idx Return a reference to the tensor element at the specified index. Must have the same size as the number of dimensions
- * @return _Tp& 
+ * @return _Tp&
  */
 template<typename _Tp, size_t NDims>
 _Tp&
@@ -103,7 +114,7 @@ Tensor<_Tp, NDims>::at(auto... p_idx) const
 
 /**
  * @brief Allocate memory for the tensor
- * 
+ *
  * @tparam _Tp Data type
  * @tparam NDims Number of array dimensions
  */
@@ -120,11 +131,11 @@ constexpr size_t EPICImgDim = 4 /*nchan, nx, ny, npol*/;
 
 /**
  * @brief Pseudo Stokes tensor class tailored for use with EPIC
- * 
- * Each pixel value (4-pols) is treated as a 128-bit vector for fast 
- * computation. Provides an interface for n-channel summation, and 
+ *
+ * Each pixel value (4-pols) is treated as a 128-bit vector for fast
+ * computation. Provides an interface for n-channel summation, and
  * source pixel extraction
- * 
+ *
  * @tparam _Tp Data type
  */
 template<typename _Tp = float>
@@ -146,13 +157,13 @@ class PSTensor : public Tensor<_Tp, EPICImgDim>
     }
 
   public:
-  /**
-   * @brief Construct a new PSTensor object
-   * 
-   * @param p_nchan Number of channels in the image
-   * @param p_xdim Image X-dimensions
-   * @param p_ydim Image Y-dimensions
-   */
+    /**
+     * @brief Construct a new PSTensor object
+     *
+     * @param p_nchan Number of channels in the image
+     * @param p_xdim Image X-dimensions
+     * @param p_ydim Image Y-dimensions
+     */
     PSTensor(int p_nchan, int p_xdim, int p_ydim)
       : Tensor<_Tp, EPICImgDim>(p_nchan, p_xdim, p_ydim, NSTOKES)
       , m_nchan(p_nchan)
@@ -164,23 +175,43 @@ class PSTensor : public Tensor<_Tp, EPICImgDim>
 
     /**
      * @brief Return a vector (all pols) at the specified flat index
-     * 
-     * @param p_idx 
-     * @return vec_t 
+     *
+     * @param p_idx
+     * @return vec_t
      */
-    vec_t operator[](size_t p_idx)
+    inline vec_t operator[](size_t p_idx) const
     {
         return hn::Load(
           _stokes_tag, this->m_data_ptr + p_idx);
     }
 
     /**
+     * @brief In-place addition operator
+     *
+     * @param rhs Tensor to add in-place
+     * @return PSTensor
+     */
+    PSTensor& operator+=(const PSTensor& rhs)
+    {
+        assert((this->size() == rhs.size()) && "Input sizes do not match. Cannot add the tensors");
+
+        size_t nelems = rhs.size();
+        for (size_t i = 0; i < nelems; i += NSTOKES) {
+            hn::Store((*this)[i] + rhs[i],
+                      _stokes_tag,
+                      this->m_data_ptr + i);
+        }
+
+        return *this;
+    }
+
+    /**
      * @brief Return a vector (all pols) for the specified channel and pixel
-     * 
+     *
      * @param p_chan_id Channel number
      * @param p_xpix 0-based x-position of the pixel
      * @param p_ypix 0-based y-position of the pixel
-     * @return vec_t 
+     * @return vec_t
      */
     vec_t operator()(size_t p_chan_id, size_t p_xpix, size_t p_ypix) const
     {
@@ -192,7 +223,7 @@ class PSTensor : public Tensor<_Tp, EPICImgDim>
 
     /**
      * @brief Set the pixel value (all pols) in the specified channel
-     * 
+     *
      * @param p_chan_id 0-based channel number
      * @param p_xpix 0-based x-position the pixel
      * @param p_ypix 0-based y-position of the pixel
@@ -206,21 +237,20 @@ class PSTensor : public Tensor<_Tp, EPICImgDim>
 
     /**
      * @brief Set a pixel based at the specified flat index in an image wthin a channel
-     * 
+     *
      * @param p_chan_id 0-based channel number
      * @param p_pix Flat index of the pixel with in a single image
      * @param p_vec Vector to be set at the pixel
      */
     void set(size_t p_chan_id, size_t p_pix, const vec_t& p_vec)
     {
-      hn::Store(
-        p_vec, _stokes_tag, this->m_data_ptr + chan_pix2idx(p_chan_id, p_pix)
-      )
+        hn::Store(
+          p_vec, _stokes_tag, this->m_data_ptr + chan_pix2idx(p_chan_id, p_pix));
     }
 
     /**
      * @brief Set a pixel at the specified flat index
-     * 
+     *
      * @param p_idx Flat index position of the pixel
      * @param p_vec Vector to the stored
      */
@@ -231,9 +261,9 @@ class PSTensor : public Tensor<_Tp, EPICImgDim>
 
     /**
      * @brief Sum channels based on the specified output tensor.
-     * 
+     *
      * The function calculates how many input channels must be summed to creat one outpuc channel
-     * 
+     *
      * @param p_out_tensor Output tensor where the channel summation will be stored
      */
     void combine_channels(PSTensor<_Tp>& p_out_tensor)
@@ -275,7 +305,7 @@ class PSTensor : public Tensor<_Tp, EPICImgDim>
 
     /**
      * @brief Add the specified number of input channels for each output channels and store it in the output tensor
-     * 
+     *
      * @param p_out_tensor Output Tensor
      * @param p_chan_out Number of output channels
      * @param p_nslices Number of input channels per output channel
@@ -290,7 +320,7 @@ class PSTensor : public Tensor<_Tp, EPICImgDim>
 
     /**
      * @brief Add a specified input channel to the output channel
-     * 
+     *
      * @param p_out_tensor Out Tensor
      * @param chan_in 0-based input channel number
      * @param chan_out 0-based output channel number
@@ -309,6 +339,18 @@ class PSTensor : public Tensor<_Tp, EPICImgDim>
             // hn::Store(
             //   out_vec , _stokes_tag, out_ptr + idx_out);
         }
+    }
+
+    void extract_pixels(const EpicPixelTableMetaRows& p_meta, float* p_pixels)
+    {
+        for (int i = 0; i < p_meta.pixel_coords_sft.size(); ++i) {//coord loop
+            for (int j = 0; j < m_nchan; ++j) {//chan loop
+                int x = p_meta.pixel_coords_sft[i].first;
+                int y = p_meta.pixel_coords_sft[i].second;
+                hn::Store(
+                  (*this)(j, x, y), _stokes_tag, p_pixels + (i * m_nchan + j) * NSTOKES);
+            }//chan loop
+        }//coord loop
     }
 };
 
