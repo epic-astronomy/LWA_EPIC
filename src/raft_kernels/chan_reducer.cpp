@@ -68,7 +68,7 @@ class ChanReducer_rft : public raft::kernel
       , m_in_nchan(p_in_nchan)
       , m_refresh_interval(p_refresh_interval)
       , m_in_tensor(PSTensor<float>(m_in_nchan, m_xdim, m_ydim))
-      , m_out_tensor(PSTensor<float>(m_out_nchan, m_xdim, m_ydim))
+      , m_out_tensor(PSTensor<float>(p_in_nchan/p_ncombine, m_xdim, m_ydim))
       , raft::kernel()
     {
         input.addPort<_PldIn>("in_img");
