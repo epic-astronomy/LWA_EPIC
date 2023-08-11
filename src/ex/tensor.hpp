@@ -269,7 +269,7 @@ class PSTensor : public Tensor<_Tp, EPICImgDim>
     void combine_channels(PSTensor<_Tp>& p_out_tensor)
     {
         auto out_nchan = p_out_tensor.shape()[0];
-        assert((this->m_dims[0] % out_nchan == 0) && "Input channels must be an integral multiple of output channels");
+        assert((this->m_dims[0] % out_nchan == 0) && "Input channels must be an integral multiple of output channels" && );
         int ncombine = this->m_dims[0] / out_nchan;
 
         auto out_data_ptr = p_out_tensor.get_data_ptr();
