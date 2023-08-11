@@ -84,6 +84,7 @@ main(int argc, char** argv)
     correlator_options.gcf_kernel_dim = std::sqrt(options["aeff"].as<float>()) * 10; // radius of the kernel in decimeters
     correlator_options.kernel_oversampling_factor = options["kernel_oversample"].as<int>();
     correlator_options.use_bf16_accum = options["accum_16bit"].as<bool>();
+    correlator_options.nstreams = options["nstreams"].as<int>();
 
     auto corr_ptr = std::make_unique<MOFFCorrelator_t>(correlator_options);
 
@@ -134,7 +135,10 @@ main(int argc, char** argv)
     rft_manip<3, 1>::bind(saver_rft);
     rft_manip<4, 1>::bind(chan_reducer_rft);
     rft_manip<5, 1>::bind(accumulator_rft);
-    rft_manip<6,1>::bind(pixel_extractor_rft);
+    rft_manip<6, 1>::bind(pixel_extractor_rft);
+    rft_manip<7, 1>::bind(db_injester_rft);
+    rft_manip<8, 1>::bind(index_fetcher_rft);
+
 
 
     m += dummy_pkt_gen_rft >> corr_rft >> chan_reducer_rft["in_img"]["out_img"] >> pixel_extractor_rft["in_img"];
