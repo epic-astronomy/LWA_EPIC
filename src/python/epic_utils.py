@@ -10,6 +10,7 @@ from scipy.signal import correlate2d
 import datetime
 import time
 from MCS2 import Communicator
+import uuid
 
 DATE_FORMAT = "%Y_%m_%dT%H_%M_%S"
 FS = 196.0e6
@@ -174,7 +175,7 @@ def save_output(output_arr, grid_size, nchan, filename, metadata):
     # img_data = np.transpose(output_arr[:, :, :, :], (0, 1, 3, 2))
     img_data = np.transpose(output_arr[:, :, :, :], (3, 0, 2, 1))
     img_data = np.fft.fftshift(img_data, axes=(2, 3))[:, :, ::-1, :]
-    img_data = img_data / img_data.max(axis=(2, 3), keepdims=True)
+    # img_data = img_data / img_data.max(axis=(2, 3), keepdims=True)
     ihdu = fits.ImageHDU(img_data)
 
     ihdu.header["DATETIME"] = t0.isot
@@ -355,7 +356,7 @@ def get_correction_grid(corr_ker_arr, grid_size, support, nchan, oversample=4):
         "gpu_corr_kernel_raw.png", (corr_grid_arr[0, :, :])
     )
     X, Y = np.mgrid[0:grid_size, 0:grid_size]
-    phase_correction = np.exp(1j * 2 * np.pi / grid_size * (Y))
+    phase_correction = 1  # np.exp(-1j * 2 * np.pi / grid_size * (Y))
 
     corr_grid_arr = (
         np.absolute(
@@ -368,7 +369,7 @@ def get_correction_grid(corr_ker_arr, grid_size, support, nchan, oversample=4):
                         offset : offset + grid_size_orig,
                         offset : offset + grid_size_orig,
                     ][
-                        :, :, ::-1
+                        :, :, :
                     ],
                     axes=(0, 2, 1),
                 )
@@ -386,12 +387,15 @@ def get_correction_grid(corr_ker_arr, grid_size, support, nchan, oversample=4):
         arr=correlate2d(corr_ker_arr[0, :, :], corr_ker_arr[0, :, :]),
     )
     corr_grid_arr = np.reciprocal(corr_grid_arr)
-    corr_grid_arr = corr_grid_arr / corr_grid_arr.sum(
+    corr_grid_arr = corr_grid_arr / corr_grid_arr.max(
         axis=(1, 2), keepdims=True
     )
     # corr_grid_arr = np.ones(corr_grid_arr.shape)
     return (corr_grid_arr).copy().ravel()
 
+
+def get_random_uuid():
+    return str(uuid.uuid1())
 
 if __name__ == "__main__":
     # a = gen_phases_lwasv(132, 800)

@@ -258,4 +258,9 @@ get_time_from_unix_epoch(std::string utcstart)
       .cast<double>();
 }
 
+std::string get_random_uuid(){
+    py::gil_scoped_acquire acquire;
+    return py::module_::import("epic_utils").attr("get_random_uuid")().cast<std::string>();
+}
+
 #endif // PY_FUNCS
