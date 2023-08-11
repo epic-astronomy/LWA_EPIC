@@ -30,7 +30,7 @@ class IndexFetcher_rft : public raft::kernel
         uint64_t tstart;
         input["tstart"].pop(tstart);
         if(tstart==-1){
-            output["meta_pixel_rows"].push(EpicPixelTableMetaRows());
+            //output["meta_pixel_rows"].push(EpicPixelTableMetaRows());
             return raft::proceed;
         }
         output["meta_pixel_rows"].push(create_dummy_meta(128, 128));
