@@ -28,7 +28,8 @@ cxxopts::Options get_options(){
     ("aeff","Antenna effective area (experimental) in sq. m",cxxopts::value<float>()->default_value("25"))
     ("kernel_oversample","Factor to over sample the kernel. Must be a power of 2.",cxxopts::value<int>()->default_value("2"))
     ("accum_16bit", "Use 16-bit precision for on-chip memory accumulation. Faster but less precise.", cxxopts::value<bool>()->default_value("false"))
-    ("chan_nbin","Binning factor for the number of channels", cxxopts::value<int>()->default_value("4"));
+    ("chan_nbin","Binning factor for the number of channels", cxxopts::value<int>()->default_value("4"))
+    ("nstreams","Number of cuda streams to process images", cxxopts::value<int>()->default_value("8"));
 
     options.add_options()
     ("h,help","Print usage");
@@ -87,6 +88,12 @@ std::optional<std::string> validate_options(cxxopts::ParseResult& result){
 
     if(nchan%nbin !=0){
         return "Number of channels must be an integral multiple of the binning factor.";
+    }
+
+    int nstreams = result["nstreams"].as<int>();
+
+    if(nstreams<=0){
+        return "The number of streams must be greater than 0";
     }
 
     return {};
