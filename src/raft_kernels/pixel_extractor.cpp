@@ -16,6 +16,7 @@ template<typename _PldIn, typename _PldOut, class BufferMngr, typename BufConfig
 class PixelExtractor : public raft::kernel
 {
   protected:
+    /// Metadata object to store pixel coords that will be extracted from the image
     EpicPixelTableMetaRows m_pixmeta_rows;
     EpicPixelTableMetaRows _dummy_meta;
     std::unique_ptr<BufferMngr> m_buf_mngr{ nullptr };
@@ -56,10 +57,10 @@ class PixelExtractor : public raft::kernel
     virtual raft::kstatus run() override
     {
         // check if there are updates to the pixel meta rows
-        while (input["meta_pixel_rows"].size() > 0) {
+        if(input["meta_pixel_rows"].size() > 0) {
           LOG(INFO)<<"WHILE LOOP";
             input["meta_pixel_rows"].pop(_dummy_meta);
-            if (_dummy_meta.meta_version != -1 && input["meta_pixel_rows"].size() == 0) {
+            if (_dummy_meta.meta_version != -1) {
                 m_pixmeta_rows = _dummy_meta;
             }
         }
@@ -75,6 +76,11 @@ class PixelExtractor : public raft::kernel
         _PldIn in_img;
         input["in_img"].pop(in_img);
         m_img_tensor.assign_data(in_img.get_mbuf()->get_data_ptr());
+
+        // copy the image metadata
+        out_pix_rows.get_mbuf()->m_img_metadata = in_img.get_mbuf()->get_metadataref();
+        out_pix_rows.get_mbuf()->m_uuid = get_random_uuid();
+
 
         // Extract pixels into the output payload
         LOG(INFO)<<"Extracting pixels into the payload";
