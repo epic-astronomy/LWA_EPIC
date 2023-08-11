@@ -74,7 +74,7 @@ class LFBufMngr // : Buffer<T, Allocator>
      */
     template<typename _t = Buffer,
              std::enable_if_t<has_config<_t>::value, bool> = true>
-    LFBufMngr(typename _t::config_t config);
+    LFBufMngr(int p_nbufs, int p_maxiters, typename _t::config_t config);
     // ~LFBufMngr(){
     //   LOG(INFO)<<"D LFBuffer";
     // }
@@ -105,12 +105,14 @@ LFBufMngr<Buffer>::LFBufMngr(size_t p_nbufs, size_t p_buf_size, size_t p_max_tri
 template<class Buffer>
 template<typename _t,
          std::enable_if_t<has_config<_t>::value, bool>>
-LFBufMngr<Buffer>::LFBufMngr(typename _t::config_t config)
+LFBufMngr<Buffer>::LFBufMngr(int p_nbufs, int p_maxiters, typename _t::config_t config)
+  : m_max_iters(p_maxiters)
+  , m_nbufs(p_nbufs)
 {
     CHECK(config.check_opts()) << "Invalid buffer config";
     // allocate space for buffers
-    m_buf_vec.reserve(config.p_nbufs);
-    for (size_t i = 0; i < config.p_nbufs; ++i) {
+    m_buf_vec.reserve(p_nbufs);
+    for (size_t i = 0; i < p_nbufs; ++i) {
         m_buf_vec.push_back(std::move(std::make_shared<mbuf_t>(config, i)));
     }
 }
