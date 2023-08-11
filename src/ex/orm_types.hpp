@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <string>
 #include <vector>
+#include "types.hpp"
 
 struct EpicPixelTableMetaRows
 {
@@ -78,6 +79,8 @@ struct EpicPixelTableDataRows : EpicPixelTableMetaRows
 
     using config_t = _config;
     size_t m_nchan{ 32 };
+    dict_t m_img_metadata;
+    std::string m_uuid;
 
     hwy::AlignedFreeUniquePtr<_Dtype[]> pixel_values;
     EpicPixelTableDataRows(config_t config)
