@@ -114,7 +114,7 @@ class ChanReducer_rft : public raft::kernel
             output["seq_start_id"].push(tstart);
         }
         else{
-          output["seq_start_id"].push(-1);
+          output["seq_start_id"].push(0);
         }
 
         return raft::proceed;

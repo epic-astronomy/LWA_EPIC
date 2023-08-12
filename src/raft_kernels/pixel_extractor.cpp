@@ -45,10 +45,10 @@ class PixelExtractor : public raft::kernel
 
         m_buf_mngr.reset();
         m_buf_mngr = std::make_unique<BufferMngr>(m_nbufs, m_maxiters, p_config);
-        for (int i = 0; i < m_nbufs; ++i) {
+        for (size_t i = 0; i < m_nbufs; ++i) {
             _PldOut pld = m_buf_mngr.get()->acquire_buf();
             if (!pld) {
-                LOG(FATAL)<<"Null payload. Unable to allocate memory for the pixel data buffer";
+                LOG(FATAL) << "Null payload. Unable to allocate memory for the pixel data buffer";
             }
             pld.get_mbuf()->copy_meta(m_pixmeta_rows);
         }
@@ -57,8 +57,8 @@ class PixelExtractor : public raft::kernel
     virtual raft::kstatus run() override
     {
         // check if there are updates to the pixel meta rows
-        if(input["meta_pixel_rows"].size() > 0) {
-          LOG(INFO)<<"WHILE LOOP";
+        if (input["meta_pixel_rows"].size() > 0) {
+            LOG(INFO) << "WHILE LOOP";
             input["meta_pixel_rows"].pop(_dummy_meta);
             if (_dummy_meta.meta_version != -1) {
                 m_pixmeta_rows = _dummy_meta;
@@ -69,22 +69,29 @@ class PixelExtractor : public raft::kernel
             return raft::proceed;
         }
 
+        _PldIn in_img;
+        input["in_img"].pop(in_img);
+
+        if (m_pixmeta_rows.meta_version == -1) {
+            // the indices aren't there yet
+            // unlikely to happen
+            output["out_img"].push(in_img);
+            return raft::proceed;
+        }
+
         _PldOut out_pix_rows = m_buf_mngr.get()->acquire_buf();
         // this takes care of resizing the data and meta vectors
         out_pix_rows.get_mbuf()->copy_meta(m_pixmeta_rows);
 
-        _PldIn in_img;
-        input["in_img"].pop(in_img);
         m_img_tensor.assign_data(in_img.get_mbuf()->get_data_ptr());
 
         // copy the image metadata
         out_pix_rows.get_mbuf()->m_img_metadata = in_img.get_mbuf()->get_metadataref();
         out_pix_rows.get_mbuf()->m_uuid = get_random_uuid();
 
-
         // Extract pixels into the output payload
-        LOG(INFO)<<"Extracting pixels into the payload";
-        LOG(INFO)<<"Ncoords: "<<m_pixmeta_rows.pixel_coords_sft.size()<<" "<<out_pix_rows.get_mbuf()->m_nchan;
+        LOG(INFO) << "Extracting pixels into the payload";
+        LOG(INFO) << "Ncoords: " << m_pixmeta_rows.pixel_coords_sft.size() << " " << out_pix_rows.get_mbuf()->m_nchan;
         m_img_tensor.extract_pixels(
           m_pixmeta_rows, out_pix_rows.get_mbuf()->pixel_values.get());
 

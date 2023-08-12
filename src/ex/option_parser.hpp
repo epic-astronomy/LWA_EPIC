@@ -64,7 +64,7 @@ std::optional<std::string> validate_options(cxxopts::ParseResult& result){
         return "The number of output channels must be at least 1"s;
     }
 
-    if(channels>channels>=MAX_CHANNELS_4090){
+    if(channels>MAX_CHANNELS_4090){
         return "RTX 4090 only supports output channels upto "s+std::to_string(MAX_CHANNELS_4090);
     }
 

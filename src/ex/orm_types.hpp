@@ -2,7 +2,7 @@
 #define ORM_TYPES
 
 #include "hwy/aligned_allocator.h"
-#include "tensor.hpp"
+//#include "tensor.hpp"
 #include <algorithm>
 #include <string>
 #include <vector>
@@ -12,23 +12,26 @@ struct EpicPixelTableMetaRows
 {
 
     constexpr static int NSTOKES{ 4 };
-    std::string uuid;
-    std::string src_name;
+    std::string m_uuid;
+    std::vector<int> source_ids;
+    size_t nsrcs;
     std::vector<std::pair<int, int>> pixel_coords;
     std::vector<std::pair<int, int>> pixel_coords_sft;
     std::vector<std::pair<float, float>> pixel_lm;
-    std::vector<std::pair<float, float>> pixel_skypos;
+    // std::vector<std::pair<float, float>> pixel_skypos;
     std::vector<std::pair<int, int>> pixel_offst;
 
     size_t m_ncoords;
-    size_t meta_version{ -1 };
+    int meta_version{ -1 };
 
-    EpicPixelTableMetaRows(int ncoords)
+    EpicPixelTableMetaRows(int ncoords, int n_sources=1)
     {
+        nsrcs = n_sources;
+        source_ids.reserve(n_sources);
         pixel_coords.reserve(ncoords);
         pixel_coords_sft.reserve(ncoords);
         pixel_lm.reserve(ncoords);
-        pixel_skypos.reserve(ncoords);
+        // pixel_skypos.reserve(ncoords);
         pixel_offst.reserve(ncoords);
 
         m_ncoords = ncoords;
@@ -38,7 +41,7 @@ struct EpicPixelTableMetaRows
 
     void transform_pix_coords(int xdim, int ydim)
     {
-        for (int i = 0; i < m_ncoords; ++i) {
+        for (size_t i = 0; i < m_ncoords; ++i) {
             int x = pixel_coords[i].first;
             //The array y-index starts from the top while the image from the bottom
             int y = ydim -1 - pixel_coords[i].second;
@@ -58,7 +61,7 @@ struct EpicPixelTableMetaRows
         return (m_ncoords != rhs.m_ncoords) ||
                (pixel_coords != rhs.pixel_coords) ||
                (pixel_lm != rhs.pixel_lm) ||
-               (pixel_skypos != rhs.pixel_skypos) ||
+            //    (pixel_skypos != rhs.pixel_skypos) ||
                (pixel_offst != rhs.pixel_offst);
     }
 };
@@ -80,7 +83,6 @@ struct EpicPixelTableDataRows : EpicPixelTableMetaRows
     using config_t = _config;
     size_t m_nchan{ 32 };
     dict_t m_img_metadata;
-    std::string m_uuid;
 
     hwy::AlignedFreeUniquePtr<_Dtype[]> pixel_values;
     EpicPixelTableDataRows(config_t config)
@@ -104,11 +106,13 @@ struct EpicPixelTableDataRows : EpicPixelTableMetaRows
         }
         pixel_coords = meta.pixel_coords;
         pixel_lm = meta.pixel_lm;
-        pixel_skypos = meta.pixel_skypos;
+        // pixel_skypos = meta.pixel_skypos;
         pixel_offst = meta.pixel_offst;
 
         meta_version = meta.meta_version;
-        m_ncoords = m_ncoords;
+        m_ncoords = meta.m_ncoords;
+        nsrcs = meta.nsrcs;
+        source_ids = meta.source_ids;
     }
 
     void m_reset_buf() {}
@@ -117,12 +121,16 @@ struct EpicPixelTableDataRows : EpicPixelTableMetaRows
 EpicPixelTableMetaRows
 create_dummy_meta(int xdim, int ydim)
 {
-    EpicPixelTableMetaRows meta(1);
+    EpicPixelTableMetaRows meta(1,1);
     meta.pixel_coords.push_back(std::pair<int, int>(32, 33));
+    meta.pixel_lm.push_back(std::pair<int,int>(1,1));
+    meta.pixel_offst.push_back(std::pair<int,int>(0,0));
+    meta.nsrcs = 1;
+    meta.source_ids.push_back(1);
     meta.meta_version = 42;
     meta.transform_pix_coords(xdim, ydim);
 
     return meta;
-}
+};
 
 #endif /* ORM_TYPES */
