@@ -397,6 +397,13 @@ def get_correction_grid(corr_ker_arr, grid_size, support, nchan, oversample=4):
 def get_random_uuid():
     return str(uuid.uuid1())
 
+def meta2pgtime(time_tag0, img_len_ms):
+    return str(Time(
+        time_tag0/ FS + 1e-3 * img_len_ms/ 2.0,
+        format="unix",
+        precision=6,
+    ).isot)
+
 if __name__ == "__main__":
     # a = gen_phases_lwasv(132, 800)
     # print(a[:4])
