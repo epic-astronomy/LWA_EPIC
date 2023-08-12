@@ -13,20 +13,10 @@ using namespace std::string_literals;
 
 template<class Payload>
 class DiskSaver_rft: public raft::kernel{
-    protected:
-    // uint64_t m_time_from_unix_epoch_s{0};
-    // uint64_t time_tag0{0};
-    public:
-    DiskSaver_rft(/*std::string utcstart="2023_06_19T00_00_00"s*/):raft::kernel(){
-        input.addPort<Payload>("image");
-        // if(utcstart==""){
-        //     m_time_from_unix_epoch_s = get_ADP_time_from_unix_epoch();
-        // }
-        // else{
-        //     m_time_from_unix_epoch_s = get_time_from_unix_epoch(utcstart);
-        // }
-        // time_tag0 = m_time_from_unix_epoch_s * FS;
 
+    public:
+    DiskSaver_rft():raft::kernel(){
+        input.addPort<Payload>("image");
     }
 
     virtual raft::kstatus run() override{
@@ -46,7 +36,6 @@ class DiskSaver_rft: public raft::kernel{
         }
         auto imsize = std::get<int>(img_metadata["grid_size"]);
         auto nchan = std::get<uint8_t>(img_metadata["nchan"]);
-        // img_metadata["time_tag"] = time_tag0 + std::get<uint64_t>(img_metadata["seq_start"]) * SEQ_MULT_S;
         save_image(imsize, nchan, pld.get_mbuf()->get_data_ptr(), "test_image"s, img_metadata);
 
         return raft::proceed;
