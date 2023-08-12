@@ -1,4 +1,8 @@
-
+// IMPORTANT: pqxx MUST be the first header. A weird interaction with other libraries
+// makes the compiler yell at us!
+// clang-format off
+#include <pqxx/pqxx>
+// clang-format on
 #include "ex/MOFF_correlator.hpp"
 #include "ex/option_parser.hpp"
 #include <cmath>
@@ -6,15 +10,15 @@
 #include "ex/buffer.hpp"
 #include "ex/helper_traits.hpp"
 #include "ex/lf_buf_mngr.hpp"
+#include "raft_kernels/accumulator.cpp"
 #include "raft_kernels/chan_reducer.cpp"
 #include "raft_kernels/correlator.hpp"
+#include "raft_kernels/db_ingester.cpp"
 #include "raft_kernels/disk_saver.hpp"
 #include "raft_kernels/dummy_kernel.hpp"
 #include "raft_kernels/dummy_packet_gen.hpp"
-#include "raft_kernels/accumulator.cpp"
-#include "raft_kernels/pixel_extractor.cpp"
-#include "raft_kernels/db_ingester.cpp"
 #include "raft_kernels/index_fetcher.hpp"
+#include "raft_kernels/pixel_extractor.cpp"
 #include <raftmanip>
 
 using namespace std::chrono;
@@ -104,21 +108,20 @@ main(int argc, char** argv)
     int imsize = options["imagesize"].as<int>();
     int im_nchan = options["channels"].as<int>();
     int chan_nbin = options["chan_nbin"].as<int>();
-    int reduced_nchan = im_nchan/chan_nbin;
+    int reduced_nchan = im_nchan / chan_nbin;
     int im_naccum = options["nimg_accum"].as<int>();
     auto chan_reducer_rft = ChanReducer_rft<MOFFCorrelator_t::payload_t, float_buf_t>(
-     chan_nbin , imsize, imsize, im_nchan);
+      chan_nbin, imsize, imsize, im_nchan);
 
     auto accumulator_rft = Accumulator_rft<MOFFCorrelator_t::payload_t>(
-        imsize, imsize, reduced_nchan, im_naccum
-    );
+      imsize, imsize, reduced_nchan, im_naccum);
 
     using pixel_buf_t = LFBufMngr<EpicPixelTableDataRows<float>>;
     using pixel_buf_config_t = typename EpicPixelTableDataRows<float>::config_t;
     using pix_pld_t = Payload<typename pixel_buf_t::mbuf_t>;
     pixel_buf_config_t config;
-    config.nchan=reduced_nchan;
-    config.ncoords=1;
+    config.nchan = reduced_nchan;
+    config.ncoords = 1;
     auto dummy_meta = create_dummy_meta(imsize, imsize);
     auto pixel_extractor_rft = PixelExtractor<MOFFCorrelator_t::payload_t, pix_pld_t, pixel_buf_t, pixel_buf_config_t>(config, dummy_meta, imsize, imsize, reduced_nchan);
 
@@ -139,15 +142,13 @@ main(int argc, char** argv)
     rft_manip<7, 1>::bind(db_injester_rft);
     rft_manip<8, 1>::bind(index_fetcher_rft);
 
-
-
     m += dummy_pkt_gen_rft >> corr_rft >> chan_reducer_rft["in_img"]["out_img"] >> pixel_extractor_rft["in_img"];
 
-    m+= pixel_extractor_rft["out_img"]>> accumulator_rft >> saver_rft;
+    m += pixel_extractor_rft["out_img"] >> accumulator_rft >> saver_rft;
 
-    m+= pixel_extractor_rft["out_pix_rows"] >> db_injester_rft;
+    m += pixel_extractor_rft["out_pix_rows"] >> db_injester_rft;
 
-    m+= chan_reducer_rft["seq_start_id"] >> index_fetcher_rft >> pixel_extractor_rft["meta_pixel_rows"];
+    m += chan_reducer_rft["seq_start_id"] >> index_fetcher_rft >> pixel_extractor_rft["meta_pixel_rows"];
 
     VLOG(1) << "Done";
     m.exe();

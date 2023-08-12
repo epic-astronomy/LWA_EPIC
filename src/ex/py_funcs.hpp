@@ -258,9 +258,18 @@ get_time_from_unix_epoch(std::string utcstart)
       .cast<double>();
 }
 
-std::string get_random_uuid(){
+std::string
+get_random_uuid()
+{
     py::gil_scoped_acquire acquire;
     return py::module_::import("epic_utils").attr("get_random_uuid")().cast<std::string>();
+}
+
+std::string
+meta2pgtime(uint64_t time_tag, double img_len_ms)
+{
+    py::gil_scoped_acquire acquire;
+    return py::module_::import("epic_utils").attr("meta2pgtime")(time_tag, img_len_ms).cast<std::string>();
 }
 
 #endif // PY_FUNCS
