@@ -33,19 +33,20 @@ class Accumulator_rft : public raft::kernel
 
   public:
     Accumulator_rft(size_t p_xdim, size_t p_ydim, size_t p_nchan, size_t p_naccum)
-      : m_xdim(p_xdim)
-      , m_ydim(p_ydim)
+      : raft::kernel()
       , m_naccum(p_naccum)
+      , m_xdim(p_xdim)
+      , m_ydim(p_ydim)
       , m_in_nchan(p_nchan)
       , m_in_tensor(p_nchan, p_xdim, p_xdim)
       , m_out_tensor(p_nchan, p_xdim, p_ydim)
-      , raft::kernel()
     {
         input.addPort<_Pld>("in_img");
         output.addPort<_Pld>("out_img");
     }
 
-    void increment_count(){
+    void increment_count()
+    {
         m_accum_count++;
     }
 

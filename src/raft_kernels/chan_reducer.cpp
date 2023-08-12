@@ -39,7 +39,7 @@ class ChanReducer_rft : public raft::kernel
 
     using high_res_tp = typename std::chrono::time_point<std::chrono::high_resolution_clock>;
     high_res_tp m_prev_refresh;
-    size_t m_refresh_interval{ 10 };
+    long int m_refresh_interval{ 10 };
 
     bool is_require_refresh()
     {
@@ -62,14 +62,14 @@ class ChanReducer_rft : public raft::kernel
      * @param p_in_nchan Number of input channels to the reducer
      */
     ChanReducer_rft(int p_ncombine, int p_xdim, int p_ydim, int p_in_nchan, int p_refresh_interval = 10)
-      : m_ncombine(p_ncombine)
+      : raft::kernel()
+      , m_ncombine(p_ncombine)
       , m_xdim(p_xdim)
       , m_ydim(p_ydim)
       , m_in_nchan(p_in_nchan)
-      , m_refresh_interval(p_refresh_interval)
       , m_in_tensor(PSTensor<float>(m_in_nchan, m_xdim, m_ydim))
-      , m_out_tensor(PSTensor<float>(p_in_nchan/p_ncombine, m_xdim, m_ydim))
-      , raft::kernel()
+      , m_out_tensor(PSTensor<float>(size_t(p_in_nchan / p_ncombine), m_xdim, m_ydim))
+      , m_refresh_interval(p_refresh_interval)
     {
         input.addPort<_PldIn>("in_img");
         output.addPort<_PldOut>("out_img");
@@ -92,7 +92,7 @@ class ChanReducer_rft : public raft::kernel
         _PldIn in_pld;
         input["in_img"].pop(in_pld);
 
-        auto out_pld = m_buf_mngr->acquire_buf(m_max_buf_reqs);
+        auto out_pld = m_buf_mngr->acquire_buf();
         if (!out_pld) {
             LOG(FATAL) << "Memory buffer full in ChanReducer";
         }
@@ -112,9 +112,8 @@ class ChanReducer_rft : public raft::kernel
         if (is_require_refresh()) { // update once very `m_refresh_interval` seconds
             auto tstart = std::get<uint64_t>(out_meta["seq_start"]);
             output["seq_start_id"].push(tstart);
-        }
-        else{
-          output["seq_start_id"].push(0);
+        } else {
+            output["seq_start_id"].push(0);
         }
 
         return raft::proceed;

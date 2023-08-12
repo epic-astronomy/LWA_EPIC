@@ -32,8 +32,8 @@ class Tensor
 
   protected:
     _Tp* m_data_ptr{ nullptr };
-    std::array<int, NDims> m_dims;
-    std::array<int, NDims> m_strides;
+    std::array<size_t, NDims> m_dims;
+    std::array<size_t, NDims> m_strides;
     size_t m_size;
 
   public:
@@ -41,8 +41,8 @@ class Tensor
     void assign_data(_Tp* p_data_ptr);
     void dissociate_data();
     _Tp& at(auto... p_idx) const;
-    _Tp* const get_data_ptr() { return m_data_ptr; }
-    std::array<int, NDims> shape() { return m_dims; }
+    const _Tp* get_data_ptr() { return m_data_ptr; }
+    std::array<size_t, NDims> shape() { return m_dims; }
     size_t size() const { return m_size; }
     void allocate();
     ~Tensor() { m_data_ptr = nullptr; }
@@ -109,7 +109,8 @@ Tensor<_Tp, NDims>::at(auto... p_idx) const
     assert(m_data_ptr != nullptr && "Cannot return data from an uninitialized tensor");
 
     size_t idx = 0;
-    return m_data_ptr[((p_idx * m_strides[idx++]) + ...)];
+    auto dec_wrapper = [&idx]{return idx++;};
+    return m_data_ptr[((p_idx * m_strides[dec_wrapper()]) + ...)];
 }
 
 /**
@@ -141,7 +142,7 @@ constexpr size_t EPICImgDim = 4 /*nchan, nx, ny, npol*/;
 template<typename _Tp = float>
 class PSTensor : public Tensor<_Tp, EPICImgDim>
 {
-    static constexpr int NSTOKES{ 4 };
+    static constexpr size_t NSTOKES{ 4 };
     using tag_t = hn::FixedTag<_Tp, NSTOKES>;
     using vec_t = hn::Vec<tag_t>;
     tag_t _stokes_tag;
@@ -164,12 +165,12 @@ class PSTensor : public Tensor<_Tp, EPICImgDim>
      * @param p_xdim Image X-dimensions
      * @param p_ydim Image Y-dimensions
      */
-    PSTensor(int p_nchan, int p_xdim, int p_ydim)
+    PSTensor(size_t p_nchan, size_t p_xdim, size_t p_ydim)
       : Tensor<_Tp, EPICImgDim>(p_nchan, p_xdim, p_ydim, NSTOKES)
-      , m_nchan(p_nchan)
       , m_xdim(p_xdim)
       , m_ydim(p_ydim)
       , m_npix_per_img(p_xdim * p_ydim)
+      , m_nchan(p_nchan)
     {
     }
 
@@ -272,7 +273,7 @@ class PSTensor : public Tensor<_Tp, EPICImgDim>
         assert((this->m_dims[0] % out_nchan == 0) && "Input channels must be an integral multiple of output channels" && out_nchan && this->m_dims[0]);
         int ncombine = this->m_dims[0] / out_nchan;
 
-        auto out_data_ptr = p_out_tensor.get_data_ptr();
+        // auto out_data_ptr = p_out_tensor.get_data_ptr();
 
         // very ugly.
         // for (size_t i = 0; i < ncombine; ++i) {
@@ -328,7 +329,7 @@ class PSTensor : public Tensor<_Tp, EPICImgDim>
      */
     void add_chan_slice(PSTensor<_Tp>& p_out_tensor, size_t chan_in, size_t chan_out, bool p_assign = false)
     {
-        auto out_ptr = p_out_tensor.get_data_ptr();
+        // auto out_ptr = p_out_tensor.get_data_ptr();
         for (size_t i = 0; i < m_npix_per_img; ++i) {
             auto idx_in = chan_pix2idx(chan_in, i);
             auto idx_out = chan_pix2idx(chan_out, i);
@@ -344,7 +345,7 @@ class PSTensor : public Tensor<_Tp, EPICImgDim>
     void extract_pixels(const EpicPixelTableMetaRows& p_meta, float* p_pixels)
     {
         for (size_t i = 0; i < p_meta.pixel_coords_sft.size(); ++i) {//coord loop
-            for (int j = 0; j < m_nchan; ++j) {//chan loop
+            for (size_t j = 0; j < m_nchan; ++j) {//chan loop
                 int x = p_meta.pixel_coords_sft[i].first;
                 int y = p_meta.pixel_coords_sft[i].second;
                 hn::Store(

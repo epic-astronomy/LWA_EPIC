@@ -190,7 +190,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
 
         // Accumulate cross-pols using on-chip memory.
         // This would lead to spilling and may result in reduced occupancy
-        // Using bf16 instead of f32 can alleviate this issue
+        // Using f16 instead of f32 can alleviate this issue
         for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
             using _accum_t = decltype(accum_oc_t::x);
             auto xx = compute_xx<_accum_t, FFT>(thread_data[_reg]);
@@ -265,9 +265,9 @@ get_imaging_kernel(int support = 3)
         case 9:
             return (void*)(block_fft_kernel<FFT, 9, accum_oc_t>);
         default:
-            assert(("Unsupported support size", false));
+            assert(false && "Unsupported support size");
     }
-};
+}; 
 
 template void*
 get_imaging_kernel<FFT128x128, float2>(int support);

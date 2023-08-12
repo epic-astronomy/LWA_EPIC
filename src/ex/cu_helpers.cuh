@@ -255,7 +255,7 @@ compute_gcf_elements(float* out, float* antpos, int chan0, float lmbda_scale, cu
     int half_support = support / 2;
     auto tb = cg::this_thread_block();
     int grp_rank = tb.thread_rank() / nelements;
-    int offset = 0;
+    // int offset = 0;
     int grp_size = tb.num_threads() / nelements;
     int grp_thread_rank = tb.thread_rank() % nelements;
 

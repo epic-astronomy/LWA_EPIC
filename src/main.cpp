@@ -129,7 +129,7 @@ main(int argc, char** argv)
 
     auto db_injester_rft = DBIngester_rft<pix_pld_t>();
 
-    VLOG(1) << "Setting up the Raft map";
+    VLOG(1) << "Setting up the Raft map"; 
     raft::map m;
 
     // CPU id, Affinity group id

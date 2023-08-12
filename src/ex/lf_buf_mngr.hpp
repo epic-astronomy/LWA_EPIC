@@ -61,7 +61,7 @@ class LFBufMngr // : Buffer<T, Allocator>
      * @param p_max_tries Unused
      * @return Payload<mbuf_t>
      */
-    Payload<mbuf_t> acquire_buf(size_t p_max_tries = 5);
+    Payload<mbuf_t> acquire_buf();
 
     /**
      * @brief Construct a new LFBufMngr object with a config object.
@@ -106,8 +106,9 @@ template<class Buffer>
 template<typename _t,
          std::enable_if_t<has_config<_t>::value, bool>>
 LFBufMngr<Buffer>::LFBufMngr(size_t p_nbufs, int p_maxiters, typename _t::config_t config)
-  : m_max_iters(p_maxiters)
-  , m_nbufs(p_nbufs)
+  : m_nbufs(p_nbufs)
+  , m_max_iters(p_maxiters)
+
 {
     CHECK(config.check_opts()) << "Invalid buffer config";
     // allocate space for buffers
@@ -119,7 +120,7 @@ LFBufMngr<Buffer>::LFBufMngr(size_t p_nbufs, int p_maxiters, typename _t::config
 
 template<class Buffer>
 Payload<typename LFBufMngr<Buffer>::mbuf_t>
-LFBufMngr<Buffer>::acquire_buf(size_t p_max_tries)
+LFBufMngr<Buffer>::acquire_buf()
 {
     auto cur_cursor = m_cursor.load(); // postion where buffer was available previously
     auto orig_cursor = cur_cursor;

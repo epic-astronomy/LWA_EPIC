@@ -12,7 +12,7 @@ template<class Payload, class BufferMngr>
 class dummy_pkt_gen : public raft::kernel
 {
   private:
-    unsigned int m_n_pkts{ 3 };
+    size_t m_n_pkts{ 3 };
     const int m_ngulps{ 20 };
     const int m_ngulps_per_seq{ 1000 };
     const int m_nchan_in{ 128 };
@@ -22,7 +22,7 @@ class dummy_pkt_gen : public raft::kernel
     std::unique_ptr<BufferMngr> m_buf_mngr{ nullptr };
 
   public:
-    dummy_pkt_gen(unsigned int p_n_pkts = 1, std::string utcstart = "2023_06_19T00_00_00"s)
+    dummy_pkt_gen(size_t p_n_pkts = 1, std::string utcstart = "2023_06_19T00_00_00"s)
       : raft::kernel()
       , m_n_pkts(p_n_pkts)
     {
@@ -40,7 +40,7 @@ class dummy_pkt_gen : public raft::kernel
 
     virtual raft::kstatus run() override
     {
-        for (int i = 0; i < m_n_pkts; ++i) {
+        for (size_t i = 0; i < m_n_pkts; ++i) {
             VLOG(3) << "Generating a gulp";
             auto pld = m_buf_mngr.get()->acquire_buf();
 

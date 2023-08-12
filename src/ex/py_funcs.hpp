@@ -32,6 +32,8 @@ pro_sph_ang1_cv(py::module_& scipy_spl, int m, int n, float c, float cv, float x
         // .first and [0] throws a seg fault.
         return it.cast<double>();
     }
+
+    return nan("");
 }
 
 /**
@@ -195,7 +197,7 @@ get_40ms_gulp(T* out_ptr)
 }
 
 template<typename T>
-void
+void __attribute__((visibility("hidden")))
 save_image(size_t grid_size, size_t nchan, T* data, std::string filename, dict_t& metadata)
 {
     py::gil_scoped_acquire acquire;

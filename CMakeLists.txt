@@ -10,19 +10,23 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose Release or Debug" FORCE)
+endif()
+
 ### pqxx
 add_subdirectory(src/extern/pqxx)
-include_directories(src/extern/pqxx/include)
+include_directories(SYSTEM src/extern/pqxx/include)
 
 ### Raftlib
-include_directories(src/ex)
-include_directories(src/extern/RaftLib/raftinc)
-include_directories(src/extern/RaftLib/git-dep/shm/include)
-include_directories(src/extern/RaftLib/git-dep/highwayhash/include)
-include_directories(src/extern/RaftLib/git-dep/demangle/include)
-include_directories(src/extern/RaftLib/git-dep/cmdargs/include)
-include_directories(src/extern/RaftLib/git-dep/affinity/include)
-include_directories(${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+include_directories(SYSTEM src/ex)
+include_directories(SYSTEM src/extern/RaftLib/raftinc)
+include_directories(SYSTEM src/extern/RaftLib/git-dep/shm/include)
+include_directories(SYSTEM src/extern/RaftLib/git-dep/highwayhash/include)
+include_directories(SYSTEM src/extern/RaftLib/git-dep/demangle/include)
+include_directories(SYSTEM src/extern/RaftLib/git-dep/cmdargs/include)
+include_directories(SYSTEM src/extern/RaftLib/git-dep/affinity/include)
+include_directories(SYSTEM ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 #include_directories(/usr/local/cuda/targets/x86_64-linux/include)
 
 cmake_print_variables(CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES)
@@ -41,7 +45,7 @@ add_subdirectory(src/extern/glog)
 
 #cxxopts
 add_subdirectory(src/extern/cxxopts)
-include_directories(src/extern/cxxopts/include)
+include_directories(SYSTEM src/extern/cxxopts/include)
 
 ### Google benchmark
 set(BENCHMARK_ENABLE_TESTING off CACHE BOOL "Disable GBenchmark's testing" FORCE)
@@ -57,7 +61,7 @@ set(HWY_ENABLE_EXAMPLES False CACHE BOOL "Disable hwy examples" FORCE)
 set(HWY_ENABLE_CONTRIB False CACHE BOOL "Disable hwy examples" FORCE)
 add_subdirectory(src/extern/highway)
 
-include_directories(src/extern/highway)
+include_directories(SYSTEM src/extern/highway)
 
 ### pybind11
 add_subdirectory(src/extern/pybind11)
@@ -65,14 +69,11 @@ OPTION(PYTHON_EXECUTABLE "/home/batman/miniconda3/envs/epic310/bin/python")
 
 
 ### cuFFTDx
-include_directories(src/extern/nvidia/mathdx/22.11/include)
+include_directories(SYSTEM src/extern/nvidia/mathdx/22.11/include)
 
 find_package(OpenMP REQUIRED)
 
 
-# although the current EPIC system supports AVX512, each channel contains 256 bits
-# so setting the max vector size to 256 bits can give optimal performance
-add_compile_options(-march=haswell -maes -O3 -pthread -w -Wall -Wextra -Wpedantic -fconcepts)
 
 add_library(epiclib STATIC
    src/sockets.cpp
@@ -84,7 +85,7 @@ add_library(epiclib STATIC
 
 add_library(epic_cu STATIC src/MOFF_cu_handler.cu src/ex/host_helpers.cu)
 target_compile_features(epic_cu PUBLIC cxx_std_17)
-target_compile_options(epic_cu PRIVATE -O3 -use_fast_math --ptxas-options=-v  -Xptxas -v -extra-device-vectorization)
+target_compile_options(epic_cu PRIVATE -O3 -use_fast_math --ptxas-options=-v  -Xptxas -v -extra-device-vectorization -Wall)
 
 set_target_properties( epic_cu
                        PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
@@ -92,6 +93,10 @@ set_target_properties(epic_cu PROPERTIES CUDA_ARCHITECTURES "89")
 
 
 add_executable(epic++ src/main.cpp)
+# although the current EPIC system supports AVX512, each channel contains 256 bits
+# so setting the max vector size to 256 bits can give optimal performance
+target_compile_options(epic++ PRIVATE -march=haswell -maes -O3 -pthread  -Wall -Wextra -Wpedantic -fconcepts)
+
 set_target_properties( epic++
                        PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 

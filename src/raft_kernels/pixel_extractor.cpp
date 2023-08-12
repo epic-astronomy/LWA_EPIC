@@ -30,12 +30,12 @@ class PixelExtractor : public raft::kernel
 
   public:
     PixelExtractor(BufConfig p_config, const EpicPixelTableMetaRows& p_init_metarows, size_t p_xdim, size_t p_ydim, size_t p_inchan)
-      : m_pixmeta_rows(p_init_metarows)
+      : raft::kernel()
+      , m_pixmeta_rows(p_init_metarows)
       , m_img_tensor(p_inchan, p_xdim, p_ydim)
       , m_xdim(p_xdim)
       , m_ydim(p_ydim)
       , m_nchan(p_inchan)
-      , raft::kernel()
     {
         input.addPort<EpicPixelTableMetaRows>("meta_pixel_rows");
         input.addPort<_PldIn>("in_img");

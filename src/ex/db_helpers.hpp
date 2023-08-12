@@ -2,10 +2,9 @@
 #include <cstring>
 #include <iostream>
 #include <pqxx/pqxx>
+#include <py_funcs.hpp>
 #include <string_view>
 #include <vector>
-#include <py_funcs.hpp>
-
 
 std::string
 get_pixel_insert_stmnt_1(pqxx::placeholders<unsigned int>& name)
@@ -69,9 +68,12 @@ get_img_meta_insert_stmnt_1(pqxx::placeholders<unsigned int>& name)
     stmnt += "point(" + name.get() + ",";
     name.next();
     stmnt += name.get() + ")";
-    stmnt += ")";
     name.next();
 
+    stmnt += "," + name.get();
+    name.next();
+
+    stmnt += ")";
     return stmnt;
 }
 
@@ -79,7 +81,7 @@ std::string
 get_img_meta_insert_stmnt_n(int nrows)
 {
     pqxx::placeholders name;
-    std::string stmnt = "INSERT INTO epic_img_metadata (id, img_time, n_chan, n_pol, chan0, chan_bw, epic_version, img_size) VALUES ";
+    std::string stmnt = "INSERT INTO epic_img_metadata (id, img_time, n_chan, n_pol, chan0, chan_bw, epic_version, img_size, npix_kernel) VALUES ";
     for (int i = 0; i < nrows; ++i) {
         stmnt += get_img_meta_insert_stmnt_1(name);
         if (i < (nrows - 1)) {
@@ -102,7 +104,6 @@ ingest_payload(
     ingest_meta(pld, work, npix_per_src, meta_stmnt_id);
 }
 
-
 template<typename _PgT>
 void
 ingest_pixels_src_1(_PgT& data, pqxx::work& work, int src_idx, int nchan, int npix_per_src, std::string stmnt_id)
@@ -118,21 +119,21 @@ ingest_pixels_src_1(_PgT& data, pqxx::work& work, int src_idx, int nchan, int np
         auto pix_lm = data.pixel_lm[coord_idx];
         auto pix_offst = data.pixel_offst[coord_idx];
 
-            pqxx::params pix_pars(
-              data.m_uuid,
-              std::basic_string_view<std::byte>(
-                reinterpret_cast<std::byte*>(
-                  data.pixel_values.get() + src_idx * nelem_per_src + i * nelem_per_pix),
-                  nelem_per_pix * sizeof(float)),
-              pix_coord.first,
-              pix_coord.second,
-              pix_lm.first,
-              pix_lm.second,
-              data.source_ids[src_idx],
-              pix_offst.first,
-              pix_offst.second);
+        pqxx::params pix_pars(
+          data.m_uuid,
+          std::basic_string_view<std::byte>(
+            reinterpret_cast<std::byte*>(
+              data.pixel_values.get() + src_idx * nelem_per_src + i * nelem_per_pix),
+            nelem_per_pix * sizeof(float)),
+          pix_coord.first,
+          pix_coord.second,
+          pix_lm.first,
+          pix_lm.second,
+          data.source_ids[src_idx],
+          pix_offst.first,
+          pix_offst.second);
 
-            pars.append(pix_pars);
+        pars.append(pix_pars);
     }
     work.exec_prepared0(stmnt_id, pars);
 }
@@ -143,10 +144,9 @@ ingest_pixels_src_n(_Pld& pld, pqxx::work& work, int npix_per_src, const std::st
 {
     auto& pix_data = *(pld.get_mbuf());
     int nsrc = pix_data.nsrcs;
-    int ncoords = pix_data.m_ncoords;
     int nchan = pix_data.m_nchan;
 
-    assert((ncoords == (nsrc * npix_per_src)) && "The number of extracted pixels do not match the value expected from the source number");
+    assert((pix_data.m_ncoords == (nsrc * npix_per_src)) && "The number of extracted pixels do not match the value expected from the source number");
 
     for (int src_idx = 0; src_idx < nsrc; ++src_idx) {
         ingest_pixels_src_1(pix_data, work, src_idx, nchan, npix_per_src, stmnt);
@@ -166,16 +166,16 @@ ingest_meta(_Pld& pld, pqxx::work& work, int npix_per_src, const std::string& st
     auto bw = std::get<int>(meta["chan_width"]);
     auto grid_size = std::get<int>(meta["grid_size"]);
     pqxx::params pars(
-        pix_data.m_uuid,
-        meta2pgtime(time_tag, img_len_ms),
-        nchan,
-        int(NSTOKES),
-        int(chan0),
-        bw,
-        EPIC_VERSION,
-        grid_size,
-        grid_size
-    );
+      pix_data.m_uuid,
+      meta2pgtime(time_tag, img_len_ms),
+      nchan,
+      int(NSTOKES),
+      int(chan0),
+      bw,
+      EPIC_VERSION,
+      grid_size,
+      grid_size,
+      npix_per_src);
 
     work.exec_prepared0(stmnt, pars);
 }

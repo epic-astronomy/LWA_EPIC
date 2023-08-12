@@ -274,7 +274,7 @@ MOFFCorrelator<Dtype, BuffMngr>::reset_antpos(int p_grid_size, double p_grid_res
     CHECK_NE(m_ant_pos_freq.get(), static_cast<float*>(NULL)) << "Unable to allocate antenna position memory";
 
     m_delta = get_lwasv_locs<float>(m_raw_ant_pos.get(), p_grid_size, p_grid_res);
-    auto chan0 = p_chan0;
+    // auto chan0 = p_chan0;
     for (auto chan = 0; chan < p_nchan; ++chan) {
         double wavenumber = double((p_chan0 + chan) * BANDWIDTH) / double(SOL);
         for (auto pos = 0; pos < pitch; ++pos) {

@@ -211,6 +211,10 @@ struct Payload
         VLOG(2) << "Copied payload " << m_mbuf.use_count();
         VLOG_IF(2, m_mbuf.get() != nullptr) << " with ID " << m_mbuf.get()->m_id;
     }
+    Payload& operator=(Payload p_pld){
+        this->m_mbuf = p_pld.m_mbuf;
+        return *this;
+    }
     ~Payload();
     // void mbuf_shared_count() const{
     //     DLOG(INFO)<<"MBuf shared count: "<<m_mbuf.use_count();
@@ -272,7 +276,7 @@ struct ManagedBuf : public Buffer
              std::enable_if_t<std::is_class_v<typename _t::config_t>, bool> = false>
     ManagedBuf(typename _t::config_t p_config, size_t p_id=0)
         : Buffer(p_config)
-        , m_id(p_id){};
+        , m_id(p_id){} 
     // void unlock();
     /**
      * @brief Attempt to acquire a lock on the buffer
