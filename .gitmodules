@@ -19,3 +19,6 @@
 [submodule "src/extern/cxxopts"]
 	path = src/extern/cxxopts
 	url = https://github.com/jarro2783/cxxopts.git
+[submodule "src/extern/pqxx"]
+	path = src/extern/pqxx
+	url = https://github.com/jtv/libpqxx.git
