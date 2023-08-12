@@ -66,9 +66,9 @@ Tensor<_Tp, NDims>::Tensor(auto... p_dims)
 
     m_size = std::accumulate(m_dims.begin(), m_dims.end(), 1, std::multiplies<int>{});
 
-    for (auto it : m_strides) {
-        // std::cout << it << "\n";
-    }
+    // for (auto it : m_strides) {
+    //     // std::cout << it << "\n";
+    // }
 }
 
 /**
@@ -269,7 +269,7 @@ class PSTensor : public Tensor<_Tp, EPICImgDim>
     void combine_channels(PSTensor<_Tp>& p_out_tensor)
     {
         auto out_nchan = p_out_tensor.shape()[0];
-        assert((this->m_dims[0] % out_nchan == 0) && "Input channels must be an integral multiple of output channels" && );
+        assert((this->m_dims[0] % out_nchan == 0) && "Input channels must be an integral multiple of output channels" && out_nchan && this->m_dims[0]);
         int ncombine = this->m_dims[0] / out_nchan;
 
         auto out_data_ptr = p_out_tensor.get_data_ptr();
@@ -343,7 +343,7 @@ class PSTensor : public Tensor<_Tp, EPICImgDim>
 
     void extract_pixels(const EpicPixelTableMetaRows& p_meta, float* p_pixels)
     {
-        for (int i = 0; i < p_meta.pixel_coords_sft.size(); ++i) {//coord loop
+        for (size_t i = 0; i < p_meta.pixel_coords_sft.size(); ++i) {//coord loop
             for (int j = 0; j < m_nchan; ++j) {//chan loop
                 int x = p_meta.pixel_coords_sft[i].first;
                 int y = p_meta.pixel_coords_sft[i].second;
