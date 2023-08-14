@@ -1,3 +1,5 @@
+#ifndef PACKET_GEN
+#define PACKET_GEN
 #include "../ex/constants.h"
 #include "../ex/types.hpp"
 #include <chrono>
@@ -84,3 +86,6 @@ class GulpGen_rft : public raft::kernel
         return raft::stop;
     }
 };
+
+
+#endif /* PACKET_GEN */
