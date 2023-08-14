@@ -1,6 +1,9 @@
+#ifndef OPTION_PARSER
+#define OPTION_PARSER
 #include <cxxopts.hpp>
 #include <string>
 #include "constants.h"
+#include "host_helpers.h"
 using namespace std::string_literals;
 
 
@@ -28,8 +31,11 @@ cxxopts::Options get_options(){
     ("aeff","Antenna effective area (experimental) in sq. m",cxxopts::value<float>()->default_value("25"))
     ("kernel_oversample","Factor to over sample the kernel. Must be a power of 2.",cxxopts::value<int>()->default_value("2"))
     ("accum_16bit", "Use 16-bit precision for on-chip memory accumulation. Faster but less precise.", cxxopts::value<bool>()->default_value("false"))
-    ("chan_nbin","Binning factor for the number of channels", cxxopts::value<int>()->default_value("4"))
-    ("nstreams","Number of cuda streams to process images", cxxopts::value<int>()->default_value("8"));
+    ("chan_nbin","Binning factor for the number of channels", cxxopts::value<int>()->default_value("4"));
+
+    options.add_options("Execution options")
+    ("nstreams","Number of cuda streams to process images", cxxopts::value<int>()->default_value("8"))
+    ("ngpus", "number of GPUs to simultaneously run EPIC", cxxopts::value<int>()->default_value("1"));
 
     options.add_options()
     ("h,help","Print usage");
@@ -96,5 +102,19 @@ std::optional<std::string> validate_options(cxxopts::ParseResult& result){
         return "The number of streams must be greater than 0";
     }
 
+    int ndevices = result["ngpus"].as<int>();
+
+    if(ndevices<=0){
+        return "ngpus must be greater then 0";
+    }
+
+    if(ndevices > get_ngpus()){
+        return "Y'all must be kidding. You said EPIC must be run on " + std::to_string(ndevices) + " gpu(s) but only " + std::to_string(get_ngpus()) + " available!";
+    }
+
+
     return {};
 }
+
+
+#endif /* OPTION_PARSER */

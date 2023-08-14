@@ -52,4 +52,11 @@ cu_mlock(T* ptr, size_t nbytes);
 template<typename T>
 int cu_munlock(T* ptr);
 
+/**
+ * @brief Get the number of available nVIDia GPUs
+ * 
+ * @return int 
+ */
+int get_ngpus();
+
 #endif /* HOST_HELPERS */
