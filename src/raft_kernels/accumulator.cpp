@@ -1,3 +1,5 @@
+#ifndef ACCUMULATOR
+#define ACCUMULATOR
 #include "../ex/buffer.hpp"
 #include "../ex/constants.h"
 #include "../ex/py_funcs.hpp"
@@ -79,3 +81,6 @@ class Accumulator_rft : public raft::kernel
         return raft::proceed;
     }
 };
+
+
+#endif /* ACCUMULATOR */

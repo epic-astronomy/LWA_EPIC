@@ -1,3 +1,5 @@
+#ifndef CORRELATOR
+#define CORRELATOR
 #include "../ex/constants.h"
 #include "../ex/types.hpp"
 #include <chrono>
@@ -119,3 +121,6 @@ class Correlator_rft : public raft::kernel
         return raft::proceed;
     }
 };
+
+
+#endif /* CORRELATOR */

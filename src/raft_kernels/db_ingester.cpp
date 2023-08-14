@@ -1,3 +1,5 @@
+#ifndef DB_INGESTER
+#define DB_INGESTER
 #include "../ex/buffer.hpp"
 #include "../ex/constants.h"
 #include "../ex/db_helpers.hpp"
@@ -71,3 +73,6 @@ class DBIngester_rft : public raft::kernel
         return raft::proceed;
     }
 };
+
+
+#endif /* DB_INGESTER */

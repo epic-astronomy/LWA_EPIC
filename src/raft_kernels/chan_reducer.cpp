@@ -1,3 +1,5 @@
+#ifndef CHAN_REDUCER
+#define CHAN_REDUCER
 #include "../ex/buffer.hpp"
 #include "../ex/constants.h"
 #include "../ex/py_funcs.hpp"
@@ -119,3 +121,6 @@ class ChanReducer_rft : public raft::kernel
         return raft::proceed;
     }
 };
+
+
+#endif /* CHAN_REDUCER */

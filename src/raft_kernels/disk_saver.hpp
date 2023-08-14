@@ -1,3 +1,5 @@
+#ifndef DISK_SAVER
+#define DISK_SAVER
 #include "../ex/constants.h"
 #include "../ex/types.hpp"
 #include <chrono>
@@ -41,3 +43,6 @@ class DiskSaver_rft: public raft::kernel{
         return raft::proceed;
     }
 };
+
+
+#endif /* DISK_SAVER */

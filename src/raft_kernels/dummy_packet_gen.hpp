@@ -1,3 +1,5 @@
+#ifndef DUMMY_PACKET_GEN
+#define DUMMY_PACKET_GEN
 #include "../ex/buffer.hpp"
 #include "../ex/constants.h"
 #include "../ex/py_funcs.hpp"
@@ -70,3 +72,6 @@ class dummy_pkt_gen : public raft::kernel
         return raft::stop;
     }
 };
+
+
+#endif /* DUMMY_PACKET_GEN */
