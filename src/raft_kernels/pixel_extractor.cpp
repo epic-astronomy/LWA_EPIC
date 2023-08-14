@@ -1,3 +1,5 @@
+#ifndef PIXEL_EXTRACTOR
+#define PIXEL_EXTRACTOR
 #include "../ex/buffer.hpp"
 #include "../ex/constants.h"
 #include "../ex/orm_types.hpp"
@@ -101,3 +103,6 @@ class PixelExtractor : public raft::kernel
         return raft::proceed;
     }
 };
+
+
+#endif /* PIXEL_EXTRACTOR */
