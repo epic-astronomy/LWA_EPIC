@@ -24,7 +24,7 @@ struct EpicPixelTableMetaRows
     size_t m_ncoords;
     int meta_version{ -1 };
 
-    EpicPixelTableMetaRows(int ncoords, int n_sources=1)
+    EpicPixelTableMetaRows(int ncoords, int n_sources)
     {
         nsrcs = n_sources;
         source_ids.reserve(n_sources);
@@ -72,6 +72,7 @@ struct EpicPixelTableDataRows : EpicPixelTableMetaRows
     struct _config
     {
         int ncoords;
+        int nsrcs;
         int nchan;
         bool check_opts()
         {
@@ -86,7 +87,7 @@ struct EpicPixelTableDataRows : EpicPixelTableMetaRows
 
     hwy::AlignedFreeUniquePtr<_Dtype[]> pixel_values;
     EpicPixelTableDataRows(config_t config)
-      : EpicPixelTableMetaRows(config.ncoords)
+      : EpicPixelTableMetaRows(config.ncoords, config.nsrcs)
     {
         pixel_values = std::move(
           hwy::AllocateAligned<_Dtype>(config.ncoords * NSTOKES * config.nchan));
@@ -99,10 +100,10 @@ struct EpicPixelTableDataRows : EpicPixelTableMetaRows
             return;
         }
 
-        if (m_ncoords < meta.m_ncoords) {
+        if (m_ncoords != meta.m_ncoords) {
             pixel_values.reset();
             pixel_values = std::move(
-              hwy::AllocateAligned<_Dtype>(m_ncoords * NSTOKES * m_nchan));
+              hwy::AllocateAligned<_Dtype>(meta.m_ncoords * NSTOKES * m_nchan));
         }
         pixel_coords = meta.pixel_coords;
         pixel_lm = meta.pixel_lm;
@@ -119,14 +120,15 @@ struct EpicPixelTableDataRows : EpicPixelTableMetaRows
 };
 
 EpicPixelTableMetaRows
-create_dummy_meta(int xdim, int ydim)
-{
-    EpicPixelTableMetaRows meta(1,1);
-    meta.pixel_coords.push_back(std::pair<int, int>(32, 33));
-    meta.pixel_lm.push_back(std::pair<int,int>(1,1));
-    meta.pixel_offst.push_back(std::pair<int,int>(0,0));
-    meta.nsrcs = 1;
-    meta.source_ids.push_back(1);
+create_dummy_meta(int xdim, int ydim, int nsrcs=1, int kernel_size=1)
+{   
+    int ncoords = kernel_size * kernel_size * nsrcs;
+    EpicPixelTableMetaRows meta(ncoords,nsrcs);
+    
+    meta.pixel_coords.insert(meta.pixel_coords.end(), ncoords, std::pair<int, int>(32, 33));
+    meta.pixel_lm.insert(meta.pixel_lm.end(), ncoords, std::pair<int,int>(1,1));
+    meta.pixel_offst.insert(meta.pixel_offst.end(), ncoords, std::pair<int,int>(0,0));
+    meta.source_ids.insert(meta.source_ids.end(), ncoords, 1);
     meta.meta_version = 42;
     meta.transform_pix_coords(xdim, ydim);
 
