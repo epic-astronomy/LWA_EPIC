@@ -20,15 +20,17 @@ class EPICKernels
     raft::map* m_map;
     void bind_kernels2cpu()
     {
-        constexpr unsigned int cpu_ofst = (_GpuId) * m_nkernels;
-        rft_manip<0 + cpu_ofst, 1>::bind(m_pkt_gen);
-        rft_manip<1 + cpu_ofst, 1>::bind(m_correlator);
-        rft_manip<2 + cpu_ofst, 1>::bind(m_chan_reducer);
-        rft_manip<3 + cpu_ofst, 1>::bind(m_pixel_extractor);
-        rft_manip<4 + cpu_ofst, 1>::bind(m_index_fetcher);
-        rft_manip<5 + cpu_ofst, 1>::bind(m_db_ingester);
-        rft_manip<6 + cpu_ofst, 1>::bind(m_accumulator);
-        rft_manip<7 + cpu_ofst, 1>::bind(m_disk_saver);
+        constexpr unsigned int cpu_ofst = (_GpuId) * m_nkernels + 2 /*for the runtime*/;
+        // ensure the cpu ID is always non-zero.
+        // Setting it to zero causes instability
+        rft_manip<1 + cpu_ofst, 1>::bind(m_pkt_gen);
+        rft_manip<2 + cpu_ofst, 1>::bind(m_correlator);
+        rft_manip<3 + cpu_ofst, 1>::bind(m_chan_reducer);
+        rft_manip<4 + cpu_ofst, 1>::bind(m_pixel_extractor);
+        rft_manip<5 + cpu_ofst, 1>::bind(m_index_fetcher);
+        rft_manip<6 + cpu_ofst, 1>::bind(m_db_ingester);
+        rft_manip<7 + cpu_ofst, 1>::bind(m_accumulator);
+        rft_manip<8 + cpu_ofst, 1>::bind(m_disk_saver);
     }
 
     void init_map()
@@ -65,25 +67,6 @@ class EPICKernels
 template<unsigned int _nthGPU>
 class EPIC : public EPICKernels<_nthGPU-1>
 {
-    //     using DummyPktGen_k = Kernel<DUMMY_PACK_GEN>::type;
-    // using EPICCorrelator_k = Kernel<CORRELATOR>::type;
-    // using ChanReducer_k = Kernel<CHAN_REDUCER>::type;
-    // using PixelExtractor_k = Kernel<PIX_EXTRACTOR>::type;
-    // using IndexFetcher_k = Kernel<IDX_FETCHER>::type;
-    // using DBIngester_k = Kernel<DB_INGESTER>::type;
-    // using Accumulator_k = Kernel<ACCUMULATOR>::type;
-    // using DiskSaver_k = Kernel<DISK_SAVER>::type;
-
-    //   private:
-    //     DummyPktGen_kt m_pkt_gen;
-    //     EPICCorrelator_kt m_correlator;
-    //     ChanReducer_kt m_chan_reducer;
-    //     PixelExtractor_kt m_pixel_extractor;
-    //     IndexFetcher_kt m_index_fetcher;
-    //     DBIngester_kt m_db_ingester;
-    //     Accumulator_kt m_accumulator;
-    //     DiskSaver_kt m_disk_saver;
-
   protected:
     raft::map* m_map;
     EPIC<_nthGPU - 1> m_next_epic;
@@ -135,105 +118,6 @@ run_epic(int argc, char** argv)
     }
 }
 
-// template<EPICKernelID _kernel>
-// typename Kernel<_kernel>::type
-// get_kernel(cxxopts::ParseResult& options);
-
-// template<>
-// DummyPktGen_k
-// get_kernel<DUMMY_PACK_GEN>(cxxopts::ParseResult& options)
-// {
-//     return DummyPktGen_k(2);
-// }
-
-// template<>
-// EPICCorrelator_k
-// get_kernel<CORRELATOR>(cxxopts::ParseResult& options)
-// {
-//     auto correlator_options = MOFFCorrelatorDesc();
-//     // correlator_options.device_id = _GpuId;
-//     correlator_options.accum_time_ms = options["seq_accum"].as<int>();
-//     correlator_options.nseq_per_gulp = options["nts"].as<int>();
-//     correlator_options.nchan_out = options["channels"].as<int>();
-//     if (options["imagesize"].as<int>() == 64) {
-//         correlator_options.img_size = HALF; // defaults to full
-//     }
-//     correlator_options.grid_res_deg = options["imageres"].as<float>();
-//     correlator_options.support_size = options["support"].as<int>();
-//     correlator_options.gcf_kernel_dim = std::sqrt(options["aeff"].as<float>()) * 10; // radius of the kernel in decimeters
-//     correlator_options.kernel_oversampling_factor = options["kernel_oversample"].as<int>();
-//     correlator_options.use_bf16_accum = options["accum_16bit"].as<bool>();
-//     correlator_options.nstreams = options["nstreams"].as<int>();
-
-//     auto corr_ptr = std::make_unique<MOFFCorrelator_t>(correlator_options);
-//     return EPICCorrelator_k(corr_ptr);
-// }
-
-// template<>
-// ChanReducer_k
-// get_kernel<CHAN_REDUCER>(cxxopts::ParseResult& options)
-// {
-//     int imsize = options["imagesize"].as<int>();
-//     int im_nchan = options["channels"].as<int>();
-//     int chan_nbin = options["chan_nbin"].as<int>();
-//     int reduced_nchan = im_nchan / chan_nbin;
-//     int im_naccum = options["nimg_accum"].as<int>();
-//     return ChanReducer_k(
-//       chan_nbin, imsize, imsize, im_nchan);
-// }
-
-// template<>
-// PixelExtractor_k
-// get_kernel<PIX_EXTRACTOR>(cxxopts::ParseResult& options)
-// {
-//     KernelTypeDefs::pixel_buf_config_t config;
-//     int imsize = options["imagesize"].as<int>();
-//     int im_nchan = options["channels"].as<int>();
-//     int chan_nbin = options["chan_nbin"].as<int>();
-//     int reduced_nchan = im_nchan / chan_nbin;
-//     config.nchan = reduced_nchan;
-//     config.ncoords = 1;
-//     config.nsrcs = 1;
-
-//     // fetch intial pixel indices;
-//     auto dummy_meta = create_dummy_meta(imsize, imsize);
-//     return PixelExtractor_k(config, dummy_meta, imsize, imsize, reduced_nchan);
-// }
-
-// template<>
-// IndexFetcher_k
-// get_kernel<IDX_FETCHER>(cxxopts::ParseResult& options)
-// {
-//     return IndexFetcher_k();
-// }
-
-// template<>
-// DBIngester_k
-// get_kernel<DB_INGESTER>(cxxopts::ParseResult& options)
-// {
-//     return DBIngester_k();
-// }
-
-// template<>
-// Accumulator_k
-// get_kernel<ACCUMULATOR>(cxxopts::ParseResult& options)
-// {
-//     int imsize = options["imagesize"].as<int>();
-//     int im_nchan = options["channels"].as<int>();
-//     int chan_nbin = options["chan_nbin"].as<int>();
-//     int reduced_nchan = im_nchan / chan_nbin;
-//     int im_naccum = options["nimg_accum"].as<int>();
-
-//     auto accumulator_rft = Accumulator_k(
-//       imsize, imsize, reduced_nchan, im_naccum);
-// }
-
-// template<>
-// DiskSaver_k
-// get_kernel<DISK_SAVER>(cxxopts::ParseResult& options)
-// {
-//     return DiskSaver_k();
-// }
 // int
 // get_chan0(std::string ip, int port)
 // {
