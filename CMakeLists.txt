@@ -85,6 +85,7 @@ add_library(epiclib STATIC
 
 add_library(epic_cu STATIC src/MOFF_cu_handler.cu src/ex/host_helpers.cu)
 target_compile_features(epic_cu PUBLIC cxx_std_17)
+target_link_libraries(epic_cu glog::glog)
 target_compile_options(epic_cu PRIVATE -O3 -use_fast_math --ptxas-options=-v  -Xptxas -v -extra-device-vectorization -Wall)
 
 set_target_properties( epic_cu

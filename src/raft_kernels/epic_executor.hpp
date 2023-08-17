@@ -57,9 +57,9 @@ class EPICKernels
       , m_disk_saver(get_disk_saver_k<_GpuId>(p_options))
       , m_map(p_map)
     {
-        LOG(INFO)<<"Binding CPUs";
+        LOG(INFO)<<"Binding kernels to CPUs";
         this->bind_kernels2cpu();
-        LOG(INFO)<<"Initializing the map";
+        LOG(INFO)<<"Initializing the EPIC graph to run on GPU:"<<_GpuId;
         this->init_map();
     }
 };
@@ -108,14 +108,18 @@ run_epic(int argc, char** argv)
     LOG(INFO)<<"Initializing EPIC";
     if (ngpus == 3) {
         auto epic = EPIC<3>(options, &m);
+        LOG(INFO)<<"Running...";
         m.exe();
     } else if (ngpus == 2) {
         auto epic = EPIC<2>(options, &m);
+        LOG(INFO)<<"Running...";
         m.exe();
     } else {
         auto epic = EPIC<1>(options, &m);
+        LOG(INFO)<<"Running...";
         m.exe();
     }
+
 }
 
 // int

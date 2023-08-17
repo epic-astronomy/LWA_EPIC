@@ -60,7 +60,6 @@ class PixelExtractor : public raft::kernel
     {
         // check if there are updates to the pixel meta rows
         if (input["meta_pixel_rows"].size() > 0) {
-            LOG(INFO) << "WHILE LOOP";
             input["meta_pixel_rows"].pop(_dummy_meta);
             if (_dummy_meta.meta_version != -1) {
                 m_pixmeta_rows = _dummy_meta;
@@ -92,8 +91,8 @@ class PixelExtractor : public raft::kernel
         out_pix_rows.get_mbuf()->m_uuid = get_random_uuid();
 
         // Extract pixels into the output payload
-        LOG(INFO) << "Extracting pixels into the payload";
-        LOG(INFO) << "Ncoords: " << m_pixmeta_rows.pixel_coords_sft.size() << " " << out_pix_rows.get_mbuf()->m_nchan;
+        VLOG(2) << "Extracting pixels into the payload";
+        VLOG(2) << "Ncoords: " << m_pixmeta_rows.pixel_coords_sft.size() << " " << out_pix_rows.get_mbuf()->m_nchan;
         m_img_tensor.extract_pixels(
           m_pixmeta_rows, out_pix_rows.get_mbuf()->pixel_values.get());
 

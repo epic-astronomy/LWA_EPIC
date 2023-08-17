@@ -34,7 +34,7 @@ class IndexFetcher_rft : public raft::kernel
             return raft::proceed;
         }
         output["meta_pixel_rows"].push(create_dummy_meta(128, 128));
-        LOG(INFO)<<"FIRED INDEX FETCHER";
+        VLOG(2)<<"FIRED INDEX FETCHER";
         return raft::proceed;
     }
 };

@@ -201,11 +201,11 @@ struct Payload
     Payload(std::shared_ptr<MBuf> p_mbuf);
     Payload()
     {
-        VLOG(1) << "Creating an empty payload";
+        VLOG(2) << "Creating an empty payload";
     };
     Payload(const Payload& p_pld)
     {
-        VLOG(1) << "Copying payload " << m_mbuf.use_count();
+        VLOG(2) << "Copying payload " << m_mbuf.use_count();
         VLOG_IF(2, m_mbuf.get() != nullptr) << " with ID " << m_mbuf.get()->m_id;
         this->m_mbuf = p_pld.m_mbuf;
         VLOG(2) << "Copied payload " << m_mbuf.use_count();
@@ -439,9 +439,9 @@ template<typename MBuf>
 Payload<MBuf>::Payload(std::shared_ptr<MBuf> p_mbuf)
 //   : m_mbuf(p_mbuf)
 {
-    VLOG(1)<<"C payload";
+    VLOG(2)<<"C payload";
     if (p_mbuf) {
-        VLOG(2) << "Creating a payload with a managed buffer ID " << p_mbuf.get()->m_id;
+        VLOG(3) << "Creating a payload with a managed buffer ID " << p_mbuf.get()->m_id;
         m_mbuf = p_mbuf;
     }
 };
@@ -455,12 +455,12 @@ Payload<Mbuf>::~Payload()
     // This allows the same buffer to be passed around multiple processing blocks
     // without unlocking it.
     // std::cout<<"Mbuf has "<<m_mbuf.use_count()<<" pointers\n";
-    VLOG_IF(1, m_mbuf!=nullptr) << "D Payload shared mbuf count: " << m_mbuf.use_count() << " ID: " << m_mbuf.get()->m_id;
+    VLOG_IF(2, m_mbuf!=nullptr) << "D Payload shared mbuf count: " << m_mbuf.use_count() << " ID: " << m_mbuf.get()->m_id;
     // DLOG(INFO)<<"D Payload";
     if (m_mbuf && m_mbuf.use_count() == 2) {
-        VLOG(2) << "unlocking";
+        VLOG(3) << "unlocking";
         unlock(true);
-        VLOG(2) << "Unlocked";
+        VLOG(3) << "Unlocked";
     }
 }
 

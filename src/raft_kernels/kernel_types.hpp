@@ -62,7 +62,7 @@ struct Kernel<_DUMMY_PACK_GEN> : KernelTypeDefs
     template<unsigned int _GpuId>
     static ktype get_kernel(opt_t&)
     {
-        return ktype(2);
+        return ktype(200);
     }
 };
 using DummyPktGen_kt = Kernel<_DUMMY_PACK_GEN>::ktype;

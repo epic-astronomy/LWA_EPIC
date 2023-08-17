@@ -121,12 +121,12 @@ get_lwasv_locs(T* out_ptr, int grid_size, double grid_resolution)
 {
     py::gil_scoped_acquire acquire;
     auto np = py::module_::import("numpy");
-    LOG(INFO) << "after numpy\n";
-    LOG(INFO) << "Grid size: " << grid_size << " grid res: " << grid_resolution;
+    VLOG(2) << "after numpy\n";
+    VLOG(2) << "Grid size: " << grid_size << " grid res: " << grid_resolution;
 
     auto ret_dict = py::module_::import("epic_utils")
                       .attr("gen_loc_lwasv")(grid_size, grid_resolution);
-    LOG(INFO) << "Generated locations.";
+    VLOG(2) << "Generated locations.";
 
     double delta = ret_dict["delta"].cast<double>();
     // dimensions: NSTANDS, 3
@@ -136,7 +136,6 @@ get_lwasv_locs(T* out_ptr, int grid_size, double grid_resolution)
     for (auto i = 0; i < LWA_SV_NSTANDS * 3; ++i) {
         out_ptr[i] = static_cast<T>(loc_ptr[i]);
     }
-    std::cout << "returning antpos\n";
     return delta;
 }
 
@@ -198,7 +197,7 @@ void __attribute__((visibility("hidden")))
 save_image(size_t grid_size, size_t nchan, T* data, std::string filename, dict_t& metadata)
 {
     py::gil_scoped_acquire acquire;
-    VLOG(3) << "type of output data type: " << sizeof(T);
+    VLOG(2) << "type of output data type: " << sizeof(T);
     auto result = py::array_t<T>(grid_size * grid_size * nchan * 4, data);
 
     py::dict meta_dict;
@@ -210,7 +209,7 @@ save_image(size_t grid_size, size_t nchan, T* data, std::string filename, dict_t
                    it->second);
     }
 
-    LOG(INFO) << "Sending to saver";
+    VLOG(2) << "Sending to saver";
     auto utils = py::module_::import("epic_utils").attr("save_output")(result, grid_size, nchan, filename, meta_dict);
     // for (int i = 0; i < 10; ++i) {
     //     std::cout << data[i] << std::endl;

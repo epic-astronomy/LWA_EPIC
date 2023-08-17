@@ -22,8 +22,6 @@ class DiskSaver_rft: public raft::kernel{
     }
 
     virtual raft::kstatus run() override{
-        VLOG(2)<<"Inside saver rft";
-
         Payload pld;
         input["image"].pop(pld);
 
@@ -34,7 +32,7 @@ class DiskSaver_rft: public raft::kernel{
 
         auto& img_metadata = pld.get_mbuf()->get_metadataref();
         for(auto it=img_metadata.begin();it!=img_metadata.end();++it){
-            std::cout<<it->first<<std::endl;
+            VLOG(3)<<it->first<<std::endl;
         }
         auto imsize = std::get<int>(img_metadata["grid_size"]);
         auto nchan = std::get<uint8_t>(img_metadata["nchan"]);

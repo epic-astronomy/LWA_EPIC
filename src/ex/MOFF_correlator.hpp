@@ -221,7 +221,7 @@ MOFFCorrelator<Dtype, BuffMngr>::reset(int p_nchan, int p_chan0)
         }
         this->m_f_eng_bytes = m_nchan_in * LWA_SV_INP_PER_CHAN * m_nseq_per_gulp;
         this->m_nbytes_f_eng_per_stream = m_f_eng_bytes / m_nstreams;
-        LOG(INFO) << "Allocating F-eng data on the GPU. Size: " << this->m_f_eng_bytes << " bytes";
+        VLOG(3) << "Allocating F-eng data on the GPU. Size: " << this->m_f_eng_bytes << " bytes";
         this->allocate_f_eng_gpu(m_f_eng_bytes);
     }
 
@@ -282,8 +282,8 @@ MOFFCorrelator<Dtype, BuffMngr>::reset_antpos(int p_grid_size, double p_grid_res
         }
     }
 
-    printf("antpos_raw[0] CPU: %f %f %f\n", m_raw_ant_pos[0], m_raw_ant_pos[1], m_raw_ant_pos[2]);
-    printf("antpos[0] CPU: %f %f %f\n", m_ant_pos_freq[0], m_ant_pos_freq[1], m_ant_pos_freq[2]);
+    // printf("antpos_raw[0] CPU: %f %f %f\n", m_raw_ant_pos[0], m_raw_ant_pos[1], m_raw_ant_pos[2]);
+    // printf("antpos[0] CPU: %f %f %f\n", m_ant_pos_freq[0], m_ant_pos_freq[1], m_ant_pos_freq[2]);
     DLOG(INFO) << "chan0: " << float((p_chan0)*BANDWIDTH) << "\n";
 }
 

@@ -58,12 +58,12 @@ class Correlator_rft : public raft::kernel
         auto& gulp_metadata = pld.get_mbuf()->get_metadataref();
         VLOG(2) << "Acquiring metadata";
         for (auto it = gulp_metadata.begin(); it != gulp_metadata.end(); ++it) {
-            VLOG(2) << "Key: " << it->first;
+            VLOG(3) << "Key: " << it->first;
         }
         auto nchan = std::get<uint8_t>(gulp_metadata["nchan"]);
         auto chan0 = std::get<int64_t>(gulp_metadata["chan0"]);
 
-        LOG(INFO) << "nchan: " << int(nchan) << " chan0: " << chan0;
+        VLOG(2) << "nchan: " << int(nchan) << " chan0: " << chan0;
 
         // initialization or change in the spectral window
         if (m_correlator.get()->reset(nchan, chan0)) {
@@ -80,7 +80,7 @@ class Correlator_rft : public raft::kernel
         }
 
         if (m_is_last) {
-            VLOG(2) << "Last gulp. Preparing metadata";
+            VLOG(3) << "Last gulp. Preparing metadata";
             // prepare the metadata for the image
             auto buf = m_correlator.get()->get_empty_buffer();
             CHECK(bool(buf)) << "Correlator buffer allocation failed";
@@ -96,7 +96,7 @@ class Correlator_rft : public raft::kernel
             img_metadata["nchan"] = nchan;
             img_metadata["chan0"] = chan0;
             // img_metadata["cfreq"] = int((chan0+ceil(nchan/2f))*BANDWIDTH);
-            LOG(INFO) << "Processing gulp at: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+            VLOG(3) << "Processing gulp at: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
             m_correlator.get()->process_gulp(
               pld.get_mbuf()->get_data_ptr(),
               buf.get_mbuf()->get_data_ptr(),

@@ -45,13 +45,15 @@ class dummy_pkt_gen : public raft::kernel
         for (size_t i = 0; i < m_n_pkts; ++i) {
             VLOG(3) << "Generating a gulp";
             auto pld = m_buf_mngr.get()->acquire_buf();
+            LOG_IF(FATAL, !bool(pld))<<"Empty buffer in packet gen";
 
             auto start = std::chrono::high_resolution_clock::now();
             // get_40ms_gulp(pld.get_mbuf()->get_data_ptr());
-            LOG(INFO) << "Gulp gen duration: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start).count();
+            VLOG(3) << "Gulp gen duration: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start).count();
+            LOG(INFO)<<"Gulp id: "<<i;
             std::this_thread::sleep_for(std::chrono::milliseconds(40));
 
-            LOG(INFO) << "Sending gulp at: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+            VLOG(3) << "Sending gulp at: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 
             auto& mref = pld.get_mbuf()->get_metadataref();
             uint64_t seq_start = 329008696996015680;
