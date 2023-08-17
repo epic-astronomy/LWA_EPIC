@@ -89,8 +89,8 @@ LFBufMngr<Buffer>::LFBufMngr(size_t p_nbufs, size_t p_buf_size, size_t p_max_tri
   , m_max_iters(p_nbufs * p_max_tries)
   , m_page_lock(p_page_lock)
 {
-    VLOG(1) << "Nbufs in LFBuffer manager: " << p_nbufs;
-    VLOG(1) << "Buf size: " << p_buf_size;
+    VLOG(2) << "Nbufs in LFBuffer manager: " << p_nbufs;
+    VLOG(2) << "Buf size: " << p_buf_size;
     CHECK(p_nbufs > 0) << "Number of buffers must be at least one";
     CHECK(p_buf_size > 0) << "Buffer size must be greater than zero";
 
@@ -99,7 +99,7 @@ LFBufMngr<Buffer>::LFBufMngr(size_t p_nbufs, size_t p_buf_size, size_t p_max_tri
     for (size_t i = 0; i < p_nbufs; ++i) {
         m_buf_vec.push_back(std::move(std::make_shared<mbuf_t>(p_buf_size, p_page_lock, i)));
     }
-    VLOG(1) << "Allocated space for the buffer";
+    VLOG(2) << "Allocated space for the buffer";
 }
 
 template<class Buffer>
