@@ -1,22 +1,22 @@
 #ifndef KERNEL_TYPES
 #define KERNEL_TYPES
-// #include "../ex/MOFF_correlator.hpp"
-// #include "../ex/option_parser.hpp"
-// #include <cmath>
+#include "../ex/MOFF_correlator.hpp"
+#include "../ex/option_parser.hpp"
+#include <cmath>
 
-// #include "../ex/buffer.hpp"
-// #include "../ex/helper_traits.hpp"
-// #include "../ex/lf_buf_mngr.hpp"
-// #include "accumulator.cpp"
-// #include "chan_reducer.cpp"
-// #include "correlator.hpp"
-// #include "db_ingester.cpp"
-// #include "disk_saver.hpp"
-// // #include "dummy_kernel.hpp"
-// #include "dummy_packet_gen.hpp"
-// #include "index_fetcher.hpp"
-// #include "pixel_extractor.cpp"
-// #include <raftmanip>
+#include "../ex/buffer.hpp"
+#include "../ex/helper_traits.hpp"
+#include "../ex/lf_buf_mngr.hpp"
+#include "accumulator.cpp"
+#include "chan_reducer.cpp"
+#include "correlator.hpp"
+#include "db_ingester.cpp"
+#include "disk_saver.hpp"
+// #include "dummy_kernel.hpp"
+#include "dummy_packet_gen.hpp"
+#include "index_fetcher.hpp"
+#include "pixel_extractor.cpp"
+#include <raftmanip>
 
 enum EPICKernelID
 {
