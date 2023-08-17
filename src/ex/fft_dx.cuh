@@ -266,6 +266,7 @@ get_imaging_kernel(int support = 3)
             return (void*)(block_fft_kernel<FFT, 9, accum_oc_t>);
         default:
             assert(false && "Unsupported support size");
+            return 0;
     }
 }; 
 

@@ -184,16 +184,13 @@ get_40ms_gulp(T* out_ptr)
     VLOG(3) << "Copying " << meta_ptr[2] << " elements into the output array";
     int ncomplex_vals = meta_ptr[2] / 2;
     CHECK(int(meta_ptr[2]) % 2 == 0) << "Invalid gulp array. The total number of elements is an odd number.";
-    size_t i;
-    for (i = 0; i < ncomplex_vals; ++i) {
+    for (auto i = 0; i < ncomplex_vals; ++i) {
         out_nib2[i].re = data_ptr[2 * i];
         out_nib2[i].im = data_ptr[2 * i + 1];
         // if(i==1){
         //     VLOG(3)<<"GUlp data: "<<data_ptr
         // }
     }
-
-    VLOG(3) << "Copied: " << i << " complex vals";
 }
 
 template<typename T>
