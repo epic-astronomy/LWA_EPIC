@@ -25,7 +25,7 @@ cxxopts::Options get_options(){
     ("imageres","Pixel resolution in degrees",cxxopts::value<float>()->default_value("1.0"))
     ("nts","Number of timestamps per span",cxxopts::value<int>()->default_value("1000"))
     ("seq_accum","Duration of the sequence accumulation in milliseconds",cxxopts::value<int>()->default_value("40"))
-    ("nimg_accum", "Number of images to add before saving to the disk", cxxopts::value<int>()->default_value("1"))
+    ("nimg_accum", "Number of images to accumulate before saving to the disk", cxxopts::value<int>()->default_value("1"))
     ("channels","Number of channels in the output image",cxxopts::value<int>()->default_value("128"))
     ("support","Support size of the kernel. Must be a non-zero power of 2",cxxopts::value<int>()->default_value("2"))
     ("aeff","Antenna effective area (experimental) in sq. m",cxxopts::value<float>()->default_value("25"))
