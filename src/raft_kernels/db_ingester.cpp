@@ -48,18 +48,7 @@ class DBIngester_rft : public raft::kernel
         // insertions will be made source-wise
         // for example, if the kernel size is 5 for a source, 25 rows will
         // be inserted in a single transaction
-
-        // m_ext_kernel_size = p_kernel_size;
-        // m_nkernel_elems = p_kernel_size * p_kernel_size;
-
-        // update_stmnt_ids(p_kernel_size);
-
         update_prepared_stmnts(p_kernel_size);
-        // m_pg_conn.get()->prepare(
-        //   m_pix_stmnt_id_n, get_pixel_insert_stmnt_n(m_nkernel_elems));
-
-        // m_pg_conn.get()->prepare(
-        //   m_meta_stmnt_id_n, get_img_meta_insert_stmnt_n(m_nkernel_elems));
     }
 
     bool is_update_stmnt_ids(int p_kernel_size){
