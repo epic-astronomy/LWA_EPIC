@@ -25,14 +25,15 @@ class DBIngester_rft : public raft::kernel
     std::unique_ptr<pqxx::work> m_db_T;
     const std::string m_pix_stmnt_id{ "insert_pixels" };
     const std::string m_meta_stmnt_id{ "insert_meta" };
+    std::string m_pix_stmnt_id_n{ m_pix_stmnt_id + "_1" };
+    std::string m_meta_stmnt_id_n{ m_meta_stmnt_id + "_1" };
+    std::map<int, std::pair<std::string, std::string>> m_avail_ksizes;
 
   public:
     // https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING
     DBIngester_rft(int p_kernel_size = 1, std::string p_conn_string = "dbname=epic")
       : raft::kernel()
     {
-        m_ext_kernel_size = p_kernel_size;
-        m_nkernel_elems = p_kernel_size * p_kernel_size;
         input.addPort<_PldIn>("in_pixel_rows");
 
         try {
@@ -48,24 +49,63 @@ class DBIngester_rft : public raft::kernel
         // for example, if the kernel size is 5 for a source, 25 rows will
         // be inserted in a single transaction
 
-        m_pg_conn.get()->prepare(
-          m_pix_stmnt_id, get_pixel_insert_stmnt_n(m_nkernel_elems));
+        // m_ext_kernel_size = p_kernel_size;
+        // m_nkernel_elems = p_kernel_size * p_kernel_size;
 
-        m_pg_conn.get()->prepare(
-          m_meta_stmnt_id, get_img_meta_insert_stmnt_n(m_nkernel_elems));
+        // update_stmnt_ids(p_kernel_size);
+
+        update_prepared_stmnts(p_kernel_size);
+        // m_pg_conn.get()->prepare(
+        //   m_pix_stmnt_id_n, get_pixel_insert_stmnt_n(m_nkernel_elems));
+
+        // m_pg_conn.get()->prepare(
+        //   m_meta_stmnt_id_n, get_img_meta_insert_stmnt_n(m_nkernel_elems));
+    }
+
+    bool is_update_stmnt_ids(int p_kernel_size){
+      if(m_avail_ksizes.count(p_kernel_size)==1){
+        auto ids = m_avail_ksizes.at(p_kernel_size);
+        m_pix_stmnt_id_n = ids.first;
+        m_meta_stmnt_id_n = ids.second;
+        return false;
+      }
+      m_pix_stmnt_id_n = m_pix_stmnt_id + "_" + std::to_string(p_kernel_size);
+      m_meta_stmnt_id_n = m_meta_stmnt_id + "_" + std::to_string(p_kernel_size);
+      m_avail_ksizes[p_kernel_size] = std::pair(m_pix_stmnt_id_n, m_meta_stmnt_id_n);
+
+      return true;
+    }
+
+    void update_prepared_stmnts(int p_kernel_size)
+    {
+        if (p_kernel_size == m_ext_kernel_size ) {
+            return;
+        }
+
+        m_ext_kernel_size = p_kernel_size;
+        m_nkernel_elems = p_kernel_size * p_kernel_size;
+
+        if(is_update_stmnt_ids(p_kernel_size)){
+          m_pg_conn.get()->prepare(
+            m_pix_stmnt_id_n, get_pixel_insert_stmnt_n(m_nkernel_elems));
+
+          m_pg_conn.get()->prepare(
+            m_meta_stmnt_id_n, get_img_meta_insert_stmnt_n(1)); // one row per image
+        }
     }
 
     virtual raft::kstatus run() override
     {
         _PldIn pld;
         input["in_pixel_rows"].pop(pld);
+        update_prepared_stmnts(pld.get_mbuf()->kernel_size);
         try {
             ingest_payload(
               pld,
               *m_db_T,
               m_nkernel_elems,
-              m_pix_stmnt_id,
-              m_meta_stmnt_id);
+              m_pix_stmnt_id_n,
+              m_meta_stmnt_id_n);
             m_db_T.get()->commit();
         } catch (const std::exception& e) {
             LOG(ERROR) << e.what();
@@ -73,6 +113,5 @@ class DBIngester_rft : public raft::kernel
         return raft::proceed;
     }
 };
-
 
 #endif /* DB_INGESTER */
