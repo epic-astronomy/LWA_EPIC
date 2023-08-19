@@ -61,7 +61,9 @@ class PixelExtractor : public raft::kernel
         // check if there are updates to the pixel meta rows
         if (input["meta_pixel_rows"].size() > 0) {
             input["meta_pixel_rows"].pop(_dummy_meta);
-            if (_dummy_meta.meta_version != -1) {
+            if (
+              _dummy_meta.meta_version != -1 &&
+              _dummy_meta.meta_version != m_pixmeta_rows.meta_version) {
                 m_pixmeta_rows = _dummy_meta;
             }
         }
@@ -99,9 +101,9 @@ class PixelExtractor : public raft::kernel
         output["out_pix_rows"].push(out_pix_rows);
         output["out_img"].push(in_img);
 
+
         return raft::proceed;
     }
 };
-
 
 #endif /* PIXEL_EXTRACTOR */
