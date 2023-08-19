@@ -33,23 +33,13 @@ echo "Found ${NUM_GPUS} GPUs and ${NUM_FANS} Fans"
 # For each GPU, enable fan control.
 for i in $(seq 0 1 $(echo "$NUM_GPUS-1" | bc -l));
 do
-    DISPLAY=:0 XAUTHORITY=/run/user/${uid}/gdm/Xauthority nvidia-settings --verbose=all -a "[gpu:$i]/GPUFanControlState=1"
+    DISPLAY=:0 XAUTHORITY=/run/user/${uid}/gdm/Xauthority nvidia-settings --verbose=all -a "[gpu:$i]/GPUFanControlState=0"
 done
-
-# For each fan, set fan speed to 100%.
-for i in $(seq 0 1 $(echo "$NUM_FANS-1" | bc -l));
-do
-    DISPLAY=:0 XAUTHORITY=/run/user/${uid}/gdm/Xauthority nvidia-settings --verbose=all -a "[fan:$i]/GPUTargetFanSpeed=30"
-done
-
-# Give some time for the fans to spin up
-echo "Waiting for the GPU fans to spin up..."
-sleep 5
 
 # Clock the GPUs to maximum
-nvidia-smi -pm 1
-nvidia-smi -lgc 3105
-nvidia-smi -lmc 10501
+nvidia-smi -pm 0
+nvidia-smi -rgc
+nvidia-smi -rmc
 
 # Print the status
 nvidia-smi --query-gpu=index,gpu_name,persistence_mode,clocks.sm,clocks.mem,temperature.gpu,fan.speed,power.draw,pstate --format=csv
