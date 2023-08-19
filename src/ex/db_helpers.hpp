@@ -78,13 +78,13 @@ get_img_meta_insert_stmnt_1(pqxx::placeholders<unsigned int>& name)
 }
 
 std::string
-get_img_meta_insert_stmnt_n(int nrows)
+get_img_meta_insert_stmnt_n(int n_images)
 {
     pqxx::placeholders name;
     std::string stmnt = "INSERT INTO epic_img_metadata (id, img_time, n_chan, n_pol, chan0, chan_bw, epic_version, img_size, npix_kernel) VALUES ";
-    for (int i = 0; i < nrows; ++i) {
+    for (int i = 0; i < n_images; ++i) {
         stmnt += get_img_meta_insert_stmnt_1(name);
-        if (i < (nrows - 1)) {
+        if (i < (n_images - 1)) {
             stmnt += ",";
         }
     }
