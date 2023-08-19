@@ -15,10 +15,13 @@ using namespace std::string_literals;
 
 template<class Payload>
 class DiskSaver_rft: public raft::kernel{
+    std::string m_img_suffix;
 
     public:
-    DiskSaver_rft():raft::kernel(){
+    DiskSaver_rft(std::string p_img_suffix="0"):raft::kernel(){
         input.addPort<Payload>("image");
+
+        m_img_suffix = p_img_suffix;
     }
 
     virtual raft::kstatus run() override{
@@ -36,7 +39,7 @@ class DiskSaver_rft: public raft::kernel{
         }
         auto imsize = std::get<int>(img_metadata["grid_size"]);
         auto nchan = std::get<uint8_t>(img_metadata["nchan"]);
-        save_image(imsize, nchan, pld.get_mbuf()->get_data_ptr(), "test_image"s, img_metadata);
+        save_image(imsize, nchan, pld.get_mbuf()->get_data_ptr(), "test_image_"s+m_img_suffix, img_metadata);
 
         return raft::proceed;
     }
