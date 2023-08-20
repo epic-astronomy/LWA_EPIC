@@ -21,7 +21,6 @@ class IndexFetcher_rft : public raft::kernel
     long int m_refresh_interval{ 10 };
     using high_res_tp = typename std::chrono::time_point<std::chrono::high_resolution_clock>;
     high_res_tp m_prev_refresh;
-    // long int m_refresh_interval{ 10 };
 
     bool is_refresh_required()
     {
