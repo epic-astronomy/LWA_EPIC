@@ -115,6 +115,15 @@ prolate_spheroidal_to_tex1D(int m, int n, float alpha, T* out, int dim, float c 
     }
 }
 
+/**
+ * @brief Generate antenna locations for the specified channels
+ * 
+ * @tparam T Output data precision
+ * @param out_ptr Pointer to the output data buffer
+ * @param grid_size 1D size of the image
+ * @param grid_resolution Image resolution in degrees
+ * @return Sampling length
+ */
 template<typename T>
 double
 get_lwasv_locs(T* out_ptr, int grid_size, double grid_resolution)
@@ -139,6 +148,14 @@ get_lwasv_locs(T* out_ptr, int grid_size, double grid_resolution)
     return delta;
 }
 
+/**
+ * @brief Generate phases for the specified channels
+ * 
+ * @tparam T Output data precision
+ * @param out_ptr Pointer to the output buffer
+ * @param nchan Number of channels
+ * @param chan0 Initial channel number
+ */
 template<typename T>
 void
 get_lwasv_phases(T* out_ptr, int nchan, int chan0)
@@ -159,6 +176,12 @@ get_lwasv_phases(T* out_ptr, int nchan, int chan0)
     }
 }
 
+/**
+ * @brief Generate a 40 ms gulp from a TBN file
+ * 
+ * @tparam T Output data precision
+ * @param out_ptr Pointer to the output buffer
+ */
 template<typename T>
 void
 get_40ms_gulp(T* out_ptr)
@@ -192,6 +215,16 @@ get_40ms_gulp(T* out_ptr)
     }
 }
 
+/**
+ * @brief Saves image to the disk as a FITS file
+ * 
+ * @tparam T Input data precision
+ * @param grid_size 1D size of the image
+ * @param nchan Number of channels
+ * @param data Pointer to the image data
+ * @param filename Output filename
+ * @param metadata Image metadata object
+ */
 template<typename T>
 void __attribute__((visibility("hidden")))
 save_image(size_t grid_size, size_t nchan, T* data, std::string filename, dict_t& metadata)
@@ -216,6 +249,17 @@ save_image(size_t grid_size, size_t nchan, T* data, std::string filename, dict_t
     // }
 }
 
+/**
+ * @brief Generate a correction grid. This is a channel-wise squared iFFT of an average of all, optionally, oversampled antenna kernels.
+ * 
+ * @tparam T Precision of the grid
+ * @param correction_kernel Channel-wise average of the oversampled antenna kernels
+ * @param out_correction_grid Output correction grid
+ * @param grid_size Size of the grid
+ * @param support Support size
+ * @param nchan Number of channels
+ * @param oversample Number of time to oversample the image grid.
+ */
 template<typename T>
 void
 get_correction_grid(T* correction_kernel, T* out_correction_grid, int grid_size, int support, int nchan, int oversample = 4)
@@ -238,6 +282,11 @@ get_correction_grid(T* correction_kernel, T* out_correction_grid, int grid_size,
     }
 }
 
+/**
+ * @brief Get time from unix epoch object from ADP control
+ * 
+ * @return double 
+ */
 double
 get_ADP_time_from_unix_epoch()
 {
@@ -247,6 +296,13 @@ get_ADP_time_from_unix_epoch()
       .cast<double>();
 }
 
+
+/**
+ * @brief Convert a utc timestamp into time from unix epoch
+ * 
+ * @param utcstart UTC timestamp string
+ * @return double 
+ */
 double
 get_time_from_unix_epoch(std::string utcstart)
 {
@@ -256,6 +312,11 @@ get_time_from_unix_epoch(std::string utcstart)
       .cast<double>();
 }
 
+/**
+ * @brief Generate a random uuid
+ * 
+ * @return std::string 
+ */
 std::string
 get_random_uuid()
 {
@@ -263,6 +324,13 @@ get_random_uuid()
     return py::module_::import("epic_utils").attr("get_random_uuid")().cast<std::string>();
 }
 
+/**
+ * @brief Convert a time tag into a Postgres formatted timestamp
+ * 
+ * @param time_tag Time tag
+ * @param img_len_ms Length of the accumulation in ms
+ * @return std::string 
+ */
 std::string
 meta2pgtime(uint64_t time_tag, double img_len_ms)
 {
