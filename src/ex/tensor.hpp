@@ -65,7 +65,7 @@ class Tensor {
   void assign_data(_Tp* p_data_ptr);
   void dissociate_data();
   _Tp& at(auto... p_idx) const;
-  const _Tp* get_data_ptr() { return m_data_ptr; }
+  const _Tp* GetDataPtr() { return m_data_ptr; }
   std::array<size_t, NDims> shape() { return m_dims; }
   size_t size() const { return m_size; }
   void allocate();
@@ -284,7 +284,7 @@ class PSTensor : public Tensor<_Tp, EPICImgDim> {
            out_nchan && this->m_dims[0]);
     int ncombine = this->m_dims[0] / out_nchan;
 
-    // auto out_data_ptr = p_out_tensor.get_data_ptr();
+    // auto out_data_ptr = p_out_tensor.GetDataPtr();
 
     // very ugly.
     // for (size_t i = 0; i < ncombine; ++i) {
@@ -346,7 +346,7 @@ class PSTensor : public Tensor<_Tp, EPICImgDim> {
    */
   void add_chan_slice(PSTensor<_Tp>* p_out_tensor_ptr, size_t chan_in,
                       size_t chan_out, bool p_assign = false) {
-    // auto out_ptr = p_out_tensor.get_data_ptr();
+    // auto out_ptr = p_out_tensor.GetDataPtr();
     for (size_t i = 0; i < m_npix_per_img; ++i) {
       auto idx_in = chan_pix2idx(chan_in, i);
       auto idx_out = chan_pix2idx(chan_out, i);

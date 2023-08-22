@@ -69,7 +69,7 @@ template <
 __device__ inline void grid_dual_pol_dx5(
     cg::thread_block tb,
     typename FFT::value_type thread_data[FFT::elements_per_thread],
-    const cnib2* f_eng, const float3* __restrict__ antpos,
+    const CNib2* f_eng, const float3* __restrict__ antpos,
     const float4* __restrict__ phases, typename FFT::value_type* smem,
     cudaTextureObject_t gcf_tex) {
   using complex_type = typename FFT::value_type;
@@ -143,7 +143,7 @@ template <
         bool> = true>
 __device__ inline void grid_dual_pol_dx6(
     typename FFT::value_type thread_data[FFT::elements_per_thread],
-    const cnib2* f_eng, const float3* __restrict__ antpos,
+    const CNib2* f_eng, const float3* __restrict__ antpos,
     const float4* __restrict__ phases, cudaTextureObject_t gcf_tex) {
   constexpr float half_support = Support / 2.f;
   constexpr float inv_half_support = 2. / float(Support);
@@ -274,7 +274,7 @@ template <
         bool> = true>
 __device__ void grid_dual_pol_dx7(
     typename FFT::value_type (&thread_data)[FFT::elements_per_thread],
-    const cnib2* f_eng, const float3* __restrict__ antpos,
+    const CNib2* f_eng, const float3* __restrict__ antpos,
     const float4* __restrict__ phases, cudaTextureObject_t gcf_tex,
     const unsigned long long int (&valid_ants)[4]) {
   constexpr float half_support = float(Support) / 2.f;
@@ -376,7 +376,7 @@ template <
         std::is_same<__half2, typename FFT::output_type::value_type>::value,
         bool> = true>
 __device__ inline void grid_dual_pol_dx8(
-    cg::thread_block tb, const cnib2* f_eng, const float3* __restrict__ antpos,
+    cg::thread_block tb, const CNib2* f_eng, const float3* __restrict__ antpos,
     const float4* __restrict__ phases, typename FFT::value_type* smem,
     cudaTextureObject_t gcf_tex, ImageDiv Div = UPPER, float pix2m = 1.0) {
   using complex_type = typename FFT::value_type;
@@ -439,7 +439,7 @@ __device__ inline void grid_dual_pol_dx8(
                        abs((int(anty + v) + 0.5 - anty) * pix2m));
 
       // dirty beam calculation
-      // cnib _t;
+      // CNib _t;
       // _t.re=1;
       // _t.im=1;
       // auto phase_ant = phases[ant];
@@ -484,7 +484,7 @@ template <
         std::is_same<__half2, typename FFT::output_type::value_type>::value,
         bool> = true>
 __device__ inline void DualPolEpicGridder(
-    cg::thread_block tb, const cnib2* f_eng, const float3* __restrict__ antpos,
+    cg::thread_block tb, const CNib2* f_eng, const float3* __restrict__ antpos,
     const float4* __restrict__ phases, typename FFT::value_type* smem,
     float* gcf_grid_elem, ImageDiv Div = UPPER) {
   // auto tb = cg::this_thread_block();
@@ -530,7 +530,7 @@ __device__ inline void DualPolEpicGridder(
     float scale = gcf_grid_elem[channel_idx * NStands * nelements +
                                 ant * nelements + this_thread_elem];
     auto phase_ant = phases[ant];
-    // cnib _t;
+    // CNib _t;
     // _t.re=1;
     // _t.im=0;
     // For some reason, there is a 1-pixel offset between epic and wsclean

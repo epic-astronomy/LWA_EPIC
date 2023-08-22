@@ -29,7 +29,7 @@ class PacketProcessor : public Copier<Frmt, Dtype, Order>
     using data_t = Dtype;
     static size_t nsrc;
     static constexpr int hdr_size = sizeof(Frmt);
-    static constexpr int align_offset = alignment_offset<Frmt, Dtype>::value;
+    static constexpr int align_offset = AlignmentOffset<Frmt, Dtype>::value;
     inline static bool is_pkt_valid(Dtype* p_pkt, header_t& p_out_hdr, Dtype*& p_out_data, int p_nbytes);
     template<class Buffer>
     inline static void set_metadata(Buffer* p_mbuf, Frmt& p_hdr, uint64_t p_seq_start, uint64_t p_seq_end);
@@ -75,7 +75,7 @@ class PacketProcessor<chips_hdr_type, uint8_t, Copier, Order> : public Copier<ch
     using data_t = uint8_t;
     static size_t nsrc; // = size_t(NROACH_BOARDS);
     static constexpr int hdr_size = sizeof(header_t);
-    static constexpr int align_offset = alignment_offset<header_t, data_t>::value;
+    static constexpr int align_offset = AlignmentOffset<header_t, data_t>::value;
     inline static bool is_pkt_valid(data_t* p_pkt, header_t& p_out_hdr, data_t*& p_out_data, int p_nbytes = 0);
     template<class Buffer>
     inline static void set_metadata(Buffer* p_mbuf, header_t& p_hdr, uint64_t p_seq_start, uint64_t p_seq_end);
@@ -196,7 +196,7 @@ template<class Buffer>
 void
 PacketProcessor<chips_hdr_type, uint8_t, Copier, Order>::set_metadata(Buffer* p_mbuf, chips_hdr_type& p_hdr, uint64_t p_seq_start, uint64_t p_seq_end)
 {
-    auto& mref = p_mbuf->get_metadataref();
+    auto& mref = p_mbuf->GetMetadataRef();
     mref["seq_start"] = p_seq_start;
     mref["seq_end"] = p_seq_end;
     int nseqs = p_seq_end - p_seq_end;
@@ -216,8 +216,8 @@ PacketProcessor<chips_hdr_type, uint8_t, Copier, Order>::nullify_ill_sources(Buf
     hn::ScalableTag<uint8_t> tag8;
     auto zero_vec = Zero(tag8);
     using v256_t = decltype(zero_vec);
-    auto vec_start = reinterpret_cast<v256_t*>(p_mbuf->get_data_ptr());
-    auto& metadata = p_mbuf->get_metadataref(); // by reference
+    auto vec_start = reinterpret_cast<v256_t*>(p_mbuf->GetDataPtr());
+    auto& metadata = p_mbuf->GetMetadataRef(); // by reference
 
     size_t npkts = 0;
 

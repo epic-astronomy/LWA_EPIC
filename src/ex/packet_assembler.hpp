@@ -63,7 +63,7 @@ class PacketAssembler : public PktProcessor
       size_t p_ngulps = 20,
       size_t p_seq_size = SINGLE_SEQ_SIZE);
     payload_t get_gulp();
-    size_t get_nseq_per_gulp(){return m_nseq_per_gulp;};
+    size_t GetNumSeqPerGulp(){return m_nseq_per_gulp;};
     // ~PacketAssembler(){
     //     LOG(INFO)<<"D assembler";
     // }
@@ -90,8 +90,8 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::PacketAssembler(std::string
     m_receiver->bind_socket();
     // std::cout << "initing receiver address\n";
     if (Receiver::type == VERBS) {
-        VLOG(4) << alignment_offset<chips_hdr_type, uint8_t, BF_VERBS_PAYLOAD_OFFSET>::value << "\n";
-        m_receiver->init_receiver(alignment_offset<chips_hdr_type, uint8_t, BF_VERBS_PAYLOAD_OFFSET>::value);
+        VLOG(4) << AlignmentOffset<chips_hdr_type, uint8_t, BF_VERBS_PAYLOAD_OFFSET>::value << "\n";
+        m_receiver->init_receiver(AlignmentOffset<chips_hdr_type, uint8_t, BF_VERBS_PAYLOAD_OFFSET>::value);
     }
     m_min_pkt_limit = float(ALLOWED_PKT_DROP) * 0.01 * PktProcessor::nsrc * m_nseq_per_gulp;
 }
@@ -161,7 +161,7 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::get_gulp()
                 VLOG(3) << m_seq_start << " " << m_seq_end << " " << m_recent_hdr.seq;
                 m_last_pkt_available = true;
                 VLOG(3) << "Nseqs: " << int(m_seq_start - m_seq_end);
-                VLOG(3) << "data: " << int(mbuf->get_data_ptr()[0]) << " " << int(mbuf->get_data_ptr()[1]);
+                VLOG(3) << "data: " << int(mbuf->GetDataPtr()[0]) << " " << int(mbuf->GetDataPtr()[1]);
 
                 if (m_recent_hdr.seq >= (m_seq_end + m_nseq_per_gulp)) {
                     m_seq_start = std::ceil(double(m_recent_hdr.seq) / double(NSEQ_PER_SEC)) * NSEQ_PER_SEC; // m_recent_hdr.seq;
@@ -187,7 +187,7 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::get_gulp()
         }
         start = high_resolution_clock::now();
 
-        PktProcessor::copy_to_buffer(m_recent_hdr, m_recent_data, mbuf->get_data_ptr(), m_valid_pkt_stats, m_recent_hdr.seq - m_seq_start, m_nseq_per_gulp);
+        PktProcessor::copy_to_buffer(m_recent_hdr, m_recent_data, mbuf->GetDataPtr(), m_valid_pkt_stats, m_recent_hdr.seq - m_seq_start, m_nseq_per_gulp);
 
         stop = high_resolution_clock::now();
         ++m_n_valid_pkts;

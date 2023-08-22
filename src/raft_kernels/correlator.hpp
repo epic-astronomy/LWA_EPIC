@@ -76,7 +76,7 @@ class CorrelatorRft : public raft::kernel {
       return raft::proceed;
     }
 
-    auto& gulp_metadata = pld.get_mbuf()->get_metadataref();
+    auto& gulp_metadata = pld.get_mbuf()->GetMetadataRef();
     VLOG(2) << "Acquiring metadata";
     for (auto it = gulp_metadata.begin(); it != gulp_metadata.end(); ++it) {
       VLOG(3) << "Key: " << it->first;
@@ -87,7 +87,7 @@ class CorrelatorRft : public raft::kernel {
     VLOG(2) << "nchan: " << int(nchan) << " chan0: " << chan0;
 
     // initialization or change in the spectral window
-    if (m_correlator.get()->reset(nchan, chan0)) {
+    if (m_correlator.get()->ResetImagingConfig(nchan, chan0)) {
       m_delta = m_correlator.get()->GetScalingLen();
       m_gulp_counter = 1;
     }
@@ -105,8 +105,8 @@ class CorrelatorRft : public raft::kernel {
       // prepare the metadata for the image
       auto buf = m_correlator.get()->GetEmptyBuf();
       CHECK(static_cast<bool>(buf)) << "Correlator buffer allocation failed";
-      auto& img_metadata = buf.get_mbuf()->get_metadataref();
-      img_metadata = gulp_metadata;  // pld.get_mbuf()->get_metadataref();
+      auto& img_metadata = buf.get_mbuf()->GetMetadataRef();
+      img_metadata = gulp_metadata;  // pld.get_mbuf()->GetMetadataRef();
       img_metadata["seq_start"] = m_seq_start_id;
       img_metadata["nseqs"] =
           std::get<int>(img_metadata["nseqs"]) * m_ngulps_per_img;
@@ -125,7 +125,7 @@ class CorrelatorRft : public raft::kernel {
                  std::chrono::high_resolution_clock::now().time_since_epoch())
                  .count();
       m_correlator.get()->ProcessGulp(
-          pld.get_mbuf()->get_data_ptr(), buf.get_mbuf()->get_data_ptr(),
+          pld.get_mbuf()->GetDataPtr(), buf.get_mbuf()->GetDataPtr(),
           m_is_first, m_is_last, static_cast<int>(chan0), m_delta);
 
       m_gulp_counter = 1;
@@ -140,7 +140,7 @@ class CorrelatorRft : public raft::kernel {
     // reads/writes. Hence the next gulp won't have to wait for the current one
     // to complete thereby keeping the GPU completely occupied.
 
-    m_correlator.get()->ProcessGulp(pld.get_mbuf()->get_data_ptr(),
+    m_correlator.get()->ProcessGulp(pld.get_mbuf()->GetDataPtr(),
                                      static_cast<float*>(nullptr), m_is_first,
                                      m_is_last);
     ++m_gulp_counter;

@@ -142,10 +142,10 @@ class MOFFCorrelator : public MOFFCuHandler {
    * @param p_nchan Total channels
    * @param p_chan0 First channel's number
    */
-  bool reset(int p_nchan, int p_chan0);
+  bool ResetImagingConfig(int p_nchan, int p_chan0);
   // , int p_npol, int p_grid_size, double p_grid_res, int p_gcf_kernel_dim);
 
-  size_t get_nseq_per_gulp() { return m_nseq_per_gulp; }
+  size_t GetNumSeqPerGulp() { return m_nseq_per_gulp; }
   size_t GetNumGulpsPerImg() { return m_ngulps_per_img; }
   size_t GetGridSize() { return m_grid_size; }
   double GetGridRes() { return m_grid_res; }
@@ -248,7 +248,7 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc) {
 }
 
 template <typename Dtype, typename BuffMngr>
-bool MOFFCorrelator<Dtype, BuffMngr>::reset(int p_nchan, int p_chan0) {
+bool MOFFCorrelator<Dtype, BuffMngr>::ResetImagingConfig(int p_nchan, int p_chan0) {
   if (p_nchan == m_nchan_in && p_chan0 == m_chan0) {
     return false;
   }
@@ -317,7 +317,7 @@ void MOFFCorrelator<Dtype, BuffMngr>::ResetAntpos(int p_grid_size,
   CHECK_NE(m_ant_pos_freq.get(), static_cast<float*>(NULL))
       << "Unable to allocate antenna position memory";
 
-  m_delta = get_lwasv_locs<float>(m_raw_ant_pos.get(), p_grid_size, p_grid_res);
+  m_delta = GetLwasvLocs<float>(m_raw_ant_pos.get(), p_grid_size, p_grid_res);
   // auto chan0 = p_chan0;
   for (auto chan = 0; chan < p_nchan; ++chan) {
     auto wavenumber = static_cast<double>((p_chan0 + chan) * BANDWIDTH) /
@@ -341,7 +341,7 @@ void MOFFCorrelator<Dtype, BuffMngr>::ResetPhases(int p_nchan, int p_chan0) {
   m_phases =
       std::move(hwy::AllocateAligned<float>(pitch * LWA_SV_NPOLS * p_nchan));
 
-  get_lwasv_phases<float>(m_phases.get(), p_nchan, p_chan0);
+  GetLwasvPhases<float>(m_phases.get(), p_nchan, p_chan0);
   DLOG(INFO) << "Phases[0] cpu: " << m_phases[0] << " " << m_phases[1] << " "
              << m_phases[2] << " " << m_phases[3];
 }
@@ -352,9 +352,9 @@ void MOFFCorrelator<Dtype, BuffMngr>::ResetGcfKernel2D(int p_gcf_tex_dim) {
   m_gcf_kernel2D.reset();
   m_gcf_kernel2D =
       std::move(hwy::AllocateAligned<float>(p_gcf_tex_dim * p_gcf_tex_dim));
-  // gaussian_to_tex2D(m_gcf_kernel2D.get(), 0.15, p_gcf_tex_dim);
+  // GaussianToTex2D(m_gcf_kernel2D.get(), 0.15, p_gcf_tex_dim);
 
-  prolate_spheroidal_to_tex2D<float>(ProSphPars::m, ProSphPars::n,
+  ProlateSpheroidalToTex2D<float>(ProSphPars::m, ProSphPars::n,
                                      ProSphPars::alpha, m_gcf_kernel2D.get(),
                                      p_gcf_tex_dim, ProSphPars::c);
 }
@@ -385,7 +385,7 @@ template <typename Dtype, typename BuffMngr>
 void MOFFCorrelator<Dtype, BuffMngr>::ResetCorrectionGrid(int p_nchan) {
   this->GetCorrectionKernel(m_correction_kernel_h.get(), m_support_oversample,
                               p_nchan);
-  get_correction_grid<float>(
+  GetCorrectionGrid<float>(
       m_correction_kernel_h.get(), m_correction_grid_h.get(), m_grid_size,
       m_support_oversample, p_nchan, m_kernel_oversampling_factor);
   this->SetCorrectionGrid(m_correction_grid_h.get(), m_grid_size, p_nchan);

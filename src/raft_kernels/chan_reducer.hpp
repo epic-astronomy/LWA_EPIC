@@ -105,14 +105,14 @@ class ChanReducerRft : public raft::kernel {
       LOG(FATAL) << "Memory buffer full in ChanReducer";
     }
 
-    auto& out_meta = out_pld.get_mbuf()->get_metadataref();
+    auto& out_meta = out_pld.get_mbuf()->GetMetadataRef();
 
-    out_meta = in_pld.get_mbuf()->get_metadataref();
+    out_meta = in_pld.get_mbuf()->GetMetadataRef();
     out_meta["nchan"] = (uint8_t)m_out_nchan;
     out_meta["chan_width"] = BANDWIDTH * m_ncombine;
 
-    m_in_tensor.assign_data(in_pld.get_mbuf()->get_data_ptr());
-    m_out_tensor.assign_data(out_pld.get_mbuf()->get_data_ptr());
+    m_in_tensor.assign_data(in_pld.get_mbuf()->GetDataPtr());
+    m_out_tensor.assign_data(out_pld.get_mbuf()->GetDataPtr());
 
     m_in_tensor.combine_channels(&m_out_tensor);
 

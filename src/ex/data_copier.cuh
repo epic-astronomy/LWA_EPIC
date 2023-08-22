@@ -120,7 +120,7 @@ __device__ void copy_lwasv_imaging_data(
 
   f_eng_x_phases_out = reinterpret_cast<T*>(phases_out + LWA_SV_NSTANDS * 2);
   float2* phases_v = reinterpret_cast<float2*>(phases_out);
-  cnib2* f_eng_v = reinterpret_cast<cnib2*>(f_eng_out);
+  CNib2* f_eng_v = reinterpret_cast<CNib2*>(f_eng_out);
 
   tb.sync();
 

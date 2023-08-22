@@ -62,7 +62,7 @@ size_t nearest_integral_vec_size(size_t p_buf_size) {
   DLOG(INFO) << "The nearest lane-integral size of the buffer" << p_buf_size
              << ": " << ceil(static_cast<double>(p_buf_size) / lanes) * lanes;
   return ceil(static_cast<double>(p_buf_size) / lanes) * lanes;
-};
+}
 
 constexpr int int_ceil(float f) {
   const int i = static_cast<int>(f);
@@ -78,7 +78,7 @@ constexpr int int_ceil(float f) {
  * @tparam ExtraOffset Additional offset to account for if any
  */
 template <typename Hdr, typename T, int ExtraOffset = 0>
-struct alignment_offset {
+struct AlignmentOffset {
  private:
   static constexpr size_t _nlanes = HWY_LANES(T);
   static constexpr size_t _hdr_size = sizeof(Hdr);
@@ -92,8 +92,8 @@ struct alignment_offset {
       (_hdr_size + ExtraOffset);
 };
 
-template struct alignment_offset<chips_hdr_type, uint8_t>;
-template struct alignment_offset<chips_hdr_type, uint8_t, 42>;
+template struct AlignmentOffset<chips_hdr_type, uint8_t>;
+template struct AlignmentOffset<chips_hdr_type, uint8_t, 42>;
 
 template <size_t N>
 using RftAffinityGrp = raft::parallel::affinity_group<N>;

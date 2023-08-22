@@ -31,7 +31,7 @@ class dummy : public raft::kernel
                 VLOG(1) << "Null payload";
                 return raft::proceed;
             }
-            auto metadata = pld.get_mbuf()->get_metadata();
+            auto metadata = pld.get_mbuf()->GetMetadata();
             int nchan = std::any_cast<uint8_t>((*metadata)["nchan"]);
             int chan0 = std::any_cast<int64_t>((*metadata)["chan0"]);
             VLOG(1) << "nchan: " << nchan << " chan0: " << chan0;

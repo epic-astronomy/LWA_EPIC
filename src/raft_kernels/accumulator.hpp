@@ -75,12 +75,12 @@ class AccumulatorRft : public raft::kernel {
     if (m_accum_count == 0) {
       // store the current gulp
       input["in_img"].pop(m_cur_buf);
-      m_in_tensor.assign_data(m_cur_buf.get_mbuf()->get_data_ptr());
+      m_in_tensor.assign_data(m_cur_buf.get_mbuf()->GetDataPtr());
     } else {
       // add the next gulp to the current state
       _Pld pld2;
       input["in_img"].pop(pld2);
-      m_out_tensor.assign_data(pld2.get_mbuf()->get_data_ptr());
+      m_out_tensor.assign_data(pld2.get_mbuf()->GetDataPtr());
 
       m_in_tensor += m_out_tensor;
     }

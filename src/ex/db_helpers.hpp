@@ -220,7 +220,7 @@ void IngestMetadata(_Pld* pld_ptr, pqxx::work* work_ptr
     auto grid_size = std::get<int>(meta["grid_size"]);
     pqxx::params pars(
         pix_data.m_uuid,
-        meta2pgtime(time_tag, img_len_ms),
+        Meta2PgTime(time_tag, img_len_ms),
         nchan,
         static_cast<int>(NSTOKES),
         static_cast<int>(chan0),

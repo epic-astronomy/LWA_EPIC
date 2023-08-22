@@ -152,7 +152,7 @@ struct EpicPixelTableDataRows : EpicPixelTableMetaRows {
     kernel_size = meta.kernel_size;
   }
 
-  void m_reset_buf() {}
+  void ResetBuf() {}
 };
 
 EpicPixelTableMetaRows create_dummy_meta(int xdim, int ydim, int nsrcs = 1,

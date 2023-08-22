@@ -62,14 +62,14 @@ __device__ __half2 __half2cms(__half2 a, __half2 b, __half scale = __half(1)) {
  * @tparam T Type of output complex data
  * @param out[out] Output variable
  * @param a[in] Complex number of type float2
- * @param b[in] Complex number of type cnib
+ * @param b[in] Complex number of type CNib
  * @param scale[in] Scale valie
  * @return void
  *
  * @relatesalso MOFFCuHandler
  */
 template <typename T>
-__device__ void __cms_f(T& out, const float2 a, const cnib b, float& scale) {
+__device__ void __cms_f(T& out, const float2 a, const CNib b, float& scale) {
   out.x =
       __fmul_rz(scale, __fadd_rz(__fmul_rz(a.x, b.re), -__fmul_rz(a.y, b.im)));
   out.y =
@@ -83,13 +83,13 @@ __device__ void __cms_f(T& out, const float2 a, const cnib b, float& scale) {
  * @tparam T Type of the output complex data
  * @param out[out] Output variable
  * @param a[in] Complex value of type float2
- * @param b[in] Complex value of type cnib
+ * @param b[in] Complex value of type CNib
  * @return void
  *
  * @relatesalso MOFFCuHandler
  */
 template <typename T>
-__device__ void __cm_f(T& out, const float2& a, const cnib& b) {
+__device__ void __cm_f(T& out, const float2& a, const CNib& b) {
   out.x += __fadd_rz(__fmul_rz(a.x, b.re), -__fmul_rz(a.y, b.im));
   out.y += __fadd_rz(__fmul_rz(a.x, b.im), __fmul_rz(a.y, b.re));
 }

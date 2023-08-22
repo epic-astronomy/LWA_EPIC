@@ -71,14 +71,14 @@ class GulpGen_rft : public raft::kernel {
     LOG_IF(FATAL, m_timer == 0)
         << "Run time for the gulp generator cannot be zero.";
 
-    m_gulp_duration = m_assmblr.get()->get_nseq_per_gulp() * 40e-6;
+    m_gulp_duration = m_assmblr.get()->GetNumSeqPerGulp() * 40e-6;
 
     if (m_timer > 0 && m_timer < m_gulp_duration) {
       LOG(WARNING) << "The specified runtime of " << m_timer
                    << " s is less than the gulp size (" << m_gulp_duration
                    << "). Adjusting the run time to " << m_gulp_duration
                    << " s.";
-      m_timer = m_assmblr.get()->get_nseq_per_gulp();
+      m_timer = m_assmblr.get()->GetNumSeqPerGulp();
     }
     LOG(INFO) << "Initializing the Gulp generator.";
     LOG_IF(INFO, m_perpetual) << "Running in continuous mode.";

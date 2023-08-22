@@ -38,7 +38,7 @@
  * @brief Complex nibble. Independent of the host's endianness.
  *
  */
-struct __attribute__((aligned(1))) cnib {
+struct __attribute__((aligned(1))) CNib {
 #if __BYTE_ORDER == __BIG_ENDIAN
   signed char im : 4, re : 4;
 #elif __BYTE_ORDER == __LITTLE_ENDIAN
@@ -54,8 +54,8 @@ struct __attribute__((aligned(1))) cnib {
  *
  * @relatesalso MOFFCuHandler
  */
-struct __attribute__((aligned(2))) cnib2 {
-  cnib X, Y;
+struct __attribute__((aligned(2))) CNib2 {
+  CNib X, Y;
 };
 
 /// Python dict-like data structure to describe Meta data

@@ -57,9 +57,9 @@ class DummyPktGen : public raft::kernel {
     output.addPort<Payload>("gulp");
 
     if (utcstart == "") {
-      m_time_from_unix_epoch_s = get_ADP_time_from_unix_epoch();
+      m_time_from_unix_epoch_s = GetAdpTimeFromUnixEpoch();
     } else {
-      m_time_from_unix_epoch_s = get_time_from_unix_epoch(utcstart);
+      m_time_from_unix_epoch_s = GetTimeFromUnixEpoch(utcstart);
     }
     m_time_tag0 = m_time_from_unix_epoch_s * FS;
   }
@@ -72,7 +72,7 @@ class DummyPktGen : public raft::kernel {
       LOG_IF(FATAL, !static_cast<bool>(pld)) << "Empty buffer in packet gen";
 
       auto start = std::chrono::high_resolution_clock::now();
-      // get_40ms_gulp(pld.get_mbuf()->get_data_ptr());
+      // Get40msGulp(pld.get_mbuf()->GetDataPtr());
       VLOG(3) << "Gulp gen duration: "
               << std::chrono::duration_cast<std::chrono::milliseconds>(
                      std::chrono::high_resolution_clock::now() - start)
@@ -86,7 +86,7 @@ class DummyPktGen : public raft::kernel {
                  std::chrono::high_resolution_clock::now().time_since_epoch())
                  .count();
 
-      auto& mref = pld.get_mbuf()->get_metadataref();
+      auto& mref = pld.get_mbuf()->GetMetadataRef();
       uint64_t seq_start = 329008696996015680;
       mref["seq_start"] = seq_start;
       mref["time_tag"] =

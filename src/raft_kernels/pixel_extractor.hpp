@@ -110,12 +110,12 @@ class PixelExtractor : public raft::kernel {
     // this takes care of resizing the data and meta vectors
     out_pix_rows.get_mbuf()->copy_meta(m_pixmeta_rows);
 
-    m_img_tensor.assign_data(in_img.get_mbuf()->get_data_ptr());
+    m_img_tensor.assign_data(in_img.get_mbuf()->GetDataPtr());
 
     // copy the image metadata
     out_pix_rows.get_mbuf()->m_img_metadata =
-        in_img.get_mbuf()->get_metadataref();
-    out_pix_rows.get_mbuf()->m_uuid = get_random_uuid();
+        in_img.get_mbuf()->GetMetadataRef();
+    out_pix_rows.get_mbuf()->m_uuid = GetRandomUuid();
 
     // Extract pixels into the output payload
     VLOG(2) << "Extracting pixels into the payload";

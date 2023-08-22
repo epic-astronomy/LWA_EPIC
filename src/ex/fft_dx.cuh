@@ -149,7 +149,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
 
     gridder(
         tb,
-        reinterpret_cast<const cnib2*>(GetFEngSample<Order>(
+        reinterpret_cast<const CNib2*>(GetFEngSample<Order>(
             f_eng_g, seq_no, channel_idx, nseq_per_gulp, nchan)),
         // reinterpret_cast<const float3 *>(GetAntPos(antpos_g, channel_idx)),
         antpos_smem,
@@ -175,7 +175,7 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
 
     gridder(
         tb,
-        reinterpret_cast<const cnib2*>(GetFEngSample<Order>(
+        reinterpret_cast<const CNib2*>(GetFEngSample<Order>(
             f_eng_g, seq_no, channel_idx, nseq_per_gulp, nchan)),
         // reinterpret_cast<const float3 *>(GetAntPos(antpos_g, channel_idx)),
         antpos_smem,

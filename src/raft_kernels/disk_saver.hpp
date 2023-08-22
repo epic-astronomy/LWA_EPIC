@@ -57,13 +57,13 @@ class DiskSaverRft : public raft::kernel {
       return raft::proceed;
     }
 
-    auto& img_metadata = pld.get_mbuf()->get_metadataref();
+    auto& img_metadata = pld.get_mbuf()->GetMetadataRef();
     for (auto it = img_metadata.begin(); it != img_metadata.end(); ++it) {
       VLOG(3) << it->first << std::endl;
     }
     auto imsize = std::get<int>(img_metadata["grid_size"]);
     auto nchan = std::get<uint8_t>(img_metadata["nchan"]);
-    save_image(imsize, nchan, pld.get_mbuf()->get_data_ptr(),
+    SaveImageToDisk(imsize, nchan, pld.get_mbuf()->GetDataPtr(),
                "test_image_"s + m_img_suffix, img_metadata);
 
     return raft::proceed;

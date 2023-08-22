@@ -64,45 +64,45 @@ class BufMetaData {
  public:
   /**
    * @brief Get a numeric value from the map
-   * @deprecated Use `get_metadataref` to directly fetch/store metadata
+   * @deprecated Use `GetMetadataRef` to directly fetch/store metadata
    * @param key Name of the key
    * @return Num
    */
   Num GetMetaNum(std::string key);
   /**
    * @brief Get a pointer to the metadata object
-   * @deprecated Use `get_metadataref`
+   * @deprecated Use `GetMetadataRef`
    * @return varmap_t*
    */
-  varmap_t* get_metadata();
+  varmap_t* GetMetadata();
   /**
    * @brief Get a reference to the metadata object
    *
    * @return varmap_t&
    */
-  varmap_t& get_metadataref() { return m_metadata; }
+  varmap_t& GetMetadataRef() { return m_metadata; }
   /**
    * @brief Get the meta str object
-   * @deprecated Use `get_metadataref`
+   * @deprecated Use `GetMetadataRef`
    * @param key
    * @return std::string
    */
-  std::string get_meta_str(std::string key);
+  std::string GetMetaStr(std::string key);
   /**
    * @brief Set the meta num object
-   * @deprecated Use `get_metadataref`
+   * @deprecated Use `GetMetadataRef`
    * @param key
    * @param value
    */
-  void set_meta_num(std::string key, Num value);
+  void SetMetaNum(std::string key, Num value);
   /**
    * @brief Set the meta str object
-   * @deprecated Use `get_metadataref`
+   * @deprecated Use `GetMetadataRef`
    *
    * @param key
    * @param value
    */
-  void set_meta_str(std::string key, std::string value);
+  void SetMetaStr(std::string key, std::string value);
 };
 
 /**
@@ -124,7 +124,7 @@ class GenericBuffer : public BufMetaData<double> {
   /// Flag if the buffer memory is allocated
   bool m_is_allocated{false};
   /// @brief Reset the buffer metadata and memset all the elements to 0
-  void m_reset_buf();
+  void ResetBuf();
 
  public:
   GenericBuffer() {}
@@ -157,11 +157,11 @@ class GenericBuffer : public BufMetaData<double> {
    *
    * @return Pointer to the buffer
    */
-  elem_t* get_data_ptr();
+  elem_t* GetDataPtr();
   // double GetMetaNum(std::string key);
-  // std::string get_meta_str(std::string key);
-  // void set_meta_num(std::string key, double value);
-  // void set_meta_str(std::string key, std::string value);
+  // std::string GetMetaStr(std::string key);
+  // void SetMetaNum(std::string key, double value);
+  // void SetMetaStr(std::string key, std::string value);
 };
 
 /**
@@ -311,12 +311,12 @@ struct ManagedBuf : public Buffer {
 };
 
 template <typename Buffer>
-typename GenericBuffer<Buffer>::elem_t* GenericBuffer<Buffer>::get_data_ptr() {
+typename GenericBuffer<Buffer>::elem_t* GenericBuffer<Buffer>::GetDataPtr() {
   return this->m_buffer.get();
 }
 
 template <typename Buffer>
-void GenericBuffer<Buffer>::m_reset_buf() {
+void GenericBuffer<Buffer>::ResetBuf() {
   this->m_meta_num.clear();
   this->m_meta_str.clear();
   this->m_metadata.clear();
@@ -344,12 +344,12 @@ Num BufMetaData<Num>::GetMetaNum(std::string key) {
 }
 
 template <typename Num>
-typename BufMetaData<Num>::varmap_t* BufMetaData<Num>::get_metadata() {
+typename BufMetaData<Num>::varmap_t* BufMetaData<Num>::GetMetadata() {
   return &m_metadata;
 }
 
 template <typename Num>
-std::string BufMetaData<Num>::get_meta_str(std::string key) {
+std::string BufMetaData<Num>::GetMetaStr(std::string key) {
   auto value = m_meta_str.find(key);
   if (value == m_meta_str.end()) {
     throw(InvalidKey(key));
@@ -358,12 +358,12 @@ std::string BufMetaData<Num>::get_meta_str(std::string key) {
 }
 
 template <typename Num>
-void BufMetaData<Num>::set_meta_num(std::string key, Num value) {
+void BufMetaData<Num>::SetMetaNum(std::string key, Num value) {
   m_meta_num[key] = value;
 }
 
 template <typename Num>
-void BufMetaData<Num>::set_meta_str(std::string key, std::string value) {
+void BufMetaData<Num>::SetMetaStr(std::string key, std::string value) {
   m_meta_str[key] = value;
 }
 
@@ -469,7 +469,7 @@ template <typename Mbuf>
 void Payload<Mbuf>::unlock(bool p_reset) {
   m_mbuf.get()->m_lock.store(0, std::memory_order::memory_order_relaxed);
   if (p_reset) {
-    m_mbuf.get()->m_reset_buf();
+    m_mbuf.get()->ResetBuf();
   }
 }
 
