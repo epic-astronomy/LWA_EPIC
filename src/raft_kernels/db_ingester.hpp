@@ -101,9 +101,9 @@ class DBIngesterRft : public raft::kernel {
 
     if (IsUpdateStmntIds(p_kernel_size)) {
       m_pg_conn.get()->prepare(m_pix_stmnt_id_n,
-                               get_pixel_insert_stmnt_n(m_nkernel_elems));
+                               GetMultiPixelInsertStmnt(m_nkernel_elems));
 
-      m_pg_conn.get()->prepare(m_meta_stmnt_id_n, get_img_meta_insert_stmnt_n(
+      m_pg_conn.get()->prepare(m_meta_stmnt_id_n, GetMultiImgMetaInsertStmnt(
                                                       1));  // one row per image
     }
   }
@@ -113,7 +113,7 @@ class DBIngesterRft : public raft::kernel {
     input["in_pixel_rows"].pop(pld);
     UpdatePreparedStmnts(pld.get_mbuf()->kernel_size);
     try {
-      ingest_payload(&pld, m_db_T.get(), m_nkernel_elems, m_pix_stmnt_id_n,
+      IngestPayload(&pld, m_db_T.get(), m_nkernel_elems, m_pix_stmnt_id_n,
                      m_meta_stmnt_id_n);
       m_db_T.get()->commit();
     } catch (const std::exception& e) {

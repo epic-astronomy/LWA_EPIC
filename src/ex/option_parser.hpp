@@ -29,7 +29,7 @@
 #include "./constants.h"
 #include "./host_helpers.h"
 
-cxxopts::Options get_options() {
+cxxopts::Options GetEpicOptions() {
   cxxopts::Options options("epic++", "EPIC dual-pol imager");
 
   options.add_options("Online data processing")(
@@ -81,8 +81,7 @@ cxxopts::Options get_options() {
   return options;
 }
 
-std::optional<std::string> validate_options(
-    const cxxopts::ParseResult& result) {
+std::optional<std::string> ValidateOptions(const cxxopts::ParseResult& result) {
   using std::string_literals::operator""s;
   int port = result["port"].as<int>();
   if (port < 1 || port > 32768) {
@@ -151,10 +150,10 @@ std::optional<std::string> validate_options(
     return "ngpus must be greater then 0";
   }
 
-  if (ndevices > get_ngpus()) {
+  if (ndevices > GetNumGpus()) {
     return "Y'all must be kidding. You said EPIC must be run on " +
            std::to_string(ndevices) + " gpu(s) but only " +
-           std::to_string(get_ngpus()) + " available!";
+           std::to_string(GetNumGpus()) + " available!";
   }
 
   return {};

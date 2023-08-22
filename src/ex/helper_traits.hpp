@@ -96,21 +96,21 @@ template struct alignment_offset<chips_hdr_type, uint8_t>;
 template struct alignment_offset<chips_hdr_type, uint8_t, 42>;
 
 template <size_t N>
-using affinity_grp = raft::parallel::affinity_group<N>;
+using RftAffinityGrp = raft::parallel::affinity_group<N>;
 
 template <size_t N>
-using device_cpu = raft::parallel::device<raft::parallel::cpu, N>;
+using RftDeviceCpu = raft::parallel::device<raft::parallel::cpu, N>;
 
 template <size_t CPUID, size_t AffGrpID>
-using rft_manip = raft::manip<affinity_grp<AffGrpID>, device_cpu<CPUID>>;
+using RftManip = raft::manip<RftAffinityGrp<AffGrpID>, RftDeviceCpu<CPUID>>;
 
 /// @brief Test if the Buffer class can be constructed using a config object
 /// @tparam Buf
 /// @tparam
 template <typename Buf, typename = void>
-struct has_config : std::false_type {};
+struct HasConfig : std::false_type {};
 
 template <typename Buf>
-struct has_config<Buf, std::void_t<typename Buf::config_t>> : std::true_type {};
+struct HasConfig<Buf, std::void_t<typename Buf::config_t>> : std::true_type {};
 
 #endif  // SRC_EX_HELPER_TRAITS_HPP_

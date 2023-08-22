@@ -63,7 +63,7 @@ struct EpicPixelTableMetaRows {
     // pixel_skypos.reserve(ncoords);
     pixel_offst.reserve(ncoords);
 
-    assert(is_kernel_size_valid(n_sources, ncoords) &&
+    assert(IsKernelSizeValid(n_sources, ncoords) &&
            "Invalid kernel size. Each source must have ksize * ksize number of "
            "sources.");
 
@@ -72,7 +72,7 @@ struct EpicPixelTableMetaRows {
 
   EpicPixelTableMetaRows() {}
 
-  void transform_pix_coords(int xdim, int ydim) {
+  void TransformPixCoords(int xdim, int ydim) {
     for (size_t i = 0; i < m_ncoords; ++i) {
       int x = pixel_coords[i].first;
       // The array y-index starts from the top while the image from the bottom
@@ -95,7 +95,7 @@ struct EpicPixelTableMetaRows {
            (pixel_offst != rhs.pixel_offst);
   }
 
-  bool is_kernel_size_valid(int nsrcs, int ncoords) {
+  bool IsKernelSizeValid(int nsrcs, int ncoords) {
     size_t nkernel_elems = ncoords / nsrcs;
     size_t ksize = sqrt(nkernel_elems);
     return nkernel_elems == ksize * ksize;
@@ -108,7 +108,7 @@ struct EpicPixelTableDataRows : EpicPixelTableMetaRows {
     int ncoords;
     int nsrcs;
     int nchan;
-    bool check_opts() {
+    bool CheckOpts() {
       bool flag = true;
       flag &= ncoords < 0 ? false : true;
       flag &= nchan < 0 ? false : true;
@@ -170,7 +170,7 @@ EpicPixelTableMetaRows create_dummy_meta(int xdim, int ydim, int nsrcs = 1,
   meta.source_ids.insert(meta.source_ids.end(), ncoords, 1);
   unsigned int _seed;
   meta.meta_version = rand_r(&_seed);
-  meta.transform_pix_coords(xdim, ydim);
+  meta.TransformPixCoords(xdim, ydim);
 
   return meta;
 }

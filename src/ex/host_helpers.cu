@@ -18,7 +18,7 @@ cuMUnlock(T* ptr)
 }
 
 int
-get_ngpus()
+GetNumGpus()
 {
     int n_devices;
     cudaGetDeviceCount(&n_devices);

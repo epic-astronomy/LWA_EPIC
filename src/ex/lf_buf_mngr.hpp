@@ -79,7 +79,7 @@ class LFBufMngr {
    * @param p_page_lock Flag to indicate whether to page lock the buffer memory
    */
   template <typename _t = Buffer,
-            std::enable_if_t<!has_config<_t>::value, bool> = true>
+            std::enable_if_t<!HasConfig<_t>::value, bool> = true>
   LFBufMngr(size_t p_nbufs = 1, size_t p_buf_size = MAX_PACKET_SIZE,
             size_t p_max_tries = 5, bool p_page_lock = true);
 
@@ -101,7 +101,7 @@ class LFBufMngr {
    * @param config Buffer config object
    */
   template <typename _t = Buffer,
-            std::enable_if_t<has_config<_t>::value, bool> = true>
+            std::enable_if_t<HasConfig<_t>::value, bool> = true>
   LFBufMngr(size_t p_nbufs, int p_maxiters, typename _t::config_t config);
   // ~LFBufMngr(){
   //   LOG(INFO)<<"D LFBuffer";
@@ -109,7 +109,7 @@ class LFBufMngr {
 };
 
 template <typename Buffer>
-template <typename _t, std::enable_if_t<!has_config<_t>::value, bool>>
+template <typename _t, std::enable_if_t<!HasConfig<_t>::value, bool>>
 LFBufMngr<Buffer>::LFBufMngr(size_t p_nbufs, size_t p_buf_size,
                              size_t p_max_tries, bool p_page_lock)
     : m_nbufs(p_nbufs),
@@ -131,11 +131,11 @@ LFBufMngr<Buffer>::LFBufMngr(size_t p_nbufs, size_t p_buf_size,
 }
 
 template <class Buffer>
-template <typename _t, std::enable_if_t<has_config<_t>::value, bool>>
+template <typename _t, std::enable_if_t<HasConfig<_t>::value, bool>>
 LFBufMngr<Buffer>::LFBufMngr(size_t p_nbufs, int p_maxiters,
                              typename _t::config_t config)
     : m_nbufs(p_nbufs), m_max_iters(p_maxiters) {
-  CHECK(config.check_opts()) << "Invalid buffer config";
+  CHECK(config.CheckOpts()) << "Invalid buffer config";
   // allocate space for buffers
   m_buf_vec.reserve(p_nbufs);
   for (size_t i = 0; i < p_nbufs; ++i) {

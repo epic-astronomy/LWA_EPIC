@@ -32,7 +32,7 @@
 #include "./py_funcs.hpp"
 
 std::string
-get_pixel_insert_stmnt_1(pqxx::placeholders<unsigned int>* name_ptr) {
+GetSinglePixelInsertStmnt(pqxx::placeholders<unsigned int>* name_ptr) {
     std::string stmnt = "(";
 
     auto& name = *name_ptr;
@@ -67,14 +67,14 @@ get_pixel_insert_stmnt_1(pqxx::placeholders<unsigned int>* name_ptr) {
 }
 
 std::string
-get_pixel_insert_stmnt_n(int nrows) {
+GetMultiPixelInsertStmnt(int nrows) {
     pqxx::placeholders name;
     std::string stmnt = "INSERT INTO epic_pixels";
     stmnt += "(id, pixel_values, pixel_coord, pixel_lm";
     stmnt += ", source_name,  pix_ofst)";
     stmnt += "VALUES ";
     for (int i = 0; i < nrows; ++i) {
-        stmnt += get_pixel_insert_stmnt_1(&name);
+        stmnt += GetSinglePixelInsertStmnt(&name);
         if (i < (nrows - 1)) {
             stmnt += ",";
         }
@@ -83,7 +83,7 @@ get_pixel_insert_stmnt_n(int nrows) {
 }
 
 std::string
-get_img_meta_insert_stmnt_1(pqxx::placeholders<unsigned int>* name_ptr) {
+GetSingleImgMetaInsertStmnt(pqxx::placeholders<unsigned int>* name_ptr) {
     auto& name = *name_ptr;
     std::string stmnt = "(";
     int ncols = 7;
@@ -106,13 +106,13 @@ get_img_meta_insert_stmnt_1(pqxx::placeholders<unsigned int>* name_ptr) {
 }
 
 std::string
-get_img_meta_insert_stmnt_n(int n_images) {
+GetMultiImgMetaInsertStmnt(int n_images) {
     pqxx::placeholders name;
     std::string stmnt = "INSERT INTO epic_img_metadata";
     stmnt += "(id, img_time, n_chan, n_pol, chan0, chan_bw, epic_version";
     stmnt += ", img_size, npix_kernel) VALUES ";
     for (int i = 0; i < n_images; ++i) {
-        stmnt += get_img_meta_insert_stmnt_1(&name);
+        stmnt += GetSingleImgMetaInsertStmnt(&name);
         if (i < (n_images - 1)) {
             stmnt += ",";
         }
@@ -121,18 +121,18 @@ get_img_meta_insert_stmnt_n(int n_images) {
 }
 
 template <typename _Pld>
-void ingest_payload(
+void IngestPayload(
     _Pld* pld_ptr,
     pqxx::work* work_ptr,
     int npix_per_src,
     std::string pix_stmnt_id = "insert_pixels",
     std::string meta_stmnt_id = "insert_meta") {
-    ingest_pixels_src_n(pld_ptr, work_ptr, npix_per_src, pix_stmnt_id);
-    ingest_meta(pld_ptr, work_ptr, npix_per_src, meta_stmnt_id);
+    IngestPixelsMultiSrc(pld_ptr, work_ptr, npix_per_src, pix_stmnt_id);
+    IngestMetadata(pld_ptr, work_ptr, npix_per_src, meta_stmnt_id);
 }
 
 template <typename _PgT>
-void ingest_pixels_src_1(const _PgT& data
+void IngestPixelsSingleSrc(const _PgT& data
     , pqxx::work* work_ptr
     , int src_idx, int nchan
     , int npix_per_src
@@ -180,7 +180,7 @@ void ingest_pixels_src_1(const _PgT& data
  * @param stmnt
  */
 template <typename _Pld>
-void ingest_pixels_src_n(_Pld* pld_ptr, pqxx::work* work_ptr
+void IngestPixelsMultiSrc(_Pld* pld_ptr, pqxx::work* work_ptr
     , int npix_per_src, const std::string& stmnt) {
     auto& pld = *pld_ptr;
     auto& pix_data = *(pld.get_mbuf());
@@ -191,7 +191,7 @@ void ingest_pixels_src_n(_Pld* pld_ptr, pqxx::work* work_ptr
         && "Mismatch between the extracted pixels and the source number");
 
     for (int src_idx = 0; src_idx < nsrc; ++src_idx) {
-        ingest_pixels_src_1(pix_data, work_ptr, src_idx
+        IngestPixelsSingleSrc(pix_data, work_ptr, src_idx
             , nchan, npix_per_src, stmnt);
     }
 }
@@ -206,7 +206,7 @@ void ingest_pixels_src_n(_Pld* pld_ptr, pqxx::work* work_ptr
  * @param stmnt Prepared statement id
  */
 template <typename _Pld>
-void ingest_meta(_Pld* pld_ptr, pqxx::work* work_ptr
+void IngestMetadata(_Pld* pld_ptr, pqxx::work* work_ptr
     , int npix_per_src, const std::string& stmnt) {
     auto& pld = *pld_ptr;
     auto& work = *work_ptr;

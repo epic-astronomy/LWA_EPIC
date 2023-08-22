@@ -75,6 +75,6 @@ int cuMUnlock(T* ptr);
  *
  * @return int
  */
-int get_ngpus();
+int GetNumGpus();
 
 #endif  // SRC_EX_HOST_HELPERS_H_

@@ -55,12 +55,12 @@ class CorrelatorRft : public raft::kernel {
  public:
   explicit CorrelatorRft(std::unique_ptr<_Correlator>* p_correlator)
       : raft::kernel(), m_correlator(std::move(*p_correlator)) {
-    m_ngulps_per_img = m_correlator.get()->get_ngulps_per_img();
-    m_grid_res = m_correlator.get()->get_grid_res();
-    m_grid_size = m_correlator.get()->get_grid_size();
-    m_npols = m_correlator.get()->get_npols();
-    m_support = m_correlator.get()->get_support();
-    m_delta = m_correlator.get()->get_scaling_length();
+    m_ngulps_per_img = m_correlator.get()->GetNumGulpsPerImg();
+    m_grid_res = m_correlator.get()->GetGridRes();
+    m_grid_size = m_correlator.get()->GetGridSize();
+    m_npols = m_correlator.get()->GetNumPols();
+    m_support = m_correlator.get()->GetSupportSize();
+    m_delta = m_correlator.get()->GetScalingLen();
     input.addPort<_Payload>("gulp");
     // using out_t = typ
     output.addPort<typename _Correlator::payload_t>("img");
@@ -88,7 +88,7 @@ class CorrelatorRft : public raft::kernel {
 
     // initialization or change in the spectral window
     if (m_correlator.get()->reset(nchan, chan0)) {
-      m_delta = m_correlator.get()->get_scaling_length();
+      m_delta = m_correlator.get()->GetScalingLen();
       m_gulp_counter = 1;
     }
 
@@ -103,7 +103,7 @@ class CorrelatorRft : public raft::kernel {
     if (m_is_last) {
       VLOG(3) << "Last gulp. Preparing metadata";
       // prepare the metadata for the image
-      auto buf = m_correlator.get()->get_empty_buffer();
+      auto buf = m_correlator.get()->GetEmptyBuf();
       CHECK(static_cast<bool>(buf)) << "Correlator buffer allocation failed";
       auto& img_metadata = buf.get_mbuf()->get_metadataref();
       img_metadata = gulp_metadata;  // pld.get_mbuf()->get_metadataref();

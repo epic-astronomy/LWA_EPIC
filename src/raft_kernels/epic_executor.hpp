@@ -44,14 +44,14 @@ class EPICKernels {
     constexpr unsigned int cpu_ofst = (_GpuId)*m_nkernels + 2;
     // ensure the cpu ID is always non-zero.
     // Setting it to zero causes instability
-    rft_manip<1 + cpu_ofst, 1>::bind(m_pkt_gen);
-    rft_manip<2 + cpu_ofst, 1>::bind(m_correlator);
-    rft_manip<3 + cpu_ofst, 1>::bind(m_chan_reducer);
-    rft_manip<4 + cpu_ofst, 1>::bind(m_pixel_extractor);
-    rft_manip<5 + cpu_ofst, 1>::bind(m_index_fetcher);
-    rft_manip<6 + cpu_ofst, 1>::bind(m_db_ingester);
-    rft_manip<7 + cpu_ofst, 1>::bind(m_accumulator);
-    rft_manip<8 + cpu_ofst, 1>::bind(m_disk_saver);
+    RftManip<1 + cpu_ofst, 1>::bind(m_pkt_gen);
+    RftManip<2 + cpu_ofst, 1>::bind(m_correlator);
+    RftManip<3 + cpu_ofst, 1>::bind(m_chan_reducer);
+    RftManip<4 + cpu_ofst, 1>::bind(m_pixel_extractor);
+    RftManip<5 + cpu_ofst, 1>::bind(m_index_fetcher);
+    RftManip<6 + cpu_ofst, 1>::bind(m_db_ingester);
+    RftManip<7 + cpu_ofst, 1>::bind(m_accumulator);
+    RftManip<8 + cpu_ofst, 1>::bind(m_disk_saver);
   }
 
   void InitMap() {
@@ -107,9 +107,9 @@ class EPIC<1> : public EPICKernels<0> {
 
 void RunEpic(int argc, char** argv) {
   using std::string_literals::operator""s;
-  auto option_list = get_options();
+  auto option_list = GetEpicOptions();
   auto options = option_list.parse(argc, argv);
-  auto opt_valid = validate_options(options);
+  auto opt_valid = ValidateOptions(options);
 
   LOG(INFO) << "Parsing options";
   if (opt_valid.value_or("none") != "none"s) {

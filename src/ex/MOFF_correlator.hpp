@@ -119,15 +119,15 @@ class MOFFCorrelator : public MOFFCuHandler {
   /// @brief Reset the GCF kernel
   /// @param p_gcf_tex_dim Resolution of the kernel.
   /// @note This is different from the support size
-  void reset_gcf_kernel2D(int p_gcf_tex_dim);
+  void ResetGcfKernel2D(int p_gcf_tex_dim);
   /**
    * @brief Set the up GPU for imaging
    *
    * Allocate memory block for the output image and setup texture(s) for GCF
    */
-  void setup_GPU();
+  void SetupGpu();
 
-  void reset_correction_grid(int p_nchan);
+  void ResetCorrectionGrid(int p_nchan);
 
  public:
   /**
@@ -146,19 +146,19 @@ class MOFFCorrelator : public MOFFCuHandler {
   // , int p_npol, int p_grid_size, double p_grid_res, int p_gcf_kernel_dim);
 
   size_t get_nseq_per_gulp() { return m_nseq_per_gulp; }
-  size_t get_ngulps_per_img() { return m_ngulps_per_img; }
-  size_t get_grid_size() { return m_grid_size; }
-  double get_grid_res() { return m_grid_res; }
-  int get_npols() { return m_pol_mode & m_pol_mode; }
-  int get_support() { return m_support_size; }
-  int get_gcf_kernel_size() { return m_gcf_tex_dim; }
-  float get_scaling_length() { return m_delta; }
-  payload_t get_empty_buffer();
+  size_t GetNumGulpsPerImg() { return m_ngulps_per_img; }
+  size_t GetGridSize() { return m_grid_size; }
+  double GetGridRes() { return m_grid_res; }
+  int GetNumPols() { return m_pol_mode & m_pol_mode; }
+  int GetSupportSize() { return m_support_size; }
+  int GetGcfKernelSize() { return m_gcf_tex_dim; }
+  float GetScalingLen() { return m_delta; }
+  payload_t GetEmptyBuf();
 };
 
 template <typename Dtype, typename BuffMngr>
 typename MOFFCorrelator<Dtype, BuffMngr>::payload_t
-MOFFCorrelator<Dtype, BuffMngr>::get_empty_buffer() {
+MOFFCorrelator<Dtype, BuffMngr>::GetEmptyBuf() {
   return m_mbuf_mngr.get()->acquire_buf();
 }
 
@@ -243,7 +243,7 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc) {
 
   this->use_bf16_accum = p_desc.use_bf16_accum;
   VLOG(3) << "Setting up GPU for imaging.";
-  setup_GPU();
+  SetupGpu();
   VLOG(3) << "Done";
 }
 
@@ -287,7 +287,7 @@ bool MOFFCorrelator<Dtype, BuffMngr>::reset(int p_nchan, int p_chan0) {
   this->ResetGcfElem(
       m_nchan_out, m_support_oversample, m_chan0,
       m_delta / static_cast<float>(m_kernel_oversampling_factor), m_grid_size);
-  reset_correction_grid(m_nchan_out);
+  ResetCorrectionGrid(m_nchan_out);
   // recompute the gcf elements with the original support
   //  m_support_size = orig_support;
   this->ResetGcfElem(m_nchan_out, m_support_size, m_chan0, m_delta,
@@ -347,7 +347,7 @@ void MOFFCorrelator<Dtype, BuffMngr>::ResetPhases(int p_nchan, int p_chan0) {
 }
 
 template <typename Dtype, typename BuffMngr>
-void MOFFCorrelator<Dtype, BuffMngr>::reset_gcf_kernel2D(int p_gcf_tex_dim) {
+void MOFFCorrelator<Dtype, BuffMngr>::ResetGcfKernel2D(int p_gcf_tex_dim) {
   // m_gcf_tex_dim = p_gcf_tex_dim;
   m_gcf_kernel2D.reset();
   m_gcf_kernel2D =
@@ -360,14 +360,14 @@ void MOFFCorrelator<Dtype, BuffMngr>::reset_gcf_kernel2D(int p_gcf_tex_dim) {
 }
 
 template <typename Dtype, typename BuffMngr>
-void MOFFCorrelator<Dtype, BuffMngr>::setup_GPU() {
+void MOFFCorrelator<Dtype, BuffMngr>::SetupGpu() {
   VLOG(2) << "Allocating output image";
   this->AllocateOutImg(m_nchan_out *
                          std::pow(m_grid_size, 2)
                          //* std::pow(int(m_pol_mode), 2)
                          * sizeof(float) * 6 /*XX_re, YY_re*, X*Y, XY* */);
   VLOG(2) << "Initializing GCF texture";
-  reset_gcf_kernel2D(m_gcf_tex_dim);
+  ResetGcfKernel2D(m_gcf_tex_dim);
   this->ResetGcfTex(m_gcf_tex_dim, m_gcf_kernel2D.get());
 
   // calculate the appropriate offsets to image the gulp in streams
@@ -382,7 +382,7 @@ void MOFFCorrelator<Dtype, BuffMngr>::setup_GPU() {
 }
 
 template <typename Dtype, typename BuffMngr>
-void MOFFCorrelator<Dtype, BuffMngr>::reset_correction_grid(int p_nchan) {
+void MOFFCorrelator<Dtype, BuffMngr>::ResetCorrectionGrid(int p_nchan) {
   this->GetCorrectionKernel(m_correction_kernel_h.get(), m_support_oversample,
                               p_nchan);
   get_correction_grid<float>(
