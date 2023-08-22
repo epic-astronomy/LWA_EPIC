@@ -39,8 +39,8 @@
 #include "../ex/tensor.hpp"
 #include "../ex/types.hpp"
 
-class IndexFetcher_rft : public raft::kernel {
- protected:
+class IndexFetcherRft : public raft::kernel {
+ private:
   unsigned int m_refresh_interval{10};
   using high_res_tp =
       typename std::chrono::time_point<std::chrono::high_resolution_clock>;
@@ -60,7 +60,7 @@ class IndexFetcher_rft : public raft::kernel {
   uint64_t m_tstart;
 
  public:
-  explicit IndexFetcher_rft(unsigned int p_refresh_interval = 10)
+  explicit IndexFetcherRft(unsigned int p_refresh_interval = 10)
       : raft::kernel(), m_refresh_interval(p_refresh_interval) {
     input.addPort<uint64_t>("tstart");
     output.addPort<EpicPixelTableMetaRows>("meta_pixel_rows");

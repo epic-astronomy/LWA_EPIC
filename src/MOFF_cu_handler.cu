@@ -40,7 +40,7 @@ typedef __half2 f16_accum_t;
 // typedef __nv_bfloat162 f16_accum_t;
 
 void
-MOFFCuHandler::reset_antpos(int p_nchan, float* p_antpos_ptr)
+MOFFCuHandler::ResetAntpos(int p_nchan, float* p_antpos_ptr)
 {
     cuda_check_err(cudaSetDevice(m_device_id));
     if (is_antpos_set) {
@@ -53,7 +53,7 @@ MOFFCuHandler::reset_antpos(int p_nchan, float* p_antpos_ptr)
 }
 
 void
-MOFFCuHandler::reset_phases(int p_nchan, float* p_phases_ptr)
+MOFFCuHandler::ResetPhases(int p_nchan, float* p_phases_ptr)
 {
     cuda_check_err(cudaSetDevice(m_device_id));
     if (is_phases_set) {
@@ -68,7 +68,7 @@ MOFFCuHandler::reset_phases(int p_nchan, float* p_phases_ptr)
 }
 
 void
-MOFFCuHandler::reset_gcf_tex(int p_gcf_tex_dim, float* p_gcf_2D_ptr)
+MOFFCuHandler::ResetGcfTex(int p_gcf_tex_dim, float* p_gcf_2D_ptr)
 {
     cuda_check_err(cudaSetDevice(m_device_id));
     if (is_gcf_tex_set) {
@@ -102,7 +102,7 @@ MOFFCuHandler::reset_gcf_tex(int p_gcf_tex_dim, float* p_gcf_2D_ptr)
 }
 
 void
-MOFFCuHandler::create_gulp_custreams()
+MOFFCuHandler::CreateGulpCuStreams()
 {
     cuda_check_err(cudaSetDevice(m_device_id));
     m_gulp_custreams.reset();
@@ -112,7 +112,7 @@ MOFFCuHandler::create_gulp_custreams()
     }
 }
 
-void MOFFCuHandler::reset_gcf_elem(int p_nchan, int p_support, int p_chan0, float p_delta, int p_grid_size){
+void MOFFCuHandler::ResetGcfElem(int p_nchan, int p_support, int p_chan0, float p_delta, int p_grid_size){
     cuda_check_err(cudaSetDevice(m_device_id));
     if(is_m_gcf_elem_set){
         cuda_check_err(cudaFree(m_gcf_elem));
@@ -126,14 +126,14 @@ void MOFFCuHandler::reset_gcf_elem(int p_nchan, int p_support, int p_chan0, floa
     int block_size = int(MAX_THREADS_PER_BLOCK/nelements_gcf) * nelements_gcf;
 
     VLOG(2)<<"Pre-computing GCF elements\n"<<p_support<<" "<<block_size<<std::endl;
-    compute_gcf_elements<<<p_nchan, block_size>>>(m_gcf_elem, m_antpos_cu, p_chan0, p_delta, m_gcf_tex,p_grid_size, (p_support), LWA_SV_NSTANDS);
+    ComputeGcfElements<<<p_nchan, block_size>>>(m_gcf_elem, m_antpos_cu, p_chan0, p_delta, m_gcf_tex,p_grid_size, (p_support), LWA_SV_NSTANDS);
     VLOG(2)<<"Done\n";
 
     cudaDeviceSynchronize();
     cuda_check_err(cudaPeekAtLastError());
 }
 
-void MOFFCuHandler::get_correction_kernel(float* p_out_kernel, int p_support, int p_nchan){
+void MOFFCuHandler::GetCorrectionKernel(float* p_out_kernel, int p_support, int p_nchan){
     cuda_check_err(cudaSetDevice(m_device_id));
     if(m_nchan_in==0){
         LOG(FATAL)<<"Number of input channels is not set. Unable to compute the averaged kernel\n";
@@ -148,17 +148,17 @@ void MOFFCuHandler::get_correction_kernel(float* p_out_kernel, int p_support, in
 
     
 
-    compute_avg_gridding_kernel<<<p_nchan, LWA_SV_NSTANDS>>>(m_gcf_elem, m_correction_kernel_d ,p_nchan, p_support);
+    ComputeAvgGriddingKernel<<<p_nchan, LWA_SV_NSTANDS>>>(m_gcf_elem, m_correction_kernel_d ,p_nchan, p_support);
 
     cudaMemcpy(p_out_kernel, m_correction_kernel_d, nbytes, cudaMemcpyDeviceToHost);
 
     cudaDeviceSynchronize();
     cuda_check_err(cudaPeekAtLastError());
 }
-//void MOFFCuHandler::set_correction_grid(float* corr_grid);
+//void MOFFCuHandler::SetCorrectionGrid(float* corr_grid);
 
 
-void MOFFCuHandler::set_correction_grid(float* p_in_correction_grid, int p_grid_size, int p_nchan){
+void MOFFCuHandler::SetCorrectionGrid(float* p_in_correction_grid, int p_grid_size, int p_nchan){
     cuda_check_err(cudaSetDevice(m_device_id));
     int nbytes = p_grid_size * p_grid_size * p_nchan * sizeof(float);
     if(is_correction_grid_set){
@@ -175,18 +175,18 @@ void MOFFCuHandler::set_correction_grid(float* p_in_correction_grid, int p_grid_
 }
 
 void
-MOFFCuHandler::reset_data(int p_nchan, size_t p_nseq_per_gulp, float* p_antpos_ptr, float* p_phases_ptr)
+MOFFCuHandler::ResetData(int p_nchan, size_t p_nseq_per_gulp, float* p_antpos_ptr, float* p_phases_ptr)
 {
     cuda_check_err(cudaSetDevice(m_device_id));
     m_nseq_per_gulp = p_nseq_per_gulp;
     m_nchan_in = p_nchan;
 
     VLOG(2) << "GPU resetting antpos\n";
-    reset_antpos(p_nchan, p_antpos_ptr);
+    ResetAntpos(p_nchan, p_antpos_ptr);
     cuda_check_err(cudaPeekAtLastError());
 
     VLOG(2) << "GPU resetting phases\n";
-    reset_phases(p_nchan, p_phases_ptr);
+    ResetPhases(p_nchan, p_phases_ptr);
     cuda_check_err(cudaPeekAtLastError());
 
     cudaDeviceSynchronize();
@@ -194,7 +194,7 @@ MOFFCuHandler::reset_data(int p_nchan, size_t p_nseq_per_gulp, float* p_antpos_p
 }
 
 void
-MOFFCuHandler::set_imaging_kernel()
+MOFFCuHandler::SetImagingKernel()
 {   int smemSize;
     cudaDeviceGetAttribute(&smemSize, cudaDevAttrMaxSharedMemoryPerBlock, m_device_id);
     VLOG(2)<<"Max shared memory per block: "<<smemSize<<" bytes\n";
@@ -205,9 +205,9 @@ MOFFCuHandler::set_imaging_kernel()
         VLOG(3)<<"Shared memory size: "<<FFT64x64::shared_memory_size<<" bytes\n";
         VLOG(3)<<FFT64x64::block_dim.x<<" "<<FFT64x64::block_dim.y<<"\n";
         if(use_bf16_accum){
-            m_imaging_kernel = get_imaging_kernel<FFT64x64, f16_accum_t>(m_support_size);
+            m_imaging_kernel = GetImagingKernel<FFT64x64, f16_accum_t>(m_support_size);
         }else{
-            m_imaging_kernel = get_imaging_kernel<FFT64x64, float2>(m_support_size);
+            m_imaging_kernel = GetImagingKernel<FFT64x64, float2>(m_support_size);
         }
         m_img_block_dim = FFT64x64::block_dim;
         m_shared_mem_size = FFT64x64::shared_memory_size*2;
@@ -219,9 +219,9 @@ MOFFCuHandler::set_imaging_kernel()
 
         if(use_bf16_accum){
             VLOG(4)<<"ACCUMULATING in 16BIT\n";
-            m_imaging_kernel = get_imaging_kernel<FFT128x128, f16_accum_t>(m_support_size);
+            m_imaging_kernel = GetImagingKernel<FFT128x128, f16_accum_t>(m_support_size);
         }else{
-            m_imaging_kernel = get_imaging_kernel<FFT128x128, float2>(m_support_size);
+            m_imaging_kernel = GetImagingKernel<FFT128x128, float2>(m_support_size);
         }
         m_img_block_dim = FFT128x128::block_dim;
         m_shared_mem_size = FFT128x128::shared_memory_size*1.5;
@@ -233,7 +233,7 @@ MOFFCuHandler::set_imaging_kernel()
 }
 
 void
-MOFFCuHandler::allocate_f_eng_gpu(size_t nbytes)
+MOFFCuHandler::AllocateFEngGpu(size_t nbytes)
 {
     cuda_check_err(cudaSetDevice(m_device_id));
     if (is_f_eng_cu_allocated) {
@@ -246,7 +246,7 @@ MOFFCuHandler::allocate_f_eng_gpu(size_t nbytes)
 }
 
 void
-MOFFCuHandler::allocate_out_img(size_t p_nbytes)
+MOFFCuHandler::AllocateOutImg(size_t p_nbytes)
 {
     cuda_check_err(cudaSetDevice(m_device_id));
     if (is_out_mem_set) {
@@ -259,7 +259,7 @@ MOFFCuHandler::allocate_out_img(size_t p_nbytes)
 }
 
 void
-MOFFCuHandler::set_img_grid_dim()
+MOFFCuHandler::SetImgGridDim()
 {
     cuda_check_err(cudaSetDevice(m_device_id));
     assert((void("Number of channels per stream cannot be zero"), m_nchan_per_stream > 0));
@@ -269,7 +269,7 @@ MOFFCuHandler::set_img_grid_dim()
 }
 
 void
-MOFFCuHandler::process_gulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, bool p_last, int p_chan0, float p_delta)
+MOFFCuHandler::ProcessGulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, bool p_last, int p_chan0, float p_delta)
 {
     cuda_check_err(cudaSetDevice(m_device_id));
     cudaEvent_t start, stop;
@@ -328,7 +328,7 @@ MOFFCuHandler::process_gulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first,
 }
 
 void
-MOFFCuHandler::destroy_textures(cudaArray_t& p_tex_arr, cudaTextureObject_t& p_tex_obj)
+MOFFCuHandler::DestroyTextures(cudaArray_t& p_tex_arr, cudaTextureObject_t& p_tex_obj)
 {
     cuda_check_err(cudaSetDevice(m_device_id));
     cudaFreeArray(p_tex_arr);
@@ -338,8 +338,8 @@ MOFFCuHandler::destroy_textures(cudaArray_t& p_tex_arr, cudaTextureObject_t& p_t
 MOFFCuHandler::~MOFFCuHandler()
 {
     cuda_check_err(cudaSetDevice(m_device_id));
-    // destroy_textures(m_antpos_tex_arr, m_antpos_tex);
-    // destroy_textures(m_phases_tex_arr, m_phases_tex);
+    // DestroyTextures(m_antpos_tex_arr, m_antpos_tex);
+    // DestroyTextures(m_phases_tex_arr, m_phases_tex);
     if (is_antpos_set) {
         cudaFree(m_antpos_cu);
     }

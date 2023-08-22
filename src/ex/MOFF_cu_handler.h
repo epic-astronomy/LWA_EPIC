@@ -79,27 +79,27 @@ class MOFFCuHandler {
   /// @brief Destroy all the texture objects
   /// @param p_tex_arr Texture array object
   /// @param p_tex_obj Texture object
-  void destroy_textures(cudaArray_t& p_tex_arr, cudaTextureObject_t& p_tex_obj);
+  void DestroyTextures(cudaArray_t& p_tex_arr, cudaTextureObject_t& p_tex_obj);
 
   /// @brief Reset GCF texture object
   /// @param p_gcf_tex_dim Size of the GCF texture
   /// @param p_gcf_2D_ptr Host pointer to the GCF kernel array
-  void reset_gcf_tex(int p_gcf_tex_dim, float* p_gcf_2D_ptr);
+  void ResetGcfTex(int p_gcf_tex_dim, float* p_gcf_2D_ptr);
 
   /// @brief Reset antenna positions on device
   /// @param p_nchan Number of channels
   /// @param p_antpos_ptr Host pointer to the antenna position array
-  void reset_antpos(int p_nchan, float* p_antpos_ptr);
+  void ResetAntpos(int p_nchan, float* p_antpos_ptr);
 
   /// @brief Reset phases on device
   /// @param p_nchan Number of channels
   /// @param p_phases_ptr Host pointer to the phases array
-  void reset_phases(int p_nchan, float* p_phases_ptr);
+  void ResetPhases(int p_nchan, float* p_phases_ptr);
 
   /// Number of streams to split a gulp into
   int m_nstreams;
   std::unique_ptr<cudaStream_t[]> m_gulp_custreams{nullptr};
-  void create_gulp_custreams();
+  void CreateGulpCuStreams();
 
   /// GCF kernel elements for each antenna and frequency
   float* m_gcf_elem;
@@ -113,9 +113,9 @@ class MOFFCuHandler {
   bool is_correction_kernel_set{false};
   float* m_correction_grid_d{nullptr};
   bool is_correction_grid_set{false};
-  void get_correction_kernel(float* p_out_kernel, int p_support_size,
+  void GetCorrectionKernel(float* p_out_kernel, int p_support_size,
                              int p_nchan);
-  void set_correction_grid(float* p_corr_grid, int p_grid_size, int p_nchan);
+  void SetCorrectionGrid(float* p_corr_grid, int p_grid_size, int p_nchan);
 
   /// Total number of channels per sequence
   int m_nchan_in{0};
@@ -137,8 +137,8 @@ class MOFFCuHandler {
   dim3 m_img_block_dim;
   int m_shared_mem_size;
   int m_support_size;
-  void set_imaging_kernel();
-  void set_img_grid_dim();
+  void SetImagingKernel();
+  void SetImgGridDim();
 
   bool use_bf16_accum{false};
 
@@ -154,7 +154,7 @@ class MOFFCuHandler {
    * @param p_ant_pos Host pointer to the antenna positions array
    * @param p_phases Host pointer to the phases array
    */
-  void reset_data(int p_nchan, size_t p_nseq_per_gulp, float* p_ant_pos,
+  void ResetData(int p_nchan, size_t p_nseq_per_gulp, float* p_ant_pos,
                   float* p_phases);
 
   /**
@@ -162,7 +162,7 @@ class MOFFCuHandler {
    *
    * @param nbytes Byte to allocate
    */
-  void allocate_f_eng_gpu(size_t nbytes);
+  void AllocateFEngGpu(size_t nbytes);
 
   /**
    * @brief Image a gulp of data
@@ -172,7 +172,7 @@ class MOFFCuHandler {
    * @param p_first Flag if the gulp is the first one in the accumulation
    * @param p_last Flag if the gulp is the last one in the accumulation
    */
-  void process_gulp(uint8_t* p_data_ptr, float* p_out_ptr = nullptr,
+  void ProcessGulp(uint8_t* p_data_ptr, float* p_out_ptr = nullptr,
                     bool p_first = true, bool p_last = false, int p_chan0 = 0,
                     float p_delta = 1.0);
 
@@ -189,7 +189,8 @@ class MOFFCuHandler {
    * @param p_delta Scaling length to convert wavelength in meters to
    * meters/pixel
    */
-  void process_gulp_old(uint8_t* p_data_ptr, size_t p_buf_size,
+  [[deprecated("Use ProcessGulp instead")]]
+  void ProcessGulpOld(uint8_t* p_data_ptr, size_t p_buf_size,
                         float* p_out_ptr, size_t p_out_size,
                         bool p_first = true, bool p_last = false);
 
@@ -198,9 +199,9 @@ class MOFFCuHandler {
    *
    * @param nbytes Bytes to allocate
    */
-  void allocate_out_img(size_t nbytes);
+  void AllocateOutImg(size_t nbytes);
 
-  void reset_gcf_elem(int p_nchan, int p_support, int p_chan0, float p_delta,
+  void ResetGcfElem(int p_nchan, int p_support, int p_chan0, float p_delta,
                       int p_grid_size);
 
   ~MOFFCuHandler();

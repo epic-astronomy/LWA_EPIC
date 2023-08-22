@@ -36,7 +36,7 @@
 #include "../ex/types.hpp"
 
 template <class _Payload, class _Correlator>
-class Correlator_rft : public raft::kernel {
+class CorrelatorRft : public raft::kernel {
  private:
   std::unique_ptr<_Correlator> m_correlator{nullptr};
   int m_nchan{0};
@@ -53,7 +53,7 @@ class Correlator_rft : public raft::kernel {
   float m_delta{1};
 
  public:
-  explicit Correlator_rft(std::unique_ptr<_Correlator>* p_correlator)
+  explicit CorrelatorRft(std::unique_ptr<_Correlator>* p_correlator)
       : raft::kernel(), m_correlator(std::move(*p_correlator)) {
     m_ngulps_per_img = m_correlator.get()->get_ngulps_per_img();
     m_grid_res = m_correlator.get()->get_grid_res();
@@ -124,7 +124,7 @@ class Correlator_rft : public raft::kernel {
           << std::chrono::duration_cast<std::chrono::milliseconds>(
                  std::chrono::high_resolution_clock::now().time_since_epoch())
                  .count();
-      m_correlator.get()->process_gulp(
+      m_correlator.get()->ProcessGulp(
           pld.get_mbuf()->get_data_ptr(), buf.get_mbuf()->get_data_ptr(),
           m_is_first, m_is_last, static_cast<int>(chan0), m_delta);
 
@@ -136,11 +136,11 @@ class Correlator_rft : public raft::kernel {
     }
 
     // If it's anything other than the final gulp, proceed right away. The
-    // process_gulp function images the data in streams with asynchronous
+    // ProcessGulp function images the data in streams with asynchronous
     // reads/writes. Hence the next gulp won't have to wait for the current one
     // to complete thereby keeping the GPU completely occupied.
 
-    m_correlator.get()->process_gulp(pld.get_mbuf()->get_data_ptr(),
+    m_correlator.get()->ProcessGulp(pld.get_mbuf()->get_data_ptr(),
                                      static_cast<float*>(nullptr), m_is_first,
                                      m_is_last);
     ++m_gulp_counter;

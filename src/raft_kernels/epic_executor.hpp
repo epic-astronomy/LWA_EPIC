@@ -39,7 +39,7 @@ class EPICKernels {
 
  protected:
   raft::map* m_map;
-  void bind_kernels2cpu() {
+  void BindKernels2Cpu() {
     // use an additional offset of 2 for the runtime
     constexpr unsigned int cpu_ofst = (_GpuId)*m_nkernels + 2;
     // ensure the cpu ID is always non-zero.
@@ -54,7 +54,7 @@ class EPICKernels {
     rft_manip<8 + cpu_ofst, 1>::bind(m_disk_saver);
   }
 
-  void init_map() {
+  void InitMap() {
     auto& m = *m_map;
     m += m_pkt_gen >> m_correlator >> m_chan_reducer["in_img"]["out_img"] >>
          m_pixel_extractor["in_img"];
@@ -79,9 +79,9 @@ class EPICKernels {
         m_disk_saver(get_disk_saver_k<_GpuId>(p_options)),
         m_map(p_map) {
     LOG(INFO) << "Binding kernels to CPUs";
-    this->bind_kernels2cpu();
+    BindKernels2Cpu();
     LOG(INFO) << "Initializing the EPIC graph to run on GPU:" << _GpuId;
-    this->init_map();
+    InitMap();
   }
 };
 
@@ -105,7 +105,7 @@ class EPIC<1> : public EPICKernels<0> {
       : EPICKernels<0>(p_options, p_map) {}
 };
 
-void run_epic(int argc, char** argv) {
+void RunEpic(int argc, char** argv) {
   using std::string_literals::operator""s;
   auto option_list = get_options();
   auto options = option_list.parse(argc, argv);
@@ -116,15 +116,16 @@ void run_epic(int argc, char** argv) {
     LOG(FATAL) << opt_valid.value();
   }
 
-  int ngpus = options["ngpus"].as<int>();
+  int num_gpus =
+      options["ngpus"].as<int>() > 0 ? options["ngpus"].as<int>() > 0 : 1;
   raft::map m;
 
   LOG(INFO) << "Initializing EPIC";
-  if (ngpus == 3) {
+  if (num_gpus == 3) {
     auto epic = EPIC<3>(options, &m);
     LOG(INFO) << "Running...";
     m.exe();
-  } else if (ngpus == 2) {
+  } else if (num_gpus == 2) {
     auto epic = EPIC<2>(options, &m);
     LOG(INFO) << "Running...";
     m.exe();

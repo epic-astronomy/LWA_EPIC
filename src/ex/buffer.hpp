@@ -68,7 +68,7 @@ class BufMetaData {
    * @param key Name of the key
    * @return Num
    */
-  Num get_meta_num(std::string key);
+  Num GetMetaNum(std::string key);
   /**
    * @brief Get a pointer to the metadata object
    * @deprecated Use `get_metadataref`
@@ -158,7 +158,7 @@ class GenericBuffer : public BufMetaData<double> {
    * @return Pointer to the buffer
    */
   elem_t* get_data_ptr();
-  // double get_meta_num(std::string key);
+  // double GetMetaNum(std::string key);
   // std::string get_meta_str(std::string key);
   // void set_meta_num(std::string key, double value);
   // void set_meta_str(std::string key, std::string value);
@@ -335,7 +335,7 @@ void GenericBuffer<Buffer>::m_reset_buf() {
 }
 
 template <typename Num>
-Num BufMetaData<Num>::get_meta_num(std::string key) {
+Num BufMetaData<Num>::GetMetaNum(std::string key) {
   auto value = m_meta_num.find(key);
   if (value == m_meta_num.end()) {
     throw(InvalidKey(key));
@@ -390,7 +390,7 @@ void AlignedBuffer<dtype>::allocate(size_t p_buf_size, bool p_reallocate,
     throw(MemoryAllocationFailure(p_buf_size));
   }
   if (m_page_lock) {
-    auto res = cu_mlock(this->m_buffer.get(), p_buf_size * sizeof(dtype));
+    auto res = cuMLock(this->m_buffer.get(), p_buf_size * sizeof(dtype));
     CHECK(res == 0) << "Unable to mlock the buffer";
   }
 }
@@ -399,7 +399,7 @@ template <typename dtype>
 AlignedBuffer<dtype>::~AlignedBuffer() {
   if (m_page_lock) {
     // DLOG(INFO)<<"D Aligned buffer";
-    auto res = cu_munlock(this->m_buffer.get());
+    auto res = cuMUnlock(this->m_buffer.get());
     // DLOG(INFO)<<"Unregistering buffer";
     // this->m_buffer.reset();
     // DLOG(INFO)<<"Buffer reset";

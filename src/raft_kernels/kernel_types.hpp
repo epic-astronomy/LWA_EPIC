@@ -76,7 +76,7 @@ struct Kernel : KernelTypeDefs {
 
 template <>
 struct Kernel<_DUMMY_PACK_GEN> : KernelTypeDefs {
-  using ktype = dummy_pkt_gen<payload_u8_t, LFBufMngr<AlignedBuffer<uint8_t>>>;
+  using ktype = DummyPktGen<payload_u8_t, LFBufMngr<AlignedBuffer<uint8_t>>>;
   template <unsigned int _GpuId>
   static ktype get_kernel(const opt_t&) {
     return ktype(2);
@@ -88,7 +88,7 @@ auto& get_dummy_pkt_gen_k = Kernel<_DUMMY_PACK_GEN>::get_kernel<_GpuId>;
 
 template <>
 struct Kernel<_CORRELATOR> : KernelTypeDefs {
-  using ktype = Correlator_rft<payload_u8_t, moffcorr_t>;
+  using ktype = CorrelatorRft<payload_u8_t, moffcorr_t>;
   template <unsigned int _GpuId>
   static ktype get_kernel(const opt_t& options) {
     auto correlator_options = MOFFCorrelatorDesc();
@@ -119,7 +119,7 @@ auto& get_epiccorr_k = Kernel<_CORRELATOR>::get_kernel<_GpuId>;
 
 template <>
 struct Kernel<_CHAN_REDUCER> : KernelTypeDefs {
-  using ktype = ChanReducer_rft<payload_float_t, lbuf_mngr_float_t>;
+  using ktype = ChanReducerRft<payload_float_t, lbuf_mngr_float_t>;
   template <unsigned int _GpuId>
   static ktype get_kernel(const opt_t& options) {
     int imsize = options["imagesize"].as<int>();
@@ -158,7 +158,7 @@ auto& get_pixel_extractor_k = Kernel<_PIX_EXTRACTOR>::get_kernel<_GpuId>;
 
 template <>
 struct Kernel<_IDX_FETCHER> : KernelTypeDefs {
-  using ktype = IndexFetcher_rft;
+  using ktype = IndexFetcherRft;
   template <unsigned int _GpuId>
   static ktype get_kernel(const opt_t&) {
     return ktype();
@@ -170,7 +170,7 @@ auto& get_index_fetcher_k = Kernel<_IDX_FETCHER>::get_kernel<_GpuId>;
 
 template <>
 struct Kernel<_DB_INGESTER> : KernelTypeDefs {
-  using ktype = DBIngester_rft<pixel_pld_t>;
+  using ktype = DBIngesterRft<pixel_pld_t>;
   template <unsigned int _GpuId>
   static ktype get_kernel(const opt_t&) {
     return ktype();
@@ -182,7 +182,7 @@ auto& get_db_ingester_k = Kernel<_DB_INGESTER>::get_kernel<_GpuId>;
 
 template <>
 struct Kernel<_ACCUMULATOR> : KernelTypeDefs {
-  using ktype = Accumulator_rft<payload_float_t>;
+  using ktype = AccumulatorRft<payload_float_t>;
   template <unsigned int _GpuId>
   static ktype get_kernel(const opt_t& options) {
     int imsize = options["imagesize"].as<int>();
@@ -200,7 +200,7 @@ auto& get_accumulator_k = Kernel<_ACCUMULATOR>::get_kernel<_GpuId>;
 
 template <>
 struct Kernel<_DISK_SAVER> : KernelTypeDefs {
-  using ktype = DiskSaver_rft<payload_float_t>;
+  using ktype = DiskSaverRft<payload_float_t>;
   template <unsigned int _GpuId>
   static ktype get_kernel(const opt_t&) {
     return ktype(std::to_string(_GpuId));

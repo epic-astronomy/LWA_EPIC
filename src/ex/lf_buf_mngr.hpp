@@ -169,6 +169,6 @@ Payload<typename LFBufMngr<Buffer>::mbuf_t> LFBufMngr<Buffer>::acquire_buf() {
   return Payload<mbuf_t>(m_buf_vec[cur_cursor]);
 }
 
-template class LFBufMngr<AlignedBuffer<uint8_t>>;
+// template class LFBufMngr<AlignedBuffer<uint8_t>>;
 
 #endif  // SRC_EX_LF_BUF_MNGR_HPP_

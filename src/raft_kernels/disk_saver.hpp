@@ -36,11 +36,12 @@
 #include "../ex/types.hpp"
 
 template <class Payload>
-class DiskSaver_rft : public raft::kernel {
+class DiskSaverRft : public raft::kernel {
+ private:
   std::string m_img_suffix;
 
  public:
-  explicit DiskSaver_rft(std::string p_img_suffix = "0") : raft::kernel() {
+  explicit DiskSaverRft(std::string p_img_suffix = "0") : raft::kernel() {
     input.addPort<Payload>("image");
 
     m_img_suffix = p_img_suffix;

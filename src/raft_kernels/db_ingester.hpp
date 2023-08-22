@@ -40,7 +40,8 @@
 #include "../ex/types.hpp"
 
 template <typename _PldIn>
-class DBIngester_rft : public raft::kernel {
+class DBIngesterRft : public raft::kernel {
+ private:
   // extraction kernel size
   int m_ext_kernel_size{5};
   int m_nkernel_elems{25};
@@ -55,8 +56,8 @@ class DBIngester_rft : public raft::kernel {
 
  public:
   // https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING
-  DBIngester_rft(int p_kernel_size = 1,
-                 std::string p_conn_string = "dbname=epic")
+  DBIngesterRft(int p_kernel_size = 1,
+                std::string p_conn_string = "dbname=epic")
       : raft::kernel() {
     input.addPort<_PldIn>("in_pixel_rows");
 
@@ -72,10 +73,10 @@ class DBIngester_rft : public raft::kernel {
     // insertions will be made source-wise
     // for example, if the kernel size is 5 for a source, 25 rows will
     // be inserted in a single transaction
-    update_prepared_stmnts(p_kernel_size);
+    UpdatePreparedStmnts(p_kernel_size);
   }
 
-  bool is_update_stmnt_ids(int p_kernel_size) {
+  bool IsUpdateStmntIds(int p_kernel_size) {
     if (m_avail_ksizes.count(p_kernel_size) == 1) {
       auto ids = m_avail_ksizes.at(p_kernel_size);
       m_pix_stmnt_id_n = ids.first;
@@ -90,7 +91,7 @@ class DBIngester_rft : public raft::kernel {
     return true;
   }
 
-  void update_prepared_stmnts(int p_kernel_size) {
+  void UpdatePreparedStmnts(int p_kernel_size) {
     if (p_kernel_size == m_ext_kernel_size) {
       return;
     }
@@ -98,7 +99,7 @@ class DBIngester_rft : public raft::kernel {
     m_ext_kernel_size = p_kernel_size;
     m_nkernel_elems = p_kernel_size * p_kernel_size;
 
-    if (is_update_stmnt_ids(p_kernel_size)) {
+    if (IsUpdateStmntIds(p_kernel_size)) {
       m_pg_conn.get()->prepare(m_pix_stmnt_id_n,
                                get_pixel_insert_stmnt_n(m_nkernel_elems));
 
@@ -110,7 +111,7 @@ class DBIngester_rft : public raft::kernel {
   raft::kstatus run() override {
     _PldIn pld;
     input["in_pixel_rows"].pop(pld);
-    update_prepared_stmnts(pld.get_mbuf()->kernel_size);
+    UpdatePreparedStmnts(pld.get_mbuf()->kernel_size);
     try {
       ingest_payload(&pld, m_db_T.get(), m_nkernel_elems, m_pix_stmnt_id_n,
                      m_meta_stmnt_id_n);

@@ -46,8 +46,8 @@
  * @tparam _PldOut Output payload type
  */
 template <typename _PldIn, class BufferMngr, typename _PldOut = _PldIn>
-class ChanReducer_rft : public raft::kernel {
- protected:
+class ChanReducerRft : public raft::kernel {
+ private:
   /// @brief Number of channels to combine
   const int m_ncombine{4};
   float m_norm{1};
@@ -65,14 +65,14 @@ class ChanReducer_rft : public raft::kernel {
 
  public:
   /**
-   * @brief Construct a new ChanReducer_rft object
+   * @brief Construct a new ChanReducerRft object
    *
    * @param p_ncombine Channel binning factor
    * @param p_xdim X side of the image
    * @param p_ydim Y side of the image
    * @param p_in_nchan Number of input channels to the reducer
    */
-  ChanReducer_rft(int p_ncombine, int p_xdim, int p_ydim, int p_in_nchan)
+  ChanReducerRft(int p_ncombine, int p_xdim, int p_ydim, int p_in_nchan)
       : raft::kernel(),
         m_ncombine(p_ncombine),
         m_xdim(p_xdim),

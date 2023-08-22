@@ -108,7 +108,7 @@ __device__ void __cm_f(T& out, const float2& a, const cnib& b) {
  * @relatesalso MOFFCuHandler
  */
 template <PKT_DATA_ORDER Order>
-__device__ const uint8_t* get_f_eng_sample(const uint8_t* f_eng,
+__device__ const uint8_t* GetFEngSample(const uint8_t* f_eng,
                                            size_t gulp_idx, size_t chan_idx,
                                            size_t nseqs, size_t nchan) {
   if (Order == CHAN_MAJOR) {
@@ -130,7 +130,7 @@ __device__ const uint8_t* get_f_eng_sample(const uint8_t* f_eng,
  *
  * @relatesalso MOFFCuHandler
  */
-__device__ const float* get_ant_pos(const float* ant_pos, size_t chan_idx) {
+__device__ const float* GetAntPos(const float* ant_pos, size_t chan_idx) {
   return ant_pos + chan_idx * LWA_SV_NSTANDS * 3 /*dimensions*/;
 }
 
@@ -145,7 +145,7 @@ __device__ const float* get_ant_pos(const float* ant_pos, size_t chan_idx) {
  *
  * @relatesalso MOFFCuHandler
  */
-__device__ const float* get_phases(const float* phases, size_t chan_idx) {
+__device__ const float* GetPhases(const float* phases, size_t chan_idx) {
   return phases + chan_idx * LWA_SV_NSTANDS * 2 /*phases*/ * 2 /*real imag*/;
 };
 
@@ -169,7 +169,7 @@ template <
     std::enable_if_t<
         std::is_same<__half2, typename FFT::output_type::value_type>::value,
         bool> = true>
-__device__ void transpose_tri(
+__device__ void TransposeTri(
     typename FFT::value_type (&thread_reg)[FFT::elements_per_thread],
     typename FFT::value_type* shared_mem,
     typename cufftdx::precision_of<FFT>::type norm = 1.) {
@@ -239,7 +239,7 @@ __device__ void transpose_tri(
  * @param nsteps Number of integration steps. Defaults to 5.
  * @return float
  */
-__device__ float gcf_pixel_integral(cudaTextureObject_t gcf_tex, float dx,
+__device__ float GcfPixelIntegral(cudaTextureObject_t gcf_tex, float dx,
                                     float dy, unsigned int d_per_pixel,
                                     int nsteps = 5) {
   float sum = 0;
@@ -277,7 +277,7 @@ __device__ float gcf_pixel_integral(cudaTextureObject_t gcf_tex, float dx,
  * @param nants
  * @return
  */
-__global__ void compute_gcf_elements(float* out, float* antpos, int chan0,
+__global__ void ComputeGcfElements(float* out, float* antpos, int chan0,
                                      float lmbda_scale,
                                      cudaTextureObject_t gcf_tex,
                                      int grid_size /*unused*/, int support = 3,
@@ -302,7 +302,7 @@ __global__ void compute_gcf_elements(float* out, float* antpos, int chan0,
   int channel_idx = blockIdx.x;
 
   auto* antpos_chan =
-      reinterpret_cast<const float3*>(get_ant_pos(antpos, channel_idx));
+      reinterpret_cast<const float3*>(GetAntPos(antpos, channel_idx));
 
   float dist_scale =
       float(SOL) / float((channel_idx + chan0) * BANDWIDTH) * lmbda_scale * 10.;
@@ -326,7 +326,7 @@ __global__ void compute_gcf_elements(float* out, float* antpos, int chan0,
     }
 
     float integral = is_pix_valid
-                         ? gcf_pixel_integral(gcf_tex, (xpix - antx),
+                         ? GcfPixelIntegral(gcf_tex, (xpix - antx),
                                               (ypix - anty), dist_scale)
                          : 0;
 
@@ -356,7 +356,7 @@ __global__ void compute_gcf_elements(float* out, float* antpos, int chan0,
  * @param support_size Support size of the kernel
  * @return
  */
-__global__ void compute_avg_gridding_kernel(float* grid_elems,
+__global__ void ComputeAvgGriddingKernel(float* grid_elems,
                                             float* out_kernel, int nchan,
                                             int support_size) {
   int nelems_per_ant = support_size * support_size;
@@ -465,7 +465,7 @@ template <
         std::is_same<__half2, typename FFT::output_type::value_type>::value,
         bool> = true>
 inline __host__ __device__ T
-compute_xx(typename FFT::value_type
+ComputeXX(typename FFT::value_type
                pix) {  // half precision intrinsics reduce the performance here
   // return T(__hfma(pix.x.x, pix.x.x, pix.y.x * pix.y.x));
   return static_cast<T>(pix.x.x * pix.x.x + pix.y.x * pix.y.x);
@@ -484,7 +484,7 @@ template <
     std::enable_if_t<
         std::is_same<__half2, typename FFT::output_type::value_type>::value,
         bool> = true>
-inline __host__ __device__ T compute_yy(typename FFT::value_type pix) {
+inline __host__ __device__ T ComputeYY(typename FFT::value_type pix) {
   return static_cast<T>(pix.x.y * pix.x.y + pix.y.y * pix.y.y);
 }
 
@@ -501,7 +501,7 @@ template <
     std::enable_if_t<
         std::is_same<__half2, typename FFT::output_type::value_type>::value,
         bool> = true>
-inline __host__ __device__ T compute_uu(typename FFT::value_type pix) {
+inline __host__ __device__ T ComputeUU(typename FFT::value_type pix) {
   return static_cast<T>(pix.x.x * pix.y.x + pix.x.y * pix.y.y);
 }
 
@@ -518,7 +518,7 @@ template <
     std::enable_if_t<
         std::is_same<__half2, typename FFT::output_type::value_type>::value,
         bool> = true>
-inline __host__ __device__ T compute_vv(typename FFT::value_type pix) {
+inline __host__ __device__ T ComputeVV(typename FFT::value_type pix) {
   return static_cast<T>(pix.x.y * pix.y.x - pix.x.x * pix.y.y);
 }
 

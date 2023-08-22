@@ -109,13 +109,13 @@ class MOFFCorrelator : public MOFFCuHandler {
   /// @param p_grid_res Resolution of the grid in degrees
   /// @param p_nchan Total number of channels
   /// @param p_chan0 Channel number of the first channel
-  void reset_antpos(int p_grid_size, double p_grid_res, int p_nchan,
+  void ResetAntpos(int p_grid_size, double p_grid_res, int p_nchan,
                     int p_chan0);
   /// @brief Reset the phases array
   /// Automatically called upon any change in imaging parameters
   /// @param p_nchan Number of channels
   /// @param p_chan0 First channel number
-  void reset_phases(int p_nchan, int p_chan0);
+  void ResetPhases(int p_nchan, int p_chan0);
   /// @brief Reset the GCF kernel
   /// @param p_gcf_tex_dim Resolution of the kernel.
   /// @note This is different from the support size
@@ -262,7 +262,7 @@ bool MOFFCorrelator<Dtype, BuffMngr>::reset(int p_nchan, int p_chan0) {
     this->m_nbytes_f_eng_per_stream = m_f_eng_bytes / m_nstreams;
     VLOG(3) << "Allocating F-eng data on the GPU. Size: " << this->m_f_eng_bytes
             << " bytes";
-    this->allocate_f_eng_gpu(m_f_eng_bytes);
+    this->AllocateFEngGpu(m_f_eng_bytes);
   }
 
   m_chan0 = p_chan0;
@@ -270,13 +270,13 @@ bool MOFFCorrelator<Dtype, BuffMngr>::reset(int p_nchan, int p_chan0) {
   VLOG(3) << "Resetting antpos. Grid size: " << m_grid_size
           << " grid res: " << m_grid_res << " nchan: " << p_nchan
           << " chan0: " << p_chan0;
-  reset_antpos(m_grid_size, m_grid_res, p_nchan, p_chan0);
+  ResetAntpos(m_grid_size, m_grid_res, p_nchan, p_chan0);
   VLOG(3) << "Resetting phases";
-  reset_phases(p_nchan, p_chan0);
+  ResetPhases(p_nchan, p_chan0);
   // chan_flag = true;
 
   VLOG(3) << "Sending imaging context information to gpu";
-  this->reset_data(p_nchan, m_nseq_per_gulp, m_ant_pos_freq.get(),
+  this->ResetData(p_nchan, m_nseq_per_gulp, m_ant_pos_freq.get(),
                    m_phases.get());
 
   // compute gcf elements on a finer grid
@@ -284,20 +284,20 @@ bool MOFFCorrelator<Dtype, BuffMngr>::reset(int p_nchan, int p_chan0) {
   // int finer_support =
   // (int(orig_support/2)+m_kernel_oversampling_factor/2)*2+1; m_support_size =
   // finer_support;
-  this->reset_gcf_elem(
+  this->ResetGcfElem(
       m_nchan_out, m_support_oversample, m_chan0,
       m_delta / static_cast<float>(m_kernel_oversampling_factor), m_grid_size);
   reset_correction_grid(m_nchan_out);
   // recompute the gcf elements with the original support
   //  m_support_size = orig_support;
-  this->reset_gcf_elem(m_nchan_out, m_support_size, m_chan0, m_delta,
+  this->ResetGcfElem(m_nchan_out, m_support_size, m_chan0, m_delta,
                        m_grid_size);
 
   return true;
 }
 
 template <typename Dtype, typename BuffMngr>
-void MOFFCorrelator<Dtype, BuffMngr>::reset_antpos(int p_grid_size,
+void MOFFCorrelator<Dtype, BuffMngr>::ResetAntpos(int p_grid_size,
                                                    double p_grid_res,
                                                    int p_nchan, int p_chan0) {
   int pitch = 3 * LWA_SV_NSTANDS;
@@ -335,7 +335,7 @@ void MOFFCorrelator<Dtype, BuffMngr>::reset_antpos(int p_grid_size,
 }
 
 template <typename Dtype, typename BuffMngr>
-void MOFFCorrelator<Dtype, BuffMngr>::reset_phases(int p_nchan, int p_chan0) {
+void MOFFCorrelator<Dtype, BuffMngr>::ResetPhases(int p_nchan, int p_chan0) {
   int pitch = 2 * LWA_SV_NSTANDS;
   m_phases.reset();
   m_phases =
@@ -362,13 +362,13 @@ void MOFFCorrelator<Dtype, BuffMngr>::reset_gcf_kernel2D(int p_gcf_tex_dim) {
 template <typename Dtype, typename BuffMngr>
 void MOFFCorrelator<Dtype, BuffMngr>::setup_GPU() {
   VLOG(2) << "Allocating output image";
-  this->allocate_out_img(m_nchan_out *
+  this->AllocateOutImg(m_nchan_out *
                          std::pow(m_grid_size, 2)
                          //* std::pow(int(m_pol_mode), 2)
                          * sizeof(float) * 6 /*XX_re, YY_re*, X*Y, XY* */);
   VLOG(2) << "Initializing GCF texture";
   reset_gcf_kernel2D(m_gcf_tex_dim);
-  this->reset_gcf_tex(m_gcf_tex_dim, m_gcf_kernel2D.get());
+  this->ResetGcfTex(m_gcf_tex_dim, m_gcf_kernel2D.get());
 
   // calculate the appropriate offsets to image the gulp in streams
   this->m_nchan_per_stream = m_nchan_out / m_nstreams;
@@ -376,19 +376,19 @@ void MOFFCorrelator<Dtype, BuffMngr>::setup_GPU() {
   this->m_nbytes_out_img_per_stream = m_out_img_bytes / m_nstreams;
 
   VLOG(2) << "Setting up streams and initializing the imaging kernel";
-  create_gulp_custreams();
-  set_imaging_kernel();
-  set_img_grid_dim();
+  CreateGulpCuStreams();
+  SetImagingKernel();
+  SetImgGridDim();
 }
 
 template <typename Dtype, typename BuffMngr>
 void MOFFCorrelator<Dtype, BuffMngr>::reset_correction_grid(int p_nchan) {
-  this->get_correction_kernel(m_correction_kernel_h.get(), m_support_oversample,
+  this->GetCorrectionKernel(m_correction_kernel_h.get(), m_support_oversample,
                               p_nchan);
   get_correction_grid<float>(
       m_correction_kernel_h.get(), m_correction_grid_h.get(), m_grid_size,
       m_support_oversample, p_nchan, m_kernel_oversampling_factor);
-  this->set_correction_grid(m_correction_grid_h.get(), m_grid_size, p_nchan);
+  this->SetCorrectionGrid(m_correction_grid_h.get(), m_grid_size, p_nchan);
 }
 using float_buf_mngr_t = LFBufMngr<AlignedBuffer<float>>;
 using MOFFCorrelator_t = MOFFCorrelator<uint8_t, float_buf_mngr_t>;

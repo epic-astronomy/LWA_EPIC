@@ -483,7 +483,7 @@ template <
     std::enable_if_t<
         std::is_same<__half2, typename FFT::output_type::value_type>::value,
         bool> = true>
-__device__ inline void grid_dual_pol_dx9(
+__device__ inline void DualPolEpicGridder(
     cg::thread_block tb, const cnib2* f_eng, const float3* __restrict__ antpos,
     const float4* __restrict__ phases, typename FFT::value_type* smem,
     float* gcf_grid_elem, ImageDiv Div = UPPER) {

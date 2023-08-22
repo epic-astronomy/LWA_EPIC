@@ -29,7 +29,7 @@
 #include <iostream>
 
 #define cuda_check_err(ans) \
-  { gpu_assert((ans), __FILE__, __LINE__); }
+  { GpuAssert((ans), __FILE__, __LINE__); }
 
 /**
  * @brief Error handler for cuda functions
@@ -39,7 +39,7 @@
  * @param line Line number
  * @param abort Whether to abort upon failure
  */
-inline void gpu_assert(cudaError_t code, const char* file, int line,
+inline void GpuAssert(cudaError_t code, const char* file, int line,
                        bool abort = true) {
   if (code != cudaSuccess) {
     // LOG(ERROR) << "GPUassert: " << cudaGetErrorString(code) << file << line;
@@ -58,7 +58,7 @@ inline void gpu_assert(cudaError_t code, const char* file, int line,
  * @return int Returns 0 on success
  */
 template <typename T>
-int cu_mlock(T* ptr, size_t nbytes);
+int cuMLock(T* ptr, size_t nbytes);
 
 /**
  * @brief Unregister host memory
@@ -68,7 +68,7 @@ int cu_mlock(T* ptr, size_t nbytes);
  * @return int Returns 0 on success
  */
 template <typename T>
-int cu_munlock(T* ptr);
+int cuMUnlock(T* ptr);
 
 /**
  * @brief Get the number of available nVIDia GPUs

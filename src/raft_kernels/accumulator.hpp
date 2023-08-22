@@ -38,8 +38,8 @@
 #include "../ex/types.hpp"
 
 template <class _Pld>
-class Accumulator_rft : public raft::kernel {
- protected:
+class AccumulatorRft : public raft::kernel {
+ private:
   bool m_is_first_gulp{true};
   // gulp size in ms
   size_t m_gulp_size{40};
@@ -57,7 +57,7 @@ class Accumulator_rft : public raft::kernel {
   size_t m_accum_count{0};
 
  public:
-  Accumulator_rft(size_t p_xdim, size_t p_ydim, size_t p_nchan, size_t p_naccum)
+  AccumulatorRft(size_t p_xdim, size_t p_ydim, size_t p_nchan, size_t p_naccum)
       : raft::kernel(),
         m_naccum(p_naccum),
         m_xdim(p_xdim),

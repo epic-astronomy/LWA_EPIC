@@ -98,14 +98,14 @@ __device__ void copy_lwasv_imaging_data(
   // copy F-engine data using the first thread group
   memcpy_dx<uint8_t, ThreadTileSize>(
       tb, shared_mem,
-      get_f_eng_sample<Order>(f_eng_in, gulp, chan_idx, ngulps_per_seq, nchan),
+      GetFEngSample<Order>(f_eng_in, gulp, chan_idx, ngulps_per_seq, nchan),
       LWA_SV_NSTANDS * LWA_SV_NPOLS, 0);
   f_eng_out = reinterpret_cast<uint8_t*>(shared_mem);
 
   // copy antenna data using the second thread group
   auto antenna_data_start = f_eng_out + LWA_SV_NSTANDS * LWA_SV_NPOLS;
   memcpy_dx<float3, ThreadTileSize>(tb, antenna_data_start,
-                                    get_ant_pos(antpos_in, chan_idx),
+                                    GetAntPos(antpos_in, chan_idx),
                                     LWA_SV_NSTANDS, 1);
   ant_pos_out = reinterpret_cast<float*>(antenna_data_start);
   if (tb.thread_rank() == 0) {
@@ -114,7 +114,7 @@ __device__ void copy_lwasv_imaging_data(
   // copy phases data using the third thread group
   auto phases_data_start = ant_pos_out + LWA_SV_NSTANDS * 3;
   memcpy_dx<float2, ThreadTileSize>(tb, phases_data_start,
-                                    get_phases(phases_in, chan_idx),
+                                    GetPhases(phases_in, chan_idx),
                                     LWA_SV_NSTANDS * LWA_SV_NPOLS, 2);
   phases_out = phases_data_start;
 

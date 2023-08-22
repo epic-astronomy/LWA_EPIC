@@ -3,7 +3,7 @@
 
 template<typename T>
 int
-cu_mlock(T* ptr, size_t nbytes)
+cuMLock(T* ptr, size_t nbytes)
 {
     cuda_check_err(cudaHostRegister(ptr, nbytes, cudaHostRegisterDefault));
     return 0;
@@ -11,7 +11,7 @@ cu_mlock(T* ptr, size_t nbytes)
 
 template<typename T>
 int
-cu_munlock(T* ptr)
+cuMUnlock(T* ptr)
 {
     cuda_check_err(cudaHostUnregister(ptr));
     return 0;
@@ -27,10 +27,10 @@ get_ngpus()
 }
 
 template int
-cu_mlock<uint8_t>(uint8_t*, size_t);
+cuMLock<uint8_t>(uint8_t*, size_t);
 template int
-cu_munlock<uint8_t>(uint8_t*);
+cuMUnlock<uint8_t>(uint8_t*);
 template int
-cu_mlock<float>(float*, size_t);
+cuMLock<float>(float*, size_t);
 template int
-cu_munlock<float>(float*);
+cuMUnlock<float>(float*);

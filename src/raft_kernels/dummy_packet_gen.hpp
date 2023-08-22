@@ -36,7 +36,7 @@
 #include "../ex/types.hpp"
 
 template <class Payload, class BufferMngr>
-class dummy_pkt_gen : public raft::kernel {
+class DummyPktGen : public raft::kernel {
  private:
   size_t m_n_pkts{3};
   const int m_ngulps{20};
@@ -48,7 +48,7 @@ class dummy_pkt_gen : public raft::kernel {
   std::unique_ptr<BufferMngr> m_buf_mngr{nullptr};
 
  public:
-  dummy_pkt_gen(size_t p_n_pkts = 1,
+  DummyPktGen(size_t p_n_pkts = 1,
                 std::string utcstart = "2023_06_19T00_00_00")
       : raft::kernel(), m_n_pkts(p_n_pkts) {
     VLOG(3) << "Dummy pkt constructor";
