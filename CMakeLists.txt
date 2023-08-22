@@ -4,6 +4,7 @@ include(CMakePrintHelpers)
 project(epic++ VERSION "0.0.1" LANGUAGES CXX CUDA)
 set(CMAKE_INSTALL_PREFIX "/home/batman/epic/lib/")
 set(PKG_CONFIG_PATH "/home/batman/epic/lib/pkgconfig")
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE INTERNAL "") 
 
 # set(CMAKE_CXX_COMPILER "/usr/bin/g++")
 set(CMAKE_CXX_STANDARD 17)
