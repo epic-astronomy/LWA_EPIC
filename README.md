@@ -16,7 +16,7 @@ For a generalized implementation of EPIC please see [our EPIC repo](https://gith
 # Build Instructions
 Download the source code with all the dependencies. 
 ```bash
-git clone -b dev-epic++ --recurse-submodules -j5 https://github.com/epic-astronomy/LWA_EPIC.git
+git clone -b test/4090 --recurse-submodules -j5 https://github.com/epic-astronomy/LWA_EPIC.git
 ```
 
 It is recommended to build and run EPIC in a separate conda environment.
