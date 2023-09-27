@@ -87,7 +87,7 @@ namespace cg = cooperative_groups;
  */
 template <
     typename FFT, int support = 2, typename accum_oc_t = __half2,
-    PKT_DATA_ORDER Order = TIME_MAJOR,
+    PKT_DATA_ORDER Order = CHAN_MAJOR,
     std::enable_if_t<
         std::is_same<__half2, typename FFT::output_type::value_type>::value,
         bool> = true>

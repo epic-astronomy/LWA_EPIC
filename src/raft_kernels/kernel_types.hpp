@@ -25,12 +25,15 @@
 #include <cmath>
 #include <memory>
 #include <raftmanip>
+#include <string>
+#include <vector>
 
 #include "../ex/MOFF_correlator.hpp"
 #include "../ex/buffer.hpp"
 #include "../ex/helper_traits.hpp"
 #include "../ex/lf_buf_mngr.hpp"
 #include "../ex/option_parser.hpp"
+#include "../ex/packet_assembler.hpp"
 #include "./accumulator.hpp"
 #include "./chan_reducer.hpp"
 #include "./correlator.hpp"
@@ -38,10 +41,11 @@
 #include "./disk_saver.hpp"
 #include "./dummy_packet_gen.hpp"
 #include "./index_fetcher.hpp"
+#include "./packet_gen.hpp"
 #include "./pixel_extractor.hpp"
 
 enum EPICKernelID {
-  _PACK_GEN = 0,
+  _PKT_GEN = 0,
   _DUMMY_PACK_GEN = 1,
   _CORRELATOR = 2,
   _CHAN_REDUCER = 3,
@@ -75,11 +79,34 @@ struct Kernel : KernelTypeDefs {
 };
 
 template <>
+struct Kernel<_PKT_GEN> : KernelTypeDefs {
+  using ktype = std::unique_ptr<GulpGen_rft<vma_pkt_assembler>>;
+
+  template <unsigned int _GpuId>
+  static ktype get_kernel(const opt_t& options) {
+    auto ip = options["addr"].as<std::vector<std::string>>();
+    auto port = options["port"].as<std::vector<int>>();
+
+    if ((ip.size() < (_GpuId + 1) || (port.size() < (_GpuId + 1)))) {
+      LOG(FATAL) << "One IP address/port must be specified for each GPU";
+    }
+    LOG(INFO) << "Creating gulper";
+    // using payload_t = typename ktype::payload_t;
+    auto gulper = std::make_unique<vma_pkt_assembler>(ip[_GpuId], port[_GpuId]);
+
+    return std::make_unique<GulpGen_rft<vma_pkt_assembler>>(gulper, 5);
+  }
+};
+using PktGen_kt = Kernel<_PKT_GEN>::ktype;
+template <unsigned int _GpuId>
+auto& get_pkt_gen_k = Kernel<_PKT_GEN>::get_kernel<_GpuId>;
+
+template <>
 struct Kernel<_DUMMY_PACK_GEN> : KernelTypeDefs {
   using ktype = DummyPktGen<payload_u8_t, LFBufMngr<AlignedBuffer<uint8_t>>>;
   template <unsigned int _GpuId>
   static ktype get_kernel(const opt_t&) {
-    return ktype(2);
+    return ktype(1);
   }
 };
 using DummyPktGen_kt = Kernel<_DUMMY_PACK_GEN>::ktype;

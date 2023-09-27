@@ -114,7 +114,7 @@ class MOFFCuHandler {
   float* m_correction_grid_d{nullptr};
   bool is_correction_grid_set{false};
   void GetCorrectionKernel(float* p_out_kernel, int p_support_size,
-                             int p_nchan);
+                           int p_nchan);
   void SetCorrectionGrid(float* p_corr_grid, int p_grid_size, int p_nchan);
 
   /// Total number of channels per sequence
@@ -143,7 +143,7 @@ class MOFFCuHandler {
   bool use_bf16_accum{false};
 
  public:
-  MOFFCuHandler(){}
+  MOFFCuHandler() {}
   // __host__ void test();
   /**
    * @brief Reset antpos, phases, GCF data on device
@@ -155,7 +155,7 @@ class MOFFCuHandler {
    * @param p_phases Host pointer to the phases array
    */
   void ResetData(int p_nchan, size_t p_nseq_per_gulp, float* p_ant_pos,
-                  float* p_phases);
+                 float* p_phases);
 
   /**
    * @brief Allocate device memory to store F-Engine data
@@ -173,8 +173,8 @@ class MOFFCuHandler {
    * @param p_last Flag if the gulp is the last one in the accumulation
    */
   void ProcessGulp(uint8_t* p_data_ptr, float* p_out_ptr = nullptr,
-                    bool p_first = true, bool p_last = false, int p_chan0 = 0,
-                    float p_delta = 1.0);
+                   bool p_first = true, bool p_last = false, int p_chan0 = 0,
+                   float p_delta = 1.0);
 
   /**
    * @brief Image a gulp of data
@@ -189,10 +189,9 @@ class MOFFCuHandler {
    * @param p_delta Scaling length to convert wavelength in meters to
    * meters/pixel
    */
-  [[deprecated("Use ProcessGulp instead")]]
-  void ProcessGulpOld(uint8_t* p_data_ptr, size_t p_buf_size,
-                        float* p_out_ptr, size_t p_out_size,
-                        bool p_first = true, bool p_last = false);
+  [[deprecated("Use ProcessGulp instead")]] void ProcessGulpOld(
+      uint8_t* p_data_ptr, size_t p_buf_size, float* p_out_ptr,
+      size_t p_out_size, bool p_first = true, bool p_last = false);
 
   /**
    * @brief Allocate device memory to store output image
@@ -202,7 +201,7 @@ class MOFFCuHandler {
   void AllocateOutImg(size_t nbytes);
 
   void ResetGcfElem(int p_nchan, int p_support, int p_chan0, float p_delta,
-                      int p_grid_size);
+                    int p_grid_size);
 
   ~MOFFCuHandler();
 };

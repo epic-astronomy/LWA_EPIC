@@ -113,15 +113,16 @@ def save_output(output_arr, grid_size, nchan, filename, metadata):
 
     # print(output_arr_sft.min(), output_arr_sft.max())
     phdu = fits.PrimaryHDU()
-    # for k,v in metadata.items():
-    #     phdu.header[k] = v
-
+    for k,v in metadata.items():
+        print("py", k,v)
+        phdu.header[k] = v
     phdu.header["DATE-OBS"] = Time(
         metadata["time_tag"] / FS + 1e-3 * metadata["img_len_ms"] / 2.0,
         format="unix",
         precision=6,
     ).isot
 
+    print("saver")
     sll = (
         2 * metadata["grid_size"] * np.sin(np.pi * metadata["grid_res"] / 360)
     ) ** -1
@@ -222,9 +223,9 @@ def save_output(output_arr, grid_size, nchan, filename, metadata):
     # temp_im[:,-4:]=0
     # temp_im[-4:,:]=0
     matplotlib.image.imsave(f"{filename}.png", temp_im, origin="lower")
-    matplotlib.image.imsave(
-        "original_test_out.png", (output_arr[0, chan_out, :, :])
-    )
+    # matplotlib.image.imsave(
+    #     "original_test_out.png", (output_arr[0, chan_out, :, :])
+    # )
 
 
 def get_ADP_time_from_unix_epoch():
@@ -235,7 +236,7 @@ def get_ADP_time_from_unix_epoch():
     got_utc_start = False
     while not got_utc_start:
         try:
-            with Communicator() as adp_control:
+            with Communicator('MCS') as adp_control:
                 utc_start = adp_control.report("UTC_START")
                 # Check for valid timestamp
                 utc_start_dt = datetime.datetime.strptime(
@@ -244,9 +245,14 @@ def get_ADP_time_from_unix_epoch():
             got_utc_start = True
         except Exception as ex:
             print(ex)
+            return -1
             time.sleep(0.1)
     return (utc_start_dt - ADP_EPOCH).total_seconds()
 
+def get_time_tag0_adp():
+    timestamp0 = get_ADP_time_from_unix_epoch()
+    time_tag0 = timestamp0 * FS
+    return time_tag0
 
 def get_time_from_unix_epoch(utcstart):
     """
@@ -387,7 +393,7 @@ def get_correction_grid(corr_ker_arr, grid_size, support, nchan, oversample=4):
         arr=correlate2d(corr_ker_arr[0, :, :], corr_ker_arr[0, :, :]),
     )
     corr_grid_arr = np.reciprocal(corr_grid_arr)
-    corr_grid_arr = corr_grid_arr / corr_grid_arr.max(
+    corr_grid_arr = corr_grid_arr / corr_grid_arr.sum(
         axis=(1, 2), keepdims=True
     )
     # corr_grid_arr = np.ones(corr_grid_arr.shape)

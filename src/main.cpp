@@ -30,7 +30,7 @@
 #include "raft_kernels/epic_executor.hpp"
 
 namespace py = pybind11;
-// #define _VMA_ 1
+// #define _USE_VMA 1
 int main(int argc, char** argv) {
   py::scoped_interpreter guard{};
   py::gil_scoped_release release;

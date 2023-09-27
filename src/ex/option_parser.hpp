@@ -25,6 +25,7 @@
 #include <cxxopts.hpp>
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include "./constants.h"
 #include "./host_helpers.h"
@@ -33,14 +34,20 @@ cxxopts::Options GetEpicOptions() {
   cxxopts::Options options("epic++", "EPIC dual-pol imager");
 
   options.add_options("Online data processing")(
-      "addr", "F-Engine UDP Stream Address", cxxopts::value<std::string>())(
+      "addr", "F-Engine UDP Stream Address",
+      cxxopts::value<std::vector<std::string>>()->default_value(
+          "239.168.40.11,239.168.40.12"))(
       "port", "F-Engine UDP Stream Port",
-      cxxopts::value<int>()->default_value("4015"));
+      cxxopts::value<std::vector<int>>()->default_value("4015,4015"))(
+      "printendpoints",
+      "Print the IP/port values and their channels for each endpoint in the "
+      "LWA-SV station and exit",
+      cxxopts::value<bool>()->default_value("false"));
   // ("utcstart", "F-Engine UDP Stream Start Time")
 
   options.add_options("Offline data processing")(
       "offline", "Load numpy-TBN data from disk",
-      cxxopts::value<bool>()->default_value("true"))(
+      cxxopts::value<bool>()->default_value("false"))(
       "npytbnfile", "numpy-TBN data path", cxxopts::value<std::string>());
 
   options.add_options("Imaging options")(
@@ -83,10 +90,12 @@ cxxopts::Options GetEpicOptions() {
 
 std::optional<std::string> ValidateOptions(const cxxopts::ParseResult& result) {
   using std::string_literals::operator""s;
-  int port = result["port"].as<int>();
-  if (port < 1 || port > 32768) {
-    return "Invalid port number:  "s + std::to_string(port) +
-           ". Port must be a number in 1-32768"s;
+  auto ports = result["port"].as<std::vector<int>>();
+  for (auto& port : ports) {
+    if (port < 1 || port > 32768) {
+      return "Invalid port number:  "s + std::to_string(port) +
+             ". Port must be a number in 1-32768"s;
+    }
   }
 
   int image_size = result["imagesize"].as<int>();

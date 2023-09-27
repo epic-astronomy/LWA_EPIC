@@ -42,7 +42,7 @@ struct __attribute__((aligned(1))) CNib {
 #if __BYTE_ORDER == __BIG_ENDIAN
   signed char im : 4, re : 4;
 #elif __BYTE_ORDER == __LITTLE_ENDIAN
-  signed char re : 4, im : 4;
+  signed char im : 4, re : 4;
 #else
   static_assert(false, "Unkonwn endianness. Alien!");
 #endif
@@ -77,7 +77,7 @@ struct MOFFCorrelatorDesc {
   bool is_remove_autocorr{false};
   /// @brief Number of streams to split a gulp into. Can be at most
   /// MAX_GULP_STREAMS
-  int nstreams{8};
+  int nstreams{1};
   int nchan_out{128};
   int gcf_kernel_dim{40};  // decimeters
   unsigned int device_id{0};

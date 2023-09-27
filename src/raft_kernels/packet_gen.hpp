@@ -64,8 +64,8 @@ class GulpGen_rft : public raft::kernel {
    * will run it forever.
    *
    */
-  GulpGen_rft(std::unique_ptr<PktAssmblr>* p_assmblr, int p_timer_s)
-      : m_assmblr(std::move(*p_assmblr)), m_timer(p_timer_s), raft::kernel() {
+  GulpGen_rft(std::unique_ptr<PktAssmblr>& p_assmblr, int p_timer_s)
+      : m_assmblr(std::move(p_assmblr)), m_timer(p_timer_s), raft::kernel() {
     if (m_timer < 0) m_perpetual = true;
 
     LOG_IF(FATAL, m_timer == 0)
@@ -108,6 +108,7 @@ class GulpGen_rft : public raft::kernel {
       output["gulp"].push(gulp);
 
       if (m_terminate) break;
+      break;
     }
     LOG(INFO) << "Stopping gulp gen";
     return raft::stop;

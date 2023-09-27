@@ -24,7 +24,7 @@
 #define SRC_EX_SOCKETS_H_
 
 #include <arpa/inet.h>
-#include <mellanox/vma_extra.h>
+// #include <mellanox/vma_extra.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <sys/socket.h>

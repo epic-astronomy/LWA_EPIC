@@ -362,17 +362,18 @@ void MOFFCorrelator<Dtype, BuffMngr>::ResetGcfKernel2D(int p_gcf_tex_dim) {
 template <typename Dtype, typename BuffMngr>
 void MOFFCorrelator<Dtype, BuffMngr>::SetupGpu() {
   VLOG(2) << "Allocating output image";
-  this->AllocateOutImg(m_nchan_out *
+  this->m_out_img_bytes = m_nchan_out *
                          std::pow(m_grid_size, 2)
                          //* std::pow(int(m_pol_mode), 2)
-                         * sizeof(float) * 6 /*XX_re, YY_re*, X*Y, XY* */);
+                         * sizeof(float) * 4 /*XX_re, YY_re*, X*Y, XY* */;
+  this->AllocateOutImg(this->m_out_img_bytes);
   VLOG(2) << "Initializing GCF texture";
   ResetGcfKernel2D(m_gcf_tex_dim);
   this->ResetGcfTex(m_gcf_tex_dim, m_gcf_kernel2D.get());
 
   // calculate the appropriate offsets to image the gulp in streams
   this->m_nchan_per_stream = m_nchan_out / m_nstreams;
-  this->m_nbytes_f_eng_per_stream = m_f_eng_bytes / m_nstreams;
+  // this->m_nbytes_f_eng_per_stream = m_f_eng_bytes / m_nstreams;
   this->m_nbytes_out_img_per_stream = m_out_img_bytes / m_nstreams;
 
   VLOG(2) << "Setting up streams and initializing the imaging kernel";

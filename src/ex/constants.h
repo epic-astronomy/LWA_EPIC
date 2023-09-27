@@ -61,6 +61,8 @@ enum CONSTANTS {
   NSTOKES = 4
 };
 
+enum STATIONS { LWA_SV = 1 };
+
 /**
  * @brief Supported packet data arrangements for each gulp
  *

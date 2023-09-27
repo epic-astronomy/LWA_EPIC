@@ -22,13 +22,19 @@
 
 #ifndef SRC_RAFT_KERNELS_EPIC_EXECUTOR_HPP_
 #define SRC_RAFT_KERNELS_EPIC_EXECUTOR_HPP_
+#include <memory>
+#include <utility>
+
+#include "../ex/station_desc.hpp"
 #include "./kernel_types.hpp"
 
 template <unsigned int _GpuId>
 class EPICKernels {
  private:
+  bool m_is_offline{false};
   static constexpr unsigned int m_nkernels{8};
-  DummyPktGen_kt m_pkt_gen;
+  PktGen_kt m_pkt_gen;
+  DummyPktGen_kt m_dpkt_gen;
   EPICCorrelator_kt m_correlator;
   ChanReducer_kt m_chan_reducer;
   PixelExtractor_kt m_pixel_extractor;
@@ -39,12 +45,16 @@ class EPICKernels {
 
  protected:
   raft::map* m_map;
-  void BindKernels2Cpu() {
+  void BindKernels2Cpu(const KernelTypeDefs::opt_t& p_options) {
     // use an additional offset of 2 for the runtime
     constexpr unsigned int cpu_ofst = (_GpuId)*m_nkernels + 2;
     // ensure the cpu ID is always non-zero.
     // Setting it to zero causes instability
-    RftManip<1 + cpu_ofst, 1>::bind(m_pkt_gen);
+    if (m_is_offline) {
+      RftManip<1 + cpu_ofst, 1>::bind(m_dpkt_gen);
+    } else {
+      RftManip<1 + cpu_ofst, 1>::bind(*(m_pkt_gen.get()));
+    }
     RftManip<2 + cpu_ofst, 1>::bind(m_correlator);
     RftManip<3 + cpu_ofst, 1>::bind(m_chan_reducer);
     RftManip<4 + cpu_ofst, 1>::bind(m_pixel_extractor);
@@ -54,10 +64,16 @@ class EPICKernels {
     RftManip<8 + cpu_ofst, 1>::bind(m_disk_saver);
   }
 
-  void InitMap() {
+  void InitMap(const KernelTypeDefs::opt_t& p_options) {
     auto& m = *m_map;
-    m += m_pkt_gen >> m_correlator >> m_chan_reducer["in_img"]["out_img"] >>
-         m_pixel_extractor["in_img"];
+    // m += m_dpkt_gen >> m_correlator >> m_disk_saver;
+    if (m_is_offline) {
+      m += m_dpkt_gen >> m_correlator >> m_chan_reducer["in_img"]["out_img"] >>
+           m_pixel_extractor["in_img"];
+    } else {
+      m += *(m_pkt_gen.get()) >> m_correlator >>
+           m_chan_reducer["in_img"]["out_img"] >> m_pixel_extractor["in_img"];
+    }
 
     m += m_pixel_extractor["out_img"] >> m_accumulator >> m_disk_saver;
 
@@ -69,7 +85,7 @@ class EPICKernels {
 
  public:
   EPICKernels(const KernelTypeDefs::opt_t& p_options, raft::map* p_map)
-      : m_pkt_gen(get_dummy_pkt_gen_k<_GpuId>(p_options)),
+      : m_dpkt_gen(get_dummy_pkt_gen_k<_GpuId>(p_options)),
         m_correlator(get_epiccorr_k<_GpuId>(p_options)),
         m_chan_reducer(get_chan_reducer_k<_GpuId>(p_options)),
         m_pixel_extractor(get_pixel_extractor_k<_GpuId>(p_options)),
@@ -78,10 +94,16 @@ class EPICKernels {
         m_accumulator(get_accumulator_k<_GpuId>(p_options)),
         m_disk_saver(get_disk_saver_k<_GpuId>(p_options)),
         m_map(p_map) {
+    m_is_offline = p_options["offline"].as<bool>();
+    LOG(INFO) << "Before pkt_gen";
+    if (!m_is_offline) {
+      m_pkt_gen = std::move(get_pkt_gen_k<_GpuId>(p_options));
+    }
+    LOG_IF(INFO, m_is_offline) << "EPIC will run on offline data";
     LOG(INFO) << "Binding kernels to CPUs";
-    BindKernels2Cpu();
+    BindKernels2Cpu(p_options);
     LOG(INFO) << "Initializing the EPIC graph to run on GPU:" << _GpuId;
-    InitMap();
+    InitMap(p_options);
   }
 };
 
@@ -108,19 +130,30 @@ class EPIC<1> : public EPICKernels<0> {
 void RunEpic(int argc, char** argv) {
   using std::string_literals::operator""s;
   auto option_list = GetEpicOptions();
+  LOG(INFO) << "Parsing options";
   auto options = option_list.parse(argc, argv);
   auto opt_valid = ValidateOptions(options);
 
-  LOG(INFO) << "Parsing options";
   if (opt_valid.value_or("none") != "none"s) {
     LOG(FATAL) << opt_valid.value();
   }
 
+  if (options.count("help")) {
+    std::cout << option_list.help() << std::endl;
+    return;
+  }
+
+  if (options["printendpoints"].as<bool>()) {
+    PrintStationEndPoints<LWA_SV>();
+    return;
+  }
+
+  LOG(INFO) << "Looking for GPUs";
   int num_gpus =
-      options["ngpus"].as<int>() > 0 ? options["ngpus"].as<int>() > 0 : 1;
+      options["ngpus"].as<int>() > 0 ? options["ngpus"].as<int>() : 1;
   raft::map m;
 
-  LOG(INFO) << "Initializing EPIC";
+  LOG(INFO) << "Initializing EPIC on " << num_gpus << " GPU(s)";
   if (num_gpus == 3) {
     auto epic = EPIC<3>(options, &m);
     LOG(INFO) << "Running...";
@@ -135,19 +168,5 @@ void RunEpic(int argc, char** argv) {
     m.exe();
   }
 }
-
-// int
-// get_chan0(std::string ip, int port)
-// {
-
-//     // std::cout<<"receiving\n";
-//     auto receiver = VMAReceiver<uint8_t, AlignedBuffer, MultiCastUDPSocket,
-//     REG_COPY>(); uint8_t* buf; receiver.set_address(ip, port);
-//     receiver.bind_socket();
-//     int nbytes = receiver.recv_packet(buf);
-//     // std::cout<<nbytes;
-//     const chips_hdr_type* pkt_hdr = (chips_hdr_type*)buf;
-//     return (ntohs(pkt_hdr->chan0));
-// }
 
 #endif  // SRC_RAFT_KERNELS_EPIC_EXECUTOR_HPP_
