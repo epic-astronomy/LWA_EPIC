@@ -123,7 +123,7 @@ void MOFFCuHandler::ResetGcfElem(int p_nchan, int p_support, int p_chan0, float 
     cuda_check_err(cudaMalloc(&m_gcf_elem, nbytes));
     is_m_gcf_elem_set=true;
 
-    int block_size = int(MAX_THREADS_PER_BLOCK/nelements_gcf) * nelements_gcf;
+    int block_size = (MAX_THREADS_PER_BLOCK/float(nelements_gcf)) * nelements_gcf;
 
     VLOG(2)<<"Pre-computing GCF elements\n"<<p_support<<" "<<block_size<<std::endl;
     ComputeGcfElements<<<p_nchan, block_size>>>(m_gcf_elem, m_antpos_cu, p_chan0, p_delta, m_gcf_tex,p_grid_size, (p_support), LWA_SV_NSTANDS);
