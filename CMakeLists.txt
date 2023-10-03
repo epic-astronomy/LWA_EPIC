@@ -106,7 +106,7 @@ set_target_properties( epic++
 add_dependencies(epic++ raft hwy epiclib)
 add_compile_definitions(EPIC_VERSION="${CMAKE_PROJECT_VERSION}")
 target_link_libraries(epic++ PRIVATE pybind11::embed raft hwy epiclib epic_cu cudart
-glog::glog nvidia-ml pqxx pq
+glog::glog nvidia-ml pqxx pq ibverbs
 )
 
 # file(GLOB PY_FILES "src/python/*.py")
