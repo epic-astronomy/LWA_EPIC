@@ -94,7 +94,8 @@ struct Kernel<_PKT_GEN> : KernelTypeDefs {
     // using payload_t = typename ktype::payload_t;
     auto gulper = std::make_unique<vma_pkt_assembler>(ip[_GpuId], port[_GpuId]);
 
-    return std::make_unique<GulpGen_rft<vma_pkt_assembler>>(gulper, 5);
+    return std::make_unique<GulpGen_rft<vma_pkt_assembler>>(
+        gulper, options["runtime"].as<int>());
   }
 };
 using PktGen_kt = Kernel<_PKT_GEN>::ktype;
