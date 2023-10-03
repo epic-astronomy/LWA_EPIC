@@ -1061,3 +1061,6 @@ delete/
 
 src/extern/nvidia
 src/extern_old
+src/extern/RaftLib/build
+
+build2/
