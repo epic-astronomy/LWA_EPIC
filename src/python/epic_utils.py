@@ -114,7 +114,7 @@ def save_output(output_arr, grid_size, nchan, filename, metadata):
     # print(output_arr_sft.min(), output_arr_sft.max())
     phdu = fits.PrimaryHDU()
     for k,v in metadata.items():
-        print("py", k,v)
+        # print("py", k,v)
         phdu.header[k] = v
     phdu.header["DATE-OBS"] = Time(
         metadata["time_tag"] / FS + 1e-3 * metadata["img_len_ms"] / 2.0,
@@ -122,7 +122,6 @@ def save_output(output_arr, grid_size, nchan, filename, metadata):
         precision=6,
     ).isot
 
-    print("saver")
     sll = (
         2 * metadata["grid_size"] * np.sin(np.pi * metadata["grid_res"] / 360)
     ) ** -1
@@ -211,8 +210,10 @@ def save_output(output_arr, grid_size, nchan, filename, metadata):
     # ihdu.header["CRPIX5"] = 1.0
     # ihdu.header["CDELT5"] = 1.0
 
-    print(f"Save time: {time.time()-start}")
+    # print(f"Save time: {time.time()-start}")
     hdulist = fits.HDUList([phdu, ihdu])
+    unix_time = metadata["time_tag"] / FS + 1e-3 * metadata["img_len_ms"] / 2.0
+    filename2 = f"EPIC_{unix_time:3f}_{cfreq/1e6:3f}MHz.fits"
     hdulist.writeto(f"{filename}.fits", overwrite=True)
 
     chan_out = 0
@@ -321,7 +322,7 @@ def get_gaussian_2D(support=3):
     return g
 
 
-def get_correction_grid(corr_ker_arr, grid_size, support, nchan, oversample=4):
+def get_correction_grid(corr_ker_arr, grid_size, support, nchan, oversample=1):
     """
     Generates a correction grid based on the specified kernels
 
