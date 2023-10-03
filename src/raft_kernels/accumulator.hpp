@@ -89,6 +89,8 @@ class AccumulatorRft : public raft::kernel {
 
     if (m_accum_count == m_naccum) {
       output["out_img"].push(m_cur_buf);
+      auto& meta = m_cur_buf.get_mbuf()->GetMetadataRef();
+      meta["img_len_ms"] = std::get<double>(meta["gulp_len_ms"]) * m_naccum;
       m_cur_buf = _Pld();
       m_accum_count = 0;
 
