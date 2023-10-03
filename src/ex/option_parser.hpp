@@ -42,7 +42,9 @@ cxxopts::Options GetEpicOptions() {
       "printendpoints",
       "Print the IP/port values and their channels for each endpoint in the "
       "LWA-SV station and exit",
-      cxxopts::value<bool>()->default_value("false"));
+      cxxopts::value<bool>()->default_value("false"))(
+      "runtime", "EPIC run duration. Provide -1 to run continuously",
+      cxxopts::value<int>()->default_value("5"));
   // ("utcstart", "F-Engine UDP Stream Start Time")
 
   options.add_options("Offline data processing")(
