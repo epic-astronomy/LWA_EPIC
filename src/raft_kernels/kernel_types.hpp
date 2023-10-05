@@ -107,7 +107,7 @@ struct Kernel<_DUMMY_PACK_GEN> : KernelTypeDefs {
   using ktype = DummyPktGen<payload_u8_t, LFBufMngr<AlignedBuffer<uint8_t>>>;
   template <unsigned int _GpuId>
   static ktype get_kernel(const opt_t&) {
-    return ktype(1);
+    return ktype(2000);
   }
 };
 using DummyPktGen_kt = Kernel<_DUMMY_PACK_GEN>::ktype;
@@ -119,8 +119,10 @@ struct Kernel<_CORRELATOR> : KernelTypeDefs {
   using ktype = CorrelatorRft<payload_u8_t, moffcorr_t>;
   template <unsigned int _GpuId>
   static ktype get_kernel(const opt_t& options) {
+    auto gpu_ids = options["gpu_ids"].as<std::vector<int>>();
     auto correlator_options = MOFFCorrelatorDesc();
-    correlator_options.device_id = _GpuId;
+    correlator_options.device_id =
+        gpu_ids.size() > 0 ? gpu_ids[_GpuId] : _GpuId;
     correlator_options.accum_time_ms = options["seq_accum"].as<int>();
     correlator_options.nseq_per_gulp = options["nts"].as<int>();
     correlator_options.nchan_out = options["channels"].as<int>();
@@ -130,7 +132,7 @@ struct Kernel<_CORRELATOR> : KernelTypeDefs {
     correlator_options.grid_res_deg = options["imageres"].as<float>();
     correlator_options.support_size = options["support"].as<int>();
     correlator_options.gcf_kernel_dim =
-        std::sqrt(options["aeff"].as<float>()) *
+        std::sqrt(options["aeff"].as<std::vector<float>>()[_GpuId]) *
         10;  // radius of the kernel in decimeters
     correlator_options.kernel_oversampling_factor =
         options["kernel_oversample"].as<int>();

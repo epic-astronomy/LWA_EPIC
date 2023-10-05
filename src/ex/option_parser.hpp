@@ -68,7 +68,7 @@ cxxopts::Options GetEpicOptions() {
       "support", "Support size of the kernel. Must be a non-zero power of 2",
       cxxopts::value<int>()->default_value("2"))(
       "aeff", "Antenna effective area (experimental) in sq. m",
-      cxxopts::value<float>()->default_value("25"))(
+      cxxopts::value<std::vector<float>>()->default_value("25,16"))(
       "kernel_oversample",
       "Factor to over sample the kernel. Must be a power of 2.",
       cxxopts::value<int>()->default_value("2"))(
@@ -83,9 +83,17 @@ cxxopts::Options GetEpicOptions() {
       "nstreams", "Number of cuda streams to process images",
       cxxopts::value<int>()->default_value("8"))(
       "ngpus", "number of GPUs to simultaneously run EPIC",
-      cxxopts::value<int>()->default_value("1"));
+      cxxopts::value<int>()->default_value("1"))(
+      "gpu_ids",
+      "GPU ID for each EPIC instance. Defaults to automatic assignment",
+      cxxopts::value<std::vector<int>>());
 
-  options.add_options()("h,help", "Print usage");
+  options.add_options("Metrics collection")("h,help", "Print usage")(
+      "metrics_bind_addr",
+      "Address to expose Prometheus metrics. Defaults to 127.0.0.1:8080",
+      cxxopts::value<std::string>()->default_value("127.0.0.1:8080"))(
+      "disable_metrics", "Disable writing metrics to the Prometheus endpoint",
+      cxxopts::value<bool>()->default_value("false"));
 
   return options;
 }
@@ -118,15 +126,38 @@ std::optional<std::string> ValidateOptions(const cxxopts::ParseResult& result) {
     return "The number of output channels must be at least 1"s;
   }
 
+  int ndevices = result["ngpus"].as<int>();
+
+  if (ndevices <= 0) {
+    return "ngpus must be greater than 0";
+  }
+
+  if (ndevices > GetNumGpus()) {
+    return "Y'all must be kidding. You said EPIC must be run on " +
+           std::to_string(ndevices) + " gpu(s) but only " +
+           std::to_string(GetNumGpus()) + " available!";
+  }
+
   if (channels > MAX_CHANNELS_4090) {
     return "RTX 4090 only supports output channels upto "s +
            std::to_string(MAX_CHANNELS_4090);
   }
 
-  float aeff = result["aeff"].as<float>();
-  if (aeff <= 0) {
-    return "Antenna effective cannot be smaller than or equal to zero:  "s +
-           std::to_string(aeff);
+  auto aeffs = result["aeff"].as<std::vector<float>>();
+  if (aeffs.size() < ndevices) {
+    return "Effective area must be specified for each frequency window";
+  }
+
+  for (auto aeff : aeffs) {
+    if (aeff <= 0) {
+      return "Antenna effective cannot be smaller than or equal to zero:  "s +
+             std::to_string(aeff);
+    }
+  }
+
+  auto gpu_ids = result["gpu_ids"].as<std::vector<int>>();
+  if (gpu_ids.size() > 0 && gpu_ids.size() != ndevices) {
+    "A gpu ID must be specifed for each EPIC instance";
   }
 
   int support = result["support"].as<int>();
@@ -153,18 +184,6 @@ std::optional<std::string> ValidateOptions(const cxxopts::ParseResult& result) {
 
   if (nstreams <= 0) {
     return "The number of streams must be greater than 0";
-  }
-
-  int ndevices = result["ngpus"].as<int>();
-
-  if (ndevices <= 0) {
-    return "ngpus must be greater then 0";
-  }
-
-  if (ndevices > GetNumGpus()) {
-    return "Y'all must be kidding. You said EPIC must be run on " +
-           std::to_string(ndevices) + " gpu(s) but only " +
-           std::to_string(GetNumGpus()) + " available!";
   }
 
   return {};
