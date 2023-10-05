@@ -34,6 +34,7 @@
 #include "../ex/buffer.hpp"
 #include "../ex/constants.h"
 #include "../ex/db_helpers.hpp"
+#include "../ex/metrics.hpp"
 #include "../ex/orm_types.hpp"
 #include "../ex/py_funcs.hpp"
 #include "../ex/tensor.hpp"
@@ -53,6 +54,9 @@ class DBIngesterRft : public raft::kernel {
   std::string m_pix_stmnt_id_n{m_pix_stmnt_id + "_1"};
   std::string m_meta_stmnt_id_n{m_meta_stmnt_id + "_1"};
   std::map<int, std::pair<std::string, std::string>> m_avail_ksizes;
+
+  unsigned int m_rt_gauge_id{0};
+  Timer m_timer;
 
  public:
   // https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING
@@ -74,6 +78,12 @@ class DBIngesterRft : public raft::kernel {
     // for example, if the kernel size is 5 for a source, 25 rows will
     // be inserted in a single transaction
     UpdatePreparedStmnts(p_kernel_size);
+
+    m_rt_gauge_id = PrometheusExporter::AddRuntimeSummaryLabel(
+        {{"type", "exec_time"},
+         {"kernel", "db_ingester"},
+         {"units", "s"},
+         {"kernel_id", std::to_string(this->get_id())}});
   }
 
   bool IsUpdateStmntIds(int p_kernel_size) {
@@ -109,16 +119,19 @@ class DBIngesterRft : public raft::kernel {
   }
 
   raft::kstatus run() override {
+    m_timer.Tick();
     _PldIn pld;
     input["in_pixel_rows"].pop(pld);
     UpdatePreparedStmnts(pld.get_mbuf()->kernel_size);
     try {
       IngestPayload(&pld, m_db_T.get(), m_nkernel_elems, m_pix_stmnt_id_n,
-                     m_meta_stmnt_id_n);
+                    m_meta_stmnt_id_n);
       m_db_T.get()->commit();
     } catch (const std::exception& e) {
       LOG(ERROR) << e.what();
     }
+    m_timer.Tock();
+    PrometheusExporter::ObserveRunTimeValue(m_rt_gauge_id, m_timer.Duration());
     return raft::proceed;
   }
 };

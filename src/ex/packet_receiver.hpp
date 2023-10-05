@@ -116,6 +116,7 @@ size_t VMAReceiver<Dtype, Buffer, Socket, Zcopy>::recv_packet(
   // flags = 0;
   nbytes = m_api->recvfrom_zcopy(this->m_sockfd, pkt_buffer, this->m_bufsize,
                                  &flags, NULL, NULL);
+
   if (flags & MSG_VMA_ZCOPY) {
     m_pkt = &(reinterpret_cast<vma_packets_t*>(pkt_buffer))->pkts[0];
     p_out_buf = reinterpret_cast<Dtype*>(m_pkt->iov[0].iov_base);

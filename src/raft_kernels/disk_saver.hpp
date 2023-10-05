@@ -32,6 +32,7 @@
 #include <string>
 
 #include "../ex/constants.h"
+#include "../ex/metrics.hpp"
 #include "../ex/py_funcs.hpp"
 #include "../ex/types.hpp"
 
@@ -39,15 +40,23 @@ template <class Payload>
 class DiskSaverRft : public raft::kernel {
  private:
   std::string m_img_suffix;
+  unsigned int m_rt_gauge_id{0};
+  Timer m_timer;
 
  public:
   explicit DiskSaverRft(std::string p_img_suffix = "0") : raft::kernel() {
     input.addPort<Payload>("image");
 
     m_img_suffix = p_img_suffix;
+    m_rt_gauge_id = PrometheusExporter::AddRuntimeSummaryLabel(
+        {{"type", "exec_time"},
+         {"kernel", "disk_saver"},
+         {"units", "s"},
+         {"kernel_id", std::to_string(this->get_id())}});
   }
 
   raft::kstatus run() override {
+    m_timer.Tick();
     using std::string_literals::operator""s;
     Payload pld;
     input["image"].pop(pld);
@@ -64,8 +73,10 @@ class DiskSaverRft : public raft::kernel {
     auto imsize = std::get<int>(img_metadata["grid_size"]);
     auto nchan = std::get<uint8_t>(img_metadata["nchan"]);
     SaveImageToDisk(imsize, nchan, pld.get_mbuf()->GetDataPtr(),
-               "test_image_"s + m_img_suffix, img_metadata);
+                    "test_image_"s + m_img_suffix, img_metadata);
 
+    m_timer.Tock();
+    PrometheusExporter::ObserveRunTimeValue(m_rt_gauge_id, m_timer.Duration());
     return raft::proceed;
   }
 };

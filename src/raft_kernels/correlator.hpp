@@ -33,6 +33,7 @@
 #include <variant>
 
 #include "../ex/constants.h"
+#include "../ex/metrics.hpp"
 #include "../ex/types.hpp"
 
 template <class _Payload, class _Correlator>
@@ -51,6 +52,7 @@ class CorrelatorRft : public raft::kernel {
   int m_support{0};
   uint64_t m_seq_start_id{0};
   float m_delta{1};
+  unsigned int m_rt_gauge_id{0};
 
  public:
   explicit CorrelatorRft(std::unique_ptr<_Correlator>* p_correlator)
@@ -64,6 +66,12 @@ class CorrelatorRft : public raft::kernel {
     input.addPort<_Payload>("gulp");
     // using out_t = typ
     output.addPort<typename _Correlator::payload_t>("img");
+
+    m_rt_gauge_id = PrometheusExporter::AddRuntimeSummaryLabel(
+        {{"type", "info"},
+         {"data", "channel"},
+         {"units", "channel_number"},
+         {"kernel_id", std::to_string(this->get_id())}});
   }
 
   raft::kstatus run() override {
@@ -85,6 +93,7 @@ class CorrelatorRft : public raft::kernel {
     auto chan0 = std::get<int64_t>(gulp_metadata["chan0"]);
 
     VLOG(2) << "nchan: " << int(nchan) << " chan0: " << chan0;
+    PrometheusExporter::ObserveRunTimeValue(m_rt_gauge_id, chan0);
 
     // initialization or change in the spectral window
     if (m_correlator.get()->ResetImagingConfig(nchan, chan0)) {

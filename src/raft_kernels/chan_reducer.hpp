@@ -34,6 +34,7 @@
 
 #include "../ex/buffer.hpp"
 #include "../ex/constants.h"
+#include "../ex/metrics.hpp"
 #include "../ex/py_funcs.hpp"
 #include "../ex/tensor.hpp"
 #include "../ex/types.hpp"
@@ -53,7 +54,7 @@ class ChanReducerRft : public raft::kernel {
   float m_norm{1};
   bool m_is_chan_avg{false};
   std::unique_ptr<BufferMngr> m_buf_mngr{nullptr};
-  static constexpr size_t m_nbufs{50};
+  static constexpr size_t m_nbufs{100};
   static constexpr size_t m_max_buf_reqs{10};
   size_t m_xdim{128};
   size_t m_ydim{128};
@@ -62,6 +63,8 @@ class ChanReducerRft : public raft::kernel {
   PSTensor<float> m_in_tensor;
   PSTensor<float> m_out_tensor;
   static constexpr int NSTOKES{4};
+  unsigned int m_rt_gauge_id{0};
+  Timer m_timer;
 
  public:
   /**
@@ -94,9 +97,16 @@ class ChanReducerRft : public raft::kernel {
     m_buf_mngr.reset(new BufferMngr(m_nbufs,
                                     m_xdim * m_ydim * m_out_nchan * NSTOKES,
                                     m_max_buf_reqs, false));
+
+    m_rt_gauge_id = PrometheusExporter::AddRuntimeSummaryLabel(
+        {{"type", "exec_time"},
+         {"kernel", "chan_reducer"},
+         {"units", "seconds"},
+         {"kernel_id", std::to_string(this->get_id())}});
   }
 
   raft::kstatus run() override {
+    m_timer.Tick();
     _PldIn in_pld;
     input["in_img"].pop(in_pld);
 
@@ -119,6 +129,8 @@ class ChanReducerRft : public raft::kernel {
     output["out_img"].push(out_pld);
     output["seq_start_id"].push(std::get<uint64_t>(out_meta["seq_start"]));
 
+    m_timer.Tock();
+    PrometheusExporter::ObserveRunTimeValue(m_rt_gauge_id, m_timer.Duration());
     return raft::proceed;
   }
 };

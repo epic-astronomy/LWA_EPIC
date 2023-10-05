@@ -323,6 +323,7 @@ MOFFCuHandler::ProcessGulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, 
     cudaEventSynchronize(stop);
     float milliseconds = 0;
     cudaEventElapsedTime(&milliseconds, start, stop);
+    PrometheusExporter::ObserveRunTimeValue(m_gulp_exec_gauge_id, milliseconds);
     VLOG(1) << "Gulp processing time (ms) on GPU("<<m_device_id<<"): " << milliseconds << std::endl;
 
 }

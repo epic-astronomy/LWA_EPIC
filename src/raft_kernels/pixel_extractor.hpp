@@ -4,19 +4,20 @@
  Permission is hereby granted, free of charge, to any person obtaining a copy of
  this software and associated documentation files (the "Software"), to deal in
  the Software without restriction, including without limitation the rights to
- use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
- the Software, and to permit persons to whom the Software is furnished to do so,
- subject to the following conditions:
+ use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+ of the Software, and to permit persons to whom the Software is furnished to do
+ so, subject to the following conditions:
 
  The above copyright notice and this permission notice shall be included in all
  copies or substantial portions of the Software.
 
  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
- FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
- COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
- IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
  */
 
 #ifndef SRC_RAFT_KERNELS_PIXEL_EXTRACTOR_HPP_
@@ -32,6 +33,7 @@
 
 #include "../ex/buffer.hpp"
 #include "../ex/constants.h"
+#include "../ex/metrics.hpp"
 #include "../ex/orm_types.hpp"
 #include "../ex/py_funcs.hpp"
 #include "../ex/tensor.hpp"
@@ -53,6 +55,9 @@ class PixelExtractor : public raft::kernel {
   size_t m_xdim;
   size_t m_ydim;
   size_t m_nchan;
+
+  unsigned int m_rt_gauge_id{0};
+  Timer m_timer;
 
  public:
   PixelExtractor(BufConfig p_config,
@@ -80,9 +85,16 @@ class PixelExtractor : public raft::kernel {
       }
       pld.get_mbuf()->copy_meta(m_pixmeta_rows);
     }
+
+    m_rt_gauge_id = PrometheusExporter::AddRuntimeSummaryLabel(
+        {{"type", "exec_time"},
+         {"kernel", "pixel_extractor"},
+         {"units", "s"},
+         {"kernel_id", std::to_string(this->get_id())}});
   }
 
   raft::kstatus run() override {
+    m_timer.Tick();
     // check if there are updates to the pixel meta rows
     if (input["meta_pixel_rows"].size() > 0) {
       input["meta_pixel_rows"].pop(_dummy_meta);
@@ -127,6 +139,8 @@ class PixelExtractor : public raft::kernel {
     output["out_pix_rows"].push(out_pix_rows);
     output["out_img"].push(in_img);
 
+    m_timer.Tock();
+    PrometheusExporter::ObserveRunTimeValue(m_rt_gauge_id, m_timer.Duration());
     return raft::proceed;
   }
 };

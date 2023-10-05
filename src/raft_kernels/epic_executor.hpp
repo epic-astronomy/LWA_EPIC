@@ -23,8 +23,10 @@
 #ifndef SRC_RAFT_KERNELS_EPIC_EXECUTOR_HPP_
 #define SRC_RAFT_KERNELS_EPIC_EXECUTOR_HPP_
 #include <memory>
+#include <string>
 #include <utility>
 
+#include "../ex/metrics.hpp"
 #include "../ex/station_desc.hpp"
 #include "./kernel_types.hpp"
 
@@ -51,17 +53,17 @@ class EPICKernels {
     // ensure the cpu ID is always non-zero.
     // Setting it to zero causes instability
     if (m_is_offline) {
-      RftManip<1 + cpu_ofst, 1>::bind(m_dpkt_gen);
+      RftManip<1 + cpu_ofst, 1 + _GpuId>::bind(m_dpkt_gen);
     } else {
-      RftManip<1 + cpu_ofst, 1>::bind(*(m_pkt_gen.get()));
+      RftManip<1 + cpu_ofst, 1 + _GpuId>::bind(*(m_pkt_gen.get()));
     }
-    RftManip<2 + cpu_ofst, 1>::bind(m_correlator);
-    RftManip<3 + cpu_ofst, 1>::bind(m_chan_reducer);
-    RftManip<4 + cpu_ofst, 1>::bind(m_pixel_extractor);
-    RftManip<5 + cpu_ofst, 1>::bind(m_index_fetcher);
-    RftManip<6 + cpu_ofst, 1>::bind(m_db_ingester);
-    RftManip<7 + cpu_ofst, 1>::bind(m_accumulator);
-    RftManip<8 + cpu_ofst, 1>::bind(m_disk_saver);
+    RftManip<2 + cpu_ofst, 1 + _GpuId>::bind(m_correlator);
+    RftManip<3 + cpu_ofst, 1 + _GpuId>::bind(m_chan_reducer);
+    RftManip<4 + cpu_ofst, 1 + _GpuId>::bind(m_pixel_extractor);
+    RftManip<5 + cpu_ofst, 1 + _GpuId>::bind(m_index_fetcher);
+    RftManip<6 + cpu_ofst, 1 + _GpuId>::bind(m_db_ingester);
+    RftManip<7 + cpu_ofst, 1 + _GpuId>::bind(m_accumulator);
+    RftManip<8 + cpu_ofst, 1 + _GpuId>::bind(m_disk_saver);
   }
 
   void InitMap(const KernelTypeDefs::opt_t& p_options) {
@@ -147,6 +149,11 @@ void RunEpic(int argc, char** argv) {
     PrintStationEndPoints<LWA_SV>();
     return;
   }
+
+  // Initialize the metrics exporter
+  PrometheusExporter::GetInstance(
+      options["metrics_bind_addr"].as<std::string>(),
+      options["disable_metrics"].as<bool>());
 
   LOG(INFO) << "Looking for GPUs";
   int num_gpus =

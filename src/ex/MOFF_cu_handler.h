@@ -29,6 +29,7 @@
 
 #include "./channel_descriptor.h"
 #include "./constants.h"
+#include "./metrics.hpp"
 #include "./types.hpp"
 
 /**
@@ -141,6 +142,7 @@ class MOFFCuHandler {
   void SetImgGridDim();
 
   bool use_bf16_accum{false};
+  unsigned int m_gulp_exec_gauge_id{0};
 
  public:
   MOFFCuHandler() {}

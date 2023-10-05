@@ -33,6 +33,7 @@
 
 #include "../ex/buffer.hpp"
 #include "../ex/constants.h"
+#include "../ex/metrics.hpp"
 #include "../ex/py_funcs.hpp"
 #include "../ex/tensor.hpp"
 #include "../ex/types.hpp"
@@ -56,6 +57,9 @@ class AccumulatorRft : public raft::kernel {
   _Pld m_cur_buf;
   size_t m_accum_count{0};
 
+  unsigned int m_rt_gauge_id{0};
+  Timer m_timer;
+
  public:
   AccumulatorRft(size_t p_xdim, size_t p_ydim, size_t p_nchan, size_t p_naccum)
       : raft::kernel(),
@@ -67,11 +71,17 @@ class AccumulatorRft : public raft::kernel {
         m_out_tensor(p_nchan, p_xdim, p_ydim) {
     input.addPort<_Pld>("in_img");
     output.addPort<_Pld>("out_img");
+    m_rt_gauge_id = PrometheusExporter::AddRuntimeSummaryLabel(
+        {{"type", "exec_time"},
+         {"kernel", "accumulator"},
+         {"units", "s"},
+         {"kernel_id", std::to_string(this->get_id())}});
   }
 
   void increment_count() { m_accum_count++; }
 
   raft::kstatus run() override {
+    m_timer.Tick();
     if (m_accum_count == 0) {
       // store the current gulp
       input["in_img"].pop(m_cur_buf);
@@ -85,12 +95,12 @@ class AccumulatorRft : public raft::kernel {
       m_in_tensor += m_out_tensor;
     }
 
-    m_accum_count++;
+    ++m_accum_count;
 
     if (m_accum_count == m_naccum) {
-      output["out_img"].push(m_cur_buf);
       auto& meta = m_cur_buf.get_mbuf()->GetMetadataRef();
       meta["img_len_ms"] = std::get<double>(meta["gulp_len_ms"]) * m_naccum;
+      output["out_img"].push(m_cur_buf);
       m_cur_buf = _Pld();
       m_accum_count = 0;
 
@@ -98,6 +108,8 @@ class AccumulatorRft : public raft::kernel {
       m_out_tensor.dissociate_data();
     }
 
+    m_timer.Tock();
+    PrometheusExporter::ObserveRunTimeValue(m_rt_gauge_id, m_timer.Duration());
     return raft::proceed;
   }
 };

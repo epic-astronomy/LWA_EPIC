@@ -22,3 +22,6 @@
 [submodule "src/extern/pqxx"]
 	path = src/extern/pqxx
 	url = https://github.com/jtv/libpqxx.git
+[submodule "src/extern/prometheus-cpp"]
+	path = src/extern/prometheus-cpp
+	url = https://github.com/jupp0r/prometheus-cpp.git

@@ -38,6 +38,7 @@
 #include "./exceptions.hpp"
 #include "./helper_traits.hpp"
 #include "./lf_buf_mngr.hpp"
+#include "./metrics.hpp"
 #include "./packet_processor.hpp"
 #include "./packet_receiver.hpp"
 #include "./py_funcs.hpp"
@@ -81,6 +82,8 @@ class PacketAssembler : public PktProcessor {
   void m_nudge_seq_start();  // to the nearest second
   bool m_last_pkt_available{false};
 
+  unsigned int m_gauge_pktqual_id{0};
+
  public:
   PacketAssembler(std::string p_ip, int p_port, size_t p_nseq_per_gulp = 1000,
                   size_t p_ngulps = 20, size_t p_seq_size = SINGLE_SEQ_SIZE);
@@ -121,6 +124,11 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::PacketAssembler(
   m_min_pkt_limit = static_cast<float>(ALLOWED_PKT_DROP) * 0.01 *
                     PktProcessor::nsrc * m_nseq_per_gulp;
   m_time_tag0 = GetAdpTimeFromUnixEpoch() * FS;
+
+  m_gauge_pktqual_id = PrometheusExporter::AddRuntimeSummaryLabel(
+      {{"type", "data_quality"},
+       {"units", "fraction"},
+       {"kernel", "packet_assembler"}});
 }
 
 template <typename BufferMngr, class Receiver, class PktProcessor>
@@ -152,9 +160,11 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::get_gulp() {
   int once = 0;
   int recvd_pkts = 0;
   VLOG(1) << "Generating a gulp";
+  m_reset_pkt_stats();
   while (true) {
     if (!m_last_pkt_available) {  // fetch a new one
       start = high_resolution_clock::now();
+      // VLOG(3) << "Receiving a packet";
       nbytes =
           m_receiver->recv_packet(m_recent_pkt, PktProcessor::align_offset);
       stop = high_resolution_clock::now();
@@ -163,6 +173,7 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::get_gulp() {
       if (nbytes <= 0) {
         continue;
       }
+
       if (!PktProcessor::is_pkt_valid(m_recent_pkt, m_recent_hdr, m_recent_data,
                                       nbytes)) {
         VLOG(3) << "Bad header";
@@ -203,6 +214,11 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::get_gulp() {
         if (m_n_valid_pkts < m_min_pkt_limit) {
           VLOG(3) << "returning null pkt";
           m_n_valid_pkts = 0;
+          PrometheusExporter::ObserveRunTimeValue(
+              m_gauge_pktqual_id,
+              m_n_valid_pkts /
+                  double(PktProcessor::nsrc*m_nseq_per_gulp) /*No data*/);
+
           return payload_t(nullptr);
         }
 
@@ -213,10 +229,13 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::get_gulp() {
 
         m_n_valid_pkts = 0;
         // DLOG(INFO)<<"Returning payload";
-        int count=0;
-        for(auto i: m_valid_pkt_stats){
-          std::cout<<"SRC: "<<++count<<" "<<*i<<std::endl;
-        }
+        int count = 0;
+        // for (auto i : m_valid_pkt_stats) {
+        //   std::cout << "SRC: " << ++count << " " << *i << std::endl;
+        // }
+        PrometheusExporter::ObserveRunTimeValue(
+            m_gauge_pktqual_id,
+            std::get<double>(mbuf->GetMetadataRef()["data_quality"]));
         return payload;
       }
     }
