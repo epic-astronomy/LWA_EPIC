@@ -85,6 +85,7 @@ class PixelExtractor : public raft::kernel {
       }
       pld.get_mbuf()->copy_meta(m_pixmeta_rows);
     }
+    m_pixmeta_rows.print();
 
     m_rt_gauge_id = PrometheusExporter::AddRuntimeSummaryLabel(
         {{"type", "exec_time"},
@@ -111,7 +112,7 @@ class PixelExtractor : public raft::kernel {
     _PldIn in_img;
     input["in_img"].pop(in_img);
 
-    if (m_pixmeta_rows.meta_version == -1) {
+    if (m_pixmeta_rows.meta_version == -1 || m_pixmeta_rows.nsrcs == 0) {
       // the indices aren't there yet
       // unlikely to happen
       output["out_img"].push(in_img);
