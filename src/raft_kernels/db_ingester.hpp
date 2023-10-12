@@ -122,7 +122,11 @@ class DBIngesterRft : public raft::kernel {
     m_timer.Tick();
     _PldIn pld;
     input["in_pixel_rows"].pop(pld);
-    UpdatePreparedStmnts(pld.get_mbuf()->kernel_size);
+    if (pld.get_mbuf()->nsrcs == 0) {
+      m_timer.Tock();
+      return raft::proceed;
+    }
+    UpdatePreparedStmnts(pld.get_mbuf()->m_kernel_dim);
     try {
       IngestPayload(&pld, m_db_T.get(), m_nkernel_elems, m_pix_stmnt_id_n,
                     m_meta_stmnt_id_n);
