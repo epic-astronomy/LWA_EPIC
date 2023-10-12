@@ -95,6 +95,13 @@ cxxopts::Options GetEpicOptions() {
       "disable_metrics", "Disable writing metrics to the Prometheus endpoint",
       cxxopts::value<bool>()->default_value("false"));
 
+  options.add_options("Database Operations")(
+      "elev_limit_deg",
+      "Extract pixels into the DB only if the source is above this elevation "
+      "(degrees). "
+      "Defaults to 10 deg",
+      cxxopts::value<float>()->default_value("10.0"));
+
   return options;
 }
 
@@ -155,9 +162,11 @@ std::optional<std::string> ValidateOptions(const cxxopts::ParseResult& result) {
     }
   }
 
-  auto gpu_ids = result["gpu_ids"].as<std::vector<int>>();
-  if (gpu_ids.size() > 0 && gpu_ids.size() != ndevices) {
-    "A gpu ID must be specifed for each EPIC instance";
+  if (result["gpu_ids"].count() > 0) {
+    auto gpu_ids = result["gpu_ids"].as<std::vector<int>>();
+    if (gpu_ids.size() > 0 && gpu_ids.size() != ndevices) {
+      "A gpu ID must be specifed for each EPIC instance";
+    }
   }
 
   int support = result["support"].as<int>();
@@ -184,6 +193,10 @@ std::optional<std::string> ValidateOptions(const cxxopts::ParseResult& result) {
 
   if (nstreams <= 0) {
     return "The number of streams must be greater than 0";
+  }
+
+  if (result["elev_limit_deg"].as<float>() < 0) {
+    return "Elevation limit must be between 0 and 90 degrees";
   }
 
   return {};
