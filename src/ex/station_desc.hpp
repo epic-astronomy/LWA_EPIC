@@ -22,6 +22,7 @@
 
 #ifndef SRC_EX_STATION_DESC_HPP_
 #define SRC_EX_STATION_DESC_HPP_
+#include <endian.h>
 #include <glog/logging.h>
 
 #include <iomanip>
@@ -59,17 +60,26 @@ int GetChan0Vma(std::string ip, int port) {
 
 int GetChan0(std::string ip, int port) {
   auto receiver = verbs_receiver_t();
-  uint8_t* buf;
+  uint8_t* buf{nullptr};
   receiver.set_address(ip, port);
-  std::cout << "Set address\n";
   receiver.bind_socket();
-  std::cout << "Socket bound\n";
   receiver.init_receiver();
-  std::cout << "Initializing\n";
   int nbytes = receiver.recv_packet(buf, ChipsOffset_t::value);
   // std::cout<<nbytes;
   const chips_hdr_type* pkt_hdr = reinterpret_cast<chips_hdr_type*>(buf);
   return (ntohs(pkt_hdr->chan0));
+}
+
+uint64_t GetFirstSeqIdVma(std::string ip, int port) {
+  auto receiver = vma_receiver_t();
+  uint8_t* buf;
+  receiver.set_address(ip, port);
+  receiver.bind_socket();
+  receiver.init_receiver();
+  int nbytes = receiver.recv_packet(buf, ChipsOffset_t::value);
+  // std::cout<<nbytes;
+  const chips_hdr_type* pkt_hdr = reinterpret_cast<chips_hdr_type*>(buf);
+  return (be64toh(pkt_hdr->seq));
 }
 
 // 239.168.40.11 4015/4016
@@ -107,6 +117,5 @@ void PrintStationEndPoints<LWA_SV>() {
     }
   }
 }
-
 
 #endif  // SRC_EX_STATION_DESC_HPP_
