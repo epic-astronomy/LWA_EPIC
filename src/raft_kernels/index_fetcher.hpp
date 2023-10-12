@@ -42,9 +42,13 @@
 class IndexFetcherRft : public raft::kernel {
  private:
   unsigned int m_refresh_interval{10};
+  unsigned int m_grid_size;
+  float m_grid_res;
+  float m_elev_limit_deg;
   using high_res_tp =
       typename std::chrono::time_point<std::chrono::high_resolution_clock>;
   high_res_tp m_prev_refresh;
+  bool is_init{false};
 
   bool is_refresh_required() {
     auto now = std::chrono::high_resolution_clock::now();
@@ -54,14 +58,27 @@ class IndexFetcherRft : public raft::kernel {
       return true;
     }
 
+    if (!is_init) {
+      m_prev_refresh = now;
+      is_init = true;
+      return true;
+    }
+
     return false;
   }
 
   uint64_t m_tstart;
 
  public:
-  explicit IndexFetcherRft(unsigned int p_refresh_interval = 10)
-      : raft::kernel(), m_refresh_interval(p_refresh_interval) {
+  explicit IndexFetcherRft(unsigned int p_refresh_interval = 10,
+                           unsigned int p_grid_size = 128,
+                           float p_grid_res = 1.0,
+                           float p_elev_limit_deg = 10.0)
+      : raft::kernel(),
+        m_refresh_interval(p_refresh_interval),
+        m_grid_size(p_grid_size),
+        m_grid_res(p_grid_res),
+        m_elev_limit_deg(p_elev_limit_deg) {
     input.addPort<uint64_t>("tstart");
     output.addPort<EpicPixelTableMetaRows>("meta_pixel_rows");
     m_prev_refresh = std::chrono::high_resolution_clock::now();
@@ -74,7 +91,8 @@ class IndexFetcherRft : public raft::kernel {
       return raft::proceed;
     }
     if (is_refresh_required()) {
-      output["meta_pixel_rows"].push(create_dummy_meta(128, 128));
+      output["meta_pixel_rows"].push(get_watch_indices(
+          m_tstart, m_grid_size, m_grid_res, m_elev_limit_deg));
       VLOG(2) << "FIRED INDEX FETCHER";
     }
     return raft::proceed;
