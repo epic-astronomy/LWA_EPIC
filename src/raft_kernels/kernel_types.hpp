@@ -34,6 +34,7 @@
 #include "../ex/lf_buf_mngr.hpp"
 #include "../ex/option_parser.hpp"
 #include "../ex/packet_assembler.hpp"
+#include "../ex/station_desc.hpp"
 #include "./accumulator.hpp"
 #include "./chan_reducer.hpp"
 #include "./correlator.hpp"
@@ -173,13 +174,24 @@ struct Kernel<_PIX_EXTRACTOR> : KernelTypeDefs {
     int im_nchan = options["channels"].as<int>();
     int chan_nbin = options["chan_nbin"].as<int>();
     int reduced_nchan = im_nchan / chan_nbin;
-    config.nchan = reduced_nchan;
-    config.ncoords = 1;
-    config.nsrcs = 1;
+    int grid_size = options["imagesize"].as<int>();
+    float grid_res = options["imageres"].as<float>();
+    float elev_limit_deg = options["elev_limit_deg"].as<float>();
+    auto ip = options["addr"].as<std::vector<std::string>>();
+    auto port = options["port"].as<std::vector<int>>();
+
 
     // fetch intial pixel indices;
-    auto dummy_meta = create_dummy_meta(imsize, imsize);
-    return ktype(config, dummy_meta, imsize, imsize, reduced_nchan);
+    LOG(INFO)<<"Getting watch indices";
+    auto initial_watch_indices =
+        get_watch_indices(GetFirstSeqIdVma(ip[_GpuId], port[_GpuId]), grid_size,
+                          grid_res, elev_limit_deg);
+    initial_watch_indices.print();
+    config.nchan = reduced_nchan;
+    config.ncoords = initial_watch_indices.m_ncoords;
+    config.nsrcs = initial_watch_indices.nsrcs;
+    config.kernel_dim = initial_watch_indices.m_kernel_dim;
+    return ktype(config, initial_watch_indices, imsize, imsize, reduced_nchan);
   }
 };
 using PixelExtractor_kt = Kernel<_PIX_EXTRACTOR>::ktype;
