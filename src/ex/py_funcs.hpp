@@ -31,13 +31,18 @@
 #include <cmath>
 #include <iostream>
 #include <string>
+#include <utility>
 #include <variant>
 
 #include "./constants.h"
+#include "./orm_types.hpp"
 #include "./types.hpp"
 
 namespace py = pybind11;
 using namespace py::literals;
+
+template <typename T>
+using np_array = py::array_t<T, py::array::c_style | py::array::forcecast>;
 
 // prolate spheroid eigen (characteristic) value
 // m,n mode:  parameters. n>=m
@@ -189,7 +194,7 @@ void GetLwasvPhases(T* out_ptr, int nchan, int chan0) {
           .attr("gen_phases_lwasv")(nchan, chan0)
           .cast<py::array_t<std::complex<double>,
                             py::array::c_style | py::array::forcecast>>();
-  DLOG(INFO) << "Received phases data";
+  VLOG(3) << "Received phases data";
   // return
 
   auto phases_ptr = static_cast<double*>(phases_arr.request().ptr);
@@ -290,8 +295,8 @@ SaveImageToDisk(size_t grid_size, size_t nchan, T* data, std::string filename,
  */
 template <typename T>
 void GetCorrectionGrid(T* correction_kernel, T* out_correction_grid,
-                         int grid_size, int support, int nchan,
-                         int oversample = 4) {
+                       int grid_size, int support, int nchan,
+                       int oversample = 4) {
   py::gil_scoped_acquire acquire;
   auto corr_ker_arr =
       py::array_t<float>(support * support * nchan, correction_kernel);
@@ -362,6 +367,79 @@ std::string Meta2PgTime(uint64_t time_tag, double img_len_ms) {
   return py::module_::import("epic_utils")
       .attr("meta2pgtime")(time_tag, img_len_ms)
       .cast<std::string>();
+}
+
+EpicPixelTableMetaRows get_watch_indices(uint64_t seq_start_no, int grid_size,
+                                         float grid_res,
+                                         float elev_limit = 10) {
+  py::gil_scoped_acquire acquire;
+  auto ret_dict = py::module_::import("pixel_extractor")
+                      .attr("get_pixel_indices")(seq_start_no, grid_size,
+                                                 grid_res, elev_limit);
+
+  // WORKAROUND: Simply doing the .cast<int>() results in a core dumped error.
+  // But fetching it as an array seems to work fine
+  int nsrc = (static_cast<int*>(
+      ret_dict["nsrc"].cast<np_array<int>>().request().ptr))[0];
+  auto ncoords = (static_cast<int*>(
+      ret_dict["ncoords"].cast<np_array<int>>().request().ptr))[0];
+  auto kernel_dim = (static_cast<int*>(
+      ret_dict["kernel_dim"].cast<np_array<int>>().request().ptr))[0];
+  VLOG(3) << nsrc << " " << ncoords << " " << kernel_dim;
+
+  EpicPixelTableMetaRows watch_indices(ncoords, nsrc, kernel_dim);
+
+  // create accessors for different indices
+  // pixel coords
+  VLOG(3) << "Reading pixel indices";
+  auto* x_idx = static_cast<double*>(
+      ret_dict["pix_x"].cast<np_array<double>>().request().ptr);
+  auto* y_idx = static_cast<double*>(
+      ret_dict["pix_y"].cast<np_array<double>>().request().ptr);
+
+  // pixel lm values
+  VLOG(3) << "Reading lm coords";
+  auto* l_idx = static_cast<double*>(
+      ret_dict["l"].cast<np_array<double>>().request().ptr);
+  auto* m_idx = static_cast<double*>(
+      ret_dict["m"].cast<np_array<double>>().request().ptr);
+
+  // pixel offset
+  VLOG(3) << "Reading offsets";
+  auto* pix_ofst_x = static_cast<double*>(
+      ret_dict["pix_ofst_x"].cast<np_array<double>>().request().ptr);
+  auto* pix_ofst_y = static_cast<double*>(
+      ret_dict["pix_ofst_y"].cast<np_array<double>>().request().ptr);
+
+  for (int i = 0; i < ncoords; ++i) {
+    watch_indices.pixel_coords[i] = std::pair<int, int>(x_idx[i], y_idx[i]);
+    watch_indices.pixel_lm[i] = std::pair<float, float>(l_idx[i], m_idx[i]);
+    watch_indices.pixel_offst[i] =
+        std::pair<int, int>(pix_ofst_x[i], pix_ofst_y[i]);
+    VLOG(3) << i << " " << x_idx[i] << " " << y_idx[i] << " " << l_idx[i] << " "
+            << m_idx[i] << " " << pix_ofst_x[i] << " " << pix_ofst_y[i] << " "
+            << watch_indices.pixel_coords.size() << " "
+            << watch_indices.pixel_lm.size() << " "
+            << watch_indices.pixel_offst.size();
+  }
+
+  // copy the src ids
+  VLOG(3) << "Reading source ids";
+  auto* src_ids = static_cast<double*>(
+      ret_dict["src_ids"].cast<np_array<double>>().request().ptr);
+  VLOG(3) << "Adding";
+  for (int i = 0; i < nsrc; ++i) {
+    watch_indices.source_ids[i] = src_ids[i];
+  }
+  VLOG(3) << "Setting the meta version";
+  unsigned int _seed;
+  watch_indices.meta_version = rand_r(&_seed);
+  VLOG(3) << "Transforming the coords";
+  watch_indices.TransformPixCoords(grid_size, grid_size);
+
+  VLOG(3) << "Returning watch indices";
+
+  return watch_indices;
 }
 
 #endif  // SRC_EX_PY_FUNCS_HPP_
