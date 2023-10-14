@@ -1,0 +1,31 @@
+syntax="proto3";
+
+service epic_post_process{
+    rpc filter_and_save(epic_image) returns(empty);
+    rpc filter_and_save_chunk(stream epic_image) returns (empty);
+    rpc fetch_watchlist(empty) returns (watchlist);
+    rpc watch_source(watchsourceinfo) returns (status);
+}
+
+message empty{
+
+}
+
+message status{
+    string msg=1;
+}
+
+message watchsourceinfo{
+    string srcinfo_json=1;
+}
+
+message watchlist{
+    string pd_json=1; //watch list dataframe converted to json
+}
+
+message epic_image{
+    string header=1; //full fits header dumped into a string
+    bytes image_cube=2; //numpy ndarray
+}
+
+//python -m grpc_tools.protoc -I./  --python_out=. --grpc_python_out=. epic_image.proto

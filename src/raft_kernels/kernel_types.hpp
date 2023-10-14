@@ -179,13 +179,13 @@ struct Kernel<_PIX_EXTRACTOR> : KernelTypeDefs {
     float elev_limit_deg = options["elev_limit_deg"].as<float>();
     auto ip = options["addr"].as<std::vector<std::string>>();
     auto port = options["port"].as<std::vector<int>>();
-
+    auto watchdog_addr = options["watchdog_addr"].as<std::string>();
 
     // fetch intial pixel indices;
-    LOG(INFO)<<"Getting watch indices";
+    LOG(INFO) << "Getting watch indices";
     auto initial_watch_indices =
         get_watch_indices(GetFirstSeqIdVma(ip[_GpuId], port[_GpuId]), grid_size,
-                          grid_res, elev_limit_deg);
+                          grid_res, elev_limit_deg, watchdog_addr);
     initial_watch_indices.print();
     config.nchan = reduced_nchan;
     config.ncoords = initial_watch_indices.m_ncoords;
@@ -202,8 +202,12 @@ template <>
 struct Kernel<_IDX_FETCHER> : KernelTypeDefs {
   using ktype = IndexFetcherRft;
   template <unsigned int _GpuId>
-  static ktype get_kernel(const opt_t&) {
-    return ktype();
+  static ktype get_kernel(const opt_t& options) {
+    int grid_size = options["imagesize"].as<int>();
+    float grid_res = options["imageres"].as<float>();
+    float elev_limit_deg = options["elev_limit_deg"].as<float>();
+    auto watchdog_addr = options["watchdog_addr"].as<std::string>();
+    return ktype(grid_size, grid_res, elev_limit_deg, watchdog_addr);
   }
 };
 using IndexFetcher_kt = Kernel<_IDX_FETCHER>::ktype;

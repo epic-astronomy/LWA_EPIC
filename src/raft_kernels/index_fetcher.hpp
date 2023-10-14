@@ -30,6 +30,7 @@
 #include <memory>
 #include <raft>
 #include <raftio>
+#include <string>
 #include <variant>
 
 #include "../ex/buffer.hpp"
@@ -45,6 +46,7 @@ class IndexFetcherRft : public raft::kernel {
   unsigned int m_grid_size;
   float m_grid_res;
   float m_elev_limit_deg;
+  std::string m_watchdog_endpoint;
   using high_res_tp =
       typename std::chrono::time_point<std::chrono::high_resolution_clock>;
   high_res_tp m_prev_refresh;
@@ -70,15 +72,17 @@ class IndexFetcherRft : public raft::kernel {
   uint64_t m_tstart;
 
  public:
-  explicit IndexFetcherRft(unsigned int p_refresh_interval = 10,
-                           unsigned int p_grid_size = 128,
+  explicit IndexFetcherRft(unsigned int p_grid_size = 128,
                            float p_grid_res = 1.0,
-                           float p_elev_limit_deg = 10.0)
+                           float p_elev_limit_deg = 10.0,
+                           std::string p_watchdog_endpoint = "localhost:2023",
+                           unsigned int p_refresh_interval = 10)
       : raft::kernel(),
         m_refresh_interval(p_refresh_interval),
         m_grid_size(p_grid_size),
         m_grid_res(p_grid_res),
-        m_elev_limit_deg(p_elev_limit_deg) {
+        m_elev_limit_deg(p_elev_limit_deg),
+        m_watchdog_endpoint(p_watchdog_endpoint) {
     input.addPort<uint64_t>("tstart");
     output.addPort<EpicPixelTableMetaRows>("meta_pixel_rows");
     m_prev_refresh = std::chrono::high_resolution_clock::now();
@@ -91,8 +95,9 @@ class IndexFetcherRft : public raft::kernel {
       return raft::proceed;
     }
     if (is_refresh_required()) {
-      output["meta_pixel_rows"].push(get_watch_indices(
-          m_tstart, m_grid_size, m_grid_res, m_elev_limit_deg));
+      output["meta_pixel_rows"].push(
+          get_watch_indices(m_tstart, m_grid_size, m_grid_res, m_elev_limit_deg,
+                            m_watchdog_endpoint));
       VLOG(2) << "FIRED INDEX FETCHER";
     }
     return raft::proceed;

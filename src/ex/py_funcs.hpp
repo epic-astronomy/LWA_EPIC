@@ -370,12 +370,13 @@ std::string Meta2PgTime(uint64_t time_tag, double img_len_ms) {
 }
 
 EpicPixelTableMetaRows get_watch_indices(uint64_t seq_start_no, int grid_size,
-                                         float grid_res,
-                                         float elev_limit = 10) {
+                                         float grid_res, float elev_limit,
+                                         std::string watchdog_endpoint) {
   py::gil_scoped_acquire acquire;
-  auto ret_dict = py::module_::import("pixel_extractor")
-                      .attr("get_pixel_indices")(seq_start_no, grid_size,
-                                                 grid_res, elev_limit);
+  auto ret_dict =
+      py::module_::import("pixel_extractor")
+          .attr("get_pixel_indices")(seq_start_no, grid_size, grid_res,
+                                     elev_limit, watchdog_endpoint);
 
   // WORKAROUND: Simply doing the .cast<int>() results in a core dumped error.
   // But fetching it as an array seems to work fine

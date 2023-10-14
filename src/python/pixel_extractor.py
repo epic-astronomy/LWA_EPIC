@@ -22,6 +22,8 @@ from astropy.wcs import WCS
 from pixel_extract_utils import DynSources
 from pixel_extract_utils import PatchMan
 from pixel_extract_utils import get_lmn_grid
+from epic_grpc import epic_image_pb2_grpc
+from epic_grpc import epic_image_pb2
 
 # from ..epic_orm.pg_pixel_storage import EpicWatchdogTable
 from epic_types import NDArrayBool_t
@@ -42,6 +44,8 @@ from astropy.coordinates import SkyCoord, FK5
 # from scipy.signal import correlate2d
 
 from epic_utils import get_ADP_time_from_unix_epoch
+import grpc
+import json
 
 # import datetime
 # import time
@@ -54,14 +58,21 @@ CHAN_BW = 25.0e3
 # from .service_hub import ServiceHub
 
 
-def get_watch_list():
+def get_watch_list(watchdog_endpoint):
     """
     Fetch the watchlist for EPIC at Sevilleta
     """
-    df = pd.DataFrame(
-        dict(id=[0], source_name=["sun"], ra=[0.0], dec=[0.0], kernel_dim=[5])
-    )
-    return df
+    # print("fetching watchlist", watchdog_endpoint)
+    with grpc.insecure_channel(watchdog_endpoint) as channel:
+        stub = epic_image_pb2_grpc.epic_post_processStub(channel)
+        response = stub.fetch_watchlist(epic_image_pb2.empty())
+        df_json = json.loads(response.pd_json)
+        df = pd.read_json(df_json)
+        df.rename(columns=dict(patch_type="kernel_dim"), inplace=True)
+    # df = pd.DataFrame(
+    #     dict(id=[0], source_name=["sun"], ra=[0.0], dec=[0.0], kernel_dim=[5])
+    # )
+        return df
 
 
 def get_image_headers_sv(seq_start_id, grid_size, grid_res):
@@ -197,7 +208,7 @@ class EpicPixels:
         # self.inttime = self.primary_hdr["INTTIM"]
 
         self.t_obs = self.img_hdr["DATETIME"]
-        print("t_obs", self.t_obs)
+        # print("t_obs", self.t_obs)
 
         self.wcs = WCS(self.img_hdr, naxis=2)
 
@@ -463,8 +474,10 @@ class EpicPixels:
                 )
 
 
-def get_pixel_indices(seq_start_id, grid_size, grid_res, elev_limit=0):
-    watchlist = get_watch_list()
+def get_pixel_indices(
+    seq_start_id, grid_size, grid_res, elev_limit, watchdog_endpoint
+):
+    watchlist = get_watch_list(watchdog_endpoint)
     phdu, ihdu = get_image_headers_sv(seq_start_id, grid_size, grid_res)
 
     pix_extractor = EpicPixels(ihdu, phdu, watchlist, elev_limit)
@@ -493,5 +506,5 @@ if __name__ == "__main__":
         grid_res = 1
         elev_lim = 0
         kernel_dim = 5
-        indices = get_pixel_indices(seq_start, grid_size, grid_res, elev_lim)
+        indices = get_pixel_indices(seq_start, grid_size, grid_res, elev_lim,"129.24.76.213:31342")
         print(indices["nsrc"], len(indices["pix_x"]))

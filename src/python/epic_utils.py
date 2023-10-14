@@ -3,7 +3,7 @@ from lsl.common.stations import lwasv
 from astropy.constants import c as speed_of_light
 import matplotlib.image
 from astropy.io import fits
-from astropy.time import Time, TimeDelta
+from astropy.time import Time
 from astropy.coordinates import SkyCoord, FK5
 from scipy.signal import correlate2d
 
@@ -105,7 +105,7 @@ def save_output(output_arr, grid_size, nchan, filename, metadata):
     filename: Name of the file to save
     metadata: Dict with the metatadata to be written to the fits file
     """
-    start = time.time()
+    # start = time.time()
     output_arr = output_arr.reshape((nchan, grid_size, grid_size, 4))
     # output_arr_sft = np.fft.fftshift(output_arr, axes=(2, 3))
 
@@ -113,7 +113,7 @@ def save_output(output_arr, grid_size, nchan, filename, metadata):
 
     # print(output_arr_sft.min(), output_arr_sft.max())
     phdu = fits.PrimaryHDU()
-    for k,v in metadata.items():
+    for k, v in metadata.items():
         # print("py", k,v)
         phdu.header[k] = v
     phdu.header["DATE-OBS"] = Time(
@@ -141,7 +141,7 @@ def save_output(output_arr, grid_size, nchan, filename, metadata):
     phdu.header["CFREQ"] = cfreq
     phdu.header["CFREQU"] = "HZ"
 
-    dt = TimeDelta(1e-3 * metadata["img_len_ms"], format="sec")
+    # dt = TimeDelta(1e-3 * metadata["img_len_ms"], format="sec")
     dtheta_x = 2 * np.arcsin(0.5 / (metadata["grid_size"] * sll))
     dtheta_y = 2 * np.arcsin(0.5 / (metadata["grid_size"] * sll))
     crit_pix_x = float(metadata["grid_size"] / 2 + 1)
@@ -212,8 +212,9 @@ def save_output(output_arr, grid_size, nchan, filename, metadata):
 
     # print(f"Save time: {time.time()-start}")
     hdulist = fits.HDUList([phdu, ihdu])
-    unix_time = metadata["time_tag"] / FS + 1e-3 * metadata["img_len_ms"] / 2.0
-    filename2 = f"EPIC_{unix_time:3f}_{cfreq/1e6:3f}MHz.fits"
+    # unix_time = metadata["time_tag"] / FS +\
+    #  1e-3 * metadata["img_len_ms"] / 2.0
+    # filename2 = f"EPIC_{unix_time:3f}_{cfreq/1e6:3f}MHz.fits"
     hdulist.writeto(f"{filename}.fits", overwrite=True)
 
     chan_out = 0
@@ -237,7 +238,7 @@ def get_ADP_time_from_unix_epoch():
     got_utc_start = False
     while not got_utc_start:
         try:
-            with Communicator('MCS') as adp_control:
+            with Communicator("MCS") as adp_control:
                 utc_start = adp_control.report("UTC_START")
                 # Check for valid timestamp
                 utc_start_dt = datetime.datetime.strptime(
@@ -246,14 +247,16 @@ def get_ADP_time_from_unix_epoch():
             got_utc_start = True
         except Exception as ex:
             print(ex)
-            return -1
             time.sleep(0.1)
+    # print((utc_start_dt - ADP_EPOCH).total_seconds())
     return (utc_start_dt - ADP_EPOCH).total_seconds()
+
 
 def get_time_tag0_adp():
     timestamp0 = get_ADP_time_from_unix_epoch()
     time_tag0 = timestamp0 * FS
     return time_tag0
+
 
 def get_time_from_unix_epoch(utcstart):
     """
@@ -404,12 +407,16 @@ def get_correction_grid(corr_ker_arr, grid_size, support, nchan, oversample=1):
 def get_random_uuid():
     return str(uuid.uuid1())
 
+
 def meta2pgtime(time_tag0, img_len_ms):
-    return str(Time(
-        time_tag0/ FS + 1e-3 * img_len_ms/ 2.0,
-        format="unix",
-        precision=6,
-    ).isot)
+    return str(
+        Time(
+            time_tag0 / FS + 1e-3 * img_len_ms / 2.0,
+            format="unix",
+            precision=6,
+        ).isot
+    )
+
 
 if __name__ == "__main__":
     # a = gen_phases_lwasv(132, 800)

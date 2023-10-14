@@ -100,7 +100,9 @@ cxxopts::Options GetEpicOptions() {
       "Extract pixels into the DB only if the source is above this elevation "
       "(degrees). "
       "Defaults to 10 deg",
-      cxxopts::value<float>()->default_value("10.0"));
+      cxxopts::value<float>()->default_value("10.0"))(
+      "watchdog_addr", "Address for the EPIC watchdog services.",
+      cxxopts::value<std::string>()->default_value("localhost:2023"));
 
   return options;
 }
