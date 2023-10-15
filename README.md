@@ -19,10 +19,9 @@ Download the source code with all the dependencies.
 git clone -b test/4090 --recurse-submodules -j5 https://github.com/epic-astronomy/LWA_EPIC.git
 ```
 
-It is recommended to build and run EPIC in a separate conda environment.
+It is recommended to build and run EPIC in a separate conda environment. Use the `conda_env.yml` file to create a new conda enviroment and install all the necessary packages. Change the last line in this file to the desired install location and exceute the following command.
 ```bash
-conda create -n epic python=3.8 --file pylib-specs.txt
-pip install git+https://github.com/lwa-project/lsl
+conda create -n epic python=3.10 --file=conda_env.yml
 ```
 Additionally, download and extract [NVIDIA MathDx](https://developer.nvidia.com/mathdx#:~:text=wget%20https%3A//developer.download.nvidia.com/compute/mathdx/redist/mathdx/linux%2Dx86_64/nvidia%2Dmathdx%2D22.11.0%2DLinux.tar.gz) package to the `src/extern` folder. 
 
