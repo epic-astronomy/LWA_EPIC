@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 3.10...3.19)
 include(CMakePrintHelpers)
+include(FetchContent)
 
-project(epic++ VERSION "0.0.1" LANGUAGES CXX CUDA)
+project(epic++ VERSION "0.5.1" LANGUAGES CXX CUDA)
 set(CMAKE_INSTALL_PREFIX "/home/batman/epic/lib/")
 set(PKG_CONFIG_PATH "/home/batman/epic/lib/pkgconfig")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE INTERNAL "") 
@@ -72,7 +73,16 @@ OPTION(PYTHON_EXECUTABLE "/home/batman/miniconda3/envs/epic310/bin/python")
 ### cuFFTDx
 include_directories(SYSTEM src/extern/nvidia/mathdx/22.11/include)
 
+### prometheus-cpp
+add_subdirectory(src/extern/prometheus-cpp)
+# sudo apt install libcurl4-openssl-dev
+
 find_package(OpenMP REQUIRED)
+FetchContent_Declare(cmake_git_version_tracking                   
+  GIT_REPOSITORY https://github.com/andrew-hardin/cmake-git-version-tracking.git
+  GIT_TAG 904dbda1336ba4b9a1415a68d5f203f576b696bb
+)
+FetchContent_MakeAvailable(cmake_git_version_tracking)
 
 
 
@@ -86,7 +96,7 @@ add_library(epiclib STATIC
 
 add_library(epic_cu STATIC src/MOFF_cu_handler.cu src/ex/host_helpers.cu)
 target_compile_features(epic_cu PUBLIC cxx_std_17)
-target_link_libraries(epic_cu glog::glog)
+target_link_libraries(epic_cu glog::glog prometheus-cpp::pull)
 target_compile_options(epic_cu PRIVATE -O3 -use_fast_math --ptxas-options=-v  -Xptxas -v -extra-device-vectorization -Wall)
 
 set_target_properties( epic_cu
@@ -106,7 +116,7 @@ set_target_properties( epic++
 add_dependencies(epic++ raft hwy epiclib)
 add_compile_definitions(EPIC_VERSION="${CMAKE_PROJECT_VERSION}")
 target_link_libraries(epic++ PRIVATE pybind11::embed raft hwy epiclib epic_cu cudart
-glog::glog nvidia-ml pqxx pq ibverbs
+glog::glog nvidia-ml pqxx pq ibverbs prometheus-cpp::pull cmake_git_version_tracking
 )
 
 # file(GLOB PY_FILES "src/python/*.py")

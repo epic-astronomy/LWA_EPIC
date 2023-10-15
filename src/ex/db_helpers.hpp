@@ -32,6 +32,7 @@
 
 #include "./constants.h"
 #include "./py_funcs.hpp"
+#include "git.h"
 #include "pqxx/pqxx"
 
 std::string GetSinglePixelInsertStmnt(
@@ -210,14 +211,14 @@ void IngestMetadata(_Pld* pld_ptr, pqxx::work* work_ptr, int npix_per_src,
   auto grid_size = std::get<int>(meta["grid_size"]);
   pqxx::params pars(pix_data.m_uuid, Meta2PgTime(time_tag, img_len_ms), nchan,
                     static_cast<int>(NSTOKES), static_cast<int>(chan0), bw,
-                    EPIC_VERSION, grid_size, grid_size, npix_per_src);
+                    git_CommitSHA1(), grid_size, grid_size, npix_per_src);
 
   work.exec_prepared0(stmnt, pars);
 }
 
 std::string GetFileMetaInsertStmt() {
   const std::vector<std::string> cols{
-      "file_name",    "chan_width",   "nchan",        "support_size",
+      "file_name",   "chan_width",   "nchan",        "support_size",
       "gulp_len_ms", "image_len_ms", "epoch_time_s", "grid_size",
       "grid_res",    "cfreq_mhz",    "epic_version"};
 
@@ -262,7 +263,8 @@ void InsertFilenametoDb(_Pld* pld_ptr, pqxx::work* work_ptr,
   auto cfreq_mhz = std::get<double>(meta["cfreq"]);
 
   pqxx::params pars(filename, chan_width, nchan, support, gulp_len, image_len,
-                    epoch_time_s, grid_size, grid_res, cfreq_mhz, EPIC_VERSION);
+                    epoch_time_s, grid_size, grid_res, cfreq_mhz,
+                    git_CommitSHA1());
 
   (*work_ptr).exec_prepared0(insert_stmt, pars);
 }
