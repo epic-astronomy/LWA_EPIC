@@ -50,6 +50,7 @@ class AccumulatorRft : public raft::kernel {
   size_t m_xdim{128};
   size_t m_ydim{128};
   size_t m_in_nchan{32};
+  uint64_t _seq_end{0};
 
   PSTensor<float> m_in_tensor;
   PSTensor<float> m_out_tensor;
@@ -91,7 +92,8 @@ class AccumulatorRft : public raft::kernel {
       _Pld pld2;
       input["in_img"].pop(pld2);
       m_out_tensor.assign_data(pld2.get_mbuf()->GetDataPtr());
-
+      _seq_end =
+          std::get<uint64_t>(pld2.get_mbuf()->GetMetadataRef()["seq_end"]);
       m_in_tensor += m_out_tensor;
     }
 
@@ -99,10 +101,14 @@ class AccumulatorRft : public raft::kernel {
 
     if (m_accum_count == m_naccum) {
       auto& meta = m_cur_buf.get_mbuf()->GetMetadataRef();
+      if (_seq_end > 0) {
+        meta["seq_end"] = _seq_end;
+      }
       meta["img_len_ms"] = std::get<double>(meta["gulp_len_ms"]) * m_naccum;
       output["out_img"].push(m_cur_buf);
       m_cur_buf = _Pld();
       m_accum_count = 0;
+      _seq_end = 0;
 
       m_in_tensor.dissociate_data();
       m_out_tensor.dissociate_data();
