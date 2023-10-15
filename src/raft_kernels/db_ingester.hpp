@@ -19,12 +19,16 @@
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
  */
+
+#ifndef SRC_RAFT_KERNELS_DB_INGESTER_HPP_
+#define SRC_RAFT_KERNELS_DB_INGESTER_HPP_
 #include <glog/logging.h>
 
 #include <chrono>
 #include <cmath>
 #include <map>
 #include <memory>
+#include <pqxx/pqxx>
 #include <raft>
 #include <raftio>
 #include <string>
@@ -48,7 +52,7 @@ class DBIngesterRft : public raft::kernel {
   int m_nkernel_elems{25};
   bool is_db_alive{false};
   std::unique_ptr<pqxx::connection> m_pg_conn;
-  std::unique_ptr<pqxx::work> m_db_T;
+  std::unique_ptr<pqxx::work> m_db_T;  // transaction
   const std::string m_pix_stmnt_id{"insert_pixels"};
   const std::string m_meta_stmnt_id{"insert_meta"};
   std::string m_pix_stmnt_id_n{m_pix_stmnt_id + "_1"};
@@ -139,3 +143,6 @@ class DBIngesterRft : public raft::kernel {
     return raft::proceed;
   }
 };
+
+
+#endif  // SRC_RAFT_KERNELS_DB_INGESTER_HPP_
