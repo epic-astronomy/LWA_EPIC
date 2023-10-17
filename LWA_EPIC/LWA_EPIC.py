@@ -22,7 +22,7 @@ from scipy.fftpack import fft
 from astropy.io import fits
 from astropy.time import Time, TimeDelta
 from astropy import units as u
-from astropy.coordinates import SkyCoord, FK5
+from astropy.coordinates import SkyCoord, FK5, EarthLocation, AltAz
 from astropy.constants import c as speed_of_light
 
 import datetime
