@@ -104,6 +104,13 @@ cxxopts::Options GetEpicOptions() {
       "watchdog_addr", "Address for the EPIC watchdog services.",
       cxxopts::value<std::string>()->default_value("localhost:2023"));
 
+  options.add_options("Live Streaming")(
+      "video_size", "Stream video dimensions. Defaults to 512",
+      cxxopts::value<int>()->default_value("512"))(
+      "stream_url", "RTMP endpoint to stream the video to",
+      cxxopts::value<std::string>()->default_value(
+          "rtmp://127.0.0.1:1857/live/epic"));
+
   return options;
 }
 
