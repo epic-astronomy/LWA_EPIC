@@ -90,8 +90,8 @@ add_library(epiclib STATIC
    src/sockets.cpp
 )
 
-#install libavcodec-dev libswscale-dev
-set(AV_LIBS -lavcodec -lavformat -lavutil -lswscale )
+#install libavcodec-dev libswscale-dev libavfilter-dev
+set(AV_LIBS -lavcodec -lavformat -lavutil -lswscale -lavfilter)
 
 # cmake_print_variables(outVar)
 #set(CUDA_NVCC_EXECUTABLE "/home/batman/miniconda3/envs/epic310/bin/nvcc")
