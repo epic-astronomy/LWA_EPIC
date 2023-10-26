@@ -32,6 +32,7 @@
 
 #include "../ex/constants.h"
 #include "../ex/types.hpp"
+#include "../ex/metrics.hpp"
 
 /**
  * @brief Raft kernel to generate gulps with support for timed and untimed
@@ -54,6 +55,8 @@ class GulpGen_rft : public raft::kernel {
   std::chrono::time_point<std::chrono::steady_clock> m_start_time;
   double m_gulp_duration;
   bool m_start_set{false};
+  int m_rt_gauge_id{0};
+  //Timer m_timer;
 
  public:
   /**
@@ -86,6 +89,12 @@ class GulpGen_rft : public raft::kernel {
         << "Running in timed mode for " << p_timer_s << " seconds.";
 
     output.addPort<payload_t>("gulp");
+
+    m_rt_gauge_id = PrometheusExporter::AddRuntimeSummaryLabel(
+        {{"type", "status"},
+         {"kernel", "packet_gen"},
+         {"units", "status"},
+         {"kernel_id", std::to_string(this->get_id())}});
   }
 
   virtual raft::kstatus run() {
@@ -103,12 +112,13 @@ class GulpGen_rft : public raft::kernel {
       auto gulp = m_assmblr.get()->get_gulp();
       if (!gulp) {
         VLOG(2) << "Null gulp";
+        PrometheusExporter::ObserveRunTimeValue(m_rt_gauge_id, 0);
         continue;
       }
       output["gulp"].push(gulp);
+      PrometheusExporter::ObserveRunTimeValue(m_rt_gauge_id, 1);
 
       if (m_terminate) break;
-      break;
     }
     LOG(INFO) << "Stopping gulp gen";
     return raft::stop;
