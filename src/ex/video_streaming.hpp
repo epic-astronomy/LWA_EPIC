@@ -57,7 +57,7 @@ class Streamer {
   using Status_t = std::optional<std::string>;
 
  private:
-  int m_fps;
+  float m_fps;
   int m_width;
   int m_height;
   int m_time_base_den;
@@ -117,17 +117,18 @@ class Streamer {
   Status_t InitVideoPkt();
 
  public:
-  Streamer(int p_fps = 6.25, int p_width = 512, int p_height = 512,
-           int p_time_base_den = 6.25,
+  Streamer(float p_fps = 6.25, int p_vid_width = 512, int p_vid_height = 512,
+           int p_grid_size = 128, float p_time_base_den = 6.25,
            std::string p_stream_url = "rtmp://127.0.0.1:1857/live/epic",
            int p_log_level = AV_LOG_ERROR)
       : m_fps(p_fps),
-        m_width(p_width),
-        m_height(p_height),
+        m_width(p_vid_width),
+        m_height(p_vid_height),
+        m_grid_size(p_grid_size),
         m_time_base_den(p_time_base_den),
         m_stream_url(p_stream_url),
         m_log_level(p_log_level),
-        dst_fps({p_fps, 1}) {
+        dst_fps({int(p_fps * 1000), 1000}) {
     m_npixels_vid = m_width * m_height;
     m_npixels_grid = m_grid_size * m_grid_size;
 
@@ -137,7 +138,8 @@ class Streamer {
     for (int i = 0; i < m_npixels_grid; ++i) {
       m_raw_frame.get()[i] = 0;
     }
-    VLOG(3) << p_fps << p_width << p_height << p_stream_url << p_time_base_den;
+    VLOG(3) << p_fps << p_vid_width << p_vid_height << p_stream_url
+            << p_time_base_den;
     VLOG(3) << "1";
     CheckError(InitOutputContext());
     VLOG(3) << "2";
@@ -161,7 +163,7 @@ class Streamer {
     }
   }
   void StreamImage();
-  void CopyToFrameBuf(float *p_data_ptr, int p_chan_no) {
+  void CopyToFrameBuf(const float *p_data_ptr, int p_chan_no) {
     int offset = (p_chan_no - 1) * m_npixels_grid * NSTOKES;
 
     for (int i = 0; i < m_npixels_grid; ++i) {
@@ -206,7 +208,7 @@ class Streamer {
     //                m_frame_buf.get(),
     //                [=](float d) { return (d * 255) / max_val; });
   }
-  void Stream(int64_t chan0, double cfreq, float *data_ptr) {
+  void Stream(int64_t chan0, double cfreq, const float *data_ptr) {
     // ResetPipe(chan0, cfreq);
     // LOG(INFO)<<"streaming";
     // LOG(INFO)<<"FILTER NAME: "<<filterGraph->filters[4]->name;
@@ -256,7 +258,8 @@ Streamer::Status_t Streamer::InitVideoCodecContext() {
   codecContext->gop_size = 12;
   codecContext->framerate = dst_fps;
   codecContext->bit_rate = 4500e3;
-  codecContext->time_base = {1, m_time_base_den};  // av_inv_q(dst_fps);
+  codecContext->time_base = {
+      1000, int(m_time_base_den * 1000)};  // av_inv_q(dst_fps);
   codecContext->pix_fmt = AV_PIX_FMT_YUV420P;
   // codecContext->thread_count = 1;
   if (outputContext->oformat->flags & AVFMT_GLOBALHEADER) {
@@ -494,7 +497,7 @@ void Streamer::StreamImage() {
   VLOG(3) << "receiving";
   while (avcodec_receive_packet(codecContext, pkt) == 0) {
     // Set PTS and DTS (decoding timestamp) for the packet
-    pkt->pts = pkt->dts = _frame_counter * codecContext->time_base.den / m_fps;
+    pkt->pts = pkt->dts = _frame_counter * m_time_base_den / m_fps;
     // Write packet to output
     av_packet_rescale_ts(pkt, codecContext->time_base, videoStream->time_base);
     av_interleaved_write_frame(outputContext, pkt);
