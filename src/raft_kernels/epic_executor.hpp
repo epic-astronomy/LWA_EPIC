@@ -46,6 +46,7 @@ class EPICKernels {
   DBIngester_kt m_db_ingester;
   Accumulator_kt m_accumulator;
   DiskSaver_kt m_disk_saver;
+  EpicLiveStream_kt m_live_streamer;
 
  protected:
   raft::map* m_map;
@@ -66,18 +67,20 @@ class EPICKernels {
     RftManip<6 + cpu_ofst, 1 + _GpuId>::bind(m_db_ingester);
     RftManip<7 + cpu_ofst, 1 + _GpuId>::bind(m_accumulator);
     RftManip<8 + cpu_ofst, 1 + _GpuId>::bind(m_disk_saver);
+    RftManip<9 + cpu_ofst, 1 + _GpuId>::bind(m_live_streamer);
   }
 
   void InitMap(const KernelTypeDefs::opt_t& p_options) {
     auto& m = *m_map;
     // m += m_dpkt_gen >> m_correlator >> m_disk_saver;
     if (m_is_offline) {
-      m += m_dpkt_gen >> m_correlator >> m_chan_reducer["in_img"]["out_img"] >>
-           m_pixel_extractor["in_img"];
+      m += m_dpkt_gen >> m_correlator["gulp"]["img"] >>
+           m_chan_reducer["in_img"]["out_img"] >> m_pixel_extractor["in_img"];
     } else {
-      m += *(m_pkt_gen.get()) >> m_correlator >>
+      m += *(m_pkt_gen.get()) >> m_correlator["gulp"]["img"] >>
            m_chan_reducer["in_img"]["out_img"] >> m_pixel_extractor["in_img"];
     }
+    m += m_correlator["img_stream"] >> m_live_streamer["in_img"];
 
     m += m_pixel_extractor["out_img"] >> m_accumulator >> m_disk_saver;
 
@@ -85,11 +88,12 @@ class EPICKernels {
 
     m += m_chan_reducer["seq_start_id"] >> m_index_fetcher >>
          m_pixel_extractor["meta_pixel_rows"];
+    LOG(INFO) << "Done initializing the map";
   }
 
  public:
   EPICKernels(const KernelTypeDefs::opt_t& p_options, raft::map* p_map)
-      : m_streamer(std::make_unique<Streamer>()),
+      : m_streamer(GetStreamer(p_options)),
         m_dpkt_gen(get_dummy_pkt_gen_k<_GpuId>(p_options)),
         m_correlator(get_epiccorr_k<_GpuId>(p_options)),
         m_chan_reducer(get_chan_reducer_k<_GpuId>(p_options)),
@@ -98,6 +102,7 @@ class EPICKernels {
         m_db_ingester(get_db_ingester_k<_GpuId>(p_options)),
         m_accumulator(get_accumulator_k<_GpuId>(p_options)),
         m_disk_saver(get_disk_saver_k<_GpuId>(p_options)),
+        m_live_streamer(get_epic_live_stream_k<_GpuId>(p_options)),
         m_map(p_map) {
     m_is_offline = p_options["offline"].as<bool>();
     // auto streamer = std::make_unique<Streamer>();
@@ -105,7 +110,8 @@ class EPICKernels {
     if (!m_is_offline) {
       m_pkt_gen = std::move(get_pkt_gen_k<_GpuId>(p_options));
     }
-    m_disk_saver.SetStreamer(m_streamer.get());
+    // m_disk_saver.SetStreamer(m_streamer.get());
+    m_live_streamer.SetStreamer(m_streamer.get());
 
     LOG_IF(INFO, m_is_offline) << "EPIC will run on offline data";
     LOG(INFO) << "Binding kernels to CPUs";

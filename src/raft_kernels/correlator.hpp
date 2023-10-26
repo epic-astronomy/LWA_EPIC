@@ -66,6 +66,7 @@ class CorrelatorRft : public raft::kernel {
     input.addPort<_Payload>("gulp");
     // using out_t = typ
     output.addPort<typename _Correlator::payload_t>("img");
+    output.addPort<typename _Correlator::payload_t>("img_stream");
 
     m_rt_gauge_id = PrometheusExporter::AddRuntimeSummaryLabel(
         {{"type", "info"},
@@ -140,6 +141,7 @@ class CorrelatorRft : public raft::kernel {
       m_gulp_counter = 1;
       VLOG(3) << "Pushing the output image";
       output["img"].push(buf);
+      output["img_stream"].push(buf);
 
       return raft::proceed;
     }

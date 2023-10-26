@@ -49,7 +49,7 @@ class DiskSaverRft : public raft::kernel,
   unsigned int m_rt_gauge_id{0};
   std::string m_db_insert_stmt;
   Timer m_timer;
-  Streamer* m_streamer;
+  // Streamer* m_streamer;
   uint64_t stream_counter{0};
 
   std::string m_file_stmt_id{"insert_file_meta"};
@@ -72,7 +72,7 @@ class DiskSaverRft : public raft::kernel,
          {"kernel_id", std::to_string(this->get_id())}});
   }
 
-  void SetStreamer(Streamer* p_streamer) { m_streamer = p_streamer; }
+  // void SetStreamer(Streamer* p_streamer) { m_streamer = p_streamer; }
 
   raft::kstatus run() override {
     m_timer.Tick();
@@ -114,7 +114,7 @@ class DiskSaverRft : public raft::kernel,
       LOG(FATAL) << e.what();
     }
     VLOG(3)<<"Streaming image";
-    m_streamer->Stream(chan0, cfreq, pld.get_mbuf()->GetDataPtr());
+    // m_streamer->Stream(chan0, cfreq, pld.get_mbuf()->GetDataPtr());
     // this->stream(chan0, cfreq, pld.get_mbuf()->GetDataPtr());
     if ((++stream_counter) % 3 == 0) {
       // this->stream(chan0, cfreq, pld.get_mbuf()->GetDataPtr());

@@ -35,16 +35,17 @@
 #include "../ex/option_parser.hpp"
 #include "../ex/packet_assembler.hpp"
 #include "../ex/station_desc.hpp"
+#include "../ex/video_streaming.hpp"
 #include "./accumulator.hpp"
 #include "./chan_reducer.hpp"
 #include "./correlator.hpp"
 #include "./db_ingester.hpp"
 #include "./disk_saver.hpp"
 #include "./dummy_packet_gen.hpp"
+#include "./epic_live_streamer.hpp"
 #include "./index_fetcher.hpp"
 #include "./packet_gen.hpp"
 #include "./pixel_extractor.hpp"
-#include "../ex/video_streaming.hpp"
 
 enum EPICKernelID {
   _PKT_GEN = 0,
@@ -55,7 +56,8 @@ enum EPICKernelID {
   _IDX_FETCHER = 5,
   _DB_INGESTER = 6,
   _ACCUMULATOR = 7,
-  _DISK_SAVER = 8
+  _DISK_SAVER = 8,
+  _LIVE_STREAMER = 9
 };
 
 struct KernelTypeDefs {
@@ -126,7 +128,7 @@ struct Kernel<_CORRELATOR> : KernelTypeDefs {
     VLOG(2) << "Creating Correlator";
     std::vector<int> gpu_ids;
     if (options.count("gpu_ids") > 0) {
-      VLOG(2)<<"inside";
+      VLOG(2) << "inside";
       gpu_ids = options["gpu_ids"].as<std::vector<int>>();
     }
     VLOG(2) << "here";
@@ -175,6 +177,19 @@ struct Kernel<_CHAN_REDUCER> : KernelTypeDefs {
 using ChanReducer_kt = Kernel<_CHAN_REDUCER>::ktype;
 template <unsigned int _GpuId>
 auto& get_chan_reducer_k = Kernel<_CHAN_REDUCER>::get_kernel<_GpuId>;
+
+template <>
+struct Kernel<_LIVE_STREAMER> : KernelTypeDefs {
+  using ktype = EpicLiveStream<payload_float_t>;
+  template <unsigned int _GpuId>
+  static ktype get_kernel(const opt_t& options) {
+    return ktype();
+  }
+};
+
+using EpicLiveStream_kt = Kernel<_LIVE_STREAMER>::ktype;
+template <unsigned int _GpuId>
+auto& get_epic_live_stream_k = Kernel<_LIVE_STREAMER>::get_kernel<_GpuId>;
 
 template <>
 struct Kernel<_PIX_EXTRACTOR> : KernelTypeDefs {
@@ -274,4 +289,14 @@ using DiskSaver_kt = Kernel<_DISK_SAVER>::ktype;
 template <unsigned int _GpuId>
 auto& get_disk_saver_k = Kernel<_DISK_SAVER>::get_kernel<_GpuId>;
 
+std::unique_ptr<Streamer> GetStreamer(const KernelTypeDefs::opt_t& options) {
+  int vid_size = options["video_size"].as<int>();
+  int grid_size = options["imagesize"].as<int>();
+  int seq_accum = options["seq_accum"].as<int>();
+  float fps = 1000 / seq_accum;
+  std::string url = options["stream_url"].as<std::string>();
+
+  return std::make_unique<Streamer>(fps, vid_size, vid_size, grid_size, fps,
+                                    url);
+}
 #endif  // SRC_RAFT_KERNELS_KERNEL_TYPES_HPP_
