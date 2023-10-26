@@ -25,6 +25,7 @@
 // A weird interaction with other libraries
 // makes the compiler yell at us!
 #include <pqxx/pqxx>
+#include "./raft_kernels/epic_live_streamer.hpp"
 // clang-format on
 
 #include "raft_kernels/epic_executor.hpp"
