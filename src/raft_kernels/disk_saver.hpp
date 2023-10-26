@@ -37,21 +37,28 @@
 #include "../ex/metrics.hpp"
 #include "../ex/py_funcs.hpp"
 #include "../ex/types.hpp"
+#include "../ex/video_streaming.hpp"
+// #include "./epic_live_streamer.hpp"
 
 template <class Payload>
-class DiskSaverRft : public raft::kernel, protected PgDbConnectMixin {
+class DiskSaverRft : public raft::kernel,
+                     protected PgDbConnectMixin
+/* ,protected EpicLiveStream */ {
  private:
   std::string m_img_suffix;
   unsigned int m_rt_gauge_id{0};
   std::string m_db_insert_stmt;
   Timer m_timer;
+  Streamer* m_streamer;
+  uint64_t stream_counter{0};
 
   std::string m_file_stmt_id{"insert_file_meta"};
 
  public:
   explicit DiskSaverRft(std::string p_img_suffix = "0",
                         std::string p_db_conn_str = "dbname=epic")
-      : raft::kernel(), PgDbConnectMixin(p_db_conn_str) {
+      : raft::kernel(),
+        PgDbConnectMixin(p_db_conn_str) /* , EpicLiveStream() */ {
     input.addPort<Payload>("image");
     m_db_insert_stmt = GetFileMetaInsertStmt();
     LOG(INFO) << "Preparing stmt";
@@ -64,6 +71,8 @@ class DiskSaverRft : public raft::kernel, protected PgDbConnectMixin {
          {"units", "s"},
          {"kernel_id", std::to_string(this->get_id())}});
   }
+
+  void SetStreamer(Streamer* p_streamer) { m_streamer = p_streamer; }
 
   raft::kstatus run() override {
     m_timer.Tick();
@@ -104,6 +113,13 @@ class DiskSaverRft : public raft::kernel, protected PgDbConnectMixin {
     } catch (const std::exception& e) {
       LOG(FATAL) << e.what();
     }
+    VLOG(3)<<"Streaming image";
+    m_streamer->Stream(chan0, cfreq, pld.get_mbuf()->GetDataPtr());
+    // this->stream(chan0, cfreq, pld.get_mbuf()->GetDataPtr());
+    if ((++stream_counter) % 3 == 0) {
+      // this->stream(chan0, cfreq, pld.get_mbuf()->GetDataPtr());
+    }
+    // LOG(INFO)<<"streamed";
 
     m_timer.Tock();
     PrometheusExporter::ObserveRunTimeValue(m_rt_gauge_id, m_timer.Duration());

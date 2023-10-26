@@ -29,10 +29,12 @@
 #include "../ex/metrics.hpp"
 #include "../ex/station_desc.hpp"
 #include "./kernel_types.hpp"
+// #include "./epic_live_streamer.hpp"
 
 template <unsigned int _GpuId>
 class EPICKernels {
  private:
+  std::unique_ptr<Streamer> m_streamer;
   bool m_is_offline{false};
   static constexpr unsigned int m_nkernels{8};
   PktGen_kt m_pkt_gen;
@@ -87,7 +89,8 @@ class EPICKernels {
 
  public:
   EPICKernels(const KernelTypeDefs::opt_t& p_options, raft::map* p_map)
-      : m_dpkt_gen(get_dummy_pkt_gen_k<_GpuId>(p_options)),
+      : m_streamer(std::make_unique<Streamer>()),
+        m_dpkt_gen(get_dummy_pkt_gen_k<_GpuId>(p_options)),
         m_correlator(get_epiccorr_k<_GpuId>(p_options)),
         m_chan_reducer(get_chan_reducer_k<_GpuId>(p_options)),
         m_pixel_extractor(get_pixel_extractor_k<_GpuId>(p_options)),
@@ -97,10 +100,13 @@ class EPICKernels {
         m_disk_saver(get_disk_saver_k<_GpuId>(p_options)),
         m_map(p_map) {
     m_is_offline = p_options["offline"].as<bool>();
+    // auto streamer = std::make_unique<Streamer>();
     LOG(INFO) << "Before pkt_gen";
     if (!m_is_offline) {
       m_pkt_gen = std::move(get_pkt_gen_k<_GpuId>(p_options));
     }
+    m_disk_saver.SetStreamer(m_streamer.get());
+
     LOG_IF(INFO, m_is_offline) << "EPIC will run on offline data";
     LOG(INFO) << "Binding kernels to CPUs";
     BindKernels2Cpu(p_options);
@@ -154,7 +160,6 @@ void RunEpic(int argc, char** argv) {
   PrometheusExporter::GetInstance(
       options["metrics_bind_addr"].as<std::string>(),
       options["disable_metrics"].as<bool>());
-
   LOG(INFO) << "Looking for GPUs";
   int num_gpus =
       options["ngpus"].as<int>() > 0 ? options["ngpus"].as<int>() : 1;
