@@ -44,6 +44,7 @@
 #include "./index_fetcher.hpp"
 #include "./packet_gen.hpp"
 #include "./pixel_extractor.hpp"
+#include "../ex/video_streaming.hpp"
 
 enum EPICKernelID {
   _PKT_GEN = 0,
@@ -85,6 +86,7 @@ struct Kernel<_PKT_GEN> : KernelTypeDefs {
 
   template <unsigned int _GpuId>
   static ktype get_kernel(const opt_t& options) {
+    VLOG(2) << "Creating Pkt gen";
     auto ip = options["addr"].as<std::vector<std::string>>();
     auto port = options["port"].as<std::vector<int>>();
 
@@ -108,6 +110,7 @@ struct Kernel<_DUMMY_PACK_GEN> : KernelTypeDefs {
   using ktype = DummyPktGen<payload_u8_t, LFBufMngr<AlignedBuffer<uint8_t>>>;
   template <unsigned int _GpuId>
   static ktype get_kernel(const opt_t&) {
+    VLOG(2) << "Creating dummy Pkt gen";
     return ktype(2000);
   }
 };
@@ -120,16 +123,24 @@ struct Kernel<_CORRELATOR> : KernelTypeDefs {
   using ktype = CorrelatorRft<payload_u8_t, moffcorr_t>;
   template <unsigned int _GpuId>
   static ktype get_kernel(const opt_t& options) {
-    auto gpu_ids = options["gpu_ids"].as<std::vector<int>>();
+    VLOG(2) << "Creating Correlator";
+    std::vector<int> gpu_ids;
+    if (options.count("gpu_ids") > 0) {
+      VLOG(2)<<"inside";
+      gpu_ids = options["gpu_ids"].as<std::vector<int>>();
+    }
+    VLOG(2) << "here";
     auto correlator_options = MOFFCorrelatorDesc();
     correlator_options.device_id =
         gpu_ids.size() > 0 ? gpu_ids[_GpuId] : _GpuId;
     correlator_options.accum_time_ms = options["seq_accum"].as<int>();
     correlator_options.nseq_per_gulp = options["nts"].as<int>();
+    VLOG(2) << "here";
     correlator_options.nchan_out = options["channels"].as<int>();
     if (options["imagesize"].as<int>() == 64) {
       correlator_options.img_size = HALF;  // defaults to full
     }
+    VLOG(2) << "here";
     correlator_options.grid_res_deg = options["imageres"].as<float>();
     correlator_options.support_size = options["support"].as<int>();
     correlator_options.gcf_kernel_dim =
@@ -139,6 +150,7 @@ struct Kernel<_CORRELATOR> : KernelTypeDefs {
         options["kernel_oversample"].as<int>();
     correlator_options.use_bf16_accum = options["accum_16bit"].as<bool>();
     correlator_options.nstreams = options["nstreams"].as<int>();
+    VLOG(2) << "Extracted options";
 
     auto corr_ptr = std::make_unique<MOFFCorrelator_t>(correlator_options);
     return ktype(&corr_ptr);
@@ -153,6 +165,7 @@ struct Kernel<_CHAN_REDUCER> : KernelTypeDefs {
   using ktype = ChanReducerRft<payload_float_t, lbuf_mngr_float_t>;
   template <unsigned int _GpuId>
   static ktype get_kernel(const opt_t& options) {
+    VLOG(2) << "Creating chan reducer";
     int imsize = options["imagesize"].as<int>();
     int im_nchan = options["channels"].as<int>();
     int chan_nbin = options["chan_nbin"].as<int>();
@@ -169,6 +182,7 @@ struct Kernel<_PIX_EXTRACTOR> : KernelTypeDefs {
                                pixel_buf_config_t>;
   template <unsigned int _GpuId>
   static ktype get_kernel(const opt_t& options) {
+    VLOG(2) << "Creating Pixel extractor";
     KernelTypeDefs::pixel_buf_config_t config;
     int imsize = options["imagesize"].as<int>();
     int im_nchan = options["channels"].as<int>();
@@ -203,6 +217,7 @@ struct Kernel<_IDX_FETCHER> : KernelTypeDefs {
   using ktype = IndexFetcherRft;
   template <unsigned int _GpuId>
   static ktype get_kernel(const opt_t& options) {
+    VLOG(2) << "Creating Index fetcher";
     int grid_size = options["imagesize"].as<int>();
     float grid_res = options["imageres"].as<float>();
     float elev_limit_deg = options["elev_limit_deg"].as<float>();
@@ -219,6 +234,7 @@ struct Kernel<_DB_INGESTER> : KernelTypeDefs {
   using ktype = DBIngesterRft<pixel_pld_t>;
   template <unsigned int _GpuId>
   static ktype get_kernel(const opt_t&) {
+    VLOG(2) << "Creating DB ingester";
     return ktype();
   }
 };
@@ -231,6 +247,7 @@ struct Kernel<_ACCUMULATOR> : KernelTypeDefs {
   using ktype = AccumulatorRft<payload_float_t>;
   template <unsigned int _GpuId>
   static ktype get_kernel(const opt_t& options) {
+    VLOG(2) << "Creating accumulator";
     int imsize = options["imagesize"].as<int>();
     int im_nchan = options["channels"].as<int>();
     int chan_nbin = options["chan_nbin"].as<int>();
@@ -249,6 +266,7 @@ struct Kernel<_DISK_SAVER> : KernelTypeDefs {
   using ktype = DiskSaverRft<payload_float_t>;
   template <unsigned int _GpuId>
   static ktype get_kernel(const opt_t&) {
+    VLOG(2) << "Creating disk saver";
     return ktype(std::to_string(_GpuId));
   }
 };
