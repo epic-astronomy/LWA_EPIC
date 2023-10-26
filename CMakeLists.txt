@@ -90,6 +90,9 @@ add_library(epiclib STATIC
    src/sockets.cpp
 )
 
+#install libavcodec-dev libswscale-dev
+set(AV_LIBS -lavcodec -lavformat -lavutil -lswscale )
+
 # cmake_print_variables(outVar)
 #set(CUDA_NVCC_EXECUTABLE "/home/batman/miniconda3/envs/epic310/bin/nvcc")
 #set(CMAKE_CUDA_COMPILER "/home/batman/miniconda3/envs/epic310/bin/nvcc")
@@ -116,7 +119,7 @@ set_target_properties( epic++
 add_dependencies(epic++ raft hwy epiclib)
 add_compile_definitions(EPIC_VERSION="${CMAKE_PROJECT_VERSION}")
 target_link_libraries(epic++ PRIVATE pybind11::embed raft hwy epiclib epic_cu cudart
-glog::glog nvidia-ml pqxx pq ibverbs prometheus-cpp::pull cmake_git_version_tracking
+glog::glog nvidia-ml pqxx pq ibverbs prometheus-cpp::pull cmake_git_version_tracking ${AV_LIBS}
 )
 
 # file(GLOB PY_FILES "src/python/*.py")
