@@ -47,7 +47,6 @@ extern "C" {
 #include <thread>
 
 #include "glog/logging.h"
-#include "cxxopts"
 
 class Streamer {
   using Status_t = std::optional<std::string>;
