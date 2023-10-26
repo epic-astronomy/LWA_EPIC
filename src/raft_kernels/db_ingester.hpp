@@ -126,7 +126,7 @@ class DBIngesterRft : public raft::kernel {
     m_timer.Tick();
     _PldIn pld;
     input["in_pixel_rows"].pop(pld);
-    if (pld.get_mbuf()->nsrcs == 0) {
+    if (pld.get_mbuf()->nsrcs == 0 || pld.get_mbuf()->meta_version == -1) {
       m_timer.Tock();
       return raft::proceed;
     }
@@ -143,6 +143,5 @@ class DBIngesterRft : public raft::kernel {
     return raft::proceed;
   }
 };
-
 
 #endif  // SRC_RAFT_KERNELS_DB_INGESTER_HPP_
