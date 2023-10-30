@@ -21,7 +21,8 @@ from scipy.fftpack import fft
 
 from astropy.io import fits
 from astropy.time import Time, TimeDelta
-from astropy.coordinates import SkyCoord, FK5
+from astropy import units as u
+from astropy.coordinates import SkyCoord, FK5, EarthLocation, AltAz
 from astropy.constants import c as speed_of_light
 
 import datetime
@@ -37,7 +38,7 @@ import bifrost
 import bifrost.affinity
 from bifrost.address import Address as BF_Address
 from bifrost.udp_socket import UDPSocket as BF_UDPSocket
-from bifrost.packet_capture import PacketCaptureCallback, UDPCapture
+from bifrost.packet_capture import PacketCaptureCallback, UDPVerbsCapture as UDPCapture
 from bifrost.ring import Ring
 from bifrost.unpack import unpack as Unpack
 from bifrost.quantize import quantize as Quantize
@@ -45,6 +46,7 @@ from bifrost.proclog import ProcLog
 from bifrost.libbifrost import bf
 from bifrost.fft import Fft
 from bifrost.linalg import LinAlg
+from bifrost.romein import Romein
 
 from bifrost.ndarray import memset_array, copy_array
 from bifrost.device import set_device as BFSetGPU, get_device as BFGetGPU, set_devices_no_spin_cpu as BFNoSpinZone
@@ -236,9 +238,9 @@ def GenerateLocations(
     lsl_locs = lsl_locs.T
 
     lsl_locsf = lsl_locs[:, np.newaxis, np.newaxis, :] / sample_grid[np.newaxis, np.newaxis, :, np.newaxis]
-    lsl_locsf -= np.min(lsl_locsf, axis=3, keepdims=True)
-
+    
     # Centre locations slightly
+    lsl_locsf -= np.min(lsl_locsf, axis=3, keepdims=True)
     lsl_locsf += (grid_size - np.max(lsl_locsf, axis=3, keepdims=True)) / 2.
 
     # add ntime axis
@@ -427,7 +429,7 @@ class FDomainOp(object):
 
                 igulp_size = self.ntime_gulp * 1 * nstand * npol * 8  # complex64
                 ishape = (self.ntime_gulp // nchan, nchan, nstand, npol)
-                ogulp_size = self.ntime_gulp * 1 * nstand * npol * 1  # ci4
+                ogulp_size = self.ntime_gulp * 1 * nstand * npol * 2  # ci8
                 oshape = (self.ntime_gulp // nchan, nchan, nstand, npol)
                 # self.iring.resize(igulp_size)
                 self.oring.resize(ogulp_size, buffer_factor=5)
@@ -462,7 +464,7 @@ class FDomainOp(object):
                                 # Setup and load
                                 idata = ispan.data_view(np.complex64).reshape(ishape)
 
-                                odata = ospan.data_view(np.int8).reshape(oshape)
+                                odata = ospan.data_view('ci8').reshape(oshape)
 
                                 # FFT, shift, and phase
                                 fdata = fft(idata, axis=1)
@@ -473,11 +475,11 @@ class FDomainOp(object):
                                 try:
                                     Quantize(fdata, qdata, scale=1. / np.sqrt(nchan))
                                 except NameError:
-                                    qdata = bifrost.ndarray(shape=fdata.shape, native=False, dtype="ci4")
+                                    qdata = bifrost.ndarray(shape=fdata.shape, dtype="ci8")
                                     Quantize(fdata, qdata, scale=1. / np.sqrt(nchan))
 
                                 # Save
-                                odata[...] = qdata.copy(space="cuda_host").view(np.int8).reshape(oshape)
+                                odata[...] = qdata.copy(space="cuda_host").reshape(oshape)
 
                                 if self.profile:
                                     spani += 1
@@ -536,7 +538,7 @@ class TBFOfflineCaptureOp(object):
 
         # Setup the ring metadata and gulp sizes
         ntime = data.shape[2]
-        nstand, npol = data.shape[0] / 2, 2
+        nstand, npol = data.shape[0] // 2, 2
         oshape = (ntime, nchan, nstand, npol)
         ogulp_size = ntime * nchan * nstand * npol * 1  # ci4
         self.oring.resize(ogulp_size)
@@ -550,7 +552,7 @@ class TBFOfflineCaptureOp(object):
         ohdr["chan0"] = chan0
         ohdr["nchan"] = nchan
         ohdr["cfreq"] = (chan0 + 0.5 * (nchan - 1)) * srate
-        ohdr["bw"] = srate * nchan
+        ohdr["bw"] = nchan * srate
         ohdr["nstand"] = nstand
         ohdr["npol"] = npol
         ohdr["nbit"] = 4
@@ -595,7 +597,7 @@ class TBFOfflineCaptureOp(object):
 
                         # Quantization
                         try:
-                            Quantize(idata, qdata, scale=1. / np.sqrt(nchan))
+                            Quantize(idata, qdata, scale=1. / np.sqrt(nchan)) # TODO: check sqrt against main? I dont have this
                         except NameError:
                             qdata = bifrost.ndarray(shape=idata.shape, native=False, dtype="ci4")
                             Quantize(idata, qdata, scale=1.0)
@@ -701,6 +703,7 @@ class DecimationOp(object):
         npol_out=2,
         guarantee=True,
         core=-1,
+        gpu=-1,
     ):
         self.log = log
         self.iring = iring
@@ -710,6 +713,7 @@ class DecimationOp(object):
         self.npol_out = npol_out
         self.guarantee = guarantee
         self.core = core
+        self.gpu = gpu
 
         self.bind_proclog = ProcLog(type(self).__name__ + "/bind")
         self.in_proclog = ProcLog(type(self).__name__ + "/in")
@@ -725,8 +729,15 @@ class DecimationOp(object):
     def main(self):
         if self.core != -1:
             bifrost.affinity.set_core(self.core)
+        if self.gpu != -1:
+            BFSetGPU(self.gpu)
         self.bind_proclog.update(
-            {"ncore": 1, "core0": bifrost.affinity.get_core()}
+            {
+                "ncore": 1,
+                "core0": bifrost.affinity.get_core(),
+                "ngpu": 1,
+                "gpu0": BFGetGPU(),
+            }
         )
 
         with self.oring.begin_writing() as oring:
@@ -744,16 +755,30 @@ class DecimationOp(object):
 
                 igulp_size = self.ntime_gulp * nchan * nstand * npol * 1  # ci4
                 ishape = (self.ntime_gulp, nchan, nstand, npol)
-                ogulp_size = self.ntime_gulp * self.nchan_out * nstand * self.npol_out * 1  # ci4
+                ogulp_size = self.ntime_gulp * self.nchan_out * nstand * self.npol_out * 2  # ci8
                 oshape = (self.ntime_gulp, self.nchan_out, nstand, self.npol_out)
-                self.iring.resize(igulp_size, buffer_factor= 8)
-                self.oring.resize(ogulp_size, buffer_factor= 128)  # , obuf_size)
+                self.iring.resize(igulp_size, buffer_factor= 5)
+                self.oring.resize(ogulp_size, buffer_factor= 10)  # , obuf_size)
 
+                do_truncate = True
+                act_chan_bw = CHAN_BW
+                if nchan % self.nchan_out == 0:
+                    do_truncate = False
+                    navg = nchan // self.nchan_out
+                    act_chan_bw = CHAN_BW * navg
+                    chan0 = chan0 + 0.5 * (nchan // self.nchan_out - 1)
+                    self.log.info("Decimation: Running in averaging mode")
+                else:
+                    navg = 1
+                    self.log.info("Decimation: Running in truncation mode")
+                self.log.info("Decimation: Channel bandwidth is %.3f kHz", act_chan_bw/1e3)
+                
                 ohdr = ihdr.copy()
+                ohdr["chan0"] = chan0
                 ohdr["nchan"] = self.nchan_out
                 ohdr["npol"] = self.npol_out
-                ohdr["cfreq"] = (chan0 + 0.5 * (self.nchan_out - 1)) * CHAN_BW
-                ohdr["bw"] = self.nchan_out * CHAN_BW
+                ohdr["cfreq"] = chan0 * CHAN_BW + 0.5 * (self.nchan_out - 1) * act_chan_bw
+                ohdr["bw"] = self.nchan_out * act_chan_bw
                 ohdr_str = json.dumps(ohdr)
 
                 prev_time = time.time()
@@ -770,14 +795,45 @@ class DecimationOp(object):
                             reserve_time = curr_time - prev_time
                             prev_time = curr_time
 
-                            idata = ispan.data_view(np.uint8).reshape(ishape)
-                            odata = ospan.data_view(np.uint8).reshape(oshape)
+                            idata = ispan.data_view('ci4').reshape(ishape)
+                            odata = ospan.data_view('ci8').reshape(oshape)
 
-                            sdata = idata[:, :self.nchan_out, :, :]
-                            if self.npol_out != npol:
-                                sdata = sdata[:, :, :, :self.npol_out]
-                            odata[...] = sdata
+                            try:
+                                copy_array(gdata, idata)
+                            except NameError:
+                                gdata = idata.copy(space='cuda')
+                                adata = bifrost.zeros(
+                                    shape=(self.ntime_gulp, self.nchan_out, nstand, self.npol_out),
+                                    dtype='ci8',
+                                    space='cuda'
+                                )
 
+                            bifrost.map("""
+                                        int jF;
+                                        signed char sample, re, im;
+                                        
+                                        #pragma unroll
+                                        for(int l=0; l<{npol_out}; l++) {{
+                                            re = im = 0;
+                                            
+                                            #pragma unroll
+                                            for(int m=0; m<{navg}; m++) {{
+                                                jF = j*{navg} + m;
+                                                sample = b(i,jF,k,l).real_imag;
+                                                re += ((signed char)  (sample & 0xF0))       / 16;
+                                                im += ((signed char) ((sample & 0x0F) << 4)) / 16;
+                                            }}
+                                            
+                                            // Save
+                                            a(i,j,k,l) = Complex<signed char>(re, im);
+                                        }}
+                                        """.format(npol_out=self.npol_out, navg=navg),
+                                        {'a': adata, 'b': gdata},
+                                        axis_names=('i', 'j', 'k'),
+                                        shape=adata.shape[:3])
+                            
+                            copy_array(odata, adata)
+                            
                             curr_time = time.time()
                             process_time = curr_time - prev_time
                             prev_time = curr_time
@@ -788,6 +844,12 @@ class DecimationOp(object):
                                     "process_time": process_time,
                                 }
                             )
+
+                try:
+                    del gdata
+                    del adata
+                except NameError:
+                    pass
 
 
 
@@ -828,7 +890,11 @@ class MOFFCorrelatorOp(object):
         elif self.station == lwa1:
             locations[[i for i, a in enumerate(self.station.antennas[::2]) if a.stand.id in (35, 257, 258, 259, 260)], :] = 0.0
         self.locations = locations
-
+        
+        self.cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cache')
+        if not os.path.exists(self.cache_dir):
+            os.mkdir(self.cache_dir)
+            
         self.grid_size = grid_size
         self.grid_resolution = grid_resolution
 
@@ -880,24 +946,37 @@ class MOFFCorrelatorOp(object):
                 self.log.info("MOFFCorrelatorOp: Config - %s" % ihdr)
                 chan0 = ihdr["chan0"]
                 nchan = ihdr["nchan"]
+                bw = ihdr["bw"]
+                act_chan_bw = bw / nchan
                 nstand = ihdr["nstand"]
                 npol = ihdr["npol"]
                 self.newflag = True
                 accum = 0
 
-                igulp_size = self.ntime_gulp * nchan * nstand * npol * 1  # ci4
+                igulp_size = self.ntime_gulp * nchan * nstand * npol * 2  # ci8
                 itshape = (self.ntime_gulp, nchan, nstand, npol)
 
-                freq = (chan0 + np.arange(nchan)) * CHAN_BW
-                sampling_length, locs, sll = GenerateLocations(
-                    self.locations,
-                    freq,
-                    self.ntime_gulp,
-                    nchan,
-                    npol,
-                    grid_size=self.grid_size,
-                    grid_resolution=self.grid_resolution,
-                )
+                freq = chan0 * CHAN_BW + np.arange(nchan) * act_chan_bw
+                locname = "locations_%s_%i_%i_%i_%i_%i_%i_%i_%.6f.npz" % (self.station.name, chan0, self.ntime_gulp, nchan, nstand, npol, self.ant_extent, self.grid_size, self.grid_resolution)
+                locname = os.path.join(self.cache_dir, locname)
+                try:
+                    loc_data = np.load(locname)
+                    sampling_length = loc_data['sampling_length'].item()
+                    locs = loc_data['locs'][...]
+                    sll = loc_data['sll'].item()
+                    locs = np.around(locs)
+                except OSError:
+                    sampling_length, locs, sll = GenerateLocations(
+                        self.locations,
+                        freq,
+                        self.ntime_gulp,
+                        nchan,
+                        npol,
+                        grid_size=self.grid_size,
+                        grid_resolution=self.grid_resolution,
+                    )
+                    np.savez(locname, sampling_length=sampling_length, locs=locs, sll=sll)
+                    locs=np.around(locs)
                 try:
                     copy_array(self.locs, bifrost.ndarray(locs.astype(np.int32)))
                 except AttributeError:
@@ -938,52 +1017,81 @@ class MOFFCorrelatorOp(object):
                     raise ValueError(
                         "Cannot write fits file without knowing polarization list"
                     )
-                ohdr_str = json.dumps(ohdr)
+
 
                 # Setup the kernels to include phasing terms for zenith
                 # Phases are Ntime x Nchan x Nstand x Npol x extent x extent
-                freq.shape += (1, 1)
-                phases = np.zeros(
-                    (self.ntime_gulp, nchan, nstand, npol, self.ant_extent, self.ant_extent),
+                phasename = "phases_%s_%i_%i_%i_%i_%i_%i.npy" % (self.station.name, chan0, self.ntime_gulp, nchan, nstand, npol, self.ant_extent)
+                phasename = os.path.join(self.cache_dir, phasename)
+
+                # Zenith for LWA-SV
+                pce = np.deg2rad(88.0666283)
+                pca = np.deg2rad(90.9743763)
+
+                # Create Phase Center Vector
+                phase_center_sv = np.array([np.cos(pce)*np.sin(pca), np.cos(pce)*np.cos(pca), np.sin(pce)])
+                
+                ohdr["pc_elevation"] = pce
+                ohdr["pc_azimuth"] = pca
+                ohdr_str = json.dumps(ohdr) 
+                
+                try:
+                    phases = np.load(phasename)
+                except OSError:
+                    freq.shape += (1, 1)
+                    phases = np.zeros(
+                        (self.ntime_gulp, nchan, nstand, npol, self.ant_extent, self.ant_extent),
+                        dtype=np.complex64
+                    )
+                    for i in range(nstand):
+                        # X
+                        a = self.station.antennas[2 * i + 0]
+                        delay = a.cable.delay(freq) - np.dot(phase_center_sv,[a.stand.x,a.stand.y, a.stand.z]) / speed_of_light.value
+                        phases[:, :, i, 0, :, :] = np.exp(2j * np.pi * freq * delay)
+                        phases[:, :, i, 0, :, :] /= np.sqrt(a.cable.gain(freq))
+                        if npol == 2:
+                            # Y
+                            a = self.station.antennas[2 * i + 1]
+                            delay = a.cable.delay(freq) - np.dot(phase_center_sv,[a.stand.x,a.stand.y, a.stand.z]) / speed_of_light.value
+                            phases[:, :, i, 1, :, :] = np.exp(2j * np.pi * freq * delay)
+                            phases[:, :, i, 1, :, :] /= np.sqrt(a.cable.gain(freq))
+                        # Explicit bad and suspect antenna masking - this will
+                        # mask an entire stand if either pol is bad
+                        if (
+                            self.station.antennas[2 * i + 0].combined_status < 33
+                            or self.station.antennas[2 * i + 1].combined_status < 33
+                        ):
+                            phases[:, :, i, :, :, :] = 0.0
+                        # Explicit outrigger masking - we probably want to do
+                        # away with this at some point
+                        if (
+                            (self.station == lwasv and a.stand.id == 256)
+                            or (self.station == lwa1 and a.stand.id in (35, 257, 258, 259, 260))
+                        ):
+                            phases[:, :, i, :, :, :] = 0.0
+                    phases = phases.conj()
+                    np.save(phasename, phases)
+                acphases = np.zeros(
+                    (1, nchan, nstand, npol**2, self.ant_extent, self.ant_extent),
                     dtype=np.complex64
                 )
-                for i in range(nstand):
-                    # X
-                    a = self.station.antennas[2 * i + 0]
-                    delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
-                    phases[:, :, i, 0, :, :] = np.exp(2j * np.pi * freq * delay)
-                    phases[:, :, i, 0, :, :] /= np.sqrt(a.cable.gain(freq))
-                    if npol == 2:
-                        # Y
-                        a = self.station.antennas[2 * i + 1]
-                        delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
-                        phases[:, :, i, 1, :, :] = np.exp(2j * np.pi * freq * delay)
-                        phases[:, :, i, 1, :, :] /= np.sqrt(a.cable.gain(freq))
-                    # Explicit bad and suspect antenna masking - this will
-                    # mask an entire stand if either pol is bad
-                    if (
-                        self.station.antennas[2 * i + 0].combined_status < 33
-                        or self.station.antennas[2 * i + 1].combined_status < 33
-                    ):
-                        phases[:, :, i, :, :, :] = 0.0
-                    # Explicit outrigger masking - we probably want to do
-                    # away with this at some point
-                    if (
-                        (self.station == lwasv and a.stand.id == 256)
-                        or (self.station == lwa1 and a.stand.id in (35, 257, 258, 259, 260))
-                    ):
-                        phases[:, :, i, :, :, :] = 0.0
-                phases = phases.conj()
+                for i in range(npol**2):
+                    acphases[:,:,:,i,:,:] = np.abs(phases[0,:,:,i//2,:,:]*phases[0,:,:,i%2,:,:].conj())
+                acphases = acphases.astype(np.complex64)
                 phases = bifrost.ndarray(phases)
+                acphases = bifrost.ndarray(acphases)
+                
                 try:
                     copy_array(gphases, phases)
+                    copy_array(gacphases, acphases)
                 except NameError:
                     gphases = phases.copy(space="cuda")
+                    gacphases = acphases.copy(space="cuda")
 
                 oshape = (1, nchan, npol ** 2, self.grid_size, self.grid_size)
                 ogulp_size = nchan * npol ** 2 * self.grid_size * self.grid_size * 8
-                self.iring.resize(igulp_size, buffer_factor=128)
-                self.oring.resize(ogulp_size, buffer_factor=256)
+                self.iring.resize(igulp_size, buffer_factor=10)
+                self.oring.resize(ogulp_size, buffer_factor=10)
                 prev_time = time.time()
                 with oring.begin_sequence(time_tag=iseq.time_tag, header=ohdr_str) as oseq:
                     iseq_spans = iseq.read(igulp_size)
@@ -1005,19 +1113,13 @@ class MOFFCorrelatorOp(object):
 
                             # Correlator
                             # Setup and load
-                            idata = ispan.data_view(np.uint8).reshape(itshape)
-                            # Fix the type
-                            udata = bifrost.ndarray(
-                                shape=itshape,
-                                dtype="ci4",
-                                native=False,
-                                buffer=idata.ctypes.data,
-                            )
+                            idata = ispan.data_view('ci8').reshape(itshape)
 
                             if self.benchmark is True:
                                 time1 = time.time()
 
-                            udata = udata.copy(space="cuda")
+                            udata = idata.copy(space="cuda")
+                            
                             if self.benchmark is True:
                                 time1a = time.time()
                                 print("  Input copy time: %f" % (time1a - time1))
@@ -1040,20 +1142,16 @@ class MOFFCorrelatorOp(object):
                             if self.benchmark is True:
                                 timeg1 = time.time()
                             try:
+                                
                                 bf_vgrid.execute(udata, gdata)
                             except NameError:
+                                
                                 bf_vgrid = VGrid()
                                 bf_vgrid.init(self.locs, gphases, self.grid_size, polmajor=False)
                                 bf_vgrid.execute(udata, gdata)
-
-                            #try:
-                            #    bf_romein.execute(udata, gdata)
-                            #except NameError:
-                            #    bf_romein = Romein()
-                            #    bf_romein.init(self.locs, gphases, self.grid_size, polmajor=False)
-                            #    bf_romein.execute(udata, gdata)
-                            gdata = gdata.reshape(self.ntime_gulp * nchan * npol, self.grid_size, self.grid_size)
-                            # gdata = self.LinAlgObj.matmul(1.0, udata, bfantgridmap, 0.0, gdata)
+                            gdata = gdata.reshape(
+                                self.ntime_gulp * nchan * npol, self.grid_size, self.grid_size
+                            )
                             if self.benchmark is True:
                                 timeg2 = time.time()
                                 print("  Grid time: %f" % (timeg2 - timeg1))
@@ -1077,7 +1175,6 @@ class MOFFCorrelatorOp(object):
                                 timefft2 = time.time()
                                 print("  FFT time: %f" % (timefft2 - timefft1))
 
-                            # print("Accum: %d"%accum,end='\n')
                             if self.newflag is True:
                                 try:
                                     crosspol = crosspol.reshape(
@@ -1133,24 +1230,10 @@ class MOFFCorrelatorOp(object):
                                         np.ones(
                                             shape=(3, 1, nchan, nstand, npol ** 2),
                                             dtype=np.int32
-                                        ) * self.grid_size / 2,
-                                        space="cuda",
-                                    )
-                                    autocorr_il = bifrost.ndarray(
-                                        np.ones(
-                                            shape=(1, nchan, nstand, npol ** 2, self.ant_extent, self.ant_extent),
-                                            dtype=np.complex64
-                                        ),
+                                        ) * self.grid_size // 2,
                                         space="cuda",
                                     )
 
-                                # Cross multiply to calculate autocorrs
-                                #bifrost.map(
-                                #    "a(i,j,k,l) += (b(i,j,k,l/2) * b(i,j,k,l%2).conj())",
-                                #    {"a": autocorrs, "b": udata, "t": self.ntime_gulp},
-                                #    axis_names=("i", "j", "k", "l"),
-                                #    shape=(self.ntime_gulp, nchan, nstand, npol ** 2),
-                                #)
                                 try:
                                      bf_auto.execute(udata, autocorrs)
                                 except NameError:
@@ -1158,19 +1241,14 @@ class MOFFCorrelatorOp(object):
                                      bf_auto.init(self.locs, polmajor=False)
                                      bf_auto.execute(udata, autocorrs)
                                 autocorrs = autocorrs.reshape(
-                                self.ntime_gulp, nchan, nstand, npol ** 2
+                                    self.ntime_gulp, nchan, nstand, npol ** 2
                                 )
 
-
-                            #bifrost.map(
-                            #    "a(i,j,p,k,l) += b(0,i,j,p/2,k,l)*b(0,i,j,p%2,k,l).conj()",
-                            #    {"a": crosspol, "b": gdata},
-                            #    axis_names=("i", "j", "p", "k", "l"),
-                            #    shape=(self.ntime_gulp, nchan, npol ** 2, self.grid_size, self.grid_size),
-                            #)
                             try:
+                                
                                 bf_gmul.execute(gdata, crosspol)
                             except NameError:
+                                
                                 bf_gmul = XGrid()
                                 bf_gmul.init(self.grid_size, polmajor=False)
                                 bf_gmul.execute(gdata, crosspol)
@@ -1194,24 +1272,16 @@ class MOFFCorrelatorOp(object):
                                     autocorr_g = autocorr_g.reshape(
                                         1, nchan, npol ** 2, self.grid_size, self.grid_size
                                     )
-                                    #try:
-                                    #    bf_romein_autocorr.execute(autocorrs_av, autocorr_g)
-                                    #except NameError:
-                                    #    bf_romein_autocorr = Romein()
-                                    #    bf_romein_autocorr.init(
-                                    #        autocorr_lo, autocorr_il, self.grid_size, polmajor=False
-                                    #    )
-                                    #    bf_romein_autocorr.execute(autocorrs_av, autocorr_g)
                                     try:
                                         bf_vgrid_autocorr.execute(autocorrs_av, autocorr_g)
                                     except NameError:
                                         bf_vgrid_autocorr = VGrid()
                                         bf_vgrid_autocorr.init(
-                                            autocorr_lo, autocorr_il, self.grid_size, polmajor=False
+                                            autocorr_lo, gacphases, self.grid_size, polmajor=False
                                         )
                                         bf_vgrid_autocorr.execute(autocorrs_av, autocorr_g)
                                     autocorr_g = autocorr_g.reshape(1 * nchan * npol ** 2, self.grid_size, self.grid_size)
-                                    # autocorr_g = romein_float(autocorrs_av,autocorr_g,autocorr_il,autocorr_lx,autocorr_ly,autocorr_lz,self.ant_extent,self.grid_size,nstand,nchan*npol**2)
+                                    
                                     # Inverse FFT
                                     try:
                                         ac_fft.execute(autocorr_g, autocorr_g, inverse=True)
@@ -1383,14 +1453,16 @@ class MOFF_DFT_CorrelatorOp(object):
                 nchan = ihdr["nchan"]
                 nstand = ihdr["nstand"]
                 npol = ihdr["npol"]
+                bw = ihdr["bw"]
+                act_chan_bw = bw / nchan
                 self.newflag = True
                 accum = 0
 
-                igulp_size = self.ntime_gulp * nchan * nstand * npol * 1  # ci4
+                igulp_size = self.ntime_gulp * nchan * nstand * npol * 2  # ci8
                 itshape = (self.ntime_gulp, nchan, nstand, npol)
 
                 # Sample locations at right u/v/w values
-                freq = (chan0 + np.arange(nchan)) * CHAN_BW
+                freq = chan0 * CHAN_BW + np.arange(nchan) * act_chan_bw
                 locs = Generate_DFT_Locations(
                     self.locations, freq, self.ntime_gulp, nchan, npol
                 )
@@ -1434,7 +1506,6 @@ class MOFF_DFT_CorrelatorOp(object):
                 # Setup the kernels to include phasing terms for zenith
                 # Phases are Nchan x Nstand x Npol
                 # freq.shape += (1,)
-
                 phases = np.zeros((nchan, nstand, npol), dtype=np.complex64)
                 for i in range(nstand):
                     # X
@@ -1508,16 +1579,14 @@ class MOFF_DFT_CorrelatorOp(object):
 
                             # Correlator
                             # Setup and load
-                            idata = ispan.data_view(np.uint8).reshape(itshape)
-                            # Fix the type
-                            tdata = bifrost.ndarray(shape=itshape, dtype="ci4", native=False, buffer=idata.ctypes.data)
-
+                            idata = ispan.data_view('ci8').reshape(itshape)
+                            
                             if self.benchmark is True:
                                 time1 = time.time()
                             # chan pol stand
-                            tdata = tdata.transpose((1, 3, 2, 0))
-                            tdata = tdata.reshape(nchan * npol, nstand, self.ntime_gulp)
-                            tdata = tdata.copy()
+                            idata = idata.transpose((1, 3, 2, 0))
+                            idata = idata.reshape(nchan * npol, nstand, self.ntime_gulp)
+                            tdata = idata.copy()
 
                             tdata = tdata.copy(space="cuda")
                             # Unpack
@@ -1904,8 +1973,10 @@ class SaveOp(object):
             crit_pix_x = float(ihdr["grid_size_x"] / 2 + 1)
             # Need to correct for shift in center pixel when we flipped dec dimension
             # when writing npz, Only applies for even dimension size
-            crit_pix_y = float(ihdr["grid_size_y"] / 2 + 1) - (ihdr["grid_size_x"] + 1) % 2
-
+            crit_pix_y = float(ihdr["grid_size_y"] / 2 + 1) # - (ihdr["grid_size_x"] + 1) % 2
+            
+            
+            
             delta_x = -dtheta_x * 180.0 / np.pi
             delta_y = dtheta_y * 180.0 / np.pi
             delta_f = ihdr["bw"] / ihdr["nchan"]
@@ -1928,7 +1999,10 @@ class SaveOp(object):
 
                 if nints >= self.ints_per_file:
                     image = np.fft.fftshift(image, axes=(3, 4))
-                    image = image[:, :, :, ::-1, :]
+                    # image = image[:, :, :, ::-1, :] 
+                    # TODO: contentious debate about whether the above line is correct OR the complete picture. 
+                    #       maybe we need to flip x coords.
+                    #       maybe we need to offset ourselves by a pixel?
 
                     # Restructure data in preparation to stuff into fits
                     # Now (Ntimes, Npol, Nfreq, y, x)
@@ -1955,12 +2029,13 @@ class SaveOp(object):
                     )
 
                     time_array = t0 + np.arange(nints) * dt
-
                     lsts = time_array.sidereal_time("apparent")
-                    coords = SkyCoord(
-                        lsts.deg, ihdr["latitude"], obstime=time_array, unit="deg"
-                    ).transform_to(FK5(equinox="J2000"))
 
+                    # Set Observer
+                    observinglocation = EarthLocation(lat = ihdr["latitude"]*u.deg , lon =ihdr["longitude"]*u.deg , height=1500*u.m)
+                    aa = AltAz(location=observinglocation, obstime = time_array, az = ihdr["pc_azimuth"]*u.rad , alt = ihdr["pc_elevation"]*u.rad)
+                    coords = SkyCoord(aa).transform_to(FK5(equinox="J2000"))
+                    
                     hdul = []
                     for im_num, d in enumerate(image):
                         hdu = fits.ImageHDU(data=d)
@@ -2117,6 +2192,8 @@ def gen_args(return_parser=False):
     group2.add_argument("--tbffile", type=str, help="TBF Data Path")
 
     group3 = parser.add_argument_group("Processing Options")
+    group3.add_argument("--cores", type=str, default="2,3,4,5,6,7", help="Comma separated list of CPU cores to bind to")
+    group3.add_argument("--gpu", type=int, default=0, help="GPU to bind to")
     group3.add_argument("--imagesize", type=int, default=64, help="1-D Image Size")
     group3.add_argument(
         "--imageres", type=float, default=1.79057, help="Image pixel size in degrees"
@@ -2231,8 +2308,8 @@ def main(args, parser):
     log.setLevel(logging.DEBUG)
 
     # Setup the cores and GPUs to use
-    cores = [3, 4, 5, 6, 7]
-    gpus = [0, 0, 0, 0, 0]
+    cores = [int(v) for v in args.cores.split(',')]
+    gpus = [args.gpu,]*len(cores)
 
     # Setup the signal handling
     ops = []
@@ -2324,6 +2401,7 @@ def main(args, parser):
                     nchan_out=args.channels,
                     npol_out=1 if args.singlepol else 2,
                     core=cores.pop(0),
+                    gpu=gpus.pop(0),
                 )
             )
         else:
@@ -2367,6 +2445,7 @@ def main(args, parser):
                 nchan_out=args.channels,
                 npol_out=1 if args.singlepol else 2,
                 core=cores.pop(0),
+                gpu=gpus.pop(0),
             )
         )
 
