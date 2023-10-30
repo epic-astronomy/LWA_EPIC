@@ -21,7 +21,8 @@ from scipy.fftpack import fft
 
 from astropy.io import fits
 from astropy.time import Time, TimeDelta
-from astropy.coordinates import SkyCoord, FK5
+from astropy import units as u
+from astropy.coordinates import SkyCoord, FK5, EarthLocation, AltAz
 from astropy.constants import c as speed_of_light
 
 import datetime
@@ -37,7 +38,7 @@ import bifrost
 import bifrost.affinity
 from bifrost.address import Address as BF_Address
 from bifrost.udp_socket import UDPSocket as BF_UDPSocket
-from bifrost.packet_capture import PacketCaptureCallback, UDPCapture
+from bifrost.packet_capture import PacketCaptureCallback, UDPVerbsCapture as UDPCapture
 from bifrost.ring import Ring
 from bifrost.unpack import unpack as Unpack
 from bifrost.quantize import quantize as Quantize
@@ -237,9 +238,9 @@ def GenerateLocations(
     lsl_locs = lsl_locs.T
 
     lsl_locsf = lsl_locs[:, np.newaxis, np.newaxis, :] / sample_grid[np.newaxis, np.newaxis, :, np.newaxis]
-    lsl_locsf -= np.min(lsl_locsf, axis=3, keepdims=True)
-
+    
     # Centre locations slightly
+    lsl_locsf -= np.min(lsl_locsf, axis=3, keepdims=True)
     lsl_locsf += (grid_size - np.max(lsl_locsf, axis=3, keepdims=True)) / 2.
 
     # add ntime axis
@@ -537,7 +538,7 @@ class TBFOfflineCaptureOp(object):
 
         # Setup the ring metadata and gulp sizes
         ntime = data.shape[2]
-        nstand, npol = data.shape[0] / 2, 2
+        nstand, npol = data.shape[0] // 2, 2
         oshape = (ntime, nchan, nstand, npol)
         ogulp_size = ntime * nchan * nstand * npol * 1  # ci4
         self.oring.resize(ogulp_size)
@@ -596,7 +597,7 @@ class TBFOfflineCaptureOp(object):
 
                         # Quantization
                         try:
-                            Quantize(idata, qdata, scale=1. / np.sqrt(nchan))
+                            Quantize(idata, qdata, scale=1. / np.sqrt(nchan)) # TODO: check sqrt against main? I dont have this
                         except NameError:
                             qdata = bifrost.ndarray(shape=idata.shape, native=False, dtype="ci4")
                             Quantize(idata, qdata, scale=1.0)
@@ -963,6 +964,7 @@ class MOFFCorrelatorOp(object):
                     sampling_length = loc_data['sampling_length'].item()
                     locs = loc_data['locs'][...]
                     sll = loc_data['sll'].item()
+                    locs = np.around(locs)
                 except OSError:
                     sampling_length, locs, sll = GenerateLocations(
                         self.locations,
@@ -974,6 +976,7 @@ class MOFFCorrelatorOp(object):
                         grid_resolution=self.grid_resolution,
                     )
                     np.savez(locname, sampling_length=sampling_length, locs=locs, sll=sll)
+                    locs=np.around(locs)
                 try:
                     copy_array(self.locs, bifrost.ndarray(locs.astype(np.int32)))
                 except AttributeError:
@@ -1014,12 +1017,24 @@ class MOFFCorrelatorOp(object):
                     raise ValueError(
                         "Cannot write fits file without knowing polarization list"
                     )
-                ohdr_str = json.dumps(ohdr)
+
 
                 # Setup the kernels to include phasing terms for zenith
                 # Phases are Ntime x Nchan x Nstand x Npol x extent x extent
                 phasename = "phases_%s_%i_%i_%i_%i_%i_%i.npy" % (self.station.name, chan0, self.ntime_gulp, nchan, nstand, npol, self.ant_extent)
                 phasename = os.path.join(self.cache_dir, phasename)
+
+                # Zenith for LWA-SV
+                pce = np.deg2rad(88.0666283)
+                pca = np.deg2rad(90.9743763)
+
+                # Create Phase Center Vector
+                phase_center_sv = np.array([np.cos(pce)*np.sin(pca), np.cos(pce)*np.cos(pca), np.sin(pce)])
+                
+                ohdr["pc_elevation"] = pce
+                ohdr["pc_azimuth"] = pca
+                ohdr_str = json.dumps(ohdr) 
+                
                 try:
                     phases = np.load(phasename)
                 except OSError:
@@ -1031,13 +1046,13 @@ class MOFFCorrelatorOp(object):
                     for i in range(nstand):
                         # X
                         a = self.station.antennas[2 * i + 0]
-                        delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
+                        delay = a.cable.delay(freq) - np.dot(phase_center_sv,[a.stand.x,a.stand.y, a.stand.z]) / speed_of_light.value
                         phases[:, :, i, 0, :, :] = np.exp(2j * np.pi * freq * delay)
                         phases[:, :, i, 0, :, :] /= np.sqrt(a.cable.gain(freq))
                         if npol == 2:
                             # Y
                             a = self.station.antennas[2 * i + 1]
-                            delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
+                            delay = a.cable.delay(freq) - np.dot(phase_center_sv,[a.stand.x,a.stand.y, a.stand.z]) / speed_of_light.value
                             phases[:, :, i, 1, :, :] = np.exp(2j * np.pi * freq * delay)
                             phases[:, :, i, 1, :, :] /= np.sqrt(a.cable.gain(freq))
                         # Explicit bad and suspect antenna masking - this will
@@ -1104,6 +1119,7 @@ class MOFFCorrelatorOp(object):
                                 time1 = time.time()
 
                             udata = idata.copy(space="cuda")
+                            
                             if self.benchmark is True:
                                 time1a = time.time()
                                 print("  Input copy time: %f" % (time1a - time1))
@@ -1257,23 +1273,15 @@ class MOFFCorrelatorOp(object):
                                         1, nchan, npol ** 2, self.grid_size, self.grid_size
                                     )
                                     try:
-                                        bf_romein_autocorr.execute(autocorrs_av, autocorr_g)
+                                        bf_vgrid_autocorr.execute(autocorrs_av, autocorr_g)
                                     except NameError:
-                                        bf_romein_autocorr = Romein()
-                                        bf_romein_autocorr.init(
+                                        bf_vgrid_autocorr = VGrid()
+                                        bf_vgrid_autocorr.init(
                                             autocorr_lo, gacphases, self.grid_size, polmajor=False
                                         )
-                                        bf_romein_autocorr.execute(autocorrs_av, autocorr_g)
-                                    # try:
-                                    #     bf_vgrid_autocorr.execute(autocorrs_av, autocorr_g)
-                                    # except NameError:
-                                    #     bf_vgrid_autocorr = VGrid()
-                                    #     bf_vgrid_autocorr.init(
-                                    #         autocorr_lo, gacphases, self.grid_size, polmajor=False
-                                    #     )
-                                    #     bf_vgrid_autocorr.execute(autocorrs_av, autocorr_g)
+                                        bf_vgrid_autocorr.execute(autocorrs_av, autocorr_g)
                                     autocorr_g = autocorr_g.reshape(1 * nchan * npol ** 2, self.grid_size, self.grid_size)
-                                    # autocorr_g = romein_float(autocorrs_av,autocorr_g,autocorr_il,autocorr_lx,autocorr_ly,autocorr_lz,self.ant_extent,self.grid_size,nstand,nchan*npol**2)
+                                    
                                     # Inverse FFT
                                     try:
                                         ac_fft.execute(autocorr_g, autocorr_g, inverse=True)
@@ -1965,8 +1973,10 @@ class SaveOp(object):
             crit_pix_x = float(ihdr["grid_size_x"] / 2 + 1)
             # Need to correct for shift in center pixel when we flipped dec dimension
             # when writing npz, Only applies for even dimension size
-            crit_pix_y = float(ihdr["grid_size_y"] / 2 + 1) - (ihdr["grid_size_x"] + 1) % 2
-
+            crit_pix_y = float(ihdr["grid_size_y"] / 2 + 1) # - (ihdr["grid_size_x"] + 1) % 2
+            
+            
+            
             delta_x = -dtheta_x * 180.0 / np.pi
             delta_y = dtheta_y * 180.0 / np.pi
             delta_f = ihdr["bw"] / ihdr["nchan"]
@@ -1989,7 +1999,10 @@ class SaveOp(object):
 
                 if nints >= self.ints_per_file:
                     image = np.fft.fftshift(image, axes=(3, 4))
-                    image = image[:, :, :, ::-1, :]
+                    # image = image[:, :, :, ::-1, :] 
+                    # TODO: contentious debate about whether the above line is correct OR the complete picture. 
+                    #       maybe we need to flip x coords.
+                    #       maybe we need to offset ourselves by a pixel?
 
                     # Restructure data in preparation to stuff into fits
                     # Now (Ntimes, Npol, Nfreq, y, x)
@@ -2016,12 +2029,13 @@ class SaveOp(object):
                     )
 
                     time_array = t0 + np.arange(nints) * dt
-
                     lsts = time_array.sidereal_time("apparent")
-                    coords = SkyCoord(
-                        lsts.deg, ihdr["latitude"], obstime=time_array, unit="deg"
-                    ).transform_to(FK5(equinox="J2000"))
 
+                    # Set Observer
+                    observinglocation = EarthLocation(lat = ihdr["latitude"]*u.deg , lon =ihdr["longitude"]*u.deg , height=1500*u.m)
+                    aa = AltAz(location=observinglocation, obstime = time_array, az = ihdr["pc_azimuth"]*u.rad , alt = ihdr["pc_elevation"]*u.rad)
+                    coords = SkyCoord(aa).transform_to(FK5(equinox="J2000"))
+                    
                     hdul = []
                     for im_num, d in enumerate(image):
                         hdu = fits.ImageHDU(data=d)
