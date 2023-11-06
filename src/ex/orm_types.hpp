@@ -180,6 +180,7 @@ struct EpicPixelTableDataRows : EpicPixelTableMetaRows {
       : EpicPixelTableMetaRows(config.ncoords, config.nsrcs,
                                config.kernel_dim) {
     if (config.ncoords > 0) {
+      pixel_values.reset();
       pixel_values = std::move(hwy::AllocateAligned<_Dtype>(
           config.ncoords * NSTOKES * config.nchan));
     }

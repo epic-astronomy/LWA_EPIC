@@ -143,6 +143,7 @@ _Tp& Tensor<_Tp, NDims>::at(auto... p_idx) const {
  */
 template <typename _Tp, size_t NDims>
 void Tensor<_Tp, NDims>::allocate() {
+  m_aligned_data_uptr.reset();
   m_aligned_data_uptr = std::move(hwy::AllocateAligned<_Tp>(m_size));
   m_data_ptr = m_aligned_data_uptr.get();
 }
