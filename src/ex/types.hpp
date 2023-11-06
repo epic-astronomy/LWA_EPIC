@@ -81,7 +81,7 @@ struct MOFFCorrelatorDesc {
   int nchan_out{128};
   int gcf_kernel_dim{40};  // decimeters
   unsigned int device_id{0};
-  int nbuffers{20};
+  int nbuffers{30};
   int buf_size{64 * 64 * 132 /*chan*/ * sizeof(float) * 2 /*complex*/ *
                4 /*pols*/};
   bool page_lock_bufs{true};
