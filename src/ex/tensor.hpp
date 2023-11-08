@@ -143,7 +143,7 @@ _Tp& Tensor<_Tp, NDims>::at(auto... p_idx) const {
  */
 template <typename _Tp, size_t NDims>
 void Tensor<_Tp, NDims>::allocate() {
-  m_aligned_data_uptr.reset();
+  // m_aligned_data_uptr.reset();
   m_aligned_data_uptr = std::move(hwy::AllocateAligned<_Tp>(m_size));
   m_data_ptr = m_aligned_data_uptr.get();
 }
@@ -197,7 +197,7 @@ class PSTensor : public Tensor<_Tp, EPICImgDim> {
    * @return vec_t
    */
   inline vec_t operator[](size_t p_idx) const {
-    return hn::Load(_stokes_tag, this->m_data_ptr + p_idx);
+    return hn::LoadU(_stokes_tag, this->m_data_ptr + p_idx);
   }
 
   /**
@@ -212,7 +212,7 @@ class PSTensor : public Tensor<_Tp, EPICImgDim> {
 
     size_t nelems = rhs.size();
     for (size_t i = 0; i < nelems; i += NSTOKES) {
-      hn::Store((*this)[i] + rhs[i], _stokes_tag, this->m_data_ptr + i);
+      hn::StoreU((*this)[i] + rhs[i], _stokes_tag, this->m_data_ptr + i);
     }
 
     return *this;
@@ -230,7 +230,7 @@ class PSTensor : public Tensor<_Tp, EPICImgDim> {
     assert(this->m_data_ptr != nullptr &&
            "Cannot return data from an uninitialized tensor");
 
-    return hn::Load(_stokes_tag, &(this->at(p_chan_id, p_xpix, p_ypix, 0)));
+    return hn::LoadU(_stokes_tag, &(this->at(p_chan_id, p_xpix, p_ypix, 0)));
   }
 
   /**
@@ -242,7 +242,7 @@ class PSTensor : public Tensor<_Tp, EPICImgDim> {
    * @param p_vec All pol vector to be set
    */
   void set(size_t p_chan_id, size_t p_xpix, size_t p_ypix, const vec_t& p_vec) {
-    hn::Store(p_vec, _stokes_tag, &(this->at(p_chan_id, p_xpix, p_ypix, 0)));
+    hn::StoreU(p_vec, _stokes_tag, &(this->at(p_chan_id, p_xpix, p_ypix, 0)));
   }
 
   /**
@@ -254,7 +254,7 @@ class PSTensor : public Tensor<_Tp, EPICImgDim> {
    * @param p_vec Vector to be set at the pixel
    */
   void set(size_t p_chan_id, size_t p_pix, const vec_t& p_vec) {
-    hn::Store(p_vec, _stokes_tag,
+    hn::StoreU(p_vec, _stokes_tag,
               this->m_data_ptr + chan_pix2idx(p_chan_id, p_pix));
   }
 
@@ -265,7 +265,7 @@ class PSTensor : public Tensor<_Tp, EPICImgDim> {
    * @param p_vec Vector to the stored
    */
   void set(size_t p_idx, const vec_t& p_vec) {
-    hn::Store(p_vec, _stokes_tag, this->m_data_ptr + p_idx);
+    hn::StoreU(p_vec, _stokes_tag, this->m_data_ptr + p_idx);
   }
 
   /**
@@ -297,13 +297,13 @@ class PSTensor : public Tensor<_Tp, EPICImgDim> {
     //             idx_out *= NSTOKES;
     //             printf("%lu %lu %lu %lu %lu \n", i, chan, pix, idx_in,
     //             idx_out); if (i == 0) {
-    //                 hn::Store(
-    //                   hn::Load(_stokes_tag, this->m_data_ptr + idx_in),
+    //                 hn::StoreU(
+    //                   hn::LoadU(_stokes_tag, this->m_data_ptr + idx_in),
     //                   _stokes_tag, out_data_ptr + idx_out);
     //             } else {
-    //                 hn::Store(
-    //                   hn::Load(_stokes_tag, out_data_ptr + idx_out) +
-    //                   hn::Load(_stokes_tag, this->m_data_ptr + idx_in),
+    //                 hn::StoreU(
+    //                   hn::LoadU(_stokes_tag, out_data_ptr + idx_out) +
+    //                   hn::LoadU(_stokes_tag, this->m_data_ptr + idx_in),
     //                   _stokes_tag, out_data_ptr + idx_out);
     //             }
     //         }
@@ -357,17 +357,18 @@ class PSTensor : public Tensor<_Tp, EPICImgDim> {
           (*this)[idx_in];
 
       p_out_tensor_ptr->set(idx_out, out_vec);
-      // hn::Store(
+      // hn::StoreU(
       //   out_vec , _stokes_tag, out_ptr + idx_out);
     }
   }
 
   void extract_pixels(const EpicPixelTableMetaRows& p_meta, float* p_pixels) {
+    CHECK(p_pixels != nullptr) << "Null pixel extraction buffer";
     for (size_t i = 0; i < p_meta.pixel_coords_sft.size(); ++i) {  // coord loop
       for (size_t j = 0; j < m_nchan; ++j) {                       // chan loop
         int x = p_meta.pixel_coords_sft[i].first;
         int y = p_meta.pixel_coords_sft[i].second;
-        hn::Store((*this)(j, x, y), _stokes_tag,
+        hn::StoreU((*this)(j, x, y), _stokes_tag,
                   p_pixels + (i * m_nchan + j) * NSTOKES);
       }  // chan loop
     }    // coord loop
