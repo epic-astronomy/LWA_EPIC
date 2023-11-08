@@ -49,7 +49,7 @@ class PixelExtractor : public raft::kernel {
   EpicPixelTableMetaRows _dummy_meta;
   std::unique_ptr<BufferMngr> m_buf_mngr{nullptr};
   bool is_meta_initialized{false};
-  constexpr static size_t m_nbufs{20};
+  constexpr static size_t m_nbufs{50};
   constexpr static size_t m_maxiters{5};
   PSTensor<float> m_img_tensor;
   size_t m_xdim;
@@ -120,6 +120,8 @@ class PixelExtractor : public raft::kernel {
     }
 
     _PldOut out_pix_rows = m_buf_mngr.get()->acquire_buf();
+    CHECK(static_cast<bool>(out_pix_rows))
+        << "Pixel extractor buffer allocation failed";
     // this takes care of resizing the data and meta vectors
     out_pix_rows.get_mbuf()->copy_meta(m_pixmeta_rows);
 
@@ -136,6 +138,7 @@ class PixelExtractor : public raft::kernel {
             << out_pix_rows.get_mbuf()->m_nchan;
     m_img_tensor.extract_pixels(m_pixmeta_rows,
                                 out_pix_rows.get_mbuf()->pixel_values.get());
+    VLOG(2)<<"Extracted";
 
     output["out_pix_rows"].push(out_pix_rows);
     output["out_img"].push(in_img);
