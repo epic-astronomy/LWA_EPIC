@@ -274,6 +274,14 @@ bool MOFFCorrelator<Dtype, BuffMngr>::ResetImagingConfig(int p_nchan,
 
   m_chan0 = p_chan0;
 
+  // Reset the gridding kernel because effective area changes with freq
+  auto aeff = GetAEff(p_chan0);
+  m_gcf_tex_dim = sqrt(aeff) * 10;  // in decimeters
+  VLOG(3) << "Initializing GCF texture. New Aeff: " << aeff << " sq. m "
+            << m_gcf_tex_dim;
+  ResetGcfKernel2D(m_gcf_tex_dim);
+  this->ResetGcfTex(m_gcf_tex_dim, m_gcf_kernel2D.get());
+
   VLOG(3) << "Resetting antpos. Grid size: " << m_grid_size
           << " grid res: " << m_grid_res << " nchan: " << p_nchan
           << " chan0: " << p_chan0;
@@ -374,9 +382,9 @@ void MOFFCorrelator<Dtype, BuffMngr>::SetupGpu() {
                           //* std::pow(int(m_pol_mode), 2)
                           * sizeof(float) * 4 /*XX_re, YY_re*, X*Y, XY* */;
   this->AllocateOutImg(this->m_out_img_bytes);
-  VLOG(2) << "Initializing GCF texture";
-  ResetGcfKernel2D(m_gcf_tex_dim);
-  this->ResetGcfTex(m_gcf_tex_dim, m_gcf_kernel2D.get());
+  // VLOG(2) << "Initializing GCF texture";
+  // ResetGcfKernel2D(m_gcf_tex_dim);
+  // this->ResetGcfTex(m_gcf_tex_dim, m_gcf_kernel2D.get());
 
   // calculate the appropriate offsets to image the gulp in streams
   this->m_nchan_per_stream = m_nchan_out / m_nstreams;
