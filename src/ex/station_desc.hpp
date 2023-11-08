@@ -118,4 +118,20 @@ void PrintStationEndPoints<LWA_SV>() {
   }
 }
 
+template <STATIONS _St>
+std::vector<int> GetHealthCheckChans() {}
+
+template <>
+std::vector<int> GetHealthCheckChans<LWA_SV>() {
+  return {440, 1160, 1880, 2600, 3320, 4040};
+}
+
+float GetAEff(int chan0) {
+  auto freq = chan0 * BANDWIDTH;
+  auto wvlength = SOL / static_cast<float>(freq);
+  // https://leo.phys.unm.edu/~lwa/memos/memo/lwa0065a.pdf#5
+  // this is nothing but 1.65/4Pi * lambda^2
+  return 0.1313 * wvlength * wvlength;
+}
+
 #endif  // SRC_EX_STATION_DESC_HPP_
