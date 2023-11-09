@@ -30,6 +30,7 @@
 #include <memory>
 #include <raft>
 #include <raftio>
+#include <set>
 #include <variant>
 
 #include "../ex/buffer.hpp"
@@ -65,6 +66,7 @@ class ChanReducerRft : public raft::kernel {
   static constexpr int NSTOKES{4};
   unsigned int m_rt_gauge_id{0};
   Timer m_timer;
+  std::set<int> m_hc_chans;
 
  public:
   /**
@@ -83,7 +85,8 @@ class ChanReducerRft : public raft::kernel {
         m_in_nchan(p_in_nchan),
         m_in_tensor(PSTensor<float>(m_in_nchan, m_xdim, m_ydim)),
         m_out_tensor(
-            PSTensor<float>(size_t(p_in_nchan / p_ncombine), m_xdim, m_ydim)) {
+            PSTensor<float>(size_t(p_in_nchan / p_ncombine), m_xdim, m_ydim)),
+        m_hc_chans(GetHealthCheckChans<LWA_SV>()) {
     input.addPort<_PldIn>("in_img");
     output.addPort<_PldOut>("out_img");
     output.addPort<uint64_t>("seq_start_id");
@@ -109,6 +112,12 @@ class ChanReducerRft : public raft::kernel {
     m_timer.Tick();
     _PldIn in_pld;
     input["in_img"].pop(in_pld);
+    auto chan0 =
+        std::get<int64_t>(in_pld.get_mbuf()->GetMetadataRef()["chan0"]);
+    if (m_hc_chans.count(chan0) > 0) {
+      LOG_EVERY_N(WARNING, 50) << "Health Checks. Ignoring data";
+      return raft::proceed;
+    }
 
     auto out_pld = m_buf_mngr->acquire_buf();
     if (!out_pld) {

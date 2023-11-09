@@ -26,10 +26,12 @@
 #include <memory>
 #include <string>
 #include <variant>
+#include <vector>
 
 #include "../ex/constants.h"
-#include "../ex/video_streaming.hpp"
 #include "../ex/metrics.hpp"
+#include "../ex/video_streaming.hpp"
+#include "../ex/station_desc.hpp"
 #include "glog/logging.h"
 #include "raft"
 #include "raftio"
@@ -41,16 +43,18 @@ class EpicLiveStream : public raft::kernel {
   bool m_is_streamer_set{false};
   Timer m_timer;
   int m_rt_gauge_id;
+  std::set<int> m_hc_chans;  //  health check channel numbers
 
  public:
-  EpicLiveStream() { input.addPort<_Pld>("in_img");
-   
-   m_rt_gauge_id = PrometheusExporter::AddRuntimeSummaryLabel(
+  EpicLiveStream() : raft::kernel(), m_hc_chans(GetHealthCheckChans<LWA_SV>()) {
+    input.addPort<_Pld>("in_img");
+
+    m_rt_gauge_id = PrometheusExporter::AddRuntimeSummaryLabel(
         {{"type", "exec_time"},
          {"kernel", "live_streamer"},
          {"units", "s"},
          {"kernel_id", std::to_string(this->get_id())}});
-   }
+  }
   void SetStreamer(Streamer* p_streamer) {
     if (p_streamer != nullptr) {
       m_streamer = p_streamer;
@@ -72,7 +76,8 @@ class EpicLiveStream : public raft::kernel {
     auto chan0 = std::get<int64_t>(img_metadata["chan0"]);
     double cfreq = (chan0 + nchan * chan_width / BANDWIDTH * 0.5) * BANDWIDTH *
                    1e-6;  // MHz
-    m_streamer->Stream(chan0, cfreq, pld.get_mbuf()->GetDataPtr());
+    bool is_hc_freq = m_hc_chans.count(chan0) > 0 ? true : false;
+    m_streamer->Stream(chan0, cfreq, pld.get_mbuf()->GetDataPtr(), is_hc_freq);
     m_timer.Tock();
     PrometheusExporter::ObserveRunTimeValue(m_rt_gauge_id, m_timer.Duration());
     return raft::proceed;

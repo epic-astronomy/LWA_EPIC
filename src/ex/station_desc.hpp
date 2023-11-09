@@ -29,6 +29,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <set>
 
 #include "./constants.h"
 #include "./helper_traits.hpp"
@@ -119,10 +120,10 @@ void PrintStationEndPoints<LWA_SV>() {
 }
 
 template <STATIONS _St>
-std::vector<int> GetHealthCheckChans() {}
+std::set<int> GetHealthCheckChans() {}
 
 template <>
-std::vector<int> GetHealthCheckChans<LWA_SV>() {
+std::set<int> GetHealthCheckChans<LWA_SV>() {
   return {440, 1160, 1880, 2600, 3320, 4040};
 }
 

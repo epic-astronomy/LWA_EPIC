@@ -165,8 +165,19 @@ class Streamer {
     }
   }
   void StreamImage();
-  void CopyToFrameBuf(const float *p_data_ptr, int p_chan_no) {
+  void CopyToFrameBuf(const float *p_data_ptr, int p_chan_no,
+                      bool p_is_hc = false) {
     int offset = (p_chan_no - 1) * m_npixels_grid * NSTOKES;
+
+    if (p_is_hc) {
+      for (int i = 0; i < m_grid_size; ++i) {
+        for (int j = 0; j < m_grid_size; ++j) {
+          auto val = m_frame_buf.get()[i * m_grid_size + j];
+          frame->data[0][i * m_grid_size + j] = 128;
+        }
+      }
+      return;
+    }
 
     for (int i = 0; i < m_npixels_grid; ++i) {
       m_raw_frame.get()[i] = p_data_ptr[i * NSTOKES + offset];  // this is XX*
@@ -232,20 +243,27 @@ class Streamer {
     //                m_frame_buf.get(),
     //                [=](float d) { return (d * 255) / max_val; });
   }
-  void Stream(int64_t chan0, double cfreq, const float *data_ptr) {
+  void Stream(int64_t chan0, double cfreq, const float *data_ptr,
+              bool is_hc_freq) {
     // ResetPipe(chan0, cfreq);
     // LOG(INFO)<<"streaming";
     // LOG(INFO)<<"FILTER NAME: "<<filterGraph->filters[4]->name;
-    std::string text = "%{localtime\:%Y/%m/%d %H\\:%M\\:%S}'";
-    char buf[1024];
-    std::snprintf(buf, sizeof(buf), "%.2f MHz", cfreq);
-    text = "text='" + std::string(buf) + " |  " + text;
-    if (avfilter_graph_send_command(filterGraph, "text", "reinit", text.c_str(),
-                                    NULL, 0, 0) < 0) {
-      CheckError(Status_t{"unable to dynamically set text: " + text});
+    if (m_chan0 != chan0) {
+      m_chan0 = chan0;
+      std::string text = "%{gmtime\:%Y/%m/%d %H\\:%M\\:%S}'";
+      char buf[1024];
+      std::snprintf(buf, sizeof(buf), "%.2f MHz", cfreq);
+      text = "text='" + std::string(buf) + " |  " + text;
+      if (is_hc_freq) {
+        text = "text='Checking system health...'";
+      }
+      if (avfilter_graph_send_command(filterGraph, "text", "reinit",
+                                      text.c_str(), NULL, 0, 0) < 0) {
+        CheckError(Status_t{"unable to dynamically set text: " + text});
+      }
     }
 
-    CopyToFrameBuf(data_ptr, m_chan_stream_no);
+    CopyToFrameBuf(data_ptr, m_chan_stream_no, is_hc_freq);
     StreamImage();
 
     // fwrite(m_frame_buf.get(), 1, m_npixels, m_pipeout);
@@ -378,7 +396,7 @@ Streamer::Status_t Streamer::InitFilterGraph() {
       avfilter_init_str(scaleContext, scale_buf) < 0 ||
       avfilter_init_str(
           textContext,
-          "text='%{localtime\:%Y/%m/%d %H\\:%M\\:%S}':fontsize=h/"
+          "text='%{gmtime\:%Y/%m/%d %H\\:%M\\:%S}':fontsize=h/"
           "25:font=Times:fontcolor=black:box=1:boxcolor=white@0.7:boxborderw="
           "5:x=(w-1.05*text_w):y=(h-1.4*text_h)") < 0 ||
       avfilter_init_str(

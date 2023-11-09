@@ -27,14 +27,16 @@
 #include <chrono>
 #include <cmath>
 #include <memory>
-#include <raft>
-#include <raftio>
+#include <set>
 #include <utility>
 #include <variant>
 
 #include "../ex/constants.h"
 #include "../ex/metrics.hpp"
+#include "../ex/station_desc.hpp"
 #include "../ex/types.hpp"
+#include "raft"
+#include "raftio"
 
 template <class _Payload, class _Correlator>
 class CorrelatorRft : public raft::kernel {
@@ -53,10 +55,14 @@ class CorrelatorRft : public raft::kernel {
   uint64_t m_seq_start_id{0};
   float m_delta{1};
   unsigned int m_rt_gauge_id{0};
+  std::set<int> m_hc_chans;
+  int m_is_GPU_setup_once{false};
 
  public:
   explicit CorrelatorRft(std::unique_ptr<_Correlator>* p_correlator)
-      : raft::kernel(), m_correlator(std::move(*p_correlator)) {
+      : raft::kernel(),
+        m_correlator(std::move(*p_correlator)),
+        m_hc_chans(GetHealthCheckChans<LWA_SV>()) {
     m_ngulps_per_img = m_correlator.get()->GetNumGulpsPerImg();
     m_grid_res = m_correlator.get()->GetGridRes();
     m_grid_size = m_correlator.get()->GetGridSize();
@@ -80,7 +86,6 @@ class CorrelatorRft : public raft::kernel {
     _Payload pld;
     input["gulp"].pop(pld);
     VLOG(2) << "Payload received";
-
     if (!pld) {
       return raft::proceed;
     }
@@ -97,9 +102,14 @@ class CorrelatorRft : public raft::kernel {
     PrometheusExporter::ObserveRunTimeValue(m_rt_gauge_id, chan0);
 
     // initialization or change in the spectral window
-    if (m_correlator.get()->ResetImagingConfig(nchan, chan0)) {
+    // do not do any initializations for health check frequencies
+    if ((m_hc_chans.count(chan0) == 0 || !m_is_GPU_setup_once) &&
+        m_correlator.get()->ResetImagingConfig(nchan, chan0)) {
+      m_is_GPU_setup_once = true;
+      DLOG(INFO) << "Resetting GPU setup";
       m_delta = m_correlator.get()->GetScalingLen();
       m_gulp_counter = 1;
+      DLOG(INFO) << "Done resetting";
     }
 
     m_is_first = m_gulp_counter == 1 ? true : false;
@@ -134,10 +144,11 @@ class CorrelatorRft : public raft::kernel {
           << std::chrono::duration_cast<std::chrono::milliseconds>(
                  std::chrono::high_resolution_clock::now().time_since_epoch())
                  .count();
+      DLOG(INFO) << "Processing the gulp";
       m_correlator.get()->ProcessGulp(
           pld.get_mbuf()->GetDataPtr(), buf.get_mbuf()->GetDataPtr(),
           m_is_first, m_is_last, static_cast<int>(chan0), m_delta);
-
+      DLOG(INFO) << "Done processing the gulp";
       m_gulp_counter = 1;
       VLOG(3) << "Pushing the output image";
       output["img"].push(buf);
@@ -152,8 +163,8 @@ class CorrelatorRft : public raft::kernel {
     // to complete thereby keeping the GPU completely occupied.
 
     m_correlator.get()->ProcessGulp(pld.get_mbuf()->GetDataPtr(),
-                                     static_cast<float*>(nullptr), m_is_first,
-                                     m_is_last);
+                                    static_cast<float*>(nullptr), m_is_first,
+                                    m_is_last);
     ++m_gulp_counter;
     return raft::proceed;
   }
