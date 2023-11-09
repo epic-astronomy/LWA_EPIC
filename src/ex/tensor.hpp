@@ -130,9 +130,11 @@ _Tp& Tensor<_Tp, NDims>::at(auto... p_idx) const {
   assert(m_data_ptr != nullptr &&
          "Cannot return data from an uninitialized tensor");
 
-  size_t idx = 0;
-  auto dec_wrapper = [&idx] { return idx++; };
-  return m_data_ptr[((p_idx * m_strides[dec_wrapper()]) + ...)];
+  size_t idx_dim = 0;
+  // auto dec_wrapper = [&idx] { return idx++; };
+  auto idx_data = ((p_idx * m_strides[idx_dim++]) + ...);
+  assert(idx_data < m_size);
+  return m_data_ptr[idx_data];
 }
 
 /**
@@ -255,7 +257,7 @@ class PSTensor : public Tensor<_Tp, EPICImgDim> {
    */
   void set(size_t p_chan_id, size_t p_pix, const vec_t& p_vec) {
     hn::StoreU(p_vec, _stokes_tag,
-              this->m_data_ptr + chan_pix2idx(p_chan_id, p_pix));
+               this->m_data_ptr + chan_pix2idx(p_chan_id, p_pix));
   }
 
   /**
@@ -368,8 +370,12 @@ class PSTensor : public Tensor<_Tp, EPICImgDim> {
       for (size_t j = 0; j < m_nchan; ++j) {                       // chan loop
         int x = p_meta.pixel_coords_sft[i].first;
         int y = p_meta.pixel_coords_sft[i].second;
-        hn::StoreU((*this)(j, x, y), _stokes_tag,
-                  p_pixels + (i * m_nchan + j) * NSTOKES);
+        const auto vec = hn::LoadU(_stokes_tag,
+                                   this->m_data_ptr + j * this->m_strides[0] +
+                                       x * this->m_strides[1] +
+                                       y * this->m_strides[1]);  // Zero(_stokes_tag);//(*this)(j,
+                                                                 // x, y);
+        hn::StoreU(vec, _stokes_tag, p_pixels + (i * m_nchan + j) * NSTOKES);
       }  // chan loop
     }    // coord loop
   }
