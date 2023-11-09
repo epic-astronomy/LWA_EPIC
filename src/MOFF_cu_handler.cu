@@ -126,7 +126,7 @@ void MOFFCuHandler::ResetGcfElem(int p_nchan, int p_support, int p_chan0, float 
     int block_size = (MAX_THREADS_PER_BLOCK/float(nelements_gcf)) ;
     block_size *= nelements_gcf;
 
-    LOG(INFO)<<"Pre-computing GCF elements\n"<<p_support<<" "<<block_size<<" "<<nelements_gcf;
+    VLOG(2)<<"Pre-computing GCF elements\n"<<p_support<<" "<<block_size<<" "<<nelements_gcf;
     ComputeGcfElements<<<p_nchan, block_size>>>(m_gcf_elem, m_antpos_cu, p_chan0, p_delta, m_gcf_tex,p_grid_size, (p_support), LWA_SV_NSTANDS);
     VLOG(2)<<"Done\n";
 
