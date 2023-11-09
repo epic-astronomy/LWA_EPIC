@@ -146,8 +146,6 @@ class PixelExtractor : public raft::kernel {
                                 out_pix_rows.get_mbuf()->pixel_values.get());
     VLOG(2) << "Extracted";
 
-    return raft::proceed;
-
     output["out_pix_rows"].push(out_pix_rows);
     output["out_img"].push(in_img);
 
