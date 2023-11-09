@@ -51,6 +51,8 @@ class AccumulatorRft : public raft::kernel {
   size_t m_ydim{128};
   size_t m_in_nchan{32};
   uint64_t _seq_end{0};
+  int64_t m_init_chan0{0};
+  bool m_freq_change{false};
 
   PSTensor<float> m_in_tensor;
   PSTensor<float> m_out_tensor;
@@ -87,13 +89,36 @@ class AccumulatorRft : public raft::kernel {
       // store the current gulp
       input["in_img"].pop(m_cur_buf);
       m_in_tensor.assign_data(m_cur_buf.get_mbuf()->GetDataPtr());
+      m_init_chan0 =
+          std::get<int64_t>(m_cur_buf.get_mbuf()->GetMetadataRef()["chan0"]);
+      _seq_end =
+          std::get<uint64_t>(m_cur_buf.get_mbuf()->GetMetadataRef()["seq_end"]);
     } else {
       // add the next gulp to the current state
       _Pld pld2;
       input["in_img"].pop(pld2);
-      m_out_tensor.assign_data(pld2.get_mbuf()->GetDataPtr());
-      _seq_end =
+      auto chan0 =
+          std::get<int64_t>(pld2.get_mbuf()->GetMetadataRef()["chan0"]);
+      auto new_seq_end =
           std::get<uint64_t>(pld2.get_mbuf()->GetMetadataRef()["seq_end"]);
+      auto nseqs = std::get<int>(pld2.get_mbuf()->GetMetadataRef()["nseqs"]);
+      // if there is a change in the frequency or
+      // if the image arrives with a gap
+      // ignore the current accumulation and start a new one
+      if (chan0 != m_init_chan0 || (new_seq_end - _seq_end) > nseqs) {
+        m_in_tensor.dissociate_data();
+        m_out_tensor.dissociate_data();
+
+        m_cur_buf = pld2;
+        m_in_tensor.assign_data(m_cur_buf.get_mbuf()->GetDataPtr());
+        m_init_chan0 = chan0;
+        m_accum_count = 1;
+
+        return raft::proceed;
+      }
+      _seq_end = new_seq_end;
+      m_out_tensor.assign_data(pld2.get_mbuf()->GetDataPtr());
+
       m_in_tensor += m_out_tensor;
     }
 
