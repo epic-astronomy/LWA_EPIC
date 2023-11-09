@@ -86,7 +86,7 @@ class PacketAssembler : public PktProcessor {
 
  public:
   PacketAssembler(std::string p_ip, int p_port, size_t p_nseq_per_gulp = 1000,
-                  size_t p_ngulps = 20, size_t p_seq_size = SINGLE_SEQ_SIZE);
+                  size_t p_ngulps = 100, size_t p_seq_size = SINGLE_SEQ_SIZE);
   payload_t get_gulp();
   size_t GetNumSeqPerGulp() { return m_nseq_per_gulp; }
   // ~PacketAssembler(){
@@ -153,6 +153,10 @@ typename PacketAssembler<BufferMngr, Receiver, PktProcessor>::payload_t
 PacketAssembler<BufferMngr, Receiver, PktProcessor>::get_gulp() {
   auto payload = m_buf_mngr->acquire_buf();
   auto mbuf = payload.get_mbuf();
+  if (!mbuf) {
+    LOG(WARNING) << "No buffers available in the Packet assembler";
+    return payload_t(nullptr);
+  }
   // payload.mbuf_shared_count();
   auto start = high_resolution_clock::now();
   auto stop = high_resolution_clock::now();
@@ -217,7 +221,7 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::get_gulp() {
           PrometheusExporter::ObserveRunTimeValue(
               m_gauge_pktqual_id,
               m_n_valid_pkts /
-                  double(PktProcessor::nsrc*m_nseq_per_gulp) /*No data*/);
+                  double(PktProcessor::nsrc * m_nseq_per_gulp) /*No data*/);
 
           return payload_t(nullptr);
         }

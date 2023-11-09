@@ -305,7 +305,7 @@ __global__ void ComputeGcfElements(float* out, float* antpos, int chan0,
       reinterpret_cast<const float3*>(GetAntPos(antpos, channel_idx));
 
   float dist_scale =
-      float(SOL) / float((channel_idx + chan0) * BANDWIDTH) * lmbda_scale * 10.;
+      float(SOL) / float((channel_idx + chan0) * BANDWIDTH) * lmbda_scale * 10.; //decimeters
 
   for (int ant = grp_rank; ant < nants; ant += grp_size) {
     int dy = half_support - (grp_thread_rank) / (support);
