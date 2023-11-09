@@ -96,6 +96,7 @@ class PixelExtractor : public raft::kernel {
 
   raft::kstatus run() override {
     m_timer.Tick();
+    VLOG(2)<<"EXTRACTING PIXELS";
     // check if there are updates to the pixel meta rows
     if (input["meta_pixel_rows"].size() > 0) {
       input["meta_pixel_rows"].pop(_dummy_meta);
@@ -105,12 +106,17 @@ class PixelExtractor : public raft::kernel {
       }
     }
 
+    VLOG(2)<<"Extracted Dummy data";
+
     if (input["in_img"].size() == 0) {
       return raft::proceed;
     }
 
     _PldIn in_img;
     input["in_img"].pop(in_img);
+    if (!in_img) {
+      LOG(FATAL) << "Empty input image";
+    }
 
     if (m_pixmeta_rows.meta_version == -1 || m_pixmeta_rows.nsrcs == 0) {
       // the indices aren't there yet
@@ -138,7 +144,9 @@ class PixelExtractor : public raft::kernel {
             << out_pix_rows.get_mbuf()->m_nchan;
     m_img_tensor.extract_pixels(m_pixmeta_rows,
                                 out_pix_rows.get_mbuf()->pixel_values.get());
-    VLOG(2)<<"Extracted";
+    VLOG(2) << "Extracted";
+
+    return raft::proceed;
 
     output["out_pix_rows"].push(out_pix_rows);
     output["out_img"].push(in_img);

@@ -31,8 +31,8 @@
 #include <utility>
 
 #include "../ex/constants.h"
-#include "../ex/types.hpp"
 #include "../ex/metrics.hpp"
+#include "../ex/types.hpp"
 
 /**
  * @brief Raft kernel to generate gulps with support for timed and untimed
@@ -56,7 +56,7 @@ class GulpGen_rft : public raft::kernel {
   double m_gulp_duration;
   bool m_start_set{false};
   int m_rt_gauge_id{0};
-  //Timer m_timer;
+  // Timer m_timer;
 
  public:
   /**
@@ -109,12 +109,17 @@ class GulpGen_rft : public raft::kernel {
               << std::chrono::duration_cast<std::chrono::seconds>(
                      std::chrono::steady_clock::now() - m_start_time)
                      .count();
+      VLOG(3) << "Receiving the gulp";
       auto gulp = m_assmblr.get()->get_gulp();
+      VLOG(3) << "Received";
       if (!gulp) {
         VLOG(2) << "Null gulp";
         PrometheusExporter::ObserveRunTimeValue(m_rt_gauge_id, 0);
         continue;
       }
+      // auto& meta =
+      // std::get<int64_t>(gulp.get_mbuf()->GetMetadataRef()["chan0"])
+      // gulp.get_mbuf()->GetMetadataRef()["chan0"] = int64_t(440);
       output["gulp"].push(gulp);
       PrometheusExporter::ObserveRunTimeValue(m_rt_gauge_id, 1);
 
