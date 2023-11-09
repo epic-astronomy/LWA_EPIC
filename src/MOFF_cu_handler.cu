@@ -72,8 +72,8 @@ MOFFCuHandler::ResetGcfTex(int p_gcf_tex_dim, float* p_gcf_2D_ptr)
 {
     cuda_check_err(cudaSetDevice(m_device_id));
     if (is_gcf_tex_set) {
-        cudaFreeArray(m_gcf_tex_arr);
-        cudaDestroyTextureObject(m_gcf_tex);
+        cuda_check_err(cudaFreeArray(m_gcf_tex_arr));
+        cuda_check_err(cudaDestroyTextureObject(m_gcf_tex));
     }
 
     cudaMallocArray(&m_gcf_tex_arr, &m_gcf_chan_desc, p_gcf_tex_dim, p_gcf_tex_dim);
@@ -123,9 +123,10 @@ void MOFFCuHandler::ResetGcfElem(int p_nchan, int p_support, int p_chan0, float 
     cuda_check_err(cudaMalloc(&m_gcf_elem, nbytes));
     is_m_gcf_elem_set=true;
 
-    int block_size = (MAX_THREADS_PER_BLOCK/float(nelements_gcf)) * nelements_gcf;
+    int block_size = (MAX_THREADS_PER_BLOCK/float(nelements_gcf)) ;
+    block_size *= nelements_gcf;
 
-    VLOG(2)<<"Pre-computing GCF elements\n"<<p_support<<" "<<block_size<<std::endl;
+    LOG(INFO)<<"Pre-computing GCF elements\n"<<p_support<<" "<<block_size<<" "<<nelements_gcf;
     ComputeGcfElements<<<p_nchan, block_size>>>(m_gcf_elem, m_antpos_cu, p_chan0, p_delta, m_gcf_tex,p_grid_size, (p_support), LWA_SV_NSTANDS);
     VLOG(2)<<"Done\n";
 
