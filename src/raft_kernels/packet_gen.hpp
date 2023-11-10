@@ -56,6 +56,7 @@ class GulpGen_rft : public raft::kernel {
   double m_gulp_duration;
   bool m_start_set{false};
   int m_rt_gauge_id{0};
+  int _counter{0};
   // Timer m_timer;
 
  public:
@@ -118,8 +119,10 @@ class GulpGen_rft : public raft::kernel {
         continue;
       }
       // auto& meta =
-      // std::get<int64_t>(gulp.get_mbuf()->GetMetadataRef()["chan0"])
-      // gulp.get_mbuf()->GetMetadataRef()["chan0"] = int64_t(440);
+      // if (++_counter < 3000) {
+      //   std::get<int64_t>(gulp.get_mbuf()->GetMetadataRef()["chan0"]);
+      //   gulp.get_mbuf()->GetMetadataRef()["chan0"] = int64_t(440);
+      // }
       output["gulp"].push(gulp);
       PrometheusExporter::ObserveRunTimeValue(m_rt_gauge_id, 1);
 
