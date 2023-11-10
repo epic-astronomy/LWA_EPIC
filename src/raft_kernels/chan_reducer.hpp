@@ -115,7 +115,7 @@ class ChanReducerRft : public raft::kernel {
     auto chan0 =
         std::get<int64_t>(in_pld.get_mbuf()->GetMetadataRef()["chan0"]);
     if (m_hc_chans.count(chan0) > 0) {
-      LOG_EVERY_N(WARNING, 50) << "Health Checks. Ignoring data";
+      LOG_EVERY_N(WARNING, 3000) << "Health Checks. Ignoring data";
       return raft::proceed;
     }
 
