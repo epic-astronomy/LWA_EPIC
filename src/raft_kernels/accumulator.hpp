@@ -112,7 +112,7 @@ class AccumulatorRft : public raft::kernel {
         m_cur_buf = pld2;
         m_in_tensor.assign_data(m_cur_buf.get_mbuf()->GetDataPtr());
         m_init_chan0 = chan0;
-        m_accum_count = 1;
+        m_accum_count = 0;
         pld2 = _Pld();
 
         return raft::proceed;
