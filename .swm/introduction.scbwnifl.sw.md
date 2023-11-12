@@ -171,7 +171,7 @@ The kernels definitions are located in `📄 src/raft_kernels` folder and their 
 
 **Code Walkthroughs**: Documents in the `code walkthroughs`folder provides implementation details on all the data flows that happen in the imager. Where necessary they also provide tips on extending the code.
 
-**Tutorials:** The `tutorials` folder provides tutorials on adding new features to the code, for instance, building new kernels. It also provides details on debugging the code and lists several _gotchas_ that we have learnt over the time.
+**Tutorials:** The `tutorials` folder provides tutorials on adding new features to the code, for instance, building new kernels. It also provides details on debugging the code and lists several _gotchas_ we learnt over the time.
 
 <br/>
 
