@@ -57,7 +57,7 @@ The main entrypoint into the imaging pipeline is through the `RunEpic`<swm-token
 
 <br/>
 
-Add the kernel object as a private member. The suffix `_kt` indicates a kernel type.
+Adding the kernel object as a private member. The suffix `_kt` indicates a kernel type.
 <!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
 ### 📄 src/raft_kernels/epic_executor.hpp
 ```c++
@@ -77,7 +77,7 @@ After initialization, each kernel, which is run on a separate thread, is bound t
 
 <br/>
 
-Bind each kernel to a dedicated cpu core
+Binding kernel to a core
 <!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
 ### 📄 src/raft_kernels/epic_executor.hpp
 ```c++
@@ -100,7 +100,7 @@ Kernels can be joined using the `>>` operator. See [Create a Raft Kernel](create
 
 <br/>
 
-Add the kernel at an appropriate stage in the pipeline
+Adding a kernel to the pipeline
 <!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
 ### 📄 src/raft_kernels/epic_executor.hpp
 ```c++
@@ -119,7 +119,9 @@ Add the kernel at an appropriate stage in the pipeline
 
 <br/>
 
-All the kernel types are defined in the `📄 src/raft_kernels/kernel_types.hpp` file. Types defined using the `KernelTypeDefs`<swm-token data-swm-token=":src/raft_kernels/kernel_types.hpp:63:2:2:`struct KernelTypeDefs {`"/> struct, and we specialize a `get_kernel`<swm-token data-swm-token=":src/raft_kernels/kernel_types.hpp:82:3:3:`  ktype get_kernel();`"/> template function to return a kernel object. For instance, the following snippet shows the definition of `EpicLiveStream_kt`<swm-token data-swm-token=":src/raft_kernels/kernel_types.hpp:190:2:2:`using EpicLiveStream_kt = Kernel&lt;_LIVE_STREAMER&gt;::ktype;`"/>, which is an alias for the `EpicLiveStream`<swm-token data-swm-token=":src/raft_kernels/epic_live_streamer.hpp:40:2:2:`class EpicLiveStream : public raft::kernel {`"/> kernel, and its getter function. The `_GpuId`is a template parameter that indicates the ID of the GPU device that executes the pipeline.
+Values in the brackets indicate the input and output ports of the kernels. Each kernel defines input and output ports to communicate with other kernels. For example, the correlator kernel defines one input port `gulp` that receives data from the packet assembler. It also defines two output ports `img` and `img_stream`that transmits images to the channel reducer and the live streamer, respectively.
+
+All the kernel types are defined in the `📄 src/raft_kernels/kernel_types.hpp` file. Types defined using the `KernelTypeDefs`<swm-token data-swm-token=":src/raft_kernels/kernel_types.hpp:63:2:2:`struct KernelTypeDefs {`"/> struct, and we specialize a `get_kernel`<swm-token data-swm-token=":src/raft_kernels/kernel_types.hpp:82:3:3:`  ktype get_kernel();`"/> template function to return a kernel object. For instance, the following snippet shows the definition of `EpicLiveStream_kt`<swm-token data-swm-token=":src/raft_kernels/kernel_types.hpp:190:2:2:`using EpicLiveStream_kt = Kernel&lt;_LIVE_STREAMER&gt;::ktype;`"/>, which is an alias for the `EpicLiveStream`<swm-token data-swm-token=":src/raft_kernels/epic_live_streamer.hpp:40:2:2:`class EpicLiveStream : public raft::kernel {`"/> kernel, and its getter function.
 
 <br/>
 
@@ -141,6 +143,8 @@ Defining a kernel type for `EPICKernels`<swm-token data-swm-token=":src/raft_ker
 
 <br/>
 
+The `_GpuId`is a template parameter that indicates the ID of the GPU device that executes the pipeline.
+
 The Imager code also uses python modules for a few operations including calculating antenna positions and phases, generating gridding kernels, talking to the ADP, among others. Although the same operations can be performed in C++, using python simplifies coding for these one-time calculations using libraries such as `scipy`without re-compiling the code. The imager uses [pybind11](https://github.com/pybind/pybind11) library to invoke python functions from the C++ code. The code below shows how to fetch ADP start time from the unix epoch by calling a python function.
 
 <br/>
@@ -161,7 +165,13 @@ Calling a python function from C++ using pybind11
 
 ### Code Organization
 
-The kernels definitions are located in `📄 src/raft_kernels` folder and their related definitions in `📄 src/ex` folder. Because the majority of the code is templatized, classes are defined and declared in `hpp` files in the `📄 src/ex` folder. Python modules are located in `📄 src/python` and their C++ counterparts in the `📄 src/ex/py_funcs.hpp` file. Shell scripts to start the imaging pipline and overclock the GPU are in the `📄 src/commands` folder. All external dependencies like `glog` and `pqxx` are included as submodules to the imaging project and are placed in the `📄 src/extern` folder. Finally, the pipeline is built using `CMake`. The CPU and GPU codes are compiled separately and are the linked to the executable.
+The kernels definitions are located in `📄 src/raft_kernels` folder and their related definitions in `📄 src/ex` folder. Because the majority of the code is templatized, classes are defined and declared in `hpp` files in the `📄 src/ex` folder. Python modules are located in `📄 src/python` and their C++ counterparts in the `📄 src/ex/py_funcs.hpp` file. Shell scripts to start the imaging pipline and overclock the GPU are in the `📄 src/commands` folder. All external dependencies like `glog` and `pqxx` are included as submodules to the imaging project and are placed in the `📄 src/extern` folder. Finally, the pipeline is built using `CMake`. The CPU and GPU codes are compiled separately and are the linked to the executable. See `📄 CMakeLists.txt` for details.
+
+## Further Reading
+
+**Code Walkthroughs**: Documents in the `code walkthroughs`folder provides implementation details on all the data flows that happen in the imager. Where necessary they also provide tips on extending the code.
+
+**Tutorials:** The `tutorials` folder provides tutorials on adding new features to the code, for instance, building new kernels. It also provides details on debugging the code and lists several _gotchas_ that we have learnt over the time.
 
 <br/>
 
