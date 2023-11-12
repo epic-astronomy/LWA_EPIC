@@ -53,7 +53,7 @@ Packets from the F-Engine are buffered for a specified duration and grouped into
 
 ## Implementation Overview
 
-The main entrypoint into the imaging pipeline is through the `RunEpic`<swm-token data-swm-token=":src/raft_kernels/epic_executor.hpp:144:2:2:`void RunEpic(int argc, char** argv) {`"/> function. It initializes an `EPIC`<swm-token data-swm-token=":src/raft_kernels/epic_executor.hpp:125:2:2:`class EPIC : public EPICKernels&lt;_nthGPU - 1&gt; {`"/>object which recursively creates instances of `EPICKernels`<swm-token data-swm-token=":src/raft_kernels/epic_executor.hpp:35:2:2:`class EPICKernels {`"/>. Each instance (total number set by `--ngpus` option) runs a separate pipeline on a dedicated GPU. We use one RTX 4090 GPU per node for operations at the LWA Sevilleta station in New Mexico. To add a new kernel to the pipeline, create a kernel member in the `EPICKernels`<swm-token data-swm-token=":src/raft_kernels/epic_executor.hpp:35:2:2:`class EPICKernels {`"/> class and initialize it in the constructor.
+The main entrypoint into the imaging pipeline is through the `RunEpic`<swm-token data-swm-token=":src/raft_kernels/epic_executor.hpp:144:2:2:`void RunEpic(int argc, char** argv) {`"/> function. It initializes an `EPIC`<swm-token data-swm-token=":src/raft_kernels/epic_executor.hpp:125:2:2:`class EPIC : public EPICKernels&lt;_nthGPU - 1&gt; {`"/>object which recursively creates instances of `EPICKernels`<swm-token data-swm-token=":src/raft_kernels/epic_executor.hpp:35:2:2:`class EPICKernels {`"/> class. Each instance (total number set by `--ngpus` option) runs a separate pipeline on a dedicated GPU. We use one RTX 4090 GPU per node for operations at the LWA Sevilleta station in New Mexico. To add a new kernel to the pipeline, create a kernel member in the `EPICKernels`<swm-token data-swm-token=":src/raft_kernels/epic_executor.hpp:35:2:2:`class EPICKernels {`"/> class and initialize it in the constructor.
 
 <br/>
 
@@ -171,7 +171,7 @@ The kernels definitions are located in `📄 src/raft_kernels` folder and their 
 
 **Code Walkthroughs**: Documents in the `code walkthroughs`folder provides implementation details on all the data flows that happen in the imager. Where necessary they also provide tips on extending the code.
 
-**Tutorials:** The `tutorials` folder provides tutorials on adding new features to the code, for instance, building new kernels. It also provides details on debugging the code and lists several _gotchas_ that led to severe bugs.
+**Tutorials:** The `tutorials` folder provides tutorials on adding new features to the code, for instance, building new kernels. It also provides details on debugging the code and lists several _gotchas_ that previously led to severe bugs.
 
 <br/>
 
