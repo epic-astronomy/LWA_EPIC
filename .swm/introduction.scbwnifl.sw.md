@@ -141,9 +141,29 @@ Defining a kernel type for `EPICKernels`<swm-token data-swm-token=":src/raft_ker
 
 <br/>
 
-The Imager code also uses python modules to p
+The Imager code also uses python modules for a few operations including calculating antenna positions and phases, generating gridding kernels, talking to the ADP, among others. Although the same operations can be performed in C++, using python simplifies coding for these one-time calculations using libraries such as `scipy`without re-compiling the code. The imager uses [pybind11](https://github.com/pybind/pybind11) library to invoke python functions from the C++ code. The code below shows how to fetch ADP start time from the unix epoch by calling a python function.
 
-The kernels definitions are located in the `📄 src/raft_kernels` folder and their related definitions in the `📄 src/ex` folder.
+<br/>
+
+Calling a python function from C++ using pybind11
+<!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
+### 📄 src/ex/py_funcs.hpp
+```c++
+326    double GetAdpTimeFromUnixEpoch() {
+327      py::gil_scoped_acquire acquire;
+328      return py::module_::import("epic_utils")
+329          .attr("get_ADP_time_from_unix_epoch")()
+330          .cast<double>();
+331    }
+```
+
+<br/>
+
+### Code Organization
+
+The kernels definitions are located in `📄 src/raft_kernels` folder and their related definitions in `📄 src/ex` folder. Because the majority of the code is templatized, classes are defined and declared in `hpp` files in the `📄 src/ex` folder. Python modules are located in `📄 src/python` and their C++ counterparts in the `📄 src/ex/py_funcs.hpp` file. Shell scripts to start the imaging pipline and overclock the GPU are in the `📄 src/commands` folder. All external dependencies like `glog` and `pqxx` are included as submodules to the imaging project and are placed in the `📄 src/extern` folder. Finally, the pipeline is built using `CMake`. The CPU and GPU codes are compiled separately and are the linked to the executable.
+
+<br/>
 
 <br/>
 
