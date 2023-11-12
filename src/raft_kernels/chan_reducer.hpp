@@ -23,13 +23,9 @@
 #ifndef SRC_RAFT_KERNELS_CHAN_REDUCER_HPP_
 #define SRC_RAFT_KERNELS_CHAN_REDUCER_HPP_
 
-#include <glog/logging.h>
-
 #include <chrono>
 #include <cmath>
 #include <memory>
-#include <raft>
-#include <raftio>
 #include <set>
 #include <variant>
 
@@ -39,6 +35,9 @@
 #include "../ex/py_funcs.hpp"
 #include "../ex/tensor.hpp"
 #include "../ex/types.hpp"
+#include "glog/logging.h"
+#include "raft"
+#include "raftio"
 
 /**
  * @brief Raft kernel bin the channels in the input image
