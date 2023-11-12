@@ -96,7 +96,7 @@ class IndexFetcherRft : public raft::kernel {
     }
     if (is_refresh_required()) {
       output["meta_pixel_rows"].push(
-          get_watch_indices(m_tstart, m_grid_size, m_grid_res, m_elev_limit_deg,
+          GetWatchIndices(m_tstart, m_grid_size, m_grid_res, m_elev_limit_deg,
                             m_watchdog_endpoint));
       VLOG(2) << "FIRED INDEX FETCHER";
     }

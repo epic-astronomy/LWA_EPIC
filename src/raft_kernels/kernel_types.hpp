@@ -213,7 +213,7 @@ struct Kernel<_PIX_EXTRACTOR> : KernelTypeDefs {
     // fetch intial pixel indices;
     LOG(INFO) << "Getting watch indices";
     auto initial_watch_indices =
-        get_watch_indices(GetFirstSeqIdVma(ip[_GpuId], port[_GpuId]), grid_size,
+        GetWatchIndices(GetFirstSeqIdVma(ip[_GpuId], port[_GpuId]), grid_size,
                           grid_res, elev_limit_deg, watchdog_addr);
     initial_watch_indices.print();
     config.nchan = reduced_nchan;

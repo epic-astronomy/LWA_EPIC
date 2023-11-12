@@ -96,7 +96,7 @@ class PixelExtractor : public raft::kernel {
 
   raft::kstatus run() override {
     m_timer.Tick();
-    VLOG(2)<<"EXTRACTING PIXELS";
+    VLOG(2) << "EXTRACTING PIXELS";
     // check if there are updates to the pixel meta rows
     if (input["meta_pixel_rows"].size() > 0) {
       input["meta_pixel_rows"].pop(_dummy_meta);
@@ -106,7 +106,7 @@ class PixelExtractor : public raft::kernel {
       }
     }
 
-    VLOG(2)<<"Extracted Dummy data";
+    VLOG(2) << "Extracted Dummy data";
 
     if (input["in_img"].size() == 0) {
       return raft::proceed;
