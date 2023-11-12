@@ -369,9 +369,9 @@ std::string Meta2PgTime(uint64_t time_tag, double img_len_ms) {
       .cast<std::string>();
 }
 
-EpicPixelTableMetaRows get_watch_indices(uint64_t seq_start_no, int grid_size,
-                                         float grid_res, float elev_limit,
-                                         std::string watchdog_endpoint) {
+EpicPixelTableMetaRows GetWatchIndices(uint64_t seq_start_no, int grid_size,
+                                       float grid_res, float elev_limit,
+                                       std::string watchdog_endpoint) {
   py::gil_scoped_acquire acquire;
   auto ret_dict =
       py::module_::import("pixel_extractor")
@@ -389,6 +389,15 @@ EpicPixelTableMetaRows get_watch_indices(uint64_t seq_start_no, int grid_size,
   VLOG(3) << nsrc << " " << ncoords << " " << kernel_dim;
 
   EpicPixelTableMetaRows watch_indices(ncoords, nsrc, kernel_dim);
+  VLOG(3) << "Setting the meta version";
+  unsigned int _seed;
+  watch_indices.meta_version = rand_r(&_seed);
+  VLOG(3) << "Transforming the coords";
+  watch_indices.TransformPixCoords(grid_size, grid_size);
+
+  if (nsrc == 0) {
+    return watch_indices;
+  }
 
   // create accessors for different indices
   // pixel coords
@@ -432,11 +441,6 @@ EpicPixelTableMetaRows get_watch_indices(uint64_t seq_start_no, int grid_size,
   for (int i = 0; i < nsrc; ++i) {
     watch_indices.source_ids[i] = src_ids[i];
   }
-  VLOG(3) << "Setting the meta version";
-  unsigned int _seed;
-  watch_indices.meta_version = rand_r(&_seed);
-  VLOG(3) << "Transforming the coords";
-  watch_indices.TransformPixCoords(grid_size, grid_size);
 
   VLOG(3) << "Returning watch indices";
 
