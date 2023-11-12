@@ -165,15 +165,13 @@ Calling a python function from C++ using pybind11
 
 ### Code Organization
 
-The kernels definitions are located in `📄 src/raft_kernels` folder and their related definitions in `📄 src/ex` folder. Because the majority of the code is templatized, classes are defined and declared in `hpp` files in the `📄 src/ex` folder. Python modules are located in `📄 src/python` and their C++ counterparts in the `📄 src/ex/py_funcs.hpp` file. Shell scripts to start the imaging pipline and overclock the GPU are in the `📄 src/commands` folder. All external dependencies like `glog` and `pqxx` are included as submodules to the imaging project and are placed in the `📄 src/extern` folder. Finally, the pipeline is built using `CMake`. The CPU and GPU codes are compiled separately and are the linked to the executable. See `📄 CMakeLists.txt` for details.
+The raft kernel definitions are located in `📄 src/raft_kernels` folder and their related definitions in `📄 src/ex` folder. Because the majority of the code is templatized, classes are declared and defined in `hpp` files in the `📄 src/ex` folder. Python modules are located in `📄 src/python` and their C++ counterparts in the `📄 src/ex/py_funcs.hpp` file. Shell scripts to start the imaging pipline and overclock the GPU are in the `📄 src/commands` folder. All external dependencies like `glog` and `pqxx` are included as submodules to the imaging project and are placed in the `📄 src/extern` folder. Finally, the pipeline is built using `CMake`. The CPU and GPU codes are compiled separately and are the linked to the executable. See `📄 CMakeLists.txt` for details.
 
 ## Further Reading
 
 **Code Walkthroughs**: Documents in the `code walkthroughs`folder provides implementation details on all the data flows that happen in the imager. Where necessary they also provide tips on extending the code.
 
 **Tutorials:** The `tutorials` folder provides tutorials on adding new features to the code, for instance, building new kernels. It also provides details on debugging the code and lists several _gotchas_ that previously led to severe bugs.
-
-<br/>
 
 <br/>
 
