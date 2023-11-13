@@ -65,7 +65,7 @@ Adding the kernel object as a private member. The suffix `_kt` indicates a kerne
 36      private:
 37       std::unique_ptr<Streamer> m_streamer;
 38       bool m_is_offline{false};
-39       static constexpr unsigned int m_nkernels{8};
+39       static constexpr unsigned int m_nkernels{9};
 40       PktGen_kt m_pkt_gen;
 41       DummyPktGen_kt m_dpkt_gen;
 42       EPICCorrelator_kt m_correlator;
