@@ -36,7 +36,7 @@ class EPICKernels {
  private:
   std::unique_ptr<Streamer> m_streamer;
   bool m_is_offline{false};
-  static constexpr unsigned int m_nkernels{8};
+  static constexpr unsigned int m_nkernels{9};
   PktGen_kt m_pkt_gen;
   DummyPktGen_kt m_dpkt_gen;
   EPICCorrelator_kt m_correlator;
