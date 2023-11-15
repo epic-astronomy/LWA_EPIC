@@ -20,7 +20,7 @@ lc["Pixel Extractor
 (Light curves)"]
 subgraph ip ["Imaging Pipeline"]
 direction LR
-pkt\_gen["Packet Assembler"]
+pkt\_gen["Gulp Generator"]
 chan\_reducer["Channel
 Reducer"]
 corr["Correlator
@@ -45,7 +45,7 @@ ev["Events
 (CHIME, Realfast, DSA-110...)"]-->Watchdog
 
 ```
-<!--MCONTENT {content: "flowchart TB<br/>\nlive\\_stream\\[\"Live Streamer\"\\]<br/>\nrtmp\\[\"RTMP Server\"\\]<br/>\nepictv\\[\"EPIC TV\"\\]<br/>\nidxfetch\\[\"Index Fetcher\"\\]<br/>\nlc\\[\"Pixel Extractor<br/>\n(Light curves)\"\\]<br/>\nsubgraph ip \\[\"Imaging Pipeline\"\\]<br/>\ndirection LR<br/>\npkt\\_gen\\[\"Packet Assembler\"\\]<br/>\nchan\\_reducer\\[\"Channel<br/>\nReducer\"\\]<br/>\ncorr\\[\"Correlator<br/>\n(CUDA-based)\"\\]<br/>\n<br/>pkt\\_gen\\-\\-\\>corr<br/>\ncorr\\-\\-\\>live\\_stream<br/>\n<br/>corr\\-\\-\\>chan\\_reducer<br/>\nchan\\_reducer\\-\\-\\>idxfetch<br/>\nidxfetch\\-\\-\\>lc<br/>\nchan\\_reducer\\-\\-\\>lc<br/>\nlc\\-\\-\\>db\\[\"DB Ingester\"\\]<br/>\nlc\\-\\-\\>acc\\[\"Accumulator\"\\]<br/>\nacc\\-\\-\\>disksav\\[\"Disk Saver\"\\]<br/>\nend<br/>\nF-Engine\\-\\-\\>ip<br/>\nlive\\_stream\\-\\-\\>rtmp<br/>\nrtmp\\-\\-\\>epictv<br/>\ndb\\-\\-\\>pg\\[\"Postgres DB\"\\]<br/>\ndisksav\\-\\-\\>Disk<br/>\nWatchdog\\-\\-\\>idxfetch<br/>\nev\\[\"Events<br/>\n(CHIME, Realfast, DSA-110...)\"\\]\\-\\-\\>Watchdog<br/>\n<br/>"} --->
+<!--MCONTENT {content: "flowchart TB<br/>\nlive\\_stream\\[\"Live Streamer\"\\]<br/>\nrtmp\\[\"RTMP Server\"\\]<br/>\nepictv\\[\"EPIC TV\"\\]<br/>\nidxfetch\\[\"Index Fetcher\"\\]<br/>\nlc\\[\"Pixel Extractor<br/>\n(Light curves)\"\\]<br/>\nsubgraph ip \\[\"Imaging Pipeline\"\\]<br/>\ndirection LR<br/>\npkt\\_gen\\[\"Gulp Generator\"\\]<br/>\nchan\\_reducer\\[\"Channel<br/>\nReducer\"\\]<br/>\ncorr\\[\"Correlator<br/>\n(CUDA-based)\"\\]<br/>\n<br/>pkt\\_gen\\-\\-\\>corr<br/>\ncorr\\-\\-\\>live\\_stream<br/>\n<br/>corr\\-\\-\\>chan\\_reducer<br/>\nchan\\_reducer\\-\\-\\>idxfetch<br/>\nidxfetch\\-\\-\\>lc<br/>\nchan\\_reducer\\-\\-\\>lc<br/>\nlc\\-\\-\\>db\\[\"DB Ingester\"\\]<br/>\nlc\\-\\-\\>acc\\[\"Accumulator\"\\]<br/>\nacc\\-\\-\\>disksav\\[\"Disk Saver\"\\]<br/>\nend<br/>\nF-Engine\\-\\-\\>ip<br/>\nlive\\_stream\\-\\-\\>rtmp<br/>\nrtmp\\-\\-\\>epictv<br/>\ndb\\-\\-\\>pg\\[\"Postgres DB\"\\]<br/>\ndisksav\\-\\-\\>Disk<br/>\nWatchdog\\-\\-\\>idxfetch<br/>\nev\\[\"Events<br/>\n(CHIME, Realfast, DSA-110...)\"\\]\\-\\-\\>Watchdog<br/>\n<br/>"} --->
 
 <br/>
 
