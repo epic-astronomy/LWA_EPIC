@@ -13,18 +13,17 @@ classDiagram
 \+ virtual raft::status run()
 }
 class GulpGen\_rft{
-
-\-std::unique\_ptr~PktAssmblr~ m\_assmblr
+\-std::unique\_ptrPktAssmblr m\_assmblr
 \-int m\_timer
-+GulpGen\_rft(std::unique\_ptr~PktAssmblr~&, int)
++GulpGen\_rft(std::unique\_ptrPktAssmblr&, int)
 raft::kstatus run ()
 }
 ```
-<!--MCONTENT {content: "classDiagram<br/>\n**\\`raft::kernel\\`** <|-- GulpGen\\_rft : inherits<br/>\n**class \\`raft::kernel\\`** {<br/>\n\\+ virtual raft::status run()<br/>\n}<br/>\nclass GulpGen\\_rft{\n\n\\-std::unique\\_ptr~PktAssmblr~ m\\_assmblr<br/>\n\\-int m\\_timer<br/>\n+GulpGen\\_rft(std::unique\\_ptr~PktAssmblr~&, int)<br/>\nraft::kstatus run ()<br/>\n}"} --->
+<!--MCONTENT {content: "classDiagram<br/>\n**\\`raft::kernel\\`** <|-- GulpGen\\_rft : inherits<br/>\n**class \\`raft::kernel\\`** {<br/>\n\\+ virtual raft::status run()<br/>\n}<br/>\nclass GulpGen\\_rft{<br/>\n\\-std::unique\\_ptrPktAssmblr m\\_assmblr<br/>\n\\-int m\\_timer<br/>\n+GulpGen\\_rft(std::unique\\_ptrPktAssmblr&, int)<br/>\nraft::kstatus run ()<br/>\n}"} --->
 
 <br/>
 
-The `GulpGen_rft`<swm-token data-swm-token=":src/raft_kernels/packet_gen.hpp:44:2:2:`class GulpGen_rft : public raft::kernel {`"/> raft kernel is responsible for fetching a gulp from the packet assembler and send it to the correlator (defined in `CorrelatorRft`<swm-token data-swm-token=":src/raft_kernels/correlator.hpp:42:2:2:`class CorrelatorRft : public raft::kernel {`"/>). It is the starting point of the pipeline. This kernel only defines one output port called `gulp` with a `Payload`<swm-token data-swm-token=":src/ex/buffer.hpp:228:3:3:`  explicit Payload(std::shared_ptr&lt;MBuf&gt; p_mbuf);`"/> type (see [Creating a Raft Kernel](creating-a-raft-kernel.hr4rzvt1.sw.md) for details on port definitions). The payload is a buffer with a `uint8_t` data type that carries 4+4-bit electric field spectra from the F-engine (see [LFbufrMngr | Lock Free Buffer Pools](lfbufrmngr-lock-free-buffer-pools.boxu201d.sw.md) for details on the `Payload`<swm-token data-swm-token=":src/ex/buffer.hpp:211:2:2:`struct Payload {`"/> class).
+The `GulpGen_rft`<swm-token data-swm-token=":src/raft_kernels/packet_gen.hpp:44:2:2:`class GulpGen_rft : public raft::kernel {`"/> raft kernel is responsible for fetching a gulp from the packet assembler and send it to the correlator (defined in `CorrelatorRft`<swm-token data-swm-token=":src/raft_kernels/correlator.hpp:42:2:2:`class CorrelatorRft : public raft::kernel {`"/>). It is the starting point of the pipeline. This kernel only defines one output port called `gulp` with a `Payload`<swm-token data-swm-token=":src/ex/buffer.hpp:228:3:3:`  explicit Payload(std::shared_ptr&lt;MBuf&gt; p_mbuf);`"/> type (see [Creating a Raft Kernel](creating-a-raft-kernel.hr4rzvt1.sw.md) for details on port definitions). The payload is a buffer with a `uint8_t` data type that carries 4+4-bit electric field spectra from the F-engine (see [LFbufrMngr | Lock Free Buffer Pools](lfbufrmngr-lock-free-buffer-pools.boxu201d.sw.md) for details on the `Payload`<swm-token data-swm-token=":src/ex/buffer.hpp:211:2:2:`struct Payload {`"/> class). The `GulpGen_rft`<swm-token data-swm-token=":src/raft_kernels/packet_gen.hpp:44:2:2:`class GulpGen_rft : public raft::kernel {`"/> kernel accepts a `unique_ptr`to a `PacketAssembler`<swm-token data-swm-token=":src/ex/packet_assembler.hpp:88:1:1:`  PacketAssembler(std::string p_ip, int p_port, size_t p_nseq_per_gulp = 1000,`"/> instance and assumes it ownership. Gulps are requested using the `get_gulp`<swm-token data-swm-token=":src/ex/packet_assembler.hpp:90:3:3:`  payload_t get_gulp();`"/> function. The user is responsible for properly intializing the packet assembler instance before passing it to the kernel.
 
 <br/>
 
@@ -66,8 +65,6 @@ The kernel can run in timed and untimed modes. The duration for the timed mode i
 [LFbufrMngr | Lock Free Buffer Pools](lfbufrmngr-lock-free-buffer-pools.boxu201d.sw.md)
 
 [Creating a Raft Kernel](creating-a-raft-kernel.hr4rzvt1.sw.md)
-
-<br/>
 
 <br/>
 
