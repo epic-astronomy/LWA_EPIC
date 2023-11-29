@@ -20,7 +20,7 @@ jobs:
         python-version: [3.6]
 
     steps:
-    - uses: actions/checkout@master
+    - uses: actions/checkout@v3.6.0
       with:
         fetch-depth: 1
 
