@@ -370,7 +370,8 @@ class PSTensor : public Tensor<_Tp, EPICImgDim> {
       for (size_t j = 0; j < m_nchan; ++j) {                       // chan loop
         int x = p_meta.pixel_coords_sft[i].first;
         int y = p_meta.pixel_coords_sft[i].second;
-        CHECK(x < 0 || y < 0) << "Invalid pixel indices in pixel extraction";
+        CHECK((x >= 0 && y >= 0))
+            << "Invalid pixel indices in pixel extraction";
         const auto vec = hn::LoadU(
             _stokes_tag, this->m_data_ptr + j * this->m_strides[0] +
                              x * this->m_strides[1] + y * this->m_strides[1]);
