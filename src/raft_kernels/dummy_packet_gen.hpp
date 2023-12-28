@@ -72,12 +72,12 @@ class DummyPktGen : public raft::kernel {
       LOG_IF(FATAL, !static_cast<bool>(pld)) << "Empty buffer in packet gen";
 
       auto start = std::chrono::high_resolution_clock::now();
-      // Get40msGulp(pld.get_mbuf()->GetDataPtr());
+      //Get40msGulp(pld.get_mbuf()->GetDataPtr());
       VLOG(3) << "Gulp gen duration: "
               << std::chrono::duration_cast<std::chrono::milliseconds>(
                      std::chrono::high_resolution_clock::now() - start)
                      .count();
-      LOG(INFO) << "Gulp id: " << i;
+      VLOG(3) << "Gulp id: " << i;
       std::this_thread::sleep_for(std::chrono::milliseconds(40));
 
       VLOG(3)
@@ -103,7 +103,7 @@ class DummyPktGen : public raft::kernel {
 
       output["gulp"].push(pld);
     }
-    VLOG(2) << "Stopping gulp gen";
+    LOG(INFO) << "Stopping gulp gen";
     return raft::stop;
   }
 };
