@@ -115,7 +115,7 @@ class ChanReducerRft : public raft::kernel {
         std::get<int64_t>(in_pld.get_mbuf()->GetMetadataRef()["chan0"]);
     if (m_hc_chans.count(chan0) > 0) {
       LOG_EVERY_N(WARNING, 3000) << "Health Checks. Ignoring data";
-      in_pld = _PldIn();  // this releases the lock without waiting for raft's
+      // in_pld = _PldIn();  // this releases the lock without waiting for raft's
                           // runtime to destroy the object
       return raft::proceed;
     }
