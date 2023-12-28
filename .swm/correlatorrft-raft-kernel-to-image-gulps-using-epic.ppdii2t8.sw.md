@@ -5,7 +5,25 @@ file_version: 1.1.3
 app_version: 1.18.31
 ---
 
-to be filled
+<!--MERMAID {width:100}-->
+```mermaid
+classDiagram
+**\`raft::kernel\`** <|-- CorrelatorRft : inherits
+**class \`raft::kernel\`** {
+\+ virtual raft::status run()
+}
+<br/>class CorrelatorRft{
+\-std::unique\_ptr~\_Correlator~ m\_assmblr
+\-... imaging parameters
+\-std::setint m\_hc\_chans
+\-...Metrics variables
++CorrelatorRft(std::unique\_ptr~\_Correlator~\*)
+raft::kstatus run ()
+}
+
+note for CorrelatorRft "Fetch gulps\\nIgnore health check freqs\\nSend it to GPU for imaging\\nAccumulate for specified period\\nRelease it to the pipeline"
+```
+<!--MCONTENT {content: "classDiagram<br/>\n**\\`raft::kernel\\`** <|-- CorrelatorRft : inherits<br/>\n**class \\`raft::kernel\\`** {<br/>\n\\+ virtual raft::status run()<br/>\n}<br/>\n<br/>class CorrelatorRft{<br/>\n\\-std::unique\\_ptr~\\_Correlator~ m\\_assmblr<br/>\n\\-... imaging parameters<br/>\n\\-std::setint m\\_hc\\_chans<br/>\n\\-...Metrics variables<br/>\n+CorrelatorRft(std::unique\\_ptr~\\_Correlator~\\*)<br/>\nraft::kstatus run ()<br/>\n}\n\nnote for CorrelatorRft \"Fetch gulps\\\\nIgnore health check freqs\\\\nSend it to GPU for imaging\\\\nAccumulate for specified period\\\\nRelease it to the pipeline\"<br/>"} --->
 
 <br/>
 

@@ -13,13 +13,15 @@ classDiagram
 \+ virtual raft::status run()
 }
 class GulpGen\_rft{
-\-std::unique\_ptrPktAssmblr m\_assmblr
+\-std::unique\_ptr~PktAssmblr~ m\_assmblr
 \-int m\_timer
-+GulpGen\_rft(std::unique\_ptrPktAssmblr&, int)
+
+\-...Metrics Variables
++GulpGen\_rft(std::unique\_ptr~PktAssmblr~&, int)
 raft::kstatus run ()
 }
 ```
-<!--MCONTENT {content: "classDiagram<br/>\n**\\`raft::kernel\\`** <|-- GulpGen\\_rft : inherits<br/>\n**class \\`raft::kernel\\`** {<br/>\n\\+ virtual raft::status run()<br/>\n}<br/>\nclass GulpGen\\_rft{<br/>\n\\-std::unique\\_ptrPktAssmblr m\\_assmblr<br/>\n\\-int m\\_timer<br/>\n+GulpGen\\_rft(std::unique\\_ptrPktAssmblr&, int)<br/>\nraft::kstatus run ()<br/>\n}"} --->
+<!--MCONTENT {content: "classDiagram<br/>\n**\\`raft::kernel\\`** <|-- GulpGen\\_rft : inherits<br/>\n**class \\`raft::kernel\\`** {<br/>\n\\+ virtual raft::status run()<br/>\n}<br/>\nclass GulpGen\\_rft{<br/>\n\\-std::unique\\_ptr~PktAssmblr~ m\\_assmblr<br/>\n\\-int m\\_timer\n\n\\-...Metrics Variables<br/>\n+GulpGen\\_rft(std::unique\\_ptr~PktAssmblr~&, int)<br/>\nraft::kstatus run ()<br/>\n}"} --->
 
 <br/>
 
