@@ -320,7 +320,7 @@ class Verbs {
     // Find the right device
     /* Query all devices */
     ibv_dev_list = ibv_get_device_list(&ndev);
-    std::cout<<"Found "<<ndev<<" devices\n";
+    //std::cout<<"Found "<<ndev<<" devices\n";
     check_null(ibv_dev_list, "ibv_get_device_list");
 
     /* Interogate */
@@ -368,7 +368,7 @@ class Verbs {
         /* Save it to the class so that we can use it later */
         _verbs.ctx = ibv_ctx;
         _verbs.port_num = p;
-        printf("%s", _verbs.ctx->device->name);
+        //printf("%s", _verbs.ctx->device->name);
         break;
       } else {
         check_error(ibv_close_device(ibv_ctx), "close device");
@@ -487,46 +487,46 @@ class Verbs {
     }
   }
   void create_queues() {
-    std::cout << "inside queues\n";
+    // std::cout << "inside queues\n";
     int i;
-    std::cout << "init int\n";
+    // std::cout << "init int\n";
     // Setup the completion channel and make it non-blocking
-    std::cout << "x\n";
+    // std::cout << "x\n";
     _verbs.cc = ibv_create_comp_channel(_verbs.ctx);
-    std::cout << "1\n";
+    // std::cout << "1\n";
     check_null(_verbs.cc, "create completion channel");
-    std::cout<<_verbs.cc->fd<<std::endl;
+    // std::cout<<_verbs.cc->fd<<std::endl;
     int flags = ::fcntl(_verbs.cc->fd, F_GETFL);
-    std::cout << "2\n";
+    // std::cout << "2\n";
     check_error(::fcntl(_verbs.cc->fd, F_SETFL, flags | O_NONBLOCK),
                 "set completion channel to non-blocking");
     flags = ::fcntl(_verbs.cc->fd, F_GETFD);
-    std::cout << "3\n";
+    // std::cout << "3\n";
     check_error(::fcntl(_verbs.cc->fd, F_SETFD, flags | O_CLOEXEC),
                 "set completion channel to non-blocking");
-    std::cout << "4\n";
+    // std::cout << "4\n";
     ::madvise(_verbs.cc, sizeof(ibv_pd), MADV_DONTFORK);
-    std::cout << "5\n";
+    // std::cout << "5\n";
 
     // Setup the completion queues
     _verbs.cq = (ibv_cq**)::malloc(BF_VERBS_NQP * sizeof(ibv_cq*));
     check_null(_verbs.cq, "allocate completion queues");
-    std::cout << "6\n";
+    // std::cout << "6\n";
 
     ::memset(_verbs.cq, 0, BF_VERBS_NQP * sizeof(ibv_cq*));
-    std::cout << "7\n";
+    // std::cout << "7\n";
 
     for (i = 0; i < BF_VERBS_NQP; i++) {
       _verbs.cq[i] =
           ibv_create_cq(_verbs.ctx, BF_VERBS_NPKTBUF, NULL, _verbs.cc, 0);
       check_null(_verbs.cq[i], "create completion queue");
-      std::cout<<"yes";
+      // std::cout<<"yes";
       // Request notifications before any receive completion can be created.
       // Do NOT restrict to solicited-only completions for receive.
       check_error(ibv_req_notify_cq(_verbs.cq[i], 0),
                   "change completion queue request notifications");
     }
-    std::cout << "8";
+    // std::cout << "8";
 
     // Start Send
 
@@ -953,7 +953,7 @@ class Verbs {
       destroy_context();
 
       std::stringstream ss;
-      std::cout << what << std::endl;
+      //std::cout << what << std::endl;
       ss << "Failed to " << what << ": (" << errno << ") " << strerror(errno);
       throw Verbs::Error(ss.str());
     }
@@ -991,25 +991,25 @@ class Verbs {
     // _timeout = 0.04;
 
     // _timeout = 1;
-    std::cout << "offset: " << offset << std::endl;
+    // std::cout << "offset: " << offset << std::endl;
     //_timeout=1000;
-    std::cout << "Timeout1 " << _timeout << std::endl;
+    // std::cout << "Timeout1 " << _timeout << std::endl;
 
     ::memset(&_verbs, 0, sizeof(_verbs));
-    std::cout << "1\n";
+    // std::cout << "1\n";
     check_error(ibv_fork_init(), "make verbs fork safe");
-    std::cout << "a\n";
+    // std::cout << "a\n";
     create_context();
-    std::cout << "2\n";
+    // std::cout << "2\n";
     // mmappable=nullptr;
     create_buffers(mmappable);
-    std::cout << "creating queues\n";
+    // std::cout << "creating queues\n";
     create_queues();
-    std::cout << "2\n";
+    // std::cout << "2\n";
     link_work_requests(offset);
-    std::cout << "1\n";
+    // std::cout << "1\n";
     create_flows();
-    std::cout << "2\n";
+    // std::cout << "2\n";
   }
   ~Verbs() {
     destroy_flows();
