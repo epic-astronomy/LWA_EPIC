@@ -84,7 +84,9 @@ struct Kernel : KernelTypeDefs {
 
 template <>
 struct Kernel<_PKT_GEN> : KernelTypeDefs {
-  using ktype = std::unique_ptr<GulpGen_rft<vma_pkt_assembler>>;
+  using pkt_assembler_t = verbs_pkt_assembler;
+  //using pkt_assembler_t = vma_pkt_assembler;
+  using ktype = std::unique_ptr<GulpGen_rft<pkt_assembler_t>>;
 
   template <unsigned int _GpuId>
   static ktype get_kernel(const opt_t& options) {
@@ -97,9 +99,9 @@ struct Kernel<_PKT_GEN> : KernelTypeDefs {
     }
     LOG(INFO) << "Creating gulper";
     // using payload_t = typename ktype::payload_t;
-    auto gulper = std::make_unique<vma_pkt_assembler>(ip[_GpuId], port[_GpuId]);
+    auto gulper = std::make_unique<pkt_assembler_t>(ip[_GpuId], port[_GpuId]);
 
-    return std::make_unique<GulpGen_rft<vma_pkt_assembler>>(
+    return std::make_unique<GulpGen_rft<pkt_assembler_t>>(
         gulper, options["runtime"].as<int>());
   }
 };
@@ -213,7 +215,7 @@ struct Kernel<_PIX_EXTRACTOR> : KernelTypeDefs {
     // fetch intial pixel indices;
     LOG(INFO) << "Getting watch indices";
     auto initial_watch_indices =
-        GetWatchIndices(GetFirstSeqIdVma(ip[_GpuId], port[_GpuId]), grid_size,
+        GetWatchIndices(GetFirstSeqIdVerbs(ip[_GpuId], port[_GpuId]), grid_size,
                           grid_res, elev_limit_deg, watchdog_addr);
     initial_watch_indices.print();
     config.nchan = reduced_nchan;

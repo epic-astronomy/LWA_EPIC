@@ -59,7 +59,7 @@ int GetChan0Vma(std::string ip, int port) {
 
 #endif
 
-int GetChan0(std::string ip, int port) {
+int GetChan0Verbs(std::string ip, int port) {
   auto receiver = verbs_receiver_t();
   uint8_t* buf{nullptr};
   receiver.set_address(ip, port);
@@ -71,8 +71,22 @@ int GetChan0(std::string ip, int port) {
   return (ntohs(pkt_hdr->chan0));
 }
 
+#ifdef _USE_VMA
 uint64_t GetFirstSeqIdVma(std::string ip, int port) {
   auto receiver = vma_receiver_t();
+  uint8_t* buf;
+  receiver.set_address(ip, port);
+  receiver.bind_socket();
+  receiver.init_receiver();
+  int nbytes = receiver.recv_packet(buf, ChipsOffset_t::value);
+  // std::cout<<nbytes;
+  const chips_hdr_type* pkt_hdr = reinterpret_cast<chips_hdr_type*>(buf);
+  return (be64toh(pkt_hdr->seq));
+}
+#endif
+
+uint64_t GetFirstSeqIdVerbs(std::string ip, int port) {
+  auto receiver = verbs_receiver_t();
   uint8_t* buf;
   receiver.set_address(ip, port);
   receiver.bind_socket();
@@ -112,7 +126,7 @@ void PrintStationEndPoints<LWA_SV>() {
 
   for (auto& port : port_v) {
     for (auto& ip : address_v) {
-      auto chan0 = GetChan0Vma(ip, port);
+      auto chan0 = GetChan0Verbs(ip, port);
       std::cout << ip << ":" << port << " " << std::setprecision(4)
                 << chan0 * BANDWIDTH * 1e-6 << " MHz\n";
     }

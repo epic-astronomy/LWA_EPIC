@@ -20,7 +20,7 @@
  SOFTWARE.
  */
 
-#define _USE_VMA_ 1
+//#define _USE_VMA_ 1
 
 #ifndef SRC_EX_PACKET_RECEIVER_HPP_
 #define SRC_EX_PACKET_RECEIVER_HPP_
