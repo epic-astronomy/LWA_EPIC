@@ -64,8 +64,9 @@ class DBIngesterRft : public raft::kernel {
 
  public:
   // https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING
+  // https://www.postgresql.org/docs/current/libpq-envars.html
   DBIngesterRft(int p_kernel_size = 1,
-                std::string p_conn_string = "dbname=epic")
+                std::string p_conn_string = ""/* set from env variables*/)
       : raft::kernel() {
     input.addPort<_PldIn>("in_pixel_rows");
 
