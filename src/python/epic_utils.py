@@ -246,7 +246,6 @@ def get_ADP_time_from_unix_epoch():
                 )
             got_utc_start = True
         except Exception as ex:
-            print(ex)
             time.sleep(0.1)
     # print((utc_start_dt - ADP_EPOCH).total_seconds())
     return (utc_start_dt - ADP_EPOCH).total_seconds()

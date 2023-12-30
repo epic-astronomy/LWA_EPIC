@@ -147,6 +147,7 @@ void RunEpic(int argc, char** argv) {
   LOG(INFO) << "Parsing options";
   auto options = option_list.parse(argc, argv);
   auto opt_valid = ValidateOptions(options);
+  LOG(INFO) << "Validated options";
 
   if (opt_valid.value_or("none") != "none"s) {
     LOG(FATAL) << opt_valid.value();
@@ -163,6 +164,7 @@ void RunEpic(int argc, char** argv) {
   }
 
   // Initialize the metrics exporter
+  LOG(INFO) << "Initializing the metrics writer";
   PrometheusExporter::GetInstance(
       options["metrics_bind_addr"].as<std::string>(),
       options["disable_metrics"].as<bool>());
