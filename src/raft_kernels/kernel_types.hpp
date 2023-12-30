@@ -297,8 +297,9 @@ std::unique_ptr<Streamer> GetStreamer(const KernelTypeDefs::opt_t& options) {
   int seq_accum = options["seq_accum"].as<int>();
   float fps = 1000 / seq_accum;
   std::string url = options["stream_url"].as<std::string>();
+  std::string cmap = options["stream_cmap"].as<std::string>();
 
   return std::make_unique<Streamer>(fps, vid_size, vid_size, grid_size, fps,
-                                    url);
+                                    url, cmap);
 }
 #endif  // SRC_RAFT_KERNELS_KERNEL_TYPES_HPP_

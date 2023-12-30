@@ -50,6 +50,7 @@ extern "C" {
 #include <memory>
 #include <optional>
 #include <string>
+#include <set>
 #include <thread>
 
 #include "./constants.h"
@@ -79,6 +80,7 @@ class Streamer {
   uint8_t *framebuf{nullptr};
   std::string out_rtmp_url;
   AVPacket *pkt;
+  std::string m_cmap;
 
   std::unique_ptr<float[]> m_frame_buf;
   std::unique_ptr<float[]> m_raw_frame;
@@ -117,12 +119,13 @@ class Streamer {
   Status_t InitVideoFrameBuf();
   Status_t InitOutput();
   Status_t InitVideoPkt();
+  Status_t ValidateCmap(std::string p_cmap);
 
  public:
   Streamer(float p_fps = 6.25, int p_vid_width = 512, int p_vid_height = 512,
            int p_grid_size = 128, float p_time_base_den = 6.25,
            std::string p_stream_url = "rtmp://127.0.0.1:1857/live/epic",
-           int p_log_level = AV_LOG_ERROR)
+           std::string p_cmap = "magma", int p_log_level = AV_LOG_ERROR)
       : m_fps(p_fps),
         m_width(p_vid_width),
         m_height(p_vid_height),
@@ -133,6 +136,9 @@ class Streamer {
         dst_fps({int(p_fps * 1000), 1000}) {
     m_npixels_vid = m_width * m_height;
     m_npixels_grid = m_grid_size * m_grid_size;
+
+    ValidateCmap(p_cmap);
+    m_cmap = p_cmap;
 
     m_raw_frame = std::make_unique<float[]>(m_npixels_grid);
     m_frame_buf = std::make_unique<float[]>(m_npixels_grid);
@@ -282,6 +288,16 @@ void Streamer::CheckError(const Status_t &p_status) {
     LOG(FATAL) << p_status.value();
   }
 }
+
+Streamer::Status_t Streamer::ValidateCmap(std::string p_cmap) {
+  const auto valid_cmaps = std::set<std::string>{"magma","inferno","plasma","viridis","turbo","cividis","range1","range2","shadows","highlights","solar","nominal","preferred","total","spectral","cool","heat","fiery","blues","green","helix"};
+
+  if(valid_cmaps.count(p_cmap)<1){
+    return Status_t{"Invalid cmap specfified. See https://ffmpeg.org/ffmpeg-filters.html#pseudocolor for available ones"};
+  }
+  return {};
+}
+
 Streamer::Status_t Streamer::InitOutputContext() {
   if (avformat_alloc_output_context2(&outputContext, nullptr, "flv",
                                      m_stream_url.c_str()) < 0) {
@@ -392,7 +408,7 @@ Streamer::Status_t Streamer::InitFilterGraph() {
 
   if (avfilter_init_str(buffersrcContext, src_buf) < 0 ||
       avfilter_init_str(buffersinkContext, "") < 0 ||
-      avfilter_init_str(pseudocolorContext, "preset=magma") < 0 ||
+      avfilter_init_str(pseudocolorContext, ("preset="+m_cmap).c_str()) < 0 ||
       avfilter_init_str(scaleContext, scale_buf) < 0 ||
       avfilter_init_str(
           textContext,

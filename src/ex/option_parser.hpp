@@ -109,7 +109,10 @@ cxxopts::Options GetEpicOptions() {
       cxxopts::value<int>()->default_value("512"))(
       "stream_url", "RTMP endpoint to stream the video to",
       cxxopts::value<std::string>()->default_value(
-          "rtmp://127.0.0.1:1857/live/epic"));
+          "rtmp://127.0.0.1:1857/live/epic"))(
+            "stream_cmap", "Colormap for the output video stream. See https://ffmpeg.org/ffmpeg-filters.html#pseudocolor for available ones.",
+            cxxopts::value<std::string>()->default_value("magma")
+          );
 
   return options;
 }
