@@ -24,7 +24,9 @@
 #define SRC_EX_OPTION_PARSER_HPP_
 #include <cxxopts.hpp>
 #include <iostream>
+#include <iterator>
 #include <string>
+#include <sstream>
 #include <vector>
 
 #include "./constants.h"
@@ -216,13 +218,41 @@ std::optional<std::string> ValidateOptions(const cxxopts::ParseResult& result) {
   return {};
 }
 
+template<typename T>
+std::string VJoin(std::vector<T> inp_vec, const char* delimiter=","){
+  if(inp_vec.size()==0){
+    return "";
+  }
+
+  if(inp_vec.size()==1){
+    return std::to_string(inp_vec[0]);
+  }
+  std::stringstream result;
+  std::copy(inp_vec.begin(), inp_vec.end(), std::ostream_iterator<T>(result, delimiter));
+  return result.str();
+}
+
+template<>
+std::string VJoin<>(std::vector<std::string> inp_vec, const char* delimiter){
+  if(inp_vec.size()==0){
+    return "";
+  }
+
+  if(inp_vec.size()==1){
+    return inp_vec[0];
+  }
+  std::stringstream result;
+  std::copy(inp_vec.begin(), inp_vec.end(), std::ostream_iterator<std::string>(result, delimiter));
+  return result.str();
+}
+
 void InitInfoMetric(const cxxopts::ParseResult& result){
 //git_CommitSHA1()
   using sVec = typename std::vector<std::string>;
   using iVec = typename std::vector<int>;
   PrometheusExporter::AddInfoLabels({
-    {"F_engines", join(result["addr"].as<sVec>())},
-    {"ports",join(result["port"].as<iVec>())},
+    {"F_engines", VJoin(result["addr"].as<sVec>())},
+    {"ports",VJoin(result["port"].as<iVec>())},
     {"image_size",std::to_string(result["imagesize"].as<int>())},
     {"imageres", std::to_string(result["imageres"].as<float>())},
     {"nts",std::to_string(result["nts"].as<int>())},
@@ -235,7 +265,7 @@ void InitInfoMetric(const cxxopts::ParseResult& result){
     {"chan_nbin",std::to_string(result["chan_nbin"].as<int>())},
     {"nstreams",std::to_string(result["nstreams"].as<int>())},
     {"ngpus",std::to_string(result["ngpus"].as<int>())},
-    {"gpu_ids",join(result["gpu_ids"].as<iVec>())},
+    {"gpu_ids",VJoin(result["gpu_ids"].as<iVec>())},
     {"elev_limit_deg",std::to_string(result["elev_limit_deg"].as<float>())},
     {"video_size",std::to_string(result["video_size"].as<int>())},
     {"stream_cmap",result["stream_cmap"].as<std::string>()},

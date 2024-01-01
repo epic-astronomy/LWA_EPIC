@@ -37,6 +37,7 @@
 #include <mutex>
 #include <string>
 #include <sstream>
+#include <type_traits>
 #include <vector>
 
 namespace pm = prometheus;
@@ -228,11 +229,6 @@ class Timer {
   }
 };
 
-template<typename T>
-std::string join(std::vector<T> inp_vec, const char* delimiter=","){
-  std::stringstream result;
-  std::copy(inp_vec.begin(), inp_vec.end(), std::ostream_iterator<T>(result, delimiter));
-  return result.str();
-}
+
 
 #endif  // SRC_EX_METRICS_HPP_
