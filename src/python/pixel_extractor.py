@@ -476,12 +476,14 @@ class EpicPixels:
 
 def get_pixel_indices(
     seq_start_id, grid_size, grid_res, elev_limit, watchdog_endpoint
-):
+):  
+    print("SEQ_START_ID", seq_start_id, )
     watchlist = get_watch_list(watchdog_endpoint)
     phdu, ihdu = get_image_headers_sv(seq_start_id, grid_size, grid_res)
 
     pix_extractor = EpicPixels(ihdu, phdu, watchlist, elev_limit)
     indices = pix_extractor.get_pix_indices()
+    print(indices)
     if indices is None:  # no sources in the FOV
         return dict(
             nsrc=np.array([0]).copy(),
@@ -506,5 +508,6 @@ if __name__ == "__main__":
         grid_res = 1
         elev_lim = 0
         kernel_dim = 5
-        indices = get_pixel_indices(seq_start, grid_size, grid_res, elev_lim,"129.24.76.213:31342")
-        print(indices["nsrc"], len(indices["pix_x"]))
+        indices = get_pixel_indices(seq_start, grid_size, grid_res, elev_lim,"169.254.128.1:1729")
+        # print(indices)
+        print(i, indices["nsrc"], len(indices["pix_x"]))
