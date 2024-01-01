@@ -29,6 +29,8 @@
 #include "../ex/metrics.hpp"
 #include "../ex/station_desc.hpp"
 #include "./kernel_types.hpp"
+#include "../ex/option_parser.hpp"
+
 // #include "./epic_live_streamer.hpp"
 
 template <unsigned int _GpuId>
@@ -168,6 +170,9 @@ void RunEpic(int argc, char** argv) {
   PrometheusExporter::GetInstance(
       options["metrics_bind_addr"].as<std::string>(),
       options["disable_metrics"].as<bool>());
+
+  InitInfoMetric(options);
+  
   LOG(INFO) << "Looking for GPUs";
   int num_gpus =
       options["ngpus"].as<int>() > 0 ? options["ngpus"].as<int>() : 1;

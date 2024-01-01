@@ -28,7 +28,9 @@
 #include <vector>
 
 #include "./constants.h"
+#include "./metrics.hpp"
 #include "./host_helpers.h"
+#include "git.h"
 
 cxxopts::Options GetEpicOptions() {
   cxxopts::Options options("epic++", "EPIC dual-pol imager");
@@ -214,4 +216,30 @@ std::optional<std::string> ValidateOptions(const cxxopts::ParseResult& result) {
   return {};
 }
 
+void InitInfoMetric(const cxxopts::ParseResult& result){
+//git_CommitSHA1()
+  using sVec = typename std::vector<std::string>;
+  using iVec = typename std::vector<int>;
+  PrometheusExporter::AddInfoLabels({
+    {"F_engines", join(result["addr"].as<sVec>())},
+    {"ports",join(result["port"].as<iVec>())},
+    {"image_size",std::to_string(result["imagesize"].as<int>())},
+    {"imageres", std::to_string(result["imageres"].as<float>())},
+    {"nts",std::to_string(result["nts"].as<int>())},
+    {"seq_accum",std::to_string(result["seq_accum"].as<int>())},
+    {"nimg_accum",std::to_string(result["nimg_accum"].as<int>())},
+    {"channels",std::to_string(result["channels"].as<int>())},
+    {"support",std::to_string(result["support"].as<int>())},
+    {"kernel_oversample",std::to_string(result["kernel_oversample"].as<int>())},
+    {"accum_16bit",std::to_string(result["accum_16bit"].as<bool>())},
+    {"chan_nbin",std::to_string(result["chan_nbin"].as<int>())},
+    {"nstreams",std::to_string(result["nstreams"].as<int>())},
+    {"ngpus",std::to_string(result["ngpus"].as<int>())},
+    {"gpu_ids",join(result["gpu_ids"].as<iVec>())},
+    {"elev_limit_deg",std::to_string(result["elev_limit_deg"].as<float>())},
+    {"video_size",std::to_string(result["video_size"].as<int>())},
+    {"stream_cmap",result["stream_cmap"].as<std::string>()},
+    {"imager_build_hash",git_CommitSHA1()}
+  });
+}
 #endif  // SRC_EX_OPTION_PARSER_HPP_
