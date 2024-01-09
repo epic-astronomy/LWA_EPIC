@@ -35,7 +35,10 @@ class UDPRecvThread(threading.Thread):
     def run(self):
         while True:#not self.stop_requested.is_set():
             #pkt = self.socket.recv(self._bufsize)
-            pkt, src_addr = self.socket.recvfrom(self._bufsize)
+            try:
+                pkt, src_addr = self.socket.recvfrom(self._bufsize)
+            except Exception as e:
+                pass
             if self.stop_requested.is_set():
                 break
             #if pkt == UDPRecvThread.STOP:
