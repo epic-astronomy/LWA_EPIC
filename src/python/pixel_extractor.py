@@ -62,7 +62,6 @@ def get_watch_list(watchdog_endpoint):
     """
     Fetch the watchlist for EPIC at Sevilleta
     """
-    # print("fetching watchlist", watchdog_endpoint)
     with grpc.insecure_channel(watchdog_endpoint) as channel:
         stub = epic_image_pb2_grpc.epic_post_processStub(channel)
         response = stub.fetch_watchlist(epic_image_pb2.empty())
@@ -71,7 +70,7 @@ def get_watch_list(watchdog_endpoint):
         df.rename(columns=dict(patch_type="kernel_dim"), inplace=True)
     # df = pd.DataFrame(
     #     dict(id=[0], source_name=["sun"], ra=[0.0], dec=[0.0], kernel_dim=[5])
-    # )
+    # ) 
         return df
 
 
@@ -208,7 +207,6 @@ class EpicPixels:
         # self.inttime = self.primary_hdr["INTTIM"]
 
         self.t_obs = self.img_hdr["DATETIME"]
-        # print("t_obs", self.t_obs)
 
         self.wcs = WCS(self.img_hdr, naxis=2)
 
@@ -267,9 +265,6 @@ class EpicPixels:
         """Return a bool index indicating whether the
         specified pixel coordinates lie inside the fov
         """
-        # print(np.vstack([x - self.xdim/2,y - self.ydim/2]))
-        # print(np.linalg.norm(np.vstack([x - self.xdim/2,y - self.ydim/2])
-        # ,axis=0))
         is_fov: NDArrayBool_t = np.less_equal(
             np.linalg.norm(
                 np.vstack([x - self.xdim / 2, y - self.ydim / 2]), axis=0
@@ -319,9 +314,7 @@ class EpicPixels:
         # )
         self.patch_npix_l = self.patch_size_l**2
 
-        # print(self.ra_l, self.dec_l)
         self._update_src_skypos(self.t_obs)
-        # print(self.ra_l, self.dec_l)
 
         self.x_l, self.y_l = self.wcs.all_world2pix(
             self.ra_l, self.dec_l, 1, ra_dec_order=True
@@ -350,7 +343,7 @@ class EpicPixels:
             self.pixel_meta_df = None
             return None
         self.watch_l = self.watch_l[:, self.in_fov]
-
+        
         xpatch_pix_idx, ypatch_pix_idx = np.hstack(
             list(map(PatchMan.get_patch_idx, self.watch_l[-1, :]))
         )
@@ -388,27 +381,9 @@ class EpicPixels:
         xpatch_pix_idx = xpatch_pix_idx[is_out_fov]
         ypatch_pix_idx = ypatch_pix_idx[is_out_fov]
         src_ids = np.unique(self.watch_l[0, :]).astype(int)
-
-        # extract the pixel values for each pixel
-        # img_array indices [complex, npol, nchan, y, x]
-        # pix_values = self.img_array[
-        #     :,
-        #     :,
-        #     :,
-        #     self.watch_l[4, :].astype(int)
-        #     - 1,  # convert 1-based to 0-based for np indexing
-        #     self.watch_l[3, :].astype(int) - 1,
-        # ]
-        # pix_values_l = [
-        #     pix_values[:, :, :, i].ravel().tolist()
-        #     for i in range(pix_values.shape[-1])
-        # ]
-
-        # skypos_pg_fmt = [
-        #     f"SRID=4326;POINT({i} {j})"
-        #     for i, j in zip(self.watch_l[1, :], self.watch_l[2, :])
-        # ]
-
+        src_names_arr = self._watch_df.iloc[src_ids]["source_name"].tolist()
+        src_names_arr = '{"'+'","'.join(src_names_arr)+'"}'
+        
         # grab lm coords
         lmn_grid = get_lmn_grid(self.xdim, self.ydim)
         l_vals = lmn_grid[
@@ -418,28 +393,23 @@ class EpicPixels:
             1, self.watch_l[3, :].astype(int), self.watch_l[4, :].astype(int)
         ]
 
-        # lm_coord_fmt = [f"({i},{j})" for i, j in zip(l_vals, m_vals)]
         pix_x_l = self.watch_l[3, :].astype(int)
         pix_y_l = self.watch_l[4, :].astype(int)
 
-        # pix_coord_fmt = [
-        #     f"({i},{j})"
-        #     for i, j in zip(
-        #      self.watch_l[3, :].astype(int), self.watch_l[4, :].astype(int)
-        #     )
-        # ]
-        # source_names = self.src_l[self.watch_l[0, :].astype(int)]
+        source_names = self.src_l[self.watch_l[0, :].astype(int)]
         return dict(
             nsrc=np.array([src_ids.size]).copy(),
             ncoords=np.array([l_vals.size]).copy(),
             kernel_dim=np.array([self.patch_size_l[0]]).copy(),
-            src_ids=src_ids.ravel().astype(float).copy(),
+            #src_ids=src_ids.ravel().astype(float).copy(),
+            src_ids=source_names.ravel().astype(str).copy().tolist().copy(),
             l=l_vals.ravel().astype(float).copy(),
             m=m_vals.ravel().astype(float).copy(),
             pix_x=pix_x_l.ravel().astype(float).copy(),
             pix_y=pix_y_l.ravel().astype(float).copy(),
             pix_ofst_x=xpatch_pix_idx.ravel().astype(float).copy(),
             pix_ofst_y=ypatch_pix_idx.ravel().astype(float).copy(),
+            src_names_arr=src_names_arr
         )
 
         # self.pixel_meta_df = pd.DataFrame.from_dict(
@@ -477,37 +447,35 @@ class EpicPixels:
 def get_pixel_indices(
     seq_start_id, grid_size, grid_res, elev_limit, watchdog_endpoint
 ):  
-    #print("SEQ_START_ID", seq_start_id, )
     watchlist = get_watch_list(watchdog_endpoint)
     phdu, ihdu = get_image_headers_sv(seq_start_id, grid_size, grid_res)
 
     pix_extractor = EpicPixels(ihdu, phdu, watchlist, elev_limit)
     indices = pix_extractor.get_pix_indices()
-    #print(indices)
     if indices is None:  # no sources in the FOV
         return dict(
             nsrc=np.array([0]).copy(),
             ncoords=np.array([0]).copy(),
             kernel_dim=np.array([0]).copy(),
-            src_ids=np.array([]).astype(float).copy(),
+            src_ids=np.array([]).astype(str).copy(),
             l=np.array([]).astype(float).copy(),
             m=np.array([]).astype(float).copy(),
             pix_x=np.array([]).astype(float).copy(),
             pix_y=np.array([]).astype(float).copy(),
             pix_ofst_x=np.array([]).astype(float).copy(),
             pix_ofst_y=np.array([]).astype(float).copy(),
+            src_names=[]
         )
     else:
         return indices
 
 
 if __name__ == "__main__":
-    for i in range(24):
+    for i in range(1):
         seq_start = i * 3600 * CHAN_BW
         grid_size = 128
         grid_res = 1
         elev_lim = 0
         kernel_dim = 5
         indices = get_pixel_indices(seq_start, grid_size, grid_res, elev_lim,"169.254.128.1:1729")
-        # print(indices)
-        print(i, indices["nsrc"], len(indices["pix_x"]))
+        print(i, indices["nsrc"], len(indices["pix_x"]), indices['src_ids'],indices['src_names_arr'])
