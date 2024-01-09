@@ -391,15 +391,16 @@ def get_correction_grid(corr_ker_arr, grid_size, support, nchan, oversample=1):
     )
     matplotlib.image.imsave("gpu_corr_kernel.png", (corr_ker_arr[0, :, :]))
     ac = corr_ker_arr[0, :, :] / corr_ker_arr[0, :, :].sum()
-    np.savez(
-        "auto_corr.npz",
-        arr=correlate2d(corr_ker_arr[0, :, :], corr_ker_arr[0, :, :]),
-    )
+    # np.savez(
+    #     "auto_corr.npz",
+    #     arr=correlate2d(corr_ker_arr[0, :, :], corr_ker_arr[0, :, :]),
+    # )
     corr_grid_arr = np.reciprocal(corr_grid_arr)
-    corr_grid_arr = corr_grid_arr / corr_grid_arr.sum(
-        axis=(1, 2), keepdims=True
-    )
-    # corr_grid_arr = np.ones(corr_grid_arr.shape)
+    # corr_grid_arr = corr_grid_arr / corr_grid_arr.sum(
+    #     axis=(1, 2), keepdims=True
+    # )
+    np.savez('corr_grid_arr.npz',corr_grid_arr)
+    #corr_grid_arr = np.ones(corr_grid_arr.shape)
     return (corr_grid_arr).copy().ravel()
 
 
