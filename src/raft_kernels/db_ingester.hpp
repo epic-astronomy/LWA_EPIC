@@ -115,11 +115,15 @@ class DBIngesterRft : public raft::kernel {
     m_nkernel_elems = p_kernel_size * p_kernel_size;
 
     if (IsUpdateStmntIds(p_kernel_size)) {
+      VLOG(3)<<"Preparing pixel insert stmnt";
       m_pg_conn.get()->prepare(m_pix_stmnt_id_n,
                                GetMultiPixelInsertStmnt(m_nkernel_elems));
 
+      VLOG(3)<<"Preparing meta insert statement";
       m_pg_conn.get()->prepare(m_meta_stmnt_id_n, GetMultiImgMetaInsertStmnt(
                                                       1));  // one row per image
+
+      VLOG(3)<<"Done preparing statements";
     }
   }
 

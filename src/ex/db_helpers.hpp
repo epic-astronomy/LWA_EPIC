@@ -57,7 +57,7 @@ std::string GetSinglePixelInsertStmnt(
   stmnt += name.get() + "),";  // pixel lm end
   name.next();
 
-  stmnt += name.get() + ",";  // source name(s)
+  stmnt += name.get() + ",";  // source name
   name.next();
 
   stmnt += "point(" + name.get() + ",";  // pixel offset start
@@ -104,6 +104,12 @@ std::string GetSingleImgMetaInsertStmnt(
   stmnt += "," + name.get();
   name.next();
 
+  stmnt += "," + name.get();
+  name.next();
+
+  stmnt += "," + name.get();
+  name.next();
+
   stmnt += ")";
   return stmnt;
 }
@@ -112,7 +118,7 @@ std::string GetMultiImgMetaInsertStmnt(int n_images) {
   pqxx::placeholders name;
   std::string stmnt = "INSERT INTO epic_img_metadata";
   stmnt += "(id, img_time, n_chan, n_pol, chan0, chan_bw, epic_version";
-  stmnt += ", img_size, npix_kernel) VALUES ";
+  stmnt += ", img_size, npix_kernel, int_time, source_names) VALUES ";
   for (int i = 0; i < n_images; ++i) {
     stmnt += GetSingleImgMetaInsertStmnt(&name);
     if (i < (n_images - 1)) {
@@ -154,7 +160,7 @@ void IngestPixelsSingleSrc(const _PgT& data, pqxx::work* work_ptr, int src_idx,
                                          i * nelem_per_pix),
             nelem_per_pix * sizeof(float)),
         pix_coord.first, pix_coord.second, pix_lm.first, pix_lm.second,
-        data.source_ids[src_idx], pix_offst.first, pix_offst.second);
+        data.source_ids[coord_idx], pix_offst.first, pix_offst.second);
 
     pars.append(pix_pars);
   }
@@ -209,9 +215,12 @@ void IngestMetadata(_Pld* pld_ptr, pqxx::work* work_ptr, int npix_per_src,
   auto chan0 = std::get<int64_t>(meta["chan0"]);
   auto bw = std::get<int>(meta["chan_width"]);
   auto grid_size = std::get<int>(meta["grid_size"]);
+  auto int_time = std::get<double>(meta["img_len_ms"])/1000;
+  auto source_name_arr = pix_data.source_name_arr;
   pqxx::params pars(pix_data.m_uuid, Meta2PgTime(time_tag, img_len_ms), nchan,
                     static_cast<int>(NSTOKES), static_cast<int>(chan0), bw,
-                    git_CommitSHA1(), grid_size, grid_size, npix_per_src);
+                    git_CommitSHA1(), grid_size, grid_size, npix_per_src, int_time,
+                    source_name_arr);
 
   work.exec_prepared0(stmnt, pars);
 }

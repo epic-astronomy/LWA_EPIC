@@ -39,7 +39,8 @@
 struct EpicPixelTableMetaRows {
   constexpr static int NSTOKES{4};
   std::string m_uuid;
-  std::vector<int> source_ids;
+  std::vector<std::string> source_ids;
+  std::string source_name_arr;
   size_t nsrcs;
   size_t m_kernel_size;
   size_t m_kernel_dim;
@@ -60,7 +61,7 @@ struct EpicPixelTableMetaRows {
     if (nsrcs == 0 || m_ncoords == 0) {
       return;
     }
-    source_ids.resize(n_sources);
+    source_ids.resize(ncoords);
     pixel_coords.resize(ncoords);
     pixel_coords_sft.resize(ncoords);
     pixel_lm.resize(ncoords);
@@ -209,6 +210,7 @@ struct EpicPixelTableDataRows : EpicPixelTableMetaRows {
     source_ids = meta.source_ids;
     m_kernel_size = meta.m_kernel_size;
     m_kernel_dim = meta.m_kernel_dim;
+    source_name_arr = meta.source_name_arr;
   }
 
   void ResetBuf() {}
@@ -226,7 +228,7 @@ EpicPixelTableMetaRows CreateDummyMeta(int xdim, int ydim, int nsrcs = 1,
   meta.pixel_lm.insert(meta.pixel_lm.end(), ncoords, std::pair<int, int>(1, 1));
   meta.pixel_offst.insert(meta.pixel_offst.end(), ncoords,
                           std::pair<int, int>(0, 0));
-  meta.source_ids.insert(meta.source_ids.end(), ncoords, 1);
+  meta.source_ids.insert(meta.source_ids.end(), ncoords, "test");
   unsigned int _seed;
   meta.meta_version = rand_r(&_seed);
   meta.TransformPixCoords(xdim, ydim);
