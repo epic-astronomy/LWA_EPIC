@@ -435,12 +435,22 @@ EpicPixelTableMetaRows GetWatchIndices(uint64_t seq_start_no, int grid_size,
 
   // copy the src ids
   VLOG(3) << "Reading source ids";
-  auto* src_ids = static_cast<double*>(
-      ret_dict["src_ids"].cast<np_array<double>>().request().ptr);
+  auto src_name_list = ret_dict["src_ids"].cast<py::list>();
+  if (py::isinstance<py::list>(src_name_list)){
+    VLOG(3)<<"Src names is a list";
+    for (int i = 0; i < ncoords; ++i) {
+      VLOG(3)<<std::string(py::str(src_name_list[i]));
+      watch_indices.source_ids[i] = src_name_list[i].cast<std::string>();
+    }
+    // watch_indices.source_ids = 
+    //   ret_dict["src_ids"].cast<std::vector<std::string>>();
   VLOG(3) << "Adding";
-  for (int i = 0; i < nsrc; ++i) {
-    watch_indices.source_ids[i] = src_ids[i];
   }
+  
+  // for (int i = 0; i < ncoords; ++i) {
+  //   watch_indices.source_ids[i] = src_ids[i];
+  // }
+  watch_indices.source_name_arr = ret_dict["src_names_arr"].cast<std::string>();
 
   VLOG(3) << "Returning watch indices";
 
