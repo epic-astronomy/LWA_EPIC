@@ -66,9 +66,16 @@ class EpicLiveStream : public raft::kernel {
 
   raft::kstatus run() override {
     m_timer.Tick();
-    _Pld pld;
-    input["in_img"].pop(pld);
     LOG_IF(FATAL, !m_is_streamer_set) << "Streamer is unintialzed";
+    _Pld pld;
+    raft::signal in_sig=raft::none;
+    input["in_img"].pop(pld,&in_sig);
+    if(!static_cast<bool>(pld) || in_sig==INVALID_FREQ){
+      m_streamer->StreamEmpty();
+      m_timer.Tock();
+      PrometheusExporter::ObserveRunTimeValue(m_rt_gauge_id, m_timer.Duration());
+      return raft::proceed;
+    }
     auto img_metadata = pld.get_mbuf()->GetMetadataRef();
     auto imsize = std::get<int>(img_metadata["grid_size"]);
     auto nchan = std::get<uint8_t>(img_metadata["nchan"]);

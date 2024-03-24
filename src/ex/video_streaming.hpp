@@ -249,6 +249,25 @@ class Streamer {
     //                m_frame_buf.get(),
     //                [=](float d) { return (d * 255) / max_val; });
   }
+
+  void StreamEmpty(){
+    std::string text = "text='Checking system health | %{gmtime\:%Y/%m/%d %H\\:%M\\:%S}'";
+    if (avfilter_graph_send_command(filterGraph, "text", "reinit",
+                                      text.c_str(), NULL, 0, 0) < 0) {
+        CheckError(Status_t{"unable to dynamically set text: " + text});
+    }
+
+    //copy a constant value into the famebuffer
+    for (int i = 0; i < m_grid_size; ++i) {
+      for (int j = 0; j < m_grid_size; ++j) {
+        auto val = m_frame_buf.get()[i * m_grid_size + j];
+        frame->data[0][i * m_grid_size + j] = 128;
+      }
+    }
+
+    StreamImage();
+  }
+
   void Stream(int64_t chan0, double cfreq, const float *data_ptr,
               bool is_hc_freq) {
     // ResetPipe(chan0, cfreq);

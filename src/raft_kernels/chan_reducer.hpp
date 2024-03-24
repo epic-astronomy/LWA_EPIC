@@ -110,15 +110,24 @@ class ChanReducerRft : public raft::kernel {
   raft::kstatus run() override {
     m_timer.Tick();
     _PldIn in_pld;
-    input["in_img"].pop(in_pld);
-    auto chan0 =
-        std::get<int64_t>(in_pld.get_mbuf()->GetMetadataRef()["chan0"]);
-    if (m_hc_chans.count(chan0) > 0) {
+    raft::signal in_sig=raft::none;
+    input["in_img"].pop(in_pld, &in_sig);
+    if(!static_cast<bool>(in_pld) || in_sig==INVALID_FREQ){
       LOG_EVERY_N(WARNING, 3000) << "Health Checks. Ignoring data";
       // in_pld = _PldIn();  // this releases the lock without waiting for raft's
                           // runtime to destroy the object
+      m_timer.Tock();
+      PrometheusExporter::ObserveRunTimeValue(m_rt_gauge_id, m_timer.Duration());
       return raft::proceed;
     }
+    //auto chan0 =
+        //std::get<int64_t>(in_pld.get_mbuf()->GetMetadataRef()["chan0"]);
+    // if (m_hc_chans.count(chan0) > 0) {
+    //   LOG_EVERY_N(WARNING, 3000) << "Health Checks. Ignoring data";
+    //   // in_pld = _PldIn();  // this releases the lock without waiting for raft's
+    //                       // runtime to destroy the object
+    //   return raft::proceed;
+    // }
 
     auto out_pld = m_buf_mngr->acquire_buf();
     if (!out_pld) {
