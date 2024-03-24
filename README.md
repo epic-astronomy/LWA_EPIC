@@ -16,7 +16,7 @@ For a generalized implementation of EPIC please see [our EPIC repo](https://gith
 # Build Instructions
 Download the source code with all the dependencies. 
 ```bash
-git clone -b test/4090 --recurse-submodules -j5 https://github.com/epic-astronomy/LWA_EPIC.git
+git clone -b phoenix --recurse-submodules -j5 https://github.com/epic-astronomy/LWA_EPIC.git
 ```
 
 It is recommended to build and run EPIC in a separate conda environment. Use the `conda_env.yml` file to create a new conda enviroment and install all the necessary packages. Change the last line in this file to the desired install location and exceute the following command.
