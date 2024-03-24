@@ -155,7 +155,6 @@ struct Kernel<_CORRELATOR> : KernelTypeDefs {
     correlator_options.use_bf16_accum = options["accum_16bit"].as<bool>();
     correlator_options.nstreams = options["nstreams"].as<int>();
     VLOG(2) << "Extracted options";
-
     auto corr_ptr = std::make_unique<MOFFCorrelator_t>(correlator_options);
     return ktype(&corr_ptr);
   }
@@ -250,9 +249,8 @@ template <>
 struct Kernel<_DB_INGESTER> : KernelTypeDefs {
   using ktype = DBIngesterRft<pixel_pld_t>;
   template <unsigned int _GpuId>
-  static ktype get_kernel(const opt_t&) {
-    VLOG(2) << "Creating DB ingester";
-    return ktype();
+  static ktype get_kernel(const opt_t& options) {
+    return ktype(options["epic_data_schema"].as<std::string>());
   }
 };
 using DBIngester_kt = Kernel<_DB_INGESTER>::ktype;

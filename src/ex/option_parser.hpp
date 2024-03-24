@@ -48,7 +48,8 @@ cxxopts::Options GetEpicOptions() {
       "LWA-SV station and exit",
       cxxopts::value<bool>()->default_value("false"))(
       "runtime", "EPIC run duration. Provide -1 to run continuously",
-      cxxopts::value<int>()->default_value("5"));
+      cxxopts::value<int>()->default_value("5"))
+      ("include_chans","Image only certain frequencies. Specify the value(s) of chan0.", cxxopts::value<std::vector<int>>());
   // ("utcstart", "F-Engine UDP Stream Start Time")
 
   options.add_options("Offline data processing")(
@@ -106,7 +107,9 @@ cxxopts::Options GetEpicOptions() {
       "Defaults to 10 deg",
       cxxopts::value<float>()->default_value("10.0"))(
       "watchdog_addr", "Address for the EPIC watchdog services.",
-      cxxopts::value<std::string>()->default_value("localhost:2023"));
+      cxxopts::value<std::string>()->default_value("localhost:2023"))
+      ("epic_data_schema","Schema name for all epic data tables.",
+      cxxopts::value<std::string>()->default_value("public"));
 
   options.add_options("Live Streaming")(
       "video_size", "Stream video dimensions. Defaults to 512",

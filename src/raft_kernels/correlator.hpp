@@ -57,6 +57,8 @@ class CorrelatorRft : public raft::kernel {
   unsigned int m_rt_gauge_id{0};
   std::set<int> m_hc_chans;
   int m_is_GPU_setup_once{false};
+  std::set<int> m_incl_freqs;
+  std::string m_session_id; //changes with frequency
 
  public:
   explicit CorrelatorRft(std::unique_ptr<_Correlator>* p_correlator)
@@ -81,6 +83,12 @@ class CorrelatorRft : public raft::kernel {
          {"kernel_id", std::to_string(this->get_id())}});
   }
 
+  void SetInclChans(const std::vector<int>& p_incl_freqs){
+    for(const auto& it: p_incl_freqs){
+      m_incl_freqs.insert(it);
+    }
+  }
+
   raft::kstatus run() override {
     VLOG(2) << "Inside correlator rft";
     _Payload pld;
@@ -100,17 +108,28 @@ class CorrelatorRft : public raft::kernel {
 
     VLOG(2) << "nchan: " << int(nchan) << " chan0: " << chan0;
     PrometheusExporter::ObserveRunTimeValue(m_rt_gauge_id, chan0);
+    
+    // check the include frequencies
+    if( m_incl_freqs.count(chan0)!=0 || m_hc_chans.count(chan0)!=0){
+      typename _Correlator::payload_t _empty;
+      auto signal = static_cast<raft::signal>(INVALID_FREQ);
+      output["img"].push(_empty, signal);
+      output["img_stream"].push(_empty, signal);
 
+      return raft::proceed;
+    }
     // initialization or change in the spectral window
     // do not do any initializations for health check frequencies
     if ((m_hc_chans.count(chan0) == 0 || !m_is_GPU_setup_once) &&
-        m_correlator.get()->ResetImagingConfig(nchan, chan0)) {
+      m_correlator.get()->ResetImagingConfig(nchan, chan0)) {
       m_is_GPU_setup_once = true;
       DLOG(INFO) << "Resetting GPU setup";
       m_delta = m_correlator.get()->GetScalingLen();
       m_gulp_counter = 1;
+      m_session_id = GetRandomUuid();
       DLOG(INFO) << "Done resetting";
     }
+
 
     m_is_first = m_gulp_counter == 1 ? true : false;
     m_is_last = m_gulp_counter == m_ngulps_per_img ? true : false;
@@ -138,6 +157,7 @@ class CorrelatorRft : public raft::kernel {
       img_metadata["support_size"] = m_support;
       img_metadata["nchan"] = nchan;
       img_metadata["chan0"] = chan0;
+      img_metadata["session_id"] = m_session_id;
       // img_metadata["cfreq"] = int((chan0+ceil(nchan/2f))*BANDWIDTH);
       VLOG(3)
           << "Processing gulp at: "

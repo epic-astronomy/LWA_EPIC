@@ -58,6 +58,7 @@ class DBIngesterRft : public raft::kernel {
   std::string m_pix_stmnt_id_n{m_pix_stmnt_id + "_1"};
   std::string m_meta_stmnt_id_n{m_meta_stmnt_id + "_1"};
   std::map<int, std::pair<std::string, std::string>> m_avail_ksizes;
+  std::string m_schema{"public"};
 
   unsigned int m_rt_gauge_id{0};
   Timer m_timer;
@@ -65,8 +66,10 @@ class DBIngesterRft : public raft::kernel {
  public:
   // https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING
   // https://www.postgresql.org/docs/current/libpq-envars.html
-  DBIngesterRft(int p_kernel_size = 1,
-                std::string p_conn_string = ""/* set from env variables*/)
+  DBIngesterRft(std::string p_schema="public",
+                int p_kernel_size = 1,
+                std::string p_conn_string = ""/* set from env variables*/
+                )
       : raft::kernel() {
     input.addPort<_PldIn>("in_pixel_rows");
 
@@ -75,6 +78,8 @@ class DBIngesterRft : public raft::kernel {
     } catch (const std::exception& e) {
       LOG(FATAL) << e.what();
     }
+
+    m_schema = p_schema==""?"public":p_schema;
 
     is_db_alive = true;
     m_db_T = std::make_unique<pqxx::work>(*(m_pg_conn.get()));
@@ -117,11 +122,11 @@ class DBIngesterRft : public raft::kernel {
     if (IsUpdateStmntIds(p_kernel_size)) {
       VLOG(3)<<"Preparing pixel insert stmnt";
       m_pg_conn.get()->prepare(m_pix_stmnt_id_n,
-                               GetMultiPixelInsertStmnt(m_nkernel_elems));
+                               GetMultiPixelInsertStmnt(m_nkernel_elems, m_schema));
 
       VLOG(3)<<"Preparing meta insert statement";
       m_pg_conn.get()->prepare(m_meta_stmnt_id_n, GetMultiImgMetaInsertStmnt(
-                                                      1));  // one row per image
+                                                      1, m_schema));  // one row per image
 
       VLOG(3)<<"Done preparing statements";
     }

@@ -34,6 +34,7 @@
 #include "./py_funcs.hpp"
 #include "git.h"
 #include "pqxx/pqxx"
+#include "glog/logging.h"
 
 std::string GetSinglePixelInsertStmnt(
     pqxx::placeholders<unsigned int>* name_ptr) {
@@ -41,7 +42,10 @@ std::string GetSinglePixelInsertStmnt(
 
   auto& name = *name_ptr;
 
-  stmnt += name.get() + ",";  // uuid
+  stmnt += name.get() + ",";  // img_time
+  name.next();
+
+  stmnt += name.get() + ",";  // session_id
   name.next();
 
   stmnt += name.get() + ",";  // pixel_values byte array
@@ -70,12 +74,14 @@ std::string GetSinglePixelInsertStmnt(
   return stmnt;
 }
 
-std::string GetMultiPixelInsertStmnt(int nrows) {
+std::string GetMultiPixelInsertStmnt(int nrows, std::string schema="public") {
   pqxx::placeholders name;
-  std::string stmnt = "INSERT INTO epic_pixels";
-  stmnt += "(id, pixel_values, pixel_coord, pixel_lm";
-  stmnt += ", source_name,  pix_ofst)";
+  std::string stmnt = "INSERT INTO ";
+  stmnt +=  schema + ".epic_pixels";
+  stmnt += "(img_time, session_id, pixel_values, pixel_coord, pixel_lm";
+  stmnt += ", source_name,  pix_offset) ";
   stmnt += "VALUES ";
+  std::cout<<stmnt<<std::endl;
   for (int i = 0; i < nrows; ++i) {
     stmnt += GetSinglePixelInsertStmnt(&name);
     if (i < (nrows - 1)) {
@@ -110,15 +116,19 @@ std::string GetSingleImgMetaInsertStmnt(
   stmnt += "," + name.get();
   name.next();
 
+  stmnt += "," + name.get();
+  name.next();
+
   stmnt += ")";
   return stmnt;
 }
 
-std::string GetMultiImgMetaInsertStmnt(int n_images) {
+std::string GetMultiImgMetaInsertStmnt(int n_images, std::string schema="public") {
   pqxx::placeholders name;
-  std::string stmnt = "INSERT INTO epic_img_metadata";
-  stmnt += "(id, img_time, n_chan, n_pol, chan0, chan_bw, epic_version";
-  stmnt += ", img_size, npix_kernel, int_time, source_names) VALUES ";
+  std::string stmnt = "INSERT INTO ";
+  stmnt +=  schema + ".epic_img_metadata";
+  stmnt += "(id, img_time, n_chan, n_pol, chan0, chan_bw_hz, epic_version";
+  stmnt += ", img_size, npix_kernel, int_time, source_names, session_id) VALUES ";
   for (int i = 0; i < n_images; ++i) {
     stmnt += GetSingleImgMetaInsertStmnt(&name);
     if (i < (n_images - 1)) {
@@ -138,7 +148,8 @@ void IngestPayload(_Pld* pld_ptr, pqxx::work* work_ptr, int npix_per_src,
 
 template <typename _PgT>
 void IngestPixelsSingleSrc(const _PgT& data, pqxx::work* work_ptr, int src_idx,
-                           int nchan, int npix_per_src, std::string stmnt_id) {
+                           int nchan, int npix_per_src, std::string stmnt_id,
+                           std::string time_stamp, std::string session_id) {
   // auto& data = *data_ptr;
   auto& work = *work_ptr;
   pqxx::params pars;
@@ -153,7 +164,9 @@ void IngestPixelsSingleSrc(const _PgT& data, pqxx::work* work_ptr, int src_idx,
     auto pix_offst = data.pixel_offst[coord_idx];
 
     pqxx::params pix_pars(
-        data.m_uuid,
+        //data.m_uuid,
+        time_stamp,
+        session_id,
         std::basic_string_view<std::byte>(
             reinterpret_cast<std::byte*>(data.pixel_values.get() +
                                          src_idx * nelem_per_src +
@@ -181,6 +194,11 @@ void IngestPixelsMultiSrc(_Pld* pld_ptr, pqxx::work* work_ptr, int npix_per_src,
                           const std::string& stmnt) {
   auto& pld = *pld_ptr;
   auto& pix_data = *(pld.get_mbuf());
+  auto& meta = pld.get_mbuf()->m_img_metadata;
+  auto time_tag = std::get<uint64_t>(meta["time_tag"]);
+  auto img_len_ms = std::get<double>(meta["img_len_ms"]);
+  auto session_id = std::get<std::string>(meta["session_id"]);
+  auto time_stamp = Meta2PgTime(time_tag, img_len_ms);
   int nsrc = pix_data.nsrcs;
   int nchan = pix_data.m_nchan;
 
@@ -189,7 +207,7 @@ void IngestPixelsMultiSrc(_Pld* pld_ptr, pqxx::work* work_ptr, int npix_per_src,
 
   for (int src_idx = 0; src_idx < nsrc; ++src_idx) {
     IngestPixelsSingleSrc(pix_data, work_ptr, src_idx, nchan, npix_per_src,
-                          stmnt);
+                          stmnt, time_stamp, session_id);
   }
 }
 
@@ -217,23 +235,24 @@ void IngestMetadata(_Pld* pld_ptr, pqxx::work* work_ptr, int npix_per_src,
   auto grid_size = std::get<int>(meta["grid_size"]);
   auto int_time = std::get<double>(meta["img_len_ms"])/1000;
   auto source_name_arr = pix_data.source_name_arr;
+  auto session_id = std::get<std::string>(meta["session_id"]);
   pqxx::params pars(pix_data.m_uuid, Meta2PgTime(time_tag, img_len_ms), nchan,
                     static_cast<int>(NSTOKES), static_cast<int>(chan0), bw,
                     git_CommitSHA1(), grid_size, grid_size, npix_per_src, int_time,
-                    source_name_arr);
+                    source_name_arr,session_id);
 
   work.exec_prepared0(stmnt, pars);
 }
 
-std::string GetFileMetaInsertStmt() {
+std::string GetFileMetaInsertStmt(std::string schema="public") {
   const std::vector<std::string> cols{
       "file_name",   "chan_width",   "nchan",        "support_size",
       "gulp_len_ms", "image_len_ms", "epoch_time_s", "grid_size",
       "grid_res",    "cfreq_mhz",    "epic_version"};
 
   pqxx::placeholders name;
-  std::string stmnt =
-      "INSERT INTO epic_files_metadata (";  // filename,...) VALUES ($1, $2...)
+  std::string stmnt ="INSERT INTO ";
+  stmnt += schema + ".epic_files_metadata (";  // filename,...) VALUES ($1, $2...)
   stmnt +=
       std::accumulate(std::next(cols.begin()), cols.end(), cols[0],
                       [](std::string a, std::string b) { return a + "," + b; });

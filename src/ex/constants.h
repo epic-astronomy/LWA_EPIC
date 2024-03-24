@@ -22,6 +22,7 @@
 
 #ifndef SRC_EX_CONSTANTS_H_
 #define SRC_EX_CONSTANTS_H_
+#include <cstdint>
 
 #define PI 3.141592653589793238
 #define SOL 299792458.0
@@ -29,6 +30,10 @@
 enum RESULT { SUCCESS = 0, FAILURE = -1 };
 
 enum RECEIVERS { VMA, VERBS };
+
+enum KERNEL_SIGNALS: std::uint32_t {
+  INVALID_FREQ=5
+};
 
 enum CONSTANTS {
   ZCOPY = true,

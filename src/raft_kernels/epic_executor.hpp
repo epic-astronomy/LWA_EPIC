@@ -114,6 +114,9 @@ class EPICKernels {
     }
     // m_disk_saver.SetStreamer(m_streamer.get());
     m_live_streamer.SetStreamer(m_streamer.get());
+    if(p_options.count("include_chans")){
+      m_correlator.SetInclChans(p_options["include_chans"].as<std::vector<int>>());
+    }
 
     LOG_IF(INFO, m_is_offline) << "EPIC will run on offline data";
     LOG(INFO) << "Binding kernels to CPUs";
