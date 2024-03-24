@@ -2,9 +2,9 @@ cmake_minimum_required(VERSION 3.10...3.19)
 include(CMakePrintHelpers)
 include(FetchContent)
 
-project(epic++ VERSION "0.5.1" LANGUAGES CXX CUDA)
-set(CMAKE_INSTALL_PREFIX "/home/batman/epic/lib/")
-set(PKG_CONFIG_PATH "/home/batman/epic/lib/pkgconfig")
+project(epic++ LANGUAGES CXX CUDA)
+#set(CMAKE_INSTALL_PREFIX "/home/batman/epic/lib/")
+#set(PKG_CONFIG_PATH "/home/batman/epic/lib/pkgconfig")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE INTERNAL "") 
 
 # set(CMAKE_CXX_COMPILER "/usr/bin/g++")
@@ -67,7 +67,7 @@ include_directories(SYSTEM src/extern/highway)
 
 ### pybind11
 add_subdirectory(src/extern/pybind11)
-OPTION(PYTHON_EXECUTABLE "/home/batman/miniconda3/envs/epic310/bin/python")
+#OPTION(PYTHON_EXECUTABLE "/home/epic/anaconda/envs/epic310/bin/python")
 
 
 ### cuFFTDx
@@ -91,7 +91,7 @@ add_library(epiclib STATIC
 )
 
 #install libavcodec-dev libswscale-dev libavfilter-dev
-set(AV_LIBS -lavcodec -lavformat -lavutil -lswscale -lavfilter)
+set(AV_LIBS -lavcodec -lavformat -lavutil -lswscale -lavfilter pango-1.0 cairo glib-2.0 harfbuzz)
 
 # cmake_print_variables(outVar)
 #set(CUDA_NVCC_EXECUTABLE "/home/batman/miniconda3/envs/epic310/bin/nvcc")
@@ -117,9 +117,9 @@ set_target_properties( epic++
 
 
 add_dependencies(epic++ raft hwy epiclib)
-add_compile_definitions(EPIC_VERSION="${CMAKE_PROJECT_VERSION}")
+#add_compile_definitions(EPIC_VERSION="${CMAKE_PROJECT_VERSION}")
 target_link_libraries(epic++ PRIVATE pybind11::embed raft hwy epiclib epic_cu cudart
-glog::glog nvidia-ml pqxx pq ibverbs prometheus-cpp::pull cmake_git_version_tracking ${AV_LIBS}
+glog::glog nvidia-ml pqxx pq ibverbs prometheus-cpp::pull cmake_git_version_tracking ${AV_LIBS}  
 )
 
 # file(GLOB PY_FILES "src/python/*.py")
