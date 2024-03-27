@@ -1,3 +1,12 @@
+## [0.7.1](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.7.0...v0.7.1) (2024-03-27)
+
+
+### Bug Fixes
+
+* Removed system libraries from the linking list ([0711403](https://github.com/epic-astronomy/LWA_EPIC/commit/07114036480a36e1e0765b959c9b8c902d5b757d))
+
+
+
 # [0.7.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.6.0...v0.7.0) (2024-03-27)
 
 
