@@ -81,7 +81,6 @@ std::string GetMultiPixelInsertStmnt(int nrows, std::string schema="public") {
   stmnt += "(img_time, session_id, pixel_values, pixel_coord, pixel_lm";
   stmnt += ", source_name,  pix_offset) ";
   stmnt += "VALUES ";
-  std::cout<<stmnt<<std::endl;
   for (int i = 0; i < nrows; ++i) {
     stmnt += GetSinglePixelInsertStmnt(&name);
     if (i < (nrows - 1)) {
@@ -291,7 +290,7 @@ void InsertFilenametoDb(_Pld* pld_ptr, pqxx::work* work_ptr,
   auto cfreq_mhz = std::get<double>(meta["cfreq"]);
 
   pqxx::params pars(filename, chan_width, nchan, support, gulp_len, image_len,
-                    epoch_time_s, grid_size, grid_res, cfreq_mhz,
+                    static_cast<int>(epoch_time_s), grid_size, grid_res, cfreq_mhz,
                     git_CommitSHA1());
 
   (*work_ptr).exec_prepared0(insert_stmt, pars);
