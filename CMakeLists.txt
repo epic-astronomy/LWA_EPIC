@@ -91,7 +91,7 @@ add_library(epiclib STATIC
 )
 
 #install libavcodec-dev libswscale-dev libavfilter-dev
-set(AV_LIBS -lavcodec -lavformat -lavutil -lswscale -lavfilter pango-1.0 cairo glib-2.0 harfbuzz)
+set(AV_LIBS -lavcodec -lavformat -lavutil -lswscale -lavfilter )
 
 # cmake_print_variables(outVar)
 #set(CUDA_NVCC_EXECUTABLE "/home/batman/miniconda3/envs/epic310/bin/nvcc")
