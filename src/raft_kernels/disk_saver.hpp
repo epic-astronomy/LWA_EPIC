@@ -53,23 +53,29 @@ class DiskSaverRft : public raft::kernel,
   uint64_t stream_counter{0};
 
   std::string m_file_stmt_id{"insert_file_meta"};
+  std::string m_filename_db_schema{"public"};
+  std::string m_out_dir{"./"};
 
  public:
-  explicit DiskSaverRft(std::string p_img_suffix = "0",
-                        std::string p_db_conn_str = "dbname=epic")
+  explicit DiskSaverRft(std::string p_db_schema="public",
+    std::string p_out_dir = "./",
+                        std::string p_db_conn_str = "")
       : raft::kernel(),
         PgDbConnectMixin(p_db_conn_str) /* , EpicLiveStream() */ {
     input.addPort<Payload>("image");
-    m_db_insert_stmt = GetFileMetaInsertStmt();
+    m_filename_db_schema=p_db_schema!=""?p_db_schema:"public";
+    m_db_insert_stmt = GetFileMetaInsertStmt(m_filename_db_schema);
+    m_out_dir = p_out_dir;
     LOG(INFO) << "Preparing stmt";
     this->prepare_stmt(m_file_stmt_id, m_db_insert_stmt);
 
-    m_img_suffix = p_img_suffix;
+    // m_img_suffix = p_img_suffix;
     m_rt_gauge_id = PrometheusExporter::AddRuntimeSummaryLabel(
         {{"type", "exec_time"},
          {"kernel", "disk_saver"},
          {"units", "s"},
          {"kernel_id", std::to_string(this->get_id())}});
+
   }
 
   // void SetStreamer(Streamer* p_streamer) { m_streamer = p_streamer; }
@@ -105,7 +111,7 @@ class DiskSaverRft : public raft::kernel,
     img_metadata["cfreq"] = cfreq;
     img_metadata["epoch_time_s"] = epoch_s;
     SaveImageToDisk(imsize, nchan, pld.get_mbuf()->GetDataPtr(),
-                    "test_image_"s + m_img_suffix, img_metadata);
+                    m_out_dir + "/"s, img_metadata);
 
     try {
       InsertFilenametoDb(&pld, this->m_db_T.get(), m_file_stmt_id);

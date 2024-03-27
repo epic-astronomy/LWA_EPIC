@@ -255,12 +255,12 @@ void Get40msGulp(T* out_ptr) {
  * @param grid_size 1D size of the image
  * @param nchan Number of channels
  * @param data Pointer to the image data
- * @param filename Output filename
+ * @param filename Output directory to store the image. Images are auto named as EPIC_<unix_epoch>_<cfreq>MHz.fits
  * @param metadata Image metadata object
  */
 template <typename T>
 void __attribute__((visibility("hidden")))
-SaveImageToDisk(size_t grid_size, size_t nchan, T* data, std::string filename,
+SaveImageToDisk(size_t grid_size, size_t nchan, T* data, std::string out_dir,
                 const dict_t& metadata) {
   py::gil_scoped_acquire acquire;
   VLOG(2) << "type of output data type: " << sizeof(T);
@@ -274,7 +274,7 @@ SaveImageToDisk(size_t grid_size, size_t nchan, T* data, std::string filename,
   VLOG(2) << "Sending to saver";
   auto utils =
       py::module_::import("epic_utils")
-          .attr("save_output")(result, grid_size, nchan, filename, meta_dict);
+          .attr("save_output")(result, grid_size, nchan, out_dir, meta_dict);
   // for (int i = 0; i < 10; ++i) {
   //     std::cout << data[i] << std::endl;
   // }

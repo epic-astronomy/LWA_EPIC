@@ -82,7 +82,8 @@ cxxopts::Options GetEpicOptions() {
       "precise.",
       cxxopts::value<bool>()->default_value("false"))(
       "chan_nbin", "Binning factor for the number of channels",
-      cxxopts::value<int>()->default_value("4"));
+      cxxopts::value<int>()->default_value("4"))
+      ("out_dir","Output directory to store the long accumulation files. Defaults to the current directory.",cxxopts::value<std::string>()->default_value("./"));
 
   options.add_options("Execution options")(
       "nstreams", "Number of cuda streams to process images",

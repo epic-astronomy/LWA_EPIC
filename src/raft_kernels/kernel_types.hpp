@@ -280,9 +280,9 @@ template <>
 struct Kernel<_DISK_SAVER> : KernelTypeDefs {
   using ktype = DiskSaverRft<payload_float_t>;
   template <unsigned int _GpuId>
-  static ktype get_kernel(const opt_t&) {
+  static ktype get_kernel(const opt_t& options) {
     VLOG(2) << "Creating disk saver";
-    return ktype(std::to_string(_GpuId));
+    return ktype(options["epic_data_schema"].as<std::string>(), options["out_dir"].as<std::string>());
   }
 };
 using DiskSaver_kt = Kernel<_DISK_SAVER>::ktype;

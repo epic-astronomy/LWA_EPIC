@@ -95,14 +95,14 @@ def gen_phases_lwasv(nchan, chan0):
     return phases.ravel().copy()
 
 
-def save_output(output_arr, grid_size, nchan, filename, metadata):
+def save_output(output_arr, grid_size, nchan, outdir, metadata):
     """
     Save image to disk
 
     output_arr: Output image array
     grid_size: X or Y Size of the grid in pixels
     nchan: Number of output channlels in the image
-    filename: Name of the file to save
+    outdir: Name of the file to save
     metadata: Dict with the metatadata to be written to the fits file
     """
     # start = time.time()
@@ -212,10 +212,10 @@ def save_output(output_arr, grid_size, nchan, filename, metadata):
 
     # print(f"Save time: {time.time()-start}")
     hdulist = fits.HDUList([phdu, ihdu])
-    # unix_time = metadata["time_tag"] / FS +\
-    #  1e-3 * metadata["img_len_ms"] / 2.0
-    # filename2 = f"EPIC_{unix_time:3f}_{cfreq/1e6:3f}MHz.fits"
-    hdulist.writeto(f"{filename}.fits", overwrite=True)
+    unix_time = metadata["time_tag"] / FS +\
+     1e-3 * metadata["img_len_ms"] / 2.0
+    filename = f"EPIC_{unix_time:.3f}_{cfreq/1e6:.3f}MHz"
+    hdulist.writeto(f"{outdir}{filename}.fits", overwrite=True)
 
     chan_out = 0
 
@@ -224,7 +224,7 @@ def save_output(output_arr, grid_size, nchan, filename, metadata):
     # temp_im[0:4,:]=0
     # temp_im[:,-4:]=0
     # temp_im[-4:,:]=0
-    matplotlib.image.imsave(f"{filename}.png", temp_im, origin="lower")
+    matplotlib.image.imsave(f"test.png", temp_im, origin="lower")
     # matplotlib.image.imsave(
     #     "original_test_out.png", (output_arr[0, chan_out, :, :])
     # )
