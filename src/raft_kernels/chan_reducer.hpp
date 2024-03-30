@@ -54,7 +54,7 @@ class ChanReducerRft : public raft::kernel {
   float m_norm{1};
   bool m_is_chan_avg{false};
   std::unique_ptr<BufferMngr> m_buf_mngr{nullptr};
-  static constexpr size_t m_nbufs{200};
+  static constexpr size_t m_nbufs{300};
   static constexpr size_t m_max_buf_reqs{10};
   size_t m_xdim{128};
   size_t m_ydim{128};
