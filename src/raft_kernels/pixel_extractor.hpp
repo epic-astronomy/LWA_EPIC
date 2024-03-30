@@ -49,7 +49,7 @@ class PixelExtractor : public raft::kernel {
   EpicPixelTableMetaRows _dummy_meta;
   std::unique_ptr<BufferMngr> m_buf_mngr{nullptr};
   bool is_meta_initialized{false};
-  constexpr static size_t m_nbufs{50};
+  constexpr static size_t m_nbufs{300};
   constexpr static size_t m_maxiters{5};
   PSTensor<float> m_img_tensor;
   size_t m_xdim;
