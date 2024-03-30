@@ -117,7 +117,7 @@ def save_output(output_arr, grid_size, nchan, outdir, metadata):
         # print("py", k,v)
         phdu.header[k] = v
     phdu.header["DATE-OBS"] = Time(
-        metadata["time_tag"] / FS + 1e-3 * metadata["img_len_ms"] / 2.0,
+        metadata["time_tag"] / FS - 1e-3 * metadata["img_len_ms"] / 2.0,
         format="unix",
         precision=6,
     ).isot
@@ -212,7 +212,7 @@ def save_output(output_arr, grid_size, nchan, outdir, metadata):
 
     # print(f"Save time: {time.time()-start}")
     hdulist = fits.HDUList([phdu, ihdu])
-    unix_time = metadata["time_tag"] / FS +\
+    unix_time = metadata["time_tag"] / FS -\
      1e-3 * metadata["img_len_ms"] / 2.0
     filename = f"EPIC_{unix_time:.3f}_{cfreq/1e6:.3f}MHz"
     hdulist.writeto(f"{outdir}{filename}.fits", overwrite=True)
@@ -411,7 +411,7 @@ def get_random_uuid():
 def meta2pgtime(time_tag0, img_len_ms):
     return str(
         Time(
-            time_tag0 / FS + 1e-3 * img_len_ms / 2.0,
+            time_tag0 / FS - 1e-3 * img_len_ms / 2.0, # time tag marks the end of the sequence
             format="unix",
             precision=6,
         ).isot
