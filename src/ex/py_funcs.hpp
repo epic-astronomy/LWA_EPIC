@@ -392,8 +392,6 @@ EpicPixelTableMetaRows GetWatchIndices(uint64_t seq_start_no, int grid_size,
   VLOG(3) << "Setting the meta version";
   unsigned int _seed;
   watch_indices.meta_version = rand_r(&_seed);
-  VLOG(3) << "Transforming the coords";
-  watch_indices.TransformPixCoords(grid_size, grid_size);
 
   if (nsrc == 0) {
     return watch_indices;
@@ -432,7 +430,8 @@ EpicPixelTableMetaRows GetWatchIndices(uint64_t seq_start_no, int grid_size,
             << watch_indices.pixel_lm.size() << " "
             << watch_indices.pixel_offst.size();
   }
-
+  VLOG(3) << "Transforming the coords";
+  watch_indices.TransformPixCoords(grid_size, grid_size);
   // copy the src ids
   VLOG(3) << "Reading source ids";
   auto src_name_list = ret_dict["src_ids"].cast<py::list>();

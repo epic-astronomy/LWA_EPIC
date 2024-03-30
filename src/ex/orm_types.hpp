@@ -87,25 +87,34 @@ struct EpicPixelTableMetaRows {
    *
    * The pixel indexing starts from the bottom left corner of the image, while
    * the array indexing starts from the top left corner. This function
-   * performs the appropriate transformation between pixel and array indices.
+   * performs the appropriate transformation between the original pixel and array indices.
+   * The array comes from the GPU that needs to be transposed and fft shifted to transform it
+   * back to the appropriate orientation
    *
    * @param xdim X-dimension of the image
    * @param ydim Y-dimension of the image
    */
   void TransformPixCoords(int xdim, int ydim) {
     for (size_t i = 0; i < m_ncoords; ++i) {
-      int x = pixel_coords[i].first;
+      int x =  pixel_coords[i].first - 1; //E is to the left
       // The array y-index starts from the top while the image from the bottom
-      int y = ydim - 1 - pixel_coords[i].second;
-
-      // transpose
-      std::swap(x, y);
+      int y =   ydim - pixel_coords[i].second;
 
       // circshift
       x = (x + xdim / 2) % xdim;
+      //x = xdim - 1 - x;
       y = (y + ydim / 2) % ydim;
+
+      // transpose
+      // this is not required because the axes are already swapped
+      // pixel x == array y
+      // pixel y == array x
+      //std::swap(x, y);
+
       pixel_coords_sft[i] = std::pair<int, int>(x, y);
     }
+    // this->print();
+    // LOG(FATAL)<<"ok";
   }
 
   /**
