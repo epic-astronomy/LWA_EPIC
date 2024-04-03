@@ -102,15 +102,15 @@ class DiskSaverRft : public raft::kernel,
     double cfreq = (chan0 + nchan * chan_width / BANDWIDTH * 0.5) * BANDWIDTH *
                    1e-6;  // MHz
     auto time_tag = std::get<uint64_t>(img_metadata["time_tag"]);
-    // auto seq_start = std::get<uint64_t>(img_metadata["seq_start"]);
+    // // auto seq_start = std::get<uint64_t>(img_metadata["seq_start"]);
     double epoch_s = time_tag / static_cast<double>(FS);
-    char _buf[50];
-    std::snprintf(_buf, sizeof(_buf), "%.2fMHz_%.2f.fits", cfreq, epoch_s);
-    std::string filename = "EPIC_" + std::string(_buf);
-    img_metadata["filename"] = filename;
+    // char _buf[50];
+    // std::snprintf(_buf, sizeof(_buf), "%.2fMHz_%.2f.fits", cfreq, epoch_s);
+    // std::string filename = "EPIC_" + std::string(_buf);
+    // img_metadata["filename"] = filename;
     img_metadata["cfreq"] = cfreq;
     img_metadata["epoch_time_s"] = epoch_s;
-    SaveImageToDisk(imsize, nchan, pld.get_mbuf()->GetDataPtr(),
+    img_metadata["filename"]=SaveImageToDisk(imsize, nchan, pld.get_mbuf()->GetDataPtr(),
                     m_out_dir + "/"s, img_metadata);
 
     try {
