@@ -37,20 +37,12 @@
 using namespace cufftdx;
 namespace cg = cooperative_groups;
 
-// template<class FFT>
-// __device__ auto get_gridder(int support_size=2){
-//   auto gridder=grid_dual_pol_dx8<FFT, 2, LWA_SV_NSTANDS>;
-//   switch(support_size){
-//     case 4:
-//     gridder=grid_dual_pol_dx8<FFT, 4, LWA_SV_NSTANDS>;
-
-//     case 8:
-//     gridder=grid_dual_pol_dx8<FFT, 4, LWA_SV_NSTANDS>;
-//   }
-
-//   return gridder;
-// }
-
+/**
+ * @brief Perform FFT shift along the X-dimension
+ * 
+ * @tparam FFT 
+ * @param thread_data Thread registers that store the fft elements
+ */
 template<class FFT>
 void __device__ FftShift(typename FFT::value_type (&thread_data)[FFT::elements_per_thread]){
   constexpr auto nswaps = FFT::elements_per_thread/2;
@@ -65,6 +57,14 @@ void __device__ FftShift(typename FFT::value_type (&thread_data)[FFT::elements_p
   }
 }
 
+/**
+ * @brief Perform 2D FFT
+ * 
+ * @tparam FFT FFT object constructed using cuFFTDx
+ * @param tb thread block
+ * @param smem pointer to the workspace shared memory
+ * @param fftshift flag to indicate whether to fftshift
+ */
 template<class FFT>
 void __device__ Fft2D(cg::thread_block tb, typename FFT::value_type (&thread_data)[FFT::elements_per_thread], typename FFT::value_type* smem, bool fftshift){
   constexpr auto row_size = size_of<FFT>::value;
@@ -85,15 +85,6 @@ void __device__ Fft2D(cg::thread_block tb, typename FFT::value_type (&thread_dat
   if(fftshift){
     FftShift<FFT>(thread_data);
   }
-  // for (int step = 0; step < 2; ++step) {
-  //     if(fftshift){
-
-  //     }
-  //     if (step == 0) {
-        
-  //     }
-  //     tb.sync();
-  //   }
   tb.sync();
 }
 
@@ -217,53 +208,6 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
         shared_mem,
         thread_data,
         gcf_grid_elem, NONE);
-    // GridderF(
-    //     tb,
-    //     reinterpret_cast<const CNib2*>(GetFEngSample<Order>(
-    //         f_eng_g, seq_no, channel_idx, nseq_per_gulp, nchan)),
-    //     // reinterpret_cast<const float3 *>(GetAntPos(antpos_g, channel_idx)),
-    //     antpos_smem,
-    //     reinterpret_cast<const float4*>(GetPhases(phases_g, channel_idx)),
-    //     shared_mem,
-    //     //  gcf_tex,
-    //     gcf_grid_elem, UPPER);
-
-    // tb.sync();
-
-    // for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
-    //   if (threadIdx.y >= blockDim.y / 2) {
-    //     continue;
-    //   }
-    //   auto index = (threadIdx.x + _reg * stride) + threadIdx.y * row_size;
-    //   thread_data[_reg] = shared_mem[index];
-    // }
-
-    // for (int i = tb.thread_rank();
-    //      i < size_of<FFT>::value * size_of<FFT>::value / 2; i += tb.size()) {
-    //   shared_mem[i] = __half2half2(0);
-    // }
-
-    // GridderF(
-    //     tb,
-    //     reinterpret_cast<const CNib2*>(GetFEngSample<Order>(
-    //         f_eng_g, seq_no, channel_idx, nseq_per_gulp, nchan)),
-    //     // reinterpret_cast<const float3 *>(GetAntPos(antpos_g, channel_idx)),
-    //     antpos_smem,
-    //     reinterpret_cast<const float4*>(GetPhases(phases_g, channel_idx)),
-    //     shared_mem,
-    //     //  gcf_tex,
-    //     gcf_grid_elem, LOWER);
-
-    // tb.sync();
-
-    // for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
-    //   if (threadIdx.y < blockDim.y / 2) {
-    //     continue;
-    //   }
-    //   auto index = (threadIdx.x + _reg * stride) +
-    //                (threadIdx.y - blockDim.y / 2) * row_size;
-    //   thread_data[_reg] = shared_mem[index];
-    // }
 
     tb.sync();
 
@@ -275,20 +219,6 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
 
 
     Fft2D<FFT>(tb, thread_data, shared_mem,false /*fftshift*/);
-    // Execute IFFT (row-wise)
-    // for (int step = 0; step < fft_steps; ++step) {
-    //   FFT().execute(thread_data, shared_mem /*, workspace*/);
-    //   if (step == 0) {
-    //     ///////////////////////////////////////
-    //     // To complete the IFFT, transpose the grid and IFFT on it, which is
-    //     //  equivalent to a column-wise IFFT.
-    //     // Load everything into shared memory and normalize.
-    //     // This ensures there is no overflow.
-    //     TransposeTri<FFT>(thread_data, shared_mem,
-    //                        /*_norm=*/half(1.) / half(row_size));
-    //   }
-    //   tb.sync();
-    // }
 
     // Accumulate cross-pols using on-chip memory.
     // This would lead to spilling and may result in reduced occupancy
