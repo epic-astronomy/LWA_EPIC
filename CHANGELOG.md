@@ -1,3 +1,18 @@
+# [0.8.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.7.2...v0.8.0) (2024-04-03)
+
+
+### Bug Fixes
+
+* changed the disk saver to write same filenames to db and disk ([95a8fcf](https://github.com/epic-astronomy/LWA_EPIC/commit/95a8fcf47de2cfc3437a0f8eead7bb0cd1dc6c81))
+* fixed the fits header to reflect the correct image duration ([424b134](https://github.com/epic-astronomy/LWA_EPIC/commit/424b1343194051ad88ec4ed932fe264bd1e0f1e0))
+
+
+### Features
+
+* remove autocorrelations ([23e5377](https://github.com/epic-astronomy/LWA_EPIC/commit/23e537747d34d735db65630e753f100dd8b85cd1))
+
+
+
 ## [0.7.2](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.7.1...v0.7.2) (2024-03-30)
 
 
