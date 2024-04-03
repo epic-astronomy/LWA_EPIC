@@ -51,6 +51,52 @@ namespace cg = cooperative_groups;
 //   return gridder;
 // }
 
+template<class FFT>
+void __device__ FftShift(typename FFT::value_type (&thread_data)[FFT::elements_per_thread]){
+  constexpr auto nswaps = FFT::elements_per_thread/2;
+  for(int i=0;i<nswaps;++i){
+      // this is equivalent to a circular shift
+      // remember: the data are store with a "stride".
+      // that means we can simply swap elements within
+      // each thread to perform an fftshift
+      auto temp_swap = thread_data[i];
+      thread_data[i] = thread_data[i+nswaps];
+      thread_data[i+nswaps] = temp_swap;
+  }
+}
+
+template<class FFT>
+void __device__ Fft2D(cg::thread_block tb, typename FFT::value_type (&thread_data)[FFT::elements_per_thread], typename FFT::value_type* smem, bool fftshift){
+  constexpr auto row_size = size_of<FFT>::value;
+  constexpr int stride = row_size / FFT::elements_per_thread;
+  FFT().execute(thread_data, smem /*, workspace*/);
+  if(fftshift){
+    FftShift<FFT>(thread_data);
+  }
+  tb.sync();
+  ///////////////////////////////////////
+  // To complete the IFFT, transpose the grid and IFFT on it, which is
+  //  equivalent to a column-wise IFFT.
+  // Load everything into shared memory and normalize.
+  // This ensures there is no overflow.
+  TransposeTri<FFT>(thread_data, smem,
+                     /*_norm=*/half(1.) / half(row_size));
+  FFT().execute(thread_data, smem /*, workspace*/);
+  if(fftshift){
+    FftShift<FFT>(thread_data);
+  }
+  // for (int step = 0; step < 2; ++step) {
+  //     if(fftshift){
+
+  //     }
+  //     if (step == 0) {
+        
+  //     }
+  //     tb.sync();
+  //   }
+  tb.sync();
+}
+
 /**
  * @brief Block fft specialization for half precision
  *
@@ -103,9 +149,11 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
   using complex_type = typename FFT::value_type;
   extern __shared__ complex_type shared_mem[];
 
-  auto gridder = DualPolEpicGridder<FFT, support, LWA_SV_NSTANDS>;
+  auto VoltageGridderF = DualPolEpicFullGridder<FFT, support, LWA_SV_NSTANDS>;
+  auto AutoCorrGridderF = DualPolEpicFullGridder<FFT, support, LWA_SV_NSTANDS,float4>;
+  auto AcorrAccumulatorF = AccumAutoCorrs<FFT, LWA_SV_NSTANDS>;
 
-  constexpr int fft_steps = 2;  // row-wise followed by column-wise
+  // constexpr int fft_steps = 2;  // row-wise followed by column-wise
   constexpr int stride = size_of<FFT>::value / FFT::elements_per_thread;
   constexpr int row_size =
       size_of<FFT>::value;  // blockDim.x * FFT::elements_per_thread;
@@ -117,6 +165,8 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
   accum_oc_t stokes_xx_yy[FFT::elements_per_thread] = {accum_oc_t{0., 0.}};
   accum_oc_t stokes_U_V[FFT::elements_per_thread] = {accum_oc_t{0., 0.}};
 
+  auto tb = cg::this_thread_block();
+
   // Storage mode: nchan, x, y, npol
   // This produces one write instruction per pixel for 4 cross-pols
   accum_g_t* out_polv = reinterpret_cast<accum_g_t*>(output_g);
@@ -127,14 +177,25 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
   float3* antpos_smem = reinterpret_cast<float3*>(
       shared_mem + FFT::shared_memory_size / sizeof(complex_type));
 
+  // reserve memory to store auto corrs
+  // the storage layout is a follows
+  // ac.x.x = Re(X*X)
+  // ac.x.y = Re(Y*Y)
+  // ac.y.x = Re(XY*)
+  // ac.y.y = Im(XY*)
+  float4* auto_corrs = reinterpret_cast<float4*>(antpos_smem + LWA_SV_NSTANDS);
+  for (int ant = tb.thread_rank(); ant < LWA_SV_NSTANDS; ant += tb.size()) {
+    //printf("%d %d\n",ant, tb.thread_rank());
+    auto_corrs[ant] = {0};
+  }
+
   auto* _antpos_g =
       reinterpret_cast<const float3*>(GetAntPos(antpos_g, channel_idx));
 
-  auto tb = cg::this_thread_block();
   for (int i = tb.thread_rank(); i < LWA_SV_NSTANDS; i += tb.size()) {
     antpos_smem[i] = _antpos_g[i];
   }
-  __syncthreads();
+  tb.sync();
 
   // loop over each sequence in the gulp for channel_idx channel
   for (int seq_no = 0; seq_no < nseq_per_gulp; ++seq_no) {
@@ -147,70 +208,87 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
       thread_data[_reg] = __half2half2(0);
     }
 
-    gridder(
-        tb,
+    VoltageGridderF(tb,
         reinterpret_cast<const CNib2*>(GetFEngSample<Order>(
             f_eng_g, seq_no, channel_idx, nseq_per_gulp, nchan)),
         // reinterpret_cast<const float3 *>(GetAntPos(antpos_g, channel_idx)),
         antpos_smem,
         reinterpret_cast<const float4*>(GetPhases(phases_g, channel_idx)),
         shared_mem,
-        //  gcf_tex,
-        gcf_grid_elem, UPPER);
+        thread_data,
+        gcf_grid_elem, NONE);
+    // GridderF(
+    //     tb,
+    //     reinterpret_cast<const CNib2*>(GetFEngSample<Order>(
+    //         f_eng_g, seq_no, channel_idx, nseq_per_gulp, nchan)),
+    //     // reinterpret_cast<const float3 *>(GetAntPos(antpos_g, channel_idx)),
+    //     antpos_smem,
+    //     reinterpret_cast<const float4*>(GetPhases(phases_g, channel_idx)),
+    //     shared_mem,
+    //     //  gcf_tex,
+    //     gcf_grid_elem, UPPER);
 
-    __syncthreads();
+    // tb.sync();
 
-    for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
-      if (threadIdx.y >= blockDim.y / 2) {
-        continue;
-      }
-      auto index = (threadIdx.x + _reg * stride) + threadIdx.y * row_size;
-      thread_data[_reg] = shared_mem[index];
-    }
+    // for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
+    //   if (threadIdx.y >= blockDim.y / 2) {
+    //     continue;
+    //   }
+    //   auto index = (threadIdx.x + _reg * stride) + threadIdx.y * row_size;
+    //   thread_data[_reg] = shared_mem[index];
+    // }
 
-    for (int i = tb.thread_rank();
-         i < size_of<FFT>::value * size_of<FFT>::value / 2; i += tb.size()) {
-      shared_mem[i] = __half2half2(0);
-    }
+    // for (int i = tb.thread_rank();
+    //      i < size_of<FFT>::value * size_of<FFT>::value / 2; i += tb.size()) {
+    //   shared_mem[i] = __half2half2(0);
+    // }
 
-    gridder(
-        tb,
-        reinterpret_cast<const CNib2*>(GetFEngSample<Order>(
-            f_eng_g, seq_no, channel_idx, nseq_per_gulp, nchan)),
-        // reinterpret_cast<const float3 *>(GetAntPos(antpos_g, channel_idx)),
-        antpos_smem,
-        reinterpret_cast<const float4*>(GetPhases(phases_g, channel_idx)),
-        shared_mem,
-        //  gcf_tex,
-        gcf_grid_elem, LOWER);
+    // GridderF(
+    //     tb,
+    //     reinterpret_cast<const CNib2*>(GetFEngSample<Order>(
+    //         f_eng_g, seq_no, channel_idx, nseq_per_gulp, nchan)),
+    //     // reinterpret_cast<const float3 *>(GetAntPos(antpos_g, channel_idx)),
+    //     antpos_smem,
+    //     reinterpret_cast<const float4*>(GetPhases(phases_g, channel_idx)),
+    //     shared_mem,
+    //     //  gcf_tex,
+    //     gcf_grid_elem, LOWER);
 
-    __syncthreads();
+    // tb.sync();
 
-    for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
-      if (threadIdx.y < blockDim.y / 2) {
-        continue;
-      }
-      auto index = (threadIdx.x + _reg * stride) +
-                   (threadIdx.y - blockDim.y / 2) * row_size;
-      thread_data[_reg] = shared_mem[index];
-    }
+    // for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
+    //   if (threadIdx.y < blockDim.y / 2) {
+    //     continue;
+    //   }
+    //   auto index = (threadIdx.x + _reg * stride) +
+    //                (threadIdx.y - blockDim.y / 2) * row_size;
+    //   thread_data[_reg] = shared_mem[index];
+    // }
 
-    __syncthreads();
+    tb.sync();
 
+    // Accumulate auto corrs
+    AcorrAccumulatorF(tb,
+      reinterpret_cast<const CNib2*>(GetFEngSample<Order>(
+              f_eng_g, seq_no, channel_idx, nseq_per_gulp, nchan)),
+      auto_corrs);
+
+
+    Fft2D<FFT>(tb, thread_data, shared_mem,false /*fftshift*/);
     // Execute IFFT (row-wise)
-    for (int step = 0; step < fft_steps; ++step) {
-      FFT().execute(thread_data, shared_mem /*, workspace*/);
-      if (step == 0) {
-        ///////////////////////////////////////
-        // To complete the IFFT, transpose the grid and IFFT on it, which is
-        //  equivalent to a column-wise IFFT.
-        // Load everything into shared memory and normalize.
-        // This ensures there is no overflow.
-        TransposeTri<FFT>(thread_data, shared_mem,
-                           /*_norm=*/half(1.) / half(row_size));
-      }
-      __syncthreads();
-    }
+    // for (int step = 0; step < fft_steps; ++step) {
+    //   FFT().execute(thread_data, shared_mem /*, workspace*/);
+    //   if (step == 0) {
+    //     ///////////////////////////////////////
+    //     // To complete the IFFT, transpose the grid and IFFT on it, which is
+    //     //  equivalent to a column-wise IFFT.
+    //     // Load everything into shared memory and normalize.
+    //     // This ensures there is no overflow.
+    //     TransposeTri<FFT>(thread_data, shared_mem,
+    //                        /*_norm=*/half(1.) / half(row_size));
+    //   }
+    //   tb.sync();
+    // }
 
     // Accumulate cross-pols using on-chip memory.
     // This would lead to spilling and may result in reduced occupancy
@@ -226,8 +304,32 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
       stokes_xx_yy[_reg] += accum_oc_t{xx, yy};
       stokes_U_V[_reg] += accum_oc_t{uu, vv};
     }
-    __syncthreads();
+
+    
+    tb.sync();
   }  // End of gulp loop
+ // reset registers and shared mem
+  for (int i = tb.thread_rank();
+         i < size_of<FFT>::value * size_of<FFT>::value / 2; i += tb.size()) {
+      shared_mem[i] = __half2half2(0);
+    }
+    for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
+      thread_data[_reg] = __half2half2(0);
+    }
+  // calculate the XX* and YY* auto-corrs in two independent FFTs
+  AutoCorrGridderF(tb,auto_corrs, antpos_smem,
+        reinterpret_cast<const float4*>(GetPhases(phases_g, channel_idx)),
+        shared_mem,
+        thread_data,
+        gcf_grid_elem, XX_YY);
+  tb.sync();
+  Fft2D<FFT>(tb, thread_data, shared_mem,true);
+  tb.sync();
+  for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
+    // remove XX* and YY* autocorrs
+    stokes_xx_yy[_reg] += accum_oc_t{-__habs(thread_data[_reg].x.x) * __half(row_size), -__habs(thread_data[_reg].x.y)*__half(row_size)};
+    //stokes_xx_yy[_reg] -= thread_data[_reg].x.y;
+  }
 
   // Write the final accumulated image into global memory
   for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {

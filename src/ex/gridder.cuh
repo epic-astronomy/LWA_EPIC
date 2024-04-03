@@ -344,6 +344,7 @@ __device__ void grid_dual_pol_dx7(
 }
 
 enum ImageDiv { UPPER, LOWER };
+enum ACorrType { XX_YY, XY, NONE};
 
 /**
  * @brief Grid the F-Engine data using shared-memory
@@ -479,17 +480,20 @@ __device__ inline void grid_dual_pol_dx8(
 }
 
 template <
-    typename FFT, unsigned int Support, unsigned int NStands,
+    typename FFT, unsigned int Support, unsigned int NStands, typename InDtype,
     std::enable_if_t<
         std::is_same<__half2, typename FFT::output_type::value_type>::value,
         bool> = true>
-__device__ inline void DualPolEpicGridder(
-    cg::thread_block tb, const CNib2* f_eng, const float3* __restrict__ antpos,
+__device__ inline void DualPolEpicHalfGridder(
+    cg::thread_block tb, const InDtype* f_eng, const float3* __restrict__ antpos,
     const float4* __restrict__ phases, typename FFT::value_type* smem,
-    float* gcf_grid_elem, ImageDiv Div = UPPER) {
+    float* gcf_grid_elem, ImageDiv Div, ACorrType acorr) {
   // auto tb = cg::this_thread_block();
   constexpr int nelements = Support * Support;
   constexpr float inv_nelements = 1.f / float(nelements);
+  auto fft_size = size_of<FFT>::value;
+  using complex_type = typename FFT::value_type;
+  // const complex_type* auto_corrs = reinterpret_cast<const complex_type*>(antpos + LWA_SV_NSTANDS);
 
   // divide threads into groups of nelements. Each group grids one antenna at a
   // time
@@ -516,6 +520,12 @@ __device__ inline void DualPolEpicGridder(
     float antx = antpos[ant].x;
     float anty = antpos[ant].y;
 
+    if constexpr(std::is_same_v<InDtype,float4>){
+      // the antenna positions are all the same
+      antx = size_of<FFT>::value/2;
+      anty = size_of<FFT>::value/2;
+    }
+
     int xpix = int(antx + dx);
     int ypix = int(anty + dy);
 
@@ -536,7 +546,8 @@ __device__ inline void DualPolEpicGridder(
     // For some reason, there is a 1-pixel offset between epic and wsclean
     // images. For now, simply shift the epic sky by 1-pixel in the +y direction
     float c = 1;  // cosf(3.14 / 64. * ypix);
-    float s = 1;  // sinf(3.14 / 64. * ypix);
+    float s = 0;  // sinf(3.14 / 64. * ypix);
+    if constexpr(std::is_same_v<InDtype, CNib2>){
     __cms_f(temp_data.x,
             float2{phase_ant.x * c - phase_ant.y * s,
                    phase_ant.y * c + phase_ant.x * s},
@@ -545,6 +556,21 @@ __device__ inline void DualPolEpicGridder(
             float2{phase_ant.z * c - phase_ant.w * s,
                    phase_ant.w * c + phase_ant.z * s},
             f_eng[ant].Y, scale);
+    }
+    if constexpr(std::is_same_v<InDtype,float4>){
+      if(acorr==XX_YY){// perform fft for X*X and Y*Y independently
+        temp_data.x = {f_eng[ant].x * (sqrt(phase_ant.x * phase_ant.x + phase_ant.y * phase_ant.y) * scale)/(fft_size*fft_size*fft_size), 0};//X*X
+        temp_data.y = {f_eng[ant].y * (sqrt(phase_ant.z * phase_ant.z + phase_ant.w * phase_ant.w) * scale)/(fft_size*fft_size*fft_size), 0};//Y*Y
+      }
+
+      if(acorr==XY){// perform fft for X*Y in one and nothing in the other
+        auto xy_acorr = f_eng[ant];
+        auto xy_phase_a = phase_ant.x * phase_ant.z + phase_ant.y * phase_ant.w;
+        auto xy_phase_b = phase_ant.y * phase_ant.z - phase_ant.x * phase_ant.w;
+        temp_data.x = {(xy_acorr.z * xy_phase_a + xy_acorr.w * xy_phase_b)*(scale)/fft_size, (xy_acorr.w * xy_phase_a - xy_acorr.z * xy_phase_b)*(scale)/fft_size};
+        temp_data.y = __half2half2(0.);
+      }
+    }
 
     // Re-arrange into RRII layout
     __half im = temp_data.x.y;
@@ -566,5 +592,94 @@ __device__ inline void DualPolEpicGridder(
   // constexpr offset = (FFT::block_dim.x * FFT::block_dim.y) % nelements == 0?
   // 0:1;
 };
+
+template<class FFT, unsigned int Support, unsigned int NStands, typename InDtype = CNib2>
+__device__ inline void DualPolEpicFullGridder(cg::thread_block tb,
+ const InDtype* f_eng,
+  const float3* __restrict__ antpos,
+    const float4* __restrict__ phases,
+    typename FFT::value_type* shared_mem,
+    typename FFT::value_type (&thread_data)[FFT::elements_per_thread],
+    float* gcf_grid_elem, ACorrType acorr){
+      auto HalfGridder = DualPolEpicHalfGridder<FFT,Support, NStands, InDtype>;
+      constexpr int stride = size_of<FFT>::value / FFT::elements_per_thread;
+  constexpr int row_size =
+      size_of<FFT>::value;  // blockDim.x * FFT::elements_per_thread;
+  HalfGridder(
+        tb,
+        f_eng,
+        // reinterpret_cast<const float3 *>(GetAntPos(antpos_g, channel_idx)),
+        antpos,
+        phases,
+        shared_mem,
+        //  gcf_tex,
+        gcf_grid_elem, UPPER, acorr);
+
+    tb.sync();
+
+    for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
+      if (threadIdx.y >= blockDim.y / 2) {
+        continue;
+      }
+      auto index = (threadIdx.x + _reg * stride) + threadIdx.y * row_size;
+      thread_data[_reg] = shared_mem[index];
+    }
+
+    for (int i = tb.thread_rank();
+         i < size_of<FFT>::value * size_of<FFT>::value / 2; i += tb.size()) {
+      shared_mem[i] = __half2half2(0);
+    }
+
+    HalfGridder(
+        tb,
+        f_eng,
+        // reinterpret_cast<const float3 *>(GetAntPos(antpos_g, channel_idx)),
+        antpos,
+        phases,
+        shared_mem,
+        //  gcf_tex,
+        gcf_grid_elem, LOWER, acorr);
+
+    tb.sync();
+
+    for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
+      if (threadIdx.y < blockDim.y / 2) {
+        continue;
+      }
+      auto index = (threadIdx.x + _reg * stride) +
+                   (threadIdx.y - blockDim.y / 2) * row_size;
+      thread_data[_reg] = shared_mem[index];
+    }
+
+    tb.sync();
+}
+
+template <
+    typename FFT, unsigned int NStands,
+    std::enable_if_t<
+        std::is_same<__half2, typename FFT::output_type::value_type>::value,
+        bool> = true>
+__device__ inline void AccumAutoCorrs(
+    cg::thread_block tb, const CNib2* f_eng, float4* acorr_smem) {
+      //constexpr auto tile_size = FFT::max_threads_per_block/4;
+      // each tile computes one part of the autocorrelation
+      //auto acorr_tile = cg::tiled_partition<tile_size>(tb);
+
+      // loop over all antennas
+      for(int ant=tb.thread_rank();ant<NStands;ant+=tb.num_threads()){
+        auto X = f_eng[ant].X;
+        auto Y = f_eng[ant].Y;
+
+        auto a = X.re;
+        auto b = X.im;
+        auto c = Y.re;
+        auto d = Y.im;
+
+        acorr_smem[ant] += float4{static_cast<float>(a*a + b*b), static_cast<float>(c*c + d*d), static_cast<float>(a*c + b*d), static_cast<float>(b*c - a*d) }; //Re(X*X), Re(Y*Y)
+        // acorr_smem[ant].y += {a*c + b*d, b*c - a*d}; //Re(XY*), Im(XY*)
+      }
+      
+      
+    }
 
 #endif  // SRC_EX_GRIDDER_CUH_
