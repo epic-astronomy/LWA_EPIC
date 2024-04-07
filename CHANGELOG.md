@@ -1,3 +1,17 @@
+# [0.9.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.8.0...v0.9.0) (2024-04-07)
+
+
+### Bug Fixes
+
+* corrected the source extraction index ([5f51879](https://github.com/epic-astronomy/LWA_EPIC/commit/5f51879ff257b4a00db74f0ecae4ba145f97d034))
+
+
+### Features
+
+* added command to save a quick look png image for each fits file ([17ceff9](https://github.com/epic-astronomy/LWA_EPIC/commit/17ceff96588515137d2f6cbc2c6c08ba403e6479))
+
+
+
 # [0.8.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.7.2...v0.8.0) (2024-04-03)
 
 
@@ -49,20 +63,6 @@
 ### Features
 
 * Added ability to specify output directory to store accumulated files ([99045b6](https://github.com/epic-astronomy/LWA_EPIC/commit/99045b6ba4a4f185c3193732a5c9d7f2ee2efa0b))
-
-
-
-# [0.6.0](https://github.com/epic-astronomy/LWA_EPIC/compare/ec50ddd37750fc98a291321f7c1644c27e97c273...v0.6.0) (2024-03-24)
-
-
-### Bug Fixes
-
-* Ignore health check frequencies for imaging and broadcasting ([97ec86f](https://github.com/epic-astronomy/LWA_EPIC/commit/97ec86fa08ad73563997f42748c374abcbd3a1f0))
-
-
-### Features
-
-* :sparkles: Added interface to set db schema and to filter frequencies ([ec50ddd](https://github.com/epic-astronomy/LWA_EPIC/commit/ec50ddd37750fc98a291321f7c1644c27e97c273))
 
 
 
