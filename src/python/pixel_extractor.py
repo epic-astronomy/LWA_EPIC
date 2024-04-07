@@ -300,7 +300,7 @@ class EpicPixels:
     def get_pix_indices(
         self,
     ) -> pd.DataFrame:
-        self.idx_l = self._watch_df.index.to_numpy()
+        self.idx_l = self._watch_df.reset_index().index.to_numpy() # the fetched indices correspond to orginal ids in the watchlist
         self.src_l = self._watch_df["source_name"].to_numpy().astype(str)
         self.ra_l = self._watch_df["ra"].to_numpy()
         self.dec_l = self._watch_df["dec"].to_numpy()
