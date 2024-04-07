@@ -216,15 +216,14 @@ def save_output(output_arr, grid_size, nchan, outdir, metadata):
      1e-3 * metadata["img_len_ms"] / 2.0
     filename = f"EPIC_{unix_time:.3f}_{cfreq/1e6:.3f}MHz"
     hdulist.writeto(f"{outdir}{filename}.fits", overwrite=True)
-
-    chan_out = 0
-
-    temp_im = img_data[0, chan_out, :, :]
+    #chan_out = 0
+    #temp_im = img_data[0, chan_out, :, :]
+    matplotlib.image.imsave(f"{outdir}{filename}_QL.png", img_data[0, 0, :, :], origin="lower")
     # temp_im[:,0:4]=0
     # temp_im[0:4,:]=0
     # temp_im[:,-4:]=0
     # temp_im[-4:,:]=0
-    matplotlib.image.imsave(f"test.png", temp_im, origin="lower")
+    #matplotlib.image.imsave(f"test.png", temp_im, origin="lower")
     return f"{outdir}{filename}.fits"
     # matplotlib.image.imsave(
     #     "original_test_out.png", (output_arr[0, chan_out, :, :])
