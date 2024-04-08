@@ -80,7 +80,7 @@ void __device__ Fft2D(cg::thread_block tb, typename FFT::value_type (&thread_dat
   // Load everything into shared memory and normalize.
   // This ensures there is no overflow.
   TransposeTri<FFT>(thread_data, smem,
-                     /*_norm=*/half(1.) / half(row_size));
+                     /*_norm=*/half(1.) / half(2.));
   FFT().execute(thread_data, smem /*, workspace*/);
   if(fftshift){
     FftShift<FFT>(thread_data);
@@ -152,9 +152,11 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
   complex_type thread_data[FFT::elements_per_thread];
 
   using accum_g_t = float4;  // precision for global memory accumulator
+  using _accum_t = decltype(accum_oc_t::x);
 
   accum_oc_t stokes_xx_yy[FFT::elements_per_thread] = {accum_oc_t{0., 0.}};
   accum_oc_t stokes_U_V[FFT::elements_per_thread] = {accum_oc_t{0., 0.}};
+  
 
   auto tb = cg::this_thread_block();
 
@@ -224,15 +226,17 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
     // This would lead to spilling and may result in reduced occupancy
     // Using f16 instead of f32 can alleviate this issue
     for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
-      using _accum_t = decltype(accum_oc_t::x);
-      auto xx = ComputeXX<_accum_t, FFT>(thread_data[_reg]);
-      auto yy = ComputeYY<_accum_t, FFT>(thread_data[_reg]);
-      auto uu = ComputeUU<_accum_t, FFT>(thread_data[_reg]);
-      auto vv = ComputeVV<_accum_t, FFT>(thread_data[_reg]);
+      
+      _accum_t xx = ComputeXX<_accum_t, FFT>(thread_data[_reg]);
+      _accum_t yy = ComputeYY<_accum_t, FFT>(thread_data[_reg]);
+      _accum_t uu = ComputeUU<_accum_t, FFT>(thread_data[_reg]);
+      _accum_t vv = ComputeVV<_accum_t, FFT>(thread_data[_reg]);
 
       // stokes[_reg]+=accum_g_t{xx, yy};
-      stokes_xx_yy[_reg] += accum_oc_t{xx, yy};
-      stokes_U_V[_reg] += accum_oc_t{uu, vv};
+      _accum_t mult=_accum_t(row_size);
+      // scale the pixel values to reduce errors
+      stokes_xx_yy[_reg] += accum_oc_t{xx*mult, yy*mult};
+      stokes_U_V[_reg] += accum_oc_t{uu*mult, vv*mult};
     }
 
     
@@ -257,8 +261,8 @@ __launch_bounds__(FFT::max_threads_per_block) __global__
   tb.sync();
   for (int _reg = 0; _reg < FFT::elements_per_thread; ++_reg) {
     // remove XX* and YY* autocorrs
-    stokes_xx_yy[_reg] += accum_oc_t{-__habs(thread_data[_reg].x.x) * __half(row_size), -__habs(thread_data[_reg].x.y)*__half(row_size)};
-    //stokes_xx_yy[_reg] -= thread_data[_reg].x.y;
+    stokes_xx_yy[_reg] += accum_oc_t{-_accum_t(__habs(thread_data[_reg].x.x)) * _accum_t(row_size*row_size), -_accum_t(__habs(thread_data[_reg].x.y))*_accum_t(row_size*row_size)};
+    // stokes_xx_yy[_reg] -= thread_data[_reg].x.y;
   }
 
   // Write the final accumulated image into global memory
