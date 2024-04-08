@@ -1,3 +1,12 @@
+## [0.9.1](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.9.0...v0.9.1) (2024-04-08)
+
+
+### Performance Improvements
+
+* changed the accumulation data type to brain float 16-bit ([758d6e3](https://github.com/epic-astronomy/LWA_EPIC/commit/758d6e35d4d10a55abc1a171f0e54ae1a352baad))
+
+
+
 # [0.9.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.8.0...v0.9.0) (2024-04-07)
 
 
@@ -49,20 +58,6 @@
 ### Bug Fixes
 
 * Removed system libraries from the linking list ([0711403](https://github.com/epic-astronomy/LWA_EPIC/commit/07114036480a36e1e0765b959c9b8c902d5b757d))
-
-
-
-# [0.7.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.6.0...v0.7.0) (2024-03-27)
-
-
-### Bug Fixes
-
-* changed the precision for time from unix epoch from float to int ([0739e43](https://github.com/epic-astronomy/LWA_EPIC/commit/0739e4337106bf0075f82f284056586b1457c5b2))
-
-
-### Features
-
-* Added ability to specify output directory to store accumulated files ([99045b6](https://github.com/epic-astronomy/LWA_EPIC/commit/99045b6ba4a4f185c3193732a5c9d7f2ee2efa0b))
 
 
 
