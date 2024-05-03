@@ -48,7 +48,7 @@ void __device__ FftShift(typename FFT::value_type (&thread_data)[FFT::elements_p
   constexpr auto nswaps = FFT::elements_per_thread/2;
   for(int i=0;i<nswaps;++i){
       // this is equivalent to a circular shift
-      // remember: the data are store with a "stride".
+      // remember: the data are stored with a "stride".
       // that means we can simply swap elements within
       // each thread to perform an fftshift
       auto temp_swap = thread_data[i];
@@ -80,7 +80,7 @@ void __device__ Fft2D(cg::thread_block tb, typename FFT::value_type (&thread_dat
   // Load everything into shared memory and normalize.
   // This ensures there is no overflow.
   TransposeTri<FFT>(thread_data, smem,
-                     /*_norm=*/half(1.) / half(2.));
+                     /*_norm=*/half(1.) / half(4.));
   FFT().execute(thread_data, smem /*, workspace*/);
   if(fftshift){
     FftShift<FFT>(thread_data);
