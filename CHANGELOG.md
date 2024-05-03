@@ -1,3 +1,12 @@
+## [0.9.3](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.9.2...v0.9.3) (2024-05-03)
+
+
+### Bug Fixes
+
+* Increase the normalization factor in FFT to prevent overflows ([5c9f222](https://github.com/epic-astronomy/LWA_EPIC/commit/5c9f2226099d36edc152c452132fbc0c1f8d9540))
+
+
+
 ## [0.9.2](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.9.1...v0.9.2) (2024-05-03)
 
 
@@ -42,22 +51,6 @@
 ### Features
 
 * remove autocorrelations ([23e5377](https://github.com/epic-astronomy/LWA_EPIC/commit/23e537747d34d735db65630e753f100dd8b85cd1))
-
-
-
-## [0.7.2](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.7.1...v0.7.2) (2024-03-30)
-
-
-### Bug Fixes
-
-* changed the obs time to center of the image duration instead of the end ([8999396](https://github.com/epic-astronomy/LWA_EPIC/commit/89993967776e18030cb3bd268fe3c9d0fe2e03c4))
-* corrected the pixel index calculation while extracting pixels ([fb094ad](https://github.com/epic-astronomy/LWA_EPIC/commit/fb094ad4e8897aa2ac4155b83e8648fc886ecdb1))
-
-
-### Performance Improvements
-
-* Increased the buffer size to accomodate db ingestion delays ([2ef38a2](https://github.com/epic-astronomy/LWA_EPIC/commit/2ef38a23a5770b60645d2c7cfcd478cc29f46875))
-* increased the buufer count to accomodate db ingestion delays ([8ba8140](https://github.com/epic-astronomy/LWA_EPIC/commit/8ba8140fd56d6e224ef1a58ae4f936b2f06ab279))
 
 
 
