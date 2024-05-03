@@ -218,7 +218,7 @@ class Streamer {
     //        = grid_size * 0.38
     int xcen = m_grid_size / 2;
     int ycen = xcen;
-    float radius2 = (m_grid_size * 0.38) * (m_grid_size * 0.38)/4.;
+    float radius2 = (m_grid_size * 0.38) * (m_grid_size * 0.38);
     float max_val = 0;
 
     for (int i = 0; i < m_grid_size; ++i) {
