@@ -1,3 +1,12 @@
+## [0.9.2](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.9.1...v0.9.2) (2024-05-03)
+
+
+### Bug Fixes
+
+* Fixed the pixel normalizing radius for video streaming ([25a45e5](https://github.com/epic-astronomy/LWA_EPIC/commit/25a45e5fcf3c19c8ae1f77cfaa664afdf0e894ee))
+
+
+
 ## [0.9.1](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.9.0...v0.9.1) (2024-04-08)
 
 
@@ -49,15 +58,6 @@
 
 * Increased the buffer size to accomodate db ingestion delays ([2ef38a2](https://github.com/epic-astronomy/LWA_EPIC/commit/2ef38a23a5770b60645d2c7cfcd478cc29f46875))
 * increased the buufer count to accomodate db ingestion delays ([8ba8140](https://github.com/epic-astronomy/LWA_EPIC/commit/8ba8140fd56d6e224ef1a58ae4f936b2f06ab279))
-
-
-
-## [0.7.1](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.7.0...v0.7.1) (2024-03-27)
-
-
-### Bug Fixes
-
-* Removed system libraries from the linking list ([0711403](https://github.com/epic-astronomy/LWA_EPIC/commit/07114036480a36e1e0765b959c9b8c902d5b757d))
 
 
 
