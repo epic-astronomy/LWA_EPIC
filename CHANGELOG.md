@@ -1,3 +1,12 @@
+## [0.9.4](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.9.3...v0.9.4) (2024-05-03)
+
+
+### Bug Fixes
+
+* fixed the max value radius for video frame normalization ([894af89](https://github.com/epic-astronomy/LWA_EPIC/commit/894af89323d1e7a2fc2ce6e0e11cb9a357637e7f))
+
+
+
 ## [0.9.3](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.9.2...v0.9.3) (2024-05-03)
 
 
@@ -36,21 +45,6 @@
 ### Features
 
 * added command to save a quick look png image for each fits file ([17ceff9](https://github.com/epic-astronomy/LWA_EPIC/commit/17ceff96588515137d2f6cbc2c6c08ba403e6479))
-
-
-
-# [0.8.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.7.2...v0.8.0) (2024-04-03)
-
-
-### Bug Fixes
-
-* changed the disk saver to write same filenames to db and disk ([95a8fcf](https://github.com/epic-astronomy/LWA_EPIC/commit/95a8fcf47de2cfc3437a0f8eead7bb0cd1dc6c81))
-* fixed the fits header to reflect the correct image duration ([424b134](https://github.com/epic-astronomy/LWA_EPIC/commit/424b1343194051ad88ec4ed932fe264bd1e0f1e0))
-
-
-### Features
-
-* remove autocorrelations ([23e5377](https://github.com/epic-astronomy/LWA_EPIC/commit/23e537747d34d735db65630e753f100dd8b85cd1))
 
 
 
