@@ -1,3 +1,12 @@
+## [0.9.5](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.9.4...v0.9.5) (2024-05-04)
+
+
+### Bug Fixes
+
+* updated the normalization factor for individual images ([309a192](https://github.com/epic-astronomy/LWA_EPIC/commit/309a192ac17f0c279522aa8f37b10d61437dbdfd))
+
+
+
 ## [0.9.4](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.9.3...v0.9.4) (2024-05-03)
 
 
@@ -31,20 +40,6 @@
 ### Performance Improvements
 
 * changed the accumulation data type to brain float 16-bit ([758d6e3](https://github.com/epic-astronomy/LWA_EPIC/commit/758d6e35d4d10a55abc1a171f0e54ae1a352baad))
-
-
-
-# [0.9.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.8.0...v0.9.0) (2024-04-07)
-
-
-### Bug Fixes
-
-* corrected the source extraction index ([5f51879](https://github.com/epic-astronomy/LWA_EPIC/commit/5f51879ff257b4a00db74f0ecae4ba145f97d034))
-
-
-### Features
-
-* added command to save a quick look png image for each fits file ([17ceff9](https://github.com/epic-astronomy/LWA_EPIC/commit/17ceff96588515137d2f6cbc2c6c08ba403e6479))
 
 
 
