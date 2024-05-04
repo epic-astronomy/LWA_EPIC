@@ -80,7 +80,7 @@ void __device__ Fft2D(cg::thread_block tb, typename FFT::value_type (&thread_dat
   // Load everything into shared memory and normalize.
   // This ensures there is no overflow.
   TransposeTri<FFT>(thread_data, smem,
-                     /*_norm=*/half(1.) / half(4.));
+                     /*_norm=*/half(1.) / half(64.));
   FFT().execute(thread_data, smem /*, workspace*/);
   if(fftshift){
     FftShift<FFT>(thread_data);
