@@ -78,7 +78,7 @@ std::string GetMultiPixelInsertStmnt(int nrows, std::string schema="public") {
   pqxx::placeholders name;
   std::string stmnt = "INSERT INTO ";
   stmnt +=  schema + ".epic_pixels";
-  stmnt += "(img_time, session_id, pixel_values, pixel_coord, pixel_lm";
+  stmnt += "(img_time, chan0, pixel_values, pixel_coord, pixel_lm";
   stmnt += ", source_name,  pix_offset) ";
   stmnt += "VALUES ";
   for (int i = 0; i < nrows; ++i) {
@@ -96,26 +96,26 @@ std::string GetSingleImgMetaInsertStmnt(
   std::string stmnt = "(";
   int ncols = 7;
   for (int i = 0; i < ncols; ++i) {
-    stmnt += name.get();
+    stmnt += name.get(); //id, img_time, n_chan, n_pol, chan0, chan_bw_hz, epic_version
     stmnt += ",";
     name.next();
   }
 
-  stmnt += "point(" + name.get() + ",";
+  stmnt += "point(" + name.get() + ","; //img_size
   name.next();
   stmnt += name.get() + ")";
   name.next();
 
-  stmnt += "," + name.get();
+  stmnt += "," + name.get(); // npix_kernel
   name.next();
 
-  stmnt += "," + name.get();
+  stmnt += "," + name.get(); // int_time
   name.next();
 
-  stmnt += "," + name.get();
+  stmnt += "," + name.get(); // source_names
   name.next();
 
-  stmnt += "," + name.get();
+  stmnt += "," + name.get(); // session_id
   name.next();
 
   stmnt += ")";
@@ -124,16 +124,25 @@ std::string GetSingleImgMetaInsertStmnt(
 
 std::string GetMultiImgMetaInsertStmnt(int n_images, std::string schema="public") {
   pqxx::placeholders name;
-  std::string stmnt = "INSERT INTO ";
-  stmnt +=  schema + ".epic_img_metadata";
-  stmnt += "(id, img_time, n_chan, n_pol, chan0, chan_bw_hz, epic_version";
-  stmnt += ", img_size, npix_kernel, int_time, source_names, session_id) VALUES ";
+  std::string stmnt = "MERGE INTO ";
+  stmnt +=  schema + ".epic_img_metadata2 AS meta USING (SELECT \
+  id, img_time::timestamp without time zone, n_chan::int, n_pol::int, chan0::int, chan_bw_hz::int, epic_version\
+  , img_size, npix_kernel::int, int_time::double precision, unnest(source_names::text[]) as source_name, session_id::uuid FROM ( VALUES ";
+  // stmnt += "(id, img_time, n_chan, n_pol, chan0, chan_bw_hz, epic_version";
+  // stmnt += ", img_size, npix_kernel, int_time, source_names, session_id) VALUES ";
   for (int i = 0; i < n_images; ++i) {
     stmnt += GetSingleImgMetaInsertStmnt(&name);
     if (i < (n_images - 1)) {
       stmnt += ",";
     }
   }
+  stmnt += " ) AS img(id, img_time, n_chan, n_pol, chan0, chan_bw_hz, epic_version, img_size, npix_kernel, int_time, source_names, session_id )) AS imgs ";
+  stmnt += "ON meta.session_id=imgs.session_id::uuid AND meta.source_name=imgs.source_name ";
+  stmnt += "WHEN MATCHED THEN ";
+  stmnt += "UPDATE SET session_end = imgs.img_time::timestamp without time zone ";
+  stmnt += "WHEN NOT MATCHED THEN ";
+  stmnt += "insert (session_id,session_start,session_end,chan0,n_pol,n_chan,chan_bw_hz,epic_version,img_size,npix_kernel,int_time,source_name) ";
+  stmnt += "values (imgs.session_id,imgs.img_time,imgs.img_time,imgs.chan0,imgs.n_pol,imgs.n_chan,imgs.chan_bw_hz,imgs.epic_version,imgs.img_size,imgs.npix_kernel,imgs.int_time,imgs.source_name)";
   return stmnt;
 }
 
@@ -148,7 +157,7 @@ void IngestPayload(_Pld* pld_ptr, pqxx::work* work_ptr, int npix_per_src,
 template <typename _PgT>
 void IngestPixelsSingleSrc(const _PgT& data, pqxx::work* work_ptr, int src_idx,
                            int nchan, int npix_per_src, std::string stmnt_id,
-                           std::string time_stamp, std::string session_id) {
+                           std::string time_stamp, int chan0/*std::string session_id*/) {
   // auto& data = *data_ptr;
   auto& work = *work_ptr;
   pqxx::params pars;
@@ -165,7 +174,7 @@ void IngestPixelsSingleSrc(const _PgT& data, pqxx::work* work_ptr, int src_idx,
     pqxx::params pix_pars(
         //data.m_uuid,
         time_stamp,
-        session_id,
+        chan0,
         std::basic_string_view<std::byte>(
             reinterpret_cast<std::byte*>(data.pixel_values.get() +
                                          src_idx * nelem_per_src +
@@ -197,6 +206,7 @@ void IngestPixelsMultiSrc(_Pld* pld_ptr, pqxx::work* work_ptr, int npix_per_src,
   auto time_tag = std::get<uint64_t>(meta["time_tag"]);
   auto img_len_ms = std::get<double>(meta["img_len_ms"]);
   auto session_id = std::get<std::string>(meta["session_id"]);
+  auto chan0 = std::get<int64_t>(meta["chan0"]);
   auto time_stamp = Meta2PgTime(time_tag, img_len_ms);
   int nsrc = pix_data.nsrcs;
   int nchan = pix_data.m_nchan;
@@ -206,7 +216,7 @@ void IngestPixelsMultiSrc(_Pld* pld_ptr, pqxx::work* work_ptr, int npix_per_src,
 
   for (int src_idx = 0; src_idx < nsrc; ++src_idx) {
     IngestPixelsSingleSrc(pix_data, work_ptr, src_idx, nchan, npix_per_src,
-                          stmnt, time_stamp, session_id);
+                          stmnt, time_stamp, chan0/*session_id*/);
   }
 }
 
