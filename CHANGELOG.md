@@ -1,3 +1,12 @@
+## [0.9.6](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.9.5...v0.9.6) (2024-06-04)
+
+
+### Performance Improvements
+
+* Changed the metadata insert statment to use merge ([2894b0f](https://github.com/epic-astronomy/LWA_EPIC/commit/2894b0fc93479d3cc347aee09261f2599702ab9d))
+
+
+
 ## [0.9.5](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.9.4...v0.9.5) (2024-05-04)
 
 
@@ -31,15 +40,6 @@
 ### Bug Fixes
 
 * Fixed the pixel normalizing radius for video streaming ([25a45e5](https://github.com/epic-astronomy/LWA_EPIC/commit/25a45e5fcf3c19c8ae1f77cfaa664afdf0e894ee))
-
-
-
-## [0.9.1](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.9.0...v0.9.1) (2024-04-08)
-
-
-### Performance Improvements
-
-* changed the accumulation data type to brain float 16-bit ([758d6e3](https://github.com/epic-astronomy/LWA_EPIC/commit/758d6e35d4d10a55abc1a171f0e54ae1a352baad))
 
 
 
