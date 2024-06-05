@@ -94,9 +94,9 @@ std::string GetSingleImgMetaInsertStmnt(
     pqxx::placeholders<unsigned int>* name_ptr) {
   auto& name = *name_ptr;
   std::string stmnt = "(";
-  int ncols = 7;
-  for (int i = 0; i < ncols; ++i) {
-    stmnt += name.get(); //id, img_time, n_chan, n_pol, chan0, chan_bw_hz, epic_version
+  //int ncols = 7;
+  for (int i = 0; i < 9; ++i) {
+    stmnt += name.get(); //session_id,chan0,n_pol,n_chan,chan_bw_hz, epic_version, npix_kernel, int_time, source_name
     stmnt += ",";
     name.next();
   }
@@ -106,17 +106,20 @@ std::string GetSingleImgMetaInsertStmnt(
   stmnt += name.get() + ")";
   name.next();
 
-  stmnt += "," + name.get(); // npix_kernel
+  stmnt += "," + name.get() + "," + name.get();
   name.next();
 
-  stmnt += "," + name.get(); // int_time
-  name.next();
+  // stmnt += "," + name.get(); // npix_kernel
+  // name.next();
 
-  stmnt += "," + name.get(); // source_names
-  name.next();
+  // stmnt += "," + name.get(); // int_time
+  // name.next();
 
-  stmnt += "," + name.get(); // session_id
-  name.next();
+  // stmnt += "," + name.get(); // source_names
+  // name.next();
+
+  // stmnt += "," + name.get(); // session_id
+  // name.next();
 
   stmnt += ")";
   return stmnt;
@@ -124,10 +127,10 @@ std::string GetSingleImgMetaInsertStmnt(
 
 std::string GetMultiImgMetaInsertStmnt(int n_images, std::string schema="public") {
   pqxx::placeholders name;
-  std::string stmnt = "MERGE INTO ";
-  stmnt +=  schema + ".epic_img_metadata2 AS meta USING (SELECT \
-  id, img_time::timestamp without time zone, n_chan::int, n_pol::int, chan0::int, chan_bw_hz::int, epic_version\
-  , img_size, npix_kernel::int, int_time::double precision, unnest(source_names::text[]) as source_name, session_id::uuid FROM ( VALUES ";
+  std::string stmnt = "INSERT INTO ";
+  stmnt +=  schema + ".epic_img_metadata2(session_id,session_start,session_end,chan0,n_pol,n_chan,chan_bw_hz, epic_version, npix_kernel, int_time, source_name,img_size) SELECT \
+  session_id::uuid, session_start::timestamp without time zone, session_end::timestamp without time zone, chan0::int, n_pol::int, n_chan::int, chan_bw_hz::int, epic_version\
+  ,npix_kernel::int, int_time::double precision, unnest(source_names::text[]), img_size  FROM ( VALUES ";
   // stmnt += "(id, img_time, n_chan, n_pol, chan0, chan_bw_hz, epic_version";
   // stmnt += ", img_size, npix_kernel, int_time, source_names, session_id) VALUES ";
   for (int i = 0; i < n_images; ++i) {
@@ -136,13 +139,15 @@ std::string GetMultiImgMetaInsertStmnt(int n_images, std::string schema="public"
       stmnt += ",";
     }
   }
-  stmnt += " ) AS img(id, img_time, n_chan, n_pol, chan0, chan_bw_hz, epic_version, img_size, npix_kernel, int_time, source_names, session_id )) AS imgs ";
-  stmnt += "ON meta.session_id=imgs.session_id::uuid AND meta.source_name=imgs.source_name ";
-  stmnt += "WHEN MATCHED THEN ";
-  stmnt += "UPDATE SET session_end = imgs.img_time::timestamp without time zone ";
-  stmnt += "WHEN NOT MATCHED THEN ";
-  stmnt += "insert (session_id,session_start,session_end,chan0,n_pol,n_chan,chan_bw_hz,epic_version,img_size,npix_kernel,int_time,source_name) ";
-  stmnt += "values (imgs.session_id,imgs.img_time,imgs.img_time,imgs.chan0,imgs.n_pol,imgs.n_chan,imgs.chan_bw_hz,imgs.epic_version,imgs.img_size,imgs.npix_kernel,imgs.int_time,imgs.source_name)";
+  stmnt += " ) AS img(session_id,chan0,n_pol,n_chan,chan_bw_hz, epic_version, npix_kernel, int_time, source_names,img_size,session_start,session_end)";
+  stmnt += "ON CONFLICT ON CONSTRAINT epic_img_metadata2_pkey ";
+  stmnt += "DO UPDATE SET session_end=excluded.session_end";
+  // stmnt += "WHEN MATCHED THEN ";
+  // stmnt += "UPDATE SET session_end = imgs.img_time::timestamp without time zone ";
+  // stmnt += "WHEN NOT MATCHED THEN ";
+  // stmnt += "insert (session_id,session_start,session_end,chan0,n_pol,n_chan,chan_bw_hz,epic_version,img_size,npix_kernel,int_time,source_name) ";
+  // stmnt += "values (imgs.session_id,imgs.img_time,imgs.img_time,imgs.chan0,imgs.n_pol,imgs.n_chan,imgs.chan_bw_hz,imgs.epic_version,imgs.img_size,imgs.npix_kernel,imgs.int_time,imgs.source_name)";
+  std::cout<<stmnt;
   return stmnt;
 }
 
@@ -245,10 +250,11 @@ void IngestMetadata(_Pld* pld_ptr, pqxx::work* work_ptr, int npix_per_src,
   auto int_time = std::get<double>(meta["img_len_ms"])/1000;
   auto source_name_arr = pix_data.source_name_arr;
   auto session_id = std::get<std::string>(meta["session_id"]);
-  pqxx::params pars(pix_data.m_uuid, Meta2PgTime(time_tag, img_len_ms), nchan,
-                    static_cast<int>(NSTOKES), static_cast<int>(chan0), bw,
-                    git_CommitSHA1(), grid_size, grid_size, npix_per_src, int_time,
-                    source_name_arr,session_id);
+  //session_id,chan0,n_pol,n_chan,chan_bw_hz, epic_version, npix_kernel, int_time, source_names,img_size,session_start,session_end
+  pqxx::params pars(session_id, static_cast<int>(chan0),
+                    static_cast<int>(NSTOKES), nchan, bw,
+                    git_CommitSHA1(), npix_per_src, int_time,
+                    source_name_arr, grid_size, grid_size, Meta2PgTime(time_tag, img_len_ms));
 
   work.exec_prepared0(stmnt, pars);
 }
@@ -261,7 +267,7 @@ std::string GetFileMetaInsertStmt(std::string schema="public") {
 
   pqxx::placeholders name;
   std::string stmnt ="INSERT INTO ";
-  stmnt += schema + ".epic_files_metadata (";  // filename,...) VALUES ($1, $2...)
+  stmnt += schema + ".epic_files_metadata2 (";  // filename,...) VALUES ($1, $2...)
   stmnt +=
       std::accumulate(std::next(cols.begin()), cols.end(), cols[0],
                       [](std::string a, std::string b) { return a + "," + b; });
