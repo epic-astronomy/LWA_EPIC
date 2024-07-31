@@ -1,3 +1,13 @@
+## [0.9.7](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.9.6...v0.9.7) (2024-07-31)
+
+
+### Bug Fixes
+
+* Added timeouts to prevent indefinite waits on watchdog/ADP replies ([610b078](https://github.com/epic-astronomy/LWA_EPIC/commit/610b078522738cbf7910ec95d65e7185b6bf2c25))
+* Restart the program if there is an ADP system reset ([4af6520](https://github.com/epic-astronomy/LWA_EPIC/commit/4af65209d1ff7db8584232ad46c3a1372327870d))
+
+
+
 ## [0.9.6](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.9.5...v0.9.6) (2024-06-04)
 
 
@@ -31,15 +41,6 @@
 ### Bug Fixes
 
 * Increase the normalization factor in FFT to prevent overflows ([5c9f222](https://github.com/epic-astronomy/LWA_EPIC/commit/5c9f2226099d36edc152c452132fbc0c1f8d9540))
-
-
-
-## [0.9.2](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.9.1...v0.9.2) (2024-05-03)
-
-
-### Bug Fixes
-
-* Fixed the pixel normalizing radius for video streaming ([25a45e5](https://github.com/epic-astronomy/LWA_EPIC/commit/25a45e5fcf3c19c8ae1f77cfaa664afdf0e894ee))
 
 
 
