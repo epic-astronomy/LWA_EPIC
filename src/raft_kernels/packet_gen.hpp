@@ -53,6 +53,8 @@ class GulpGen_rft : public raft::kernel {
   /// Flag to terminate the generator
   bool m_terminate{false};
   std::chrono::time_point<std::chrono::steady_clock> m_start_time;
+  int m_num_empty_gulp{0};
+  const int m_max_empty_gulps{1000};
   double m_gulp_duration;
   bool m_start_set{false};
   int m_rt_gauge_id{0};
@@ -115,7 +117,11 @@ class GulpGen_rft : public raft::kernel {
       VLOG(3) << "Received";
       if (!gulp) {
         VLOG(2) << "Null gulp";
+        ++m_num_empty_gulp;
         PrometheusExporter::ObserveRunTimeValue(m_rt_gauge_id, 0);
+        if(m_num_empty_gulp > m_max_empty_gulps){
+          LOG(FATAL)<<m_max_empty_gulps<<" empty gulps received. Resetting the imager";
+        }
         continue;
       }
       // auto& meta =
