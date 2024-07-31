@@ -131,8 +131,6 @@ std::string GetMultiImgMetaInsertStmnt(int n_images, std::string schema="public"
   stmnt +=  schema + ".epic_img_metadata2(session_id,session_start,session_end,chan0,n_pol,n_chan,chan_bw_hz, epic_version, npix_kernel, int_time, source_name,img_size) SELECT \
   session_id::uuid, session_start::timestamp without time zone, session_end::timestamp without time zone, chan0::int, n_pol::int, n_chan::int, chan_bw_hz::int, epic_version\
   ,npix_kernel::int, int_time::double precision, unnest(source_names::text[]), img_size  FROM ( VALUES ";
-  // stmnt += "(id, img_time, n_chan, n_pol, chan0, chan_bw_hz, epic_version";
-  // stmnt += ", img_size, npix_kernel, int_time, source_names, session_id) VALUES ";
   for (int i = 0; i < n_images; ++i) {
     stmnt += GetSingleImgMetaInsertStmnt(&name);
     if (i < (n_images - 1)) {
@@ -142,12 +140,6 @@ std::string GetMultiImgMetaInsertStmnt(int n_images, std::string schema="public"
   stmnt += " ) AS img(session_id,chan0,n_pol,n_chan,chan_bw_hz, epic_version, npix_kernel, int_time, source_names,img_size,session_start,session_end)";
   stmnt += "ON CONFLICT ON CONSTRAINT epic_img_metadata2_pkey ";
   stmnt += "DO UPDATE SET session_end=excluded.session_end";
-  // stmnt += "WHEN MATCHED THEN ";
-  // stmnt += "UPDATE SET session_end = imgs.img_time::timestamp without time zone ";
-  // stmnt += "WHEN NOT MATCHED THEN ";
-  // stmnt += "insert (session_id,session_start,session_end,chan0,n_pol,n_chan,chan_bw_hz,epic_version,img_size,npix_kernel,int_time,source_name) ";
-  // stmnt += "values (imgs.session_id,imgs.img_time,imgs.img_time,imgs.chan0,imgs.n_pol,imgs.n_chan,imgs.chan_bw_hz,imgs.epic_version,imgs.img_size,imgs.npix_kernel,imgs.int_time,imgs.source_name)";
-  std::cout<<stmnt;
   return stmnt;
 }
 
