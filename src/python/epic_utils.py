@@ -236,6 +236,7 @@ def get_ADP_time_from_unix_epoch():
     the ADP service
     """
     got_utc_start = False
+    exception_count=0
     while not got_utc_start:
         try:
             with Communicator("MCS") as adp_control:
@@ -246,6 +247,9 @@ def get_ADP_time_from_unix_epoch():
                 )
             got_utc_start = True
         except Exception as ex:
+            exception_count += 1
+            if exception_count > 10:
+                raise ex
             time.sleep(0.1)
     # print((utc_start_dt - ADP_EPOCH).total_seconds())
     return (utc_start_dt - ADP_EPOCH).total_seconds()

@@ -64,7 +64,7 @@ def get_watch_list(watchdog_endpoint):
     """
     with grpc.insecure_channel(watchdog_endpoint) as channel:
         stub = epic_image_pb2_grpc.epic_post_processStub(channel)
-        response = stub.fetch_watchlist(epic_image_pb2.empty())
+        response = stub.fetch_watchlist(epic_image_pb2.empty(),timeout=5)
         df_json = json.loads(response.pd_json)
         df = pd.read_json(df_json)
         df.rename(columns=dict(patch_type="kernel_dim"), inplace=True)
