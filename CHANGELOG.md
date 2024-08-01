@@ -1,3 +1,12 @@
+## [0.9.8](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.9.7...v0.9.8) (2024-08-01)
+
+
+### Bug Fixes
+
+* Added a check for invalid frequencies ([11d356f](https://github.com/epic-astronomy/LWA_EPIC/commit/11d356ff38b10dee67772a069a581041ecc1b6e8))
+
+
+
 ## [0.9.7](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.9.6...v0.9.7) (2024-07-31)
 
 
@@ -32,15 +41,6 @@
 ### Bug Fixes
 
 * fixed the max value radius for video frame normalization ([894af89](https://github.com/epic-astronomy/LWA_EPIC/commit/894af89323d1e7a2fc2ce6e0e11cb9a357637e7f))
-
-
-
-## [0.9.3](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.9.2...v0.9.3) (2024-05-03)
-
-
-### Bug Fixes
-
-* Increase the normalization factor in FFT to prevent overflows ([5c9f222](https://github.com/epic-astronomy/LWA_EPIC/commit/5c9f2226099d36edc152c452132fbc0c1f8d9540))
 
 
 
