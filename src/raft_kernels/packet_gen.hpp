@@ -124,7 +124,12 @@ class GulpGen_rft : public raft::kernel {
         }
         continue;
       }
-      // auto& meta =
+      auto& gulp_metadata = gulp.get_mbuf()->GetMetadataRef();
+      auto chan0 = std::get<int64_t>(gulp_metadata["chan0"]);
+      if(chan0<=0){
+        LOG_EVERY_N(INFO, 100)<<"Gulp received with invalid frequency. Chan0: "<<chan0;
+        continue;
+      }
       // if (++_counter < 3000) {
       //   std::get<int64_t>(gulp.get_mbuf()->GetMetadataRef()["chan0"]);
       //   gulp.get_mbuf()->GetMetadataRef()["chan0"] = int64_t(440);
