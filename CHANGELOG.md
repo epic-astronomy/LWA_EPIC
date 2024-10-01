@@ -1,3 +1,17 @@
+# [0.10.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.9.8...v0.10.0) (2024-10-01)
+
+
+### Bug Fixes
+
+* Disable malfunctioning antennas ([4b7ec13](https://github.com/epic-astronomy/LWA_EPIC/commit/4b7ec13e20278bd4834abcdc610cb8e845ddfd96))
+
+
+### Features
+
+* Added new filters to improve the video output ([a6e4760](https://github.com/epic-astronomy/LWA_EPIC/commit/a6e4760a4badedb0b16dfff770cc1c3d7bc072d8))
+
+
+
 ## [0.9.8](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.9.7...v0.9.8) (2024-08-01)
 
 
@@ -32,15 +46,6 @@
 ### Bug Fixes
 
 * updated the normalization factor for individual images ([309a192](https://github.com/epic-astronomy/LWA_EPIC/commit/309a192ac17f0c279522aa8f37b10d61437dbdfd))
-
-
-
-## [0.9.4](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.9.3...v0.9.4) (2024-05-03)
-
-
-### Bug Fixes
-
-* fixed the max value radius for video frame normalization ([894af89](https://github.com/epic-astronomy/LWA_EPIC/commit/894af89323d1e7a2fc2ce6e0e11cb9a357637e7f))
 
 
 
