@@ -56,6 +56,18 @@ extern "C" {
 #include "./constants.h"
 #include "glog/logging.h"
 
+// https://github.com/joncampbell123/composite-video-simulator/issues/5
+#ifdef av_err2str
+#undef av_err2str
+#include <string>
+av_always_inline std::string av_err2string(int errnum) {
+    char str[AV_ERROR_MAX_STRING_SIZE];
+    return av_make_error_string(str, AV_ERROR_MAX_STRING_SIZE, errnum);
+}
+#define av_err2str(err) av_err2string(err).c_str()
+#endif  // av_err2str
+
+
 class Streamer {
   using Status_t = std::optional<std::string>;
 
@@ -81,6 +93,10 @@ class Streamer {
   std::string out_rtmp_url;
   AVPacket *pkt;
   std::string m_cmap;
+  int m_atadenoise_radius{9};
+  int m_atadenoise_frame_counter{0};
+  int m_tmideq_radius{9};
+  int m_tmideq_counter{0};
 
   std::unique_ptr<float[]> m_frame_buf;
   std::unique_ptr<float[]> m_raw_frame;
@@ -104,6 +120,9 @@ class Streamer {
   AVFilterContext *histeqContext{nullptr};
   AVFilterContext *textContext{nullptr};
   AVFilterContext *textContextLogo{nullptr};
+  AVFilterContext *geqContext{nullptr};
+  AVFilterContext *atadenoiseContext{nullptr};
+  AVFilterContext *tmideqContext{nullptr};
   // int m_npixels{128 * 128};
 
  protected:
@@ -146,24 +165,24 @@ class Streamer {
     for (int i = 0; i < m_npixels_grid; ++i) {
       m_raw_frame.get()[i] = 0;
     }
-    VLOG(3) << p_fps << p_vid_width << p_vid_height << p_stream_url
-            << p_time_base_den;
-    VLOG(3) << "1";
+    //VLOG p_stream_url
+            //<< p_time_base_den;
+    //VLOG "1";
     CheckError(InitOutputContext());
-    VLOG(3) << "2";
+    //VLOG "2";
     CheckError(InitVideoCodecContext());
-    VLOG(3) << "3";
+    //VLOG "3";
     CheckError(InitVideoStream());
-    VLOG(3) << "4";
+    //VLOG "4";
     CheckError(InitFilterGraph());
     CheckError(InitVideoEncoder());
-    VLOG(3) << "5";
+    //VLOG "5";
     CheckError(InitVideoFrameBuf());
-    VLOG(3) << "6";
+    //VLOG "6";
     CheckError(InitOutput());
-    VLOG(3) << "7";
+    //VLOG "7";
     CheckError(InitVideoPkt());
-    VLOG(3) << "8";
+    //VLOG "8";
 
     av_log_set_level(m_log_level);
     if (m_log_level != AV_LOG_QUIET) {
@@ -203,15 +222,15 @@ class Streamer {
     }
 
     // remove the edges
-    int pad = 4;
-    for (int i = 0; i < m_grid_size; ++i) {
-      for (int j = 0; j < m_grid_size; ++j) {
-        if (((i < pad || i >= (m_grid_size - pad))) ||
-            ((j < pad || j >= (m_grid_size - pad)))) {
-          m_frame_buf.get()[i * m_grid_size + j] = 0;
-        }
-      }
-    }
+    // int pad = 4;
+    // for (int i = 0; i < m_grid_size; ++i) {
+    //   for (int j = 0; j < m_grid_size; ++j) {
+    //     if (((i < pad || i >= (m_grid_size - pad))) ||
+    //         ((j < pad || j >= (m_grid_size - pad)))) {
+    //       m_frame_buf.get()[i * m_grid_size + j] = 0;
+    //     }
+    //   }
+    // }
 
     // check for the normalization above 30 degrees
     // radius = grid_size * 0.44 * cos(30 deg)
@@ -220,6 +239,7 @@ class Streamer {
     int ycen = xcen;
     float radius2 = (m_grid_size * 0.38) * (m_grid_size * 0.38);
     float max_val = 0;
+    float min_val = *std::min_element(m_frame_buf.get(), m_frame_buf.get()+m_grid_size*m_grid_size);
 
     for (int i = 0; i < m_grid_size; ++i) {
       for (int j = 0; j < m_grid_size; ++j) {
@@ -231,13 +251,14 @@ class Streamer {
 
     // max_val = *std::max_element(m_frame_buf.get(),
     //                             m_frame_buf.get() + m_npixels_grid);
+    auto *frame16 = reinterpret_cast<uint16_t*>(frame->data[0]);
     for (int i = 0; i < m_grid_size; ++i) {
       for (int j = 0; j < m_grid_size; ++j) {
         auto val = m_frame_buf.get()[i * m_grid_size + j];
         if (val > max_val) {
-          frame->data[0][i * m_grid_size + j] = 128;
+          frame16[i * m_grid_size + j] = 512;
         } else {
-          frame->data[0][i * m_grid_size + j] = val * (255.f) / max_val;
+          frame16[i * m_grid_size + j] = (val-min_val) * (1023.f) / (max_val-min_val);
         }
       }
     }
@@ -271,8 +292,8 @@ class Streamer {
   void Stream(int64_t chan0, double cfreq, const float *data_ptr,
               bool is_hc_freq) {
     // ResetPipe(chan0, cfreq);
-    // LOG(INFO)<<"streaming";
-    // LOG(INFO)<<"FILTER NAME: "<<filterGraph->filters[4]->name;
+    // //LOG"streaming";
+    // //LOGfilterGraph->filters[4]->name;
     if (m_chan0 != chan0) {
       m_chan0 = chan0;
       std::string text = "%{gmtime\:%Y/%m/%d %H\\:%M\\:%S}'";
@@ -337,8 +358,8 @@ Streamer::Status_t Streamer::InitVideoCodecContext() {
   codecContext->bit_rate = 4500e3;
   codecContext->time_base = {
       1000, int(m_time_base_den * 1000)};  // av_inv_q(dst_fps);
-  codecContext->pix_fmt = AV_PIX_FMT_YUV420P;
-  // codecContext->thread_count = 1;
+  codecContext->pix_fmt = AV_PIX_FMT_YUV420P10LE;
+  // codecContext->thread_count = 2;
   if (outputContext->oformat->flags & AVFMT_GLOBALHEADER) {
     codecContext->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
   }
@@ -361,8 +382,8 @@ Streamer::Status_t Streamer::InitVideoStream() {
 
 Streamer::Status_t Streamer::InitVideoEncoder() {
   av_dict_set(&codec_options, "profile", "high444", 0);
-  av_dict_set(&codec_options, "preset", "ultrafast", 0);
-  av_dict_set(&codec_options, "tune", "zerolatency", 0);
+  av_dict_set(&codec_options, "preset", "medium", 0);
+  av_dict_set(&codec_options, "tune", "film", 0);
   av_dict_set(&codec_options, "crf", "15", 0);
   av_dict_set(&codec_options, "qp", "0", 0);
 
@@ -391,8 +412,11 @@ Streamer::Status_t Streamer::InitFilterGraph() {
   const AVFilter *bufsink = avfilter_get_by_name("buffersink");
   const AVFilter *pseudocolor = avfilter_get_by_name("pseudocolor");
   const AVFilter *scaleFilter = avfilter_get_by_name("scale");
-  // const AVFilter *histeqFilter = avfilter_get_by_name("hqdn3d");
+  //const AVFilter *histeqFilter = avfilter_get_by_name("hqdn3d");
+  const AVFilter *geqFilter = avfilter_get_by_name("geq");
   const AVFilter *textFilter = avfilter_get_by_name("drawtext");
+  const AVFilter *atadenoiseFilter = avfilter_get_by_name("atadenoise");
+  const AVFilter *tmideqFilter = avfilter_get_by_name("tmidequalizer");
 
   buffersrcContext = avfilter_graph_alloc_filter(filterGraph, bufsrc, "in");
   buffersinkContext = avfilter_graph_alloc_filter(filterGraph, bufsink, "out");
@@ -401,10 +425,15 @@ Streamer::Status_t Streamer::InitFilterGraph() {
   // histeqContext =
   //     avfilter_graph_alloc_filter(filterGraph, histeqFilter, "histeq");
   scaleContext = avfilter_graph_alloc_filter(filterGraph, scaleFilter, "scale");
+  geqContext = avfilter_graph_alloc_filter(filterGraph,geqFilter,"geq");
   textContext = avfilter_graph_alloc_filter(filterGraph, textFilter, "text");
   textContextLogo =
       avfilter_graph_alloc_filter(filterGraph, textFilter, "textlogo");
+  atadenoiseContext = avfilter_graph_alloc_filter(filterGraph, atadenoiseFilter, "atadenoiser");
+  tmideqContext = avfilter_graph_alloc_filter(filterGraph, tmideqFilter, "tmideq");
 
+  // const AVFilter *lutyuvFilter = avfilter_get_by_name("lutyuv");
+  // auto *lutyuvContext = avfilter_graph_alloc_filter(filterGraph, lutyuvFilter, "eq");
   // av_opt_set_int(buffersrcContext, "width", m_src_width, 0);
   // av_opt_set_int(buffersrcContext, "height", m_src_height, 0);
   // av_opt_set_int(buffersrcContext, "pix_fmt", AV_PIX_FMT_YUV420P, 0);
@@ -417,16 +446,25 @@ Streamer::Status_t Streamer::InitFilterGraph() {
   // av_opt_set(buffersrcContext, "width", "128",NULL);
   char src_buf[1024];
   std::snprintf(src_buf, sizeof(src_buf),
-                "width=%d:height=%d:pix_fmt=yuv420p:time_base=1/%d",
+                "width=%d:height=%d:pix_fmt=yuv420p10le:time_base=1/%d",
                 m_grid_size, m_grid_size, m_time_base_den);
 
   char scale_buf[1024];
   std::snprintf(scale_buf, sizeof(scale_buf),
-                "w=%d:h=%d:sws_flags=neighbor:sws_dither=none", m_width,
+                "w=%d:h=%d:sws_flags=lanczos:sws_dither=auto:in_range=auto:out_range=limited", m_width,
                 m_height);
 
+  char geq_buf[1024];
+  // assume the resolution is 1 deg at 128
+  int sky_size = 360/(2*3.14) /(m_grid_size/128 * 1 ) * m_width/m_grid_size;
+  int boundary_color = 32+1.5*m_width/2; //start with this value and go to black color at the edge
+  std::snprintf(geq_buf,sizeof(geq_buf),"'if(gt(sqrt((X-W/2)^2+(Y-H/2)^2),%d),(%d-sqrt((X-W/2)^2+(Y-H/2)^2)),p(X,Y))'", sky_size,boundary_color);
+  
+  char ata_buf[1024];
+  std::snprintf(ata_buf,sizeof(ata_buf),"s=%d",m_atadenoise_radius);
   if (avfilter_init_str(buffersrcContext, src_buf) < 0 ||
       avfilter_init_str(buffersinkContext, "") < 0 ||
+      avfilter_init_str(geqContext, geq_buf) <0 ||
       avfilter_init_str(pseudocolorContext, ("preset="+m_cmap).c_str()) < 0 ||
       avfilter_init_str(scaleContext, scale_buf) < 0 ||
       avfilter_init_str(
@@ -438,10 +476,13 @@ Streamer::Status_t Streamer::InitFilterGraph() {
           textContextLogo,
           "text='EPIC TV':fontsize=h/"
           "20:font=Times:fontcolor=black:box=1:boxcolor=white@0.7:boxborderw="
-          "10:x=(16):y=(16)") < 0/*  ||
-      avfilter_init_str(histeqContext,"")<0 */) {
+          "10:x=(16):y=(16)") < 0  
+      || avfilter_init_str(atadenoiseContext,ata_buf)<0
+      || avfilter_init_str(tmideqContext,"")<0
+      // || avfilter_init_str(lutyuvContext,"y=gammaval(1.5)")
+      ) {
     // Handle error
-    return Status_t{"Unable to init buffer sink/src context"};
+    return Status_t{"Unable to init buffer sink>[..filters]->src context"};
   }
 
   if (avfilter_link(buffersrcContext, 0, scaleContext, 0) < 0) {
@@ -449,21 +490,37 @@ Streamer::Status_t Streamer::InitFilterGraph() {
     return Status_t{"Unable to link src/scale"};
   }
 
-  if (avfilter_link(scaleContext, 0, pseudocolorContext, 0) < 0) {
+  // if (avfilter_link(scaleContext, 0, lutyuvContext, 0) < 0) {
+  //   // Handle error
+  //   return Status_t{"Unable to link geq/scale"};
+  // }
+  if (avfilter_link(scaleContext, 0, geqContext, 0) < 0) {
     // Handle error
-    return Status_t{"Unable to link src/pscolor"};
+    return Status_t{"Unable to link scale/geq"};
+  }
+  if (avfilter_link(geqContext, 0, pseudocolorContext, 0) < 0) {
+    // Handle error
+    return Status_t{"Unable to link geq/pscolor"};
   }
   if (avfilter_link(pseudocolorContext, 0, textContext, 0) < 0) {
     // Handle error
-    return Status_t{"Unable to link text/pscolor"};
+    return Status_t{"Unable to link pscolor/text"};
   }
   if (avfilter_link(textContext, 0, textContextLogo, 0) < 0) {
     // Handle error
-    return Status_t{"Unable to link logo/text"};
+    return Status_t{"Unable to link text/text"};
   }
-  if (avfilter_link(textContextLogo, 0, buffersinkContext, 0) < 0) {
+  if (avfilter_link(textContextLogo, 0, atadenoiseContext, 0) < 0) {
     // Handle error
-    return Status_t{"Unable to link sink/text"};
+    return Status_t{"Unable to link text/atadenoise"};
+  }
+  if (avfilter_link(atadenoiseContext, 0, tmideqContext, 0) < 0) {
+    // Handle error
+    return Status_t{"Unable to link atadenoise/tmideq"};
+  }
+  if (avfilter_link(tmideqContext, 0, buffersinkContext, 0) < 0) {
+    // Handle error
+    return Status_t{"Unable to link tmideq/sink"};
   }
 
   // Configure the filter graph
@@ -491,28 +548,28 @@ Streamer::Status_t Streamer::InitVideoFrameBuf() {
   if (av_frame_get_buffer(frame, 0) < 0) {
     return Status_t{"Error: Could not allocate buffer for video frame\n"};
   }
-  for (int y = 0; y < frame->height; ++y) {
-    for (int x = 0; x < frame->width; ++x) {
-      // Fill Y plane with a gradient
-      // frame->data[0][y * frame->linesize[0] + x] = (x + y + i * 3);
+  // for (int y = 0; y < frame->height; ++y) {
+  //   for (int x = 0; x < frame->width; ++x) {
+  //     // Fill Y plane with a gradient
+  //     // frame->data[0][y * frame->linesize[0] + x] = (x + y + i * 3);
 
-      frame->data[1][y / 2 * frame->linesize[1] + x / 2] = 128;
-      frame->data[2][y / 2 * frame->linesize[2] + x / 2] = 128;
-    }
-  }
+  //     // frame->data[1][y / 2 * frame->linesize[1] + x / 2] = 128;
+  //     // frame->data[2][y / 2 * frame->linesize[2] + x / 2] = 128;
+  //   }
+  // }
 
   return {};
 }
 
 Streamer::Status_t Streamer::InitOutput() {
   // Open RTMP output
-  VLOG(3) << "open";
+  //VLOG "open";
   if (avio_open(&outputContext->pb, outputContext->url, AVIO_FLAG_WRITE) < 0) {
     return Status_t{"Error: Could not open RTMP output"};
   }
 
   // Write header
-  VLOG(3) << "header";
+  //VLOG "header";
   if (avformat_write_header(outputContext, nullptr) < 0) {
     return Status_t{"Error: Could not write header to RTMP stream"};
   }
@@ -542,15 +599,33 @@ void Streamer::StreamImage() {
   // sws_scale(m_sws_context, &(_frame_ptr), stride, 0, m_grid_size,
   // frame->data,
   //           frame->linesize);
-  VLOG(3) << "sending frame to encoder";
-  av_buffersrc_write_frame(buffersrcContext, frame);
-  av_buffersink_get_frame(buffersinkContext, scaledFrame);
-  if (avcodec_send_frame(codecContext, scaledFrame) < 0) {
+  //VLOG "sending frame to encoder";
+  int ret;
+  ret = av_buffersrc_write_frame(buffersrcContext, frame);
+  if(ret<0){
+    fprintf(stderr, "Error writing frame: %s\n", av_err2str(ret));
+    CheckError("Error: Failed write frame");
+  }
+  ret = av_buffersink_get_frame(buffersinkContext, scaledFrame);
+  if(ret==-11){
+    if(m_atadenoise_frame_counter>=(m_atadenoise_radius+m_tmideq_radius)){
+      CheckError("Error: Failed to get frame");
+    }
+    m_atadenoise_frame_counter++;
+    return;
+  }
+  if(ret<0){
+    fprintf(stderr, "Error getting frame: %s\n", av_err2str(ret));
+    CheckError("Error: Failed to get frame");
+  }
+  ret=avcodec_send_frame(codecContext, scaledFrame);
+  if ( ret< 0) {
+    fprintf(stderr, "Error getting frame from buffersink: %s\n", av_err2str(ret));
     CheckError("Error: Failed to send frame for encoding");
   }
   // av_frame_unref(frame);
   av_frame_unref(scaledFrame);
-  VLOG(3) << "receiving";
+  //VLOG "receiving";
   while (avcodec_receive_packet(codecContext, pkt) == 0) {
     // Set PTS and DTS (decoding timestamp) for the packet
     pkt->pts = pkt->dts = _frame_counter * m_time_base_den / m_fps;
