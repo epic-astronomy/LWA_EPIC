@@ -89,7 +89,7 @@ def gen_phases_lwasv(nchan, chan0):
             phases[:, i, :] = 0.0
         # Explicit outrigger masking - we probably want to do
         # away with this at some point
-        if a.stand.id == 256:
+        if a.stand.id in [256]+[i for i in range(122,129)]+[185,186]:
             phases[:, i, :] = 0.0
 
     return phases.ravel().copy()
