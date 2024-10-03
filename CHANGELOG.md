@@ -1,3 +1,12 @@
+## [0.11.1](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.11.0...v0.11.1) (2024-10-03)
+
+
+### Bug Fixes
+
+* fixed Jupiter ([03753fb](https://github.com/epic-astronomy/LWA_EPIC/commit/03753fb850d1f6c1a793e2e254430c6a887df83a))
+
+
+
 # [0.11.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.10.0...v0.11.0) (2024-10-03)
 
 
@@ -42,15 +51,6 @@
 
 * Added timeouts to prevent indefinite waits on watchdog/ADP replies ([610b078](https://github.com/epic-astronomy/LWA_EPIC/commit/610b078522738cbf7910ec95d65e7185b6bf2c25))
 * Restart the program if there is an ADP system reset ([4af6520](https://github.com/epic-astronomy/LWA_EPIC/commit/4af65209d1ff7db8584232ad46c3a1372327870d))
-
-
-
-## [0.9.6](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.9.5...v0.9.6) (2024-06-04)
-
-
-### Performance Improvements
-
-* Changed the metadata insert statment to use merge ([2894b0f](https://github.com/epic-astronomy/LWA_EPIC/commit/2894b0fc93479d3cc347aee09261f2599702ab9d))
 
 
 
