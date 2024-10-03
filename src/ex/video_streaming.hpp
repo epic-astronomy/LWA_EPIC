@@ -45,6 +45,7 @@ extern "C" {
 }
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <iostream>
 #include <memory>
@@ -216,8 +217,10 @@ class Streamer {
     int xcen = m_grid_size / 2;
     int ycen = xcen;
     float radius2 = (m_grid_size * 0.38) * (m_grid_size * 0.38);
-    float max_val = 0;
     float min_val = *std::min_element(m_frame_buf.get(), m_frame_buf.get()+m_grid_size*m_grid_size);
+    //float max_val_full = *std::max_element(m_frame_buf.get(), m_frame_buf.get()+m_grid_size*m_grid_size);
+    float max_val = 0;
+
 
     for (int i = 0; i < m_grid_size; ++i) {
       for (int j = 0; j < m_grid_size; ++j) {
@@ -228,12 +231,14 @@ class Streamer {
     }
 
 
+    //max_val *= 0.8; // try to brighten the fainter features
+
     auto *frame16 = reinterpret_cast<uint16_t*>(frame->data[0]);
     for (int i = 0; i < m_grid_size; ++i) {
       for (int j = 0; j < m_grid_size; ++j) {
         auto val = m_frame_buf.get()[i * m_grid_size + j];
         if (val > max_val) {
-          frame16[i * m_grid_size + j] = 512;
+          frame16[i * m_grid_size + j] = max_val;
         } else {
           frame16[i * m_grid_size + j] = (val-min_val) * (1023.f) / (max_val-min_val);
         }
@@ -401,8 +406,9 @@ Streamer::Status_t Streamer::InitFilterGraph() {
                 m_height);
 
   char geq_buf[1024];
-  // assume the resolution is 1 deg at 128
-  int sky_size = 360/(2*3.14) /(m_grid_size/128 * 1 ) * m_width/m_grid_size;
+  // assume the resolution is 1.056 deg at 128
+  float sll = 1./(2 * m_grid_size * std::sin( PI * 1.056 * m_grid_size/128.f/360.f));
+  int sky_size = m_width * sll;//360/(2*3.14) /(m_grid_size/128 * 1 ) * m_width/m_grid_size;
   int boundary_color = 32+1.5*m_width/2; //start with this value and go to black color at the edge
   std::snprintf(geq_buf,sizeof(geq_buf),"'if(gt(sqrt((X-W/2)^2+(Y-H/2)^2),%d),(%d-sqrt((X-W/2)^2+(Y-H/2)^2)),p(X,Y))'", sky_size,boundary_color);
   
