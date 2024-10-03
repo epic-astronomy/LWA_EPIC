@@ -1,3 +1,17 @@
+# [0.11.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.10.0...v0.11.0) (2024-10-03)
+
+
+### Bug Fixes
+
+* Changed the masking radius to match the sky ([2b26e09](https://github.com/epic-astronomy/LWA_EPIC/commit/2b26e099edc239065493c88d56c6dcbf086fb883))
+
+
+### Features
+
+* Added a script to create a transparent overlay ([87a2cbd](https://github.com/epic-astronomy/LWA_EPIC/commit/87a2cbd3e30256322f00f69de760a89448c2297d))
+
+
+
 # [0.10.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.9.8...v0.10.0) (2024-10-01)
 
 
@@ -37,15 +51,6 @@
 ### Performance Improvements
 
 * Changed the metadata insert statment to use merge ([2894b0f](https://github.com/epic-astronomy/LWA_EPIC/commit/2894b0fc93479d3cc347aee09261f2599702ab9d))
-
-
-
-## [0.9.5](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.9.4...v0.9.5) (2024-05-04)
-
-
-### Bug Fixes
-
-* updated the normalization factor for individual images ([309a192](https://github.com/epic-astronomy/LWA_EPIC/commit/309a192ac17f0c279522aa8f37b10d61437dbdfd))
 
 
 
