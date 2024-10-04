@@ -1,3 +1,12 @@
+## [0.11.3](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.11.2...v0.11.3) (2024-10-04)
+
+
+### Bug Fixes
+
+* Added gap between labels for Tau A and Jupiter ([1427419](https://github.com/epic-astronomy/LWA_EPIC/commit/14274196f5361d0ba45022f5d8f5a6e8135f67f0))
+
+
+
 ## [0.11.2](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.11.1...v0.11.2) (2024-10-04)
 
 
@@ -41,15 +50,6 @@
 ### Features
 
 * Added new filters to improve the video output ([a6e4760](https://github.com/epic-astronomy/LWA_EPIC/commit/a6e4760a4badedb0b16dfff770cc1c3d7bc072d8))
-
-
-
-## [0.9.8](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.9.7...v0.9.8) (2024-08-01)
-
-
-### Bug Fixes
-
-* Added a check for invalid frequencies ([11d356f](https://github.com/epic-astronomy/LWA_EPIC/commit/11d356ff38b10dee67772a069a581041ecc1b6e8))
 
 
 
