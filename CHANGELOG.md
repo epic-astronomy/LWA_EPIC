@@ -1,3 +1,12 @@
+## [0.11.2](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.11.1...v0.11.2) (2024-10-04)
+
+
+### Bug Fixes
+
+* Updated text alignment ([dbf16f9](https://github.com/epic-astronomy/LWA_EPIC/commit/dbf16f9bc4d4f7d0b4b083bad6bfe637b2e96b51))
+
+
+
 ## [0.11.1](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.11.0...v0.11.1) (2024-10-03)
 
 
@@ -41,16 +50,6 @@
 ### Bug Fixes
 
 * Added a check for invalid frequencies ([11d356f](https://github.com/epic-astronomy/LWA_EPIC/commit/11d356ff38b10dee67772a069a581041ecc1b6e8))
-
-
-
-## [0.9.7](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.9.6...v0.9.7) (2024-07-31)
-
-
-### Bug Fixes
-
-* Added timeouts to prevent indefinite waits on watchdog/ADP replies ([610b078](https://github.com/epic-astronomy/LWA_EPIC/commit/610b078522738cbf7910ec95d65e7185b6bf2c25))
-* Restart the program if there is an ADP system reset ([4af6520](https://github.com/epic-astronomy/LWA_EPIC/commit/4af65209d1ff7db8584232ad46c3a1372327870d))
 
 
 
