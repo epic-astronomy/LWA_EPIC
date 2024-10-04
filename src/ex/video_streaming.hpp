@@ -231,9 +231,6 @@ class Streamer {
       }
     }
 
-
-    //max_val *= 0.8; // try to brighten the fainter features
-
     auto *frame16 = reinterpret_cast<uint16_t*>(frame->data[0]);
     for (int i = 0; i < m_grid_size; ++i) {
       for (int j = 0; j < m_grid_size; ++j) {
