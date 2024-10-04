@@ -110,31 +110,26 @@ def create_grid_overlay(img_size,file_name,video_size, resolution,dpi):
   coords_mw = SkyCoord(l=galactic_longitudes*u.degree, b=galactic_latitudes*u.degree, frame='galactic')
   sky_coords_mw = coords_mw.transform_to('fk5')  # Convert to RA/Dec (ICRS frame)
 
+  text_kws={"horizontalalignment":"right","verticalalignment":"bottom","fontweight":"demibold","color":"white"}
 # Plot the galactic plane curve
-  ax.plot(sky_coords_mw.ra.deg, sky_coords_mw.dec.deg, transform=ax.get_transform('fk5'), color='cyan', lw=1, ls='--', label="Milky Way",alpha=0.5)
+  ax.plot(sky_coords_mw.ra.deg, sky_coords_mw.dec.deg, transform=ax.get_transform('fk5'), color='red', lw=1, ls='--', label="Milky Way",alpha=0.8)
 
   # Cyg A
-  ax.text_coord(SkyCoord(ra=299.8681523682083*u.deg,dec=40.73391589791667*u.deg,frame='fk5'),s="Cyg A",color='white')
+  ax.text_coord(SkyCoord(ra=299.8681523682083*u.deg,dec=40.73391589791667*u.deg,frame='fk5'),s="Cyg A",**text_kws)
   # Cas A
-  ax.text_coord(SkyCoord(ra=350.85*u.deg,dec=58.815*u.deg,frame='fk5'),s="Cas A",color='white')
+  ax.text_coord(SkyCoord(ra=350.85*u.deg,dec=58.815*u.deg,frame='fk5'),s="Cas A",**text_kws)
   # Sun
   sun_pos = get_body('sun',t0)
-  ax.text_coord(SkyCoord(ra=sun_pos.ra,dec=sun_pos.dec,frame='fk5'),s='Sun',color='white')
+  ax.text_coord(SkyCoord(ra=sun_pos.ra,dec=sun_pos.dec,frame='fk5'),s='Sun',**text_kws)
   # Jupiter
   jup_pos = get_body('jupiter',t0)
-  ax.text_coord(SkyCoord(ra=jup_pos.ra,dec=jup_pos.dec,frame='fk5'),s='Jupiter',color='white')
+  ax.text_coord(SkyCoord(ra=jup_pos.ra,dec=jup_pos.dec,frame='fk5'),s='Jupiter',**text_kws)
   # M87
-  ax.text_coord(SkyCoord(ra=187.705931*u.deg,dec=12.391123*u.deg,frame='fk5'),s="M87",color='white',ma='center')
+  ax.text_coord(SkyCoord(ra=187.705931*u.deg,dec=12.391123*u.deg,frame='fk5'),s="M87",ma='center',**text_kws)
   # Crab
-  ax.text_coord(SkyCoord(ra=83.633107*u.deg,dec=22.014486*u.deg,frame='fk5'),s="Tau A",color='white')
+  ax.text_coord(SkyCoord(ra=83.633107*u.deg,dec=22.014486*u.deg,frame='fk5'),s="Tau A",**text_kws)
 
   overlay.grid(color='white', ls='solid', alpha=0.5) 
-  print(get_body('sun',t0).ra.hms)
-  print(SkyCoord(ra=187.705931*u.deg,dec=12.391123*u.deg,frame='fk5').ra.hms)
-  # After plotting your WCSAxes image
-  # for label in lat.ticklabels.get_visible_ticks():
-  #   if label.overlaps_with_text():  # You can define conditions or coordinates for overlap
-  #       label.set_visible(False)
 
 
   fig.subplots_adjust(top=1.0, bottom=0, right=1.0, left=0, hspace=0, wspace=0) 
