@@ -1,3 +1,12 @@
+# [0.12.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.11.3...v0.12.0) (2024-10-04)
+
+
+### Features
+
+* Changed video output to stokes I ([5b7a6a6](https://github.com/epic-astronomy/LWA_EPIC/commit/5b7a6a61caf863e6423040e438b07dff41abd68b))
+
+
+
 ## [0.11.3](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.11.2...v0.11.3) (2024-10-04)
 
 
@@ -36,20 +45,6 @@
 ### Features
 
 * Added a script to create a transparent overlay ([87a2cbd](https://github.com/epic-astronomy/LWA_EPIC/commit/87a2cbd3e30256322f00f69de760a89448c2297d))
-
-
-
-# [0.10.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.9.8...v0.10.0) (2024-10-01)
-
-
-### Bug Fixes
-
-* Disable malfunctioning antennas ([4b7ec13](https://github.com/epic-astronomy/LWA_EPIC/commit/4b7ec13e20278bd4834abcdc610cb8e845ddfd96))
-
-
-### Features
-
-* Added new filters to improve the video output ([a6e4760](https://github.com/epic-astronomy/LWA_EPIC/commit/a6e4760a4badedb0b16dfff770cc1c3d7bc072d8))
 
 
 
