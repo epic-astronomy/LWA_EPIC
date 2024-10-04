@@ -197,7 +197,8 @@ class Streamer {
     }
 
     for (int i = 0; i < m_npixels_grid; ++i) {
-      m_raw_frame.get()[i] = p_data_ptr[i * NSTOKES + offset];  // this is XX*
+      // I = XX* + YY*
+      m_raw_frame.get()[i] = p_data_ptr[i * NSTOKES + offset] + p_data_ptr[i * NSTOKES + offset + 1];
     }
 
     // normalize and write to the frame buffer
