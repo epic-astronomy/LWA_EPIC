@@ -123,7 +123,9 @@ def create_grid_overlay(img_size,file_name,video_size, resolution,dpi):
   ax.text_coord(SkyCoord(ra=sun_pos.ra,dec=sun_pos.dec,frame='fk5'),s='Sun',**text_kws)
   # Jupiter
   jup_pos = get_body('jupiter',t0)
-  ax.text_coord(SkyCoord(ra=jup_pos.ra,dec=jup_pos.dec,frame='fk5'),s='Jupiter',**text_kws)
+  ax.text_coord(SkyCoord(ra=jup_pos.ra,dec=jup_pos.dec,frame='fk5'),s='Jupiter'
+                ,**{"horizontalalignment":"right","verticalalignment":"top"
+                    ,"fontweight":"demibold","color":"white"})
   # M87
   ax.text_coord(SkyCoord(ra=187.705931*u.deg,dec=12.391123*u.deg,frame='fk5'),s="M87",ma='center',**text_kws)
   # Crab
