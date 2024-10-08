@@ -1,3 +1,12 @@
+# [0.13.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.12.0...v0.13.0) (2024-10-08)
+
+
+### Features
+
+* Added gamma and saturation corrections ([71c08a7](https://github.com/epic-astronomy/LWA_EPIC/commit/71c08a71c49ff9d51d58733039b3a331b69857b1))
+
+
+
 # [0.12.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.11.3...v0.12.0) (2024-10-04)
 
 
@@ -31,20 +40,6 @@
 ### Bug Fixes
 
 * fixed Jupiter ([03753fb](https://github.com/epic-astronomy/LWA_EPIC/commit/03753fb850d1f6c1a793e2e254430c6a887df83a))
-
-
-
-# [0.11.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.10.0...v0.11.0) (2024-10-03)
-
-
-### Bug Fixes
-
-* Changed the masking radius to match the sky ([2b26e09](https://github.com/epic-astronomy/LWA_EPIC/commit/2b26e099edc239065493c88d56c6dcbf086fb883))
-
-
-### Features
-
-* Added a script to create a transparent overlay ([87a2cbd](https://github.com/epic-astronomy/LWA_EPIC/commit/87a2cbd3e30256322f00f69de760a89448c2297d))
 
 
 
