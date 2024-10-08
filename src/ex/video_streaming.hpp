@@ -124,6 +124,7 @@ class Streamer {
   AVFilterContext *geqContext{nullptr};
   AVFilterContext *atadenoiseContext{nullptr};
   AVFilterContext *tmideqContext{nullptr};
+  AVFilterContext *eqContext{nullptr};
   // int m_npixels{128 * 128};
 
  protected:
@@ -231,12 +232,14 @@ class Streamer {
       }
     }
 
+    
+
     auto *frame16 = reinterpret_cast<uint16_t*>(frame->data[0]);
     for (int i = 0; i < m_grid_size; ++i) {
       for (int j = 0; j < m_grid_size; ++j) {
         auto val = m_frame_buf.get()[i * m_grid_size + j];
         if (val > max_val) {
-          frame16[i * m_grid_size + j] = max_val;
+          frame16[i * m_grid_size + j] = 512;
         } else {
           frame16[i * m_grid_size + j] = (val-min_val) * (1023.f) / (max_val-min_val);
         }
@@ -288,6 +291,7 @@ class Streamer {
 
 void Streamer::CheckError(const Status_t &p_status) {
   if (p_status.value_or("none") != "none") {
+    //std::cout<<p_status.value()<<std::endl;
     LOG(FATAL) << p_status.value();
   }
 }
@@ -375,11 +379,19 @@ Streamer::Status_t Streamer::InitFilterGraph() {
   const AVFilter *textFilter = avfilter_get_by_name("drawtext");
   const AVFilter *atadenoiseFilter = avfilter_get_by_name("atadenoise");
   const AVFilter *tmideqFilter = avfilter_get_by_name("tmidequalizer");
+  const AVFilter *eqFilter = avfilter_get_by_name("eq");
+  const AVFilter *format1 = avfilter_get_by_name("format");
+  const AVFilter *format2 = avfilter_get_by_name("format");
+
+  AVFilterContext *fc1 = avfilter_graph_alloc_filter(filterGraph, format1,"f1");
+  AVFilterContext *fc2 = avfilter_graph_alloc_filter(filterGraph, format1,"f2");
+
 
   buffersrcContext = avfilter_graph_alloc_filter(filterGraph, bufsrc, "in");
   buffersinkContext = avfilter_graph_alloc_filter(filterGraph, bufsink, "out");
   pseudocolorContext =
       avfilter_graph_alloc_filter(filterGraph, pseudocolor, "pscolor");
+  eqContext = avfilter_graph_alloc_filter(filterGraph, eqFilter, "eq");
   // histeqContext =
   //     avfilter_graph_alloc_filter(filterGraph, histeqFilter, "histeq");
   scaleContext = avfilter_graph_alloc_filter(filterGraph, scaleFilter, "scale");
@@ -429,6 +441,9 @@ Streamer::Status_t Streamer::InitFilterGraph() {
           "10:x=(16):y=(16)") < 0  
       || avfilter_init_str(atadenoiseContext,ata_buf)<0
       || avfilter_init_str(tmideqContext,"")<0
+      || avfilter_init_str(eqContext,"gamma=0.5:saturation=0.5")<0
+      || avfilter_init_str(fc1,"yuv420p10le") <0
+      || avfilter_init_str(fc2,"yuv420p10le")
       ) {
     // Handle error
     return Status_t{"Unable to init buffer sink>[..filters]->src context"};
@@ -439,7 +454,22 @@ Streamer::Status_t Streamer::InitFilterGraph() {
     return Status_t{"Unable to link src/scale"};
   }
 
-  if (avfilter_link(scaleContext, 0, geqContext, 0) < 0) {
+  if (avfilter_link(scaleContext, 0, fc1, 0) < 0) {
+    // Handle error
+    return Status_t{"Unable to link scale/geq"};
+  }
+
+  if (avfilter_link(fc1, 0, eqContext, 0) < 0) {
+    // Handle error
+    return Status_t{"Unable to link scale/geq"};
+  }
+
+  if (avfilter_link(eqContext, 0, fc2, 0) < 0) {
+    // Handle error
+    return Status_t{"Unable to link scale/geq"};
+  }
+
+  if (avfilter_link(fc2, 0, geqContext, 0) < 0) {
     // Handle error
     return Status_t{"Unable to link scale/geq"};
   }
