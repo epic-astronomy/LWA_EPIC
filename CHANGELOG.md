@@ -1,3 +1,12 @@
+## [0.13.1](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.13.0...v0.13.1) (2024-10-10)
+
+
+### Bug Fixes
+
+* Adjusted gamma and saturation to show background during flares ([edf770f](https://github.com/epic-astronomy/LWA_EPIC/commit/edf770f4b4bd35afea6e69fb482cf8cc69701782))
+
+
+
 # [0.13.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.12.0...v0.13.0) (2024-10-08)
 
 
@@ -31,15 +40,6 @@
 ### Bug Fixes
 
 * Updated text alignment ([dbf16f9](https://github.com/epic-astronomy/LWA_EPIC/commit/dbf16f9bc4d4f7d0b4b083bad6bfe637b2e96b51))
-
-
-
-## [0.11.1](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.11.0...v0.11.1) (2024-10-03)
-
-
-### Bug Fixes
-
-* fixed Jupiter ([03753fb](https://github.com/epic-astronomy/LWA_EPIC/commit/03753fb850d1f6c1a793e2e254430c6a887df83a))
 
 
 
