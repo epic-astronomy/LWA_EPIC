@@ -241,7 +241,7 @@ class Streamer {
         if (val > max_val) {
           frame16[i * m_grid_size + j] = 512;
         } else {
-          frame16[i * m_grid_size + j] = (val-min_val) * (1023.f) / (max_val-min_val);
+          frame16[i * m_grid_size + j] =  (val-min_val) * (1023.f) / (max_val-min_val);
         }
       }
     }
@@ -441,8 +441,8 @@ Streamer::Status_t Streamer::InitFilterGraph() {
           "10:x=(16):y=(16)") < 0  
       || avfilter_init_str(atadenoiseContext,ata_buf)<0
       || avfilter_init_str(tmideqContext,"")<0
-      || avfilter_init_str(eqContext,"gamma=0.5:saturation=0.5")<0
-      || avfilter_init_str(fc1,"yuv420p10le") <0
+      || avfilter_init_str(eqContext,"saturation=0.5:gamma=0.8")<0
+      || avfilter_init_str(fc1,"gray10") <0
       || avfilter_init_str(fc2,"yuv420p10le")
       ) {
     // Handle error
