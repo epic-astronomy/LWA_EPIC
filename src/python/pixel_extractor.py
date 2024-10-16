@@ -1,23 +1,10 @@
-# from datetime import datetime
-# from datetime import timedelta
-# from typing import Any
-# from typing import Dict
-# from typing import List
-# from typing import Optional
 from typing import Union
 
-# from uuid import uuid4
 
 import numpy as np
 import pandas as pd
 
-# from astropy.io.fits import Header
 from astropy.wcs import WCS
-
-# from sqlalchemy import insert
-# from sqlalchemy import select
-# from sqlalchemy import update
-# from sqlalchemy.sql.expression import bindparam
 
 from pixel_extract_utils import DynSources
 from pixel_extract_utils import PatchMan
@@ -25,19 +12,12 @@ from pixel_extract_utils import get_lmn_grid
 from epic_grpc import epic_image_pb2_grpc
 from epic_grpc import epic_image_pb2
 
-# from ..epic_orm.pg_pixel_storage import EpicWatchdogTable
 from epic_types import NDArrayBool_t
 from epic_types import NDArrayNum_t
 
 from adp import get_ADP_time_from_unix_epoch
-# from epic_types import Patch_t
-# from epic_types import WatchMode_t
-
-# import numpy as np
 from lsl.common.stations import lwasv as lwasv_station
 
-# from astropy.constants import c as speed_of_light
-# import matplotlib.image
 from astropy.io import fits
 from astropy.time import Time
 from astropy.coordinates import SkyCoord, FK5
@@ -45,31 +25,24 @@ from astropy.coordinates import SkyCoord, FK5
 import dns.resolver
 import socket
 
-# from scipy.signal import correlate2d
 
-# from epic_utils import get_ADP_time_from_unix_epoch
 import grpc
 import json
 
-# import datetime
-# import time
-# from MCS2 import Communicator
-# import uuid
-# from lsl.common.stations import lwasv
 
 FS = 196.0e6
 CHAN_BW = 25.0e3
-# from .service_hub import ServiceHub
 
-def get_endpoint(service='epic-watchdog.service.consul'):
+
+def get_endpoint(service="epic-watchdog.service.consul"):
     try:
-        answers = dns.resolver.resolve(service,'SRV')
+        answers = dns.resolver.resolve(service, "SRV")
         for rdata in answers:
             port = rdata.port
             target = rdata.target.to_text().strip()
 
             ip_address = socket.gethostbyname(target)
-            return f'{ip_address}:{port}'
+            return f"{ip_address}:{port}"
     except dns.resolver.NoAnswer:
         print(f"No SRV record found for {service}")
     except Exception as e:
@@ -80,18 +53,21 @@ def get_watch_list(watchdog_endpoint=None):
     """
     Fetch the watchlist for EPIC at Sevilleta
     """
-    endpoint = watchdog_endpoint if watchdog_endpoint is not None else get_endpoint('epic-watchdog.service.consul')
+    endpoint = (
+        watchdog_endpoint
+        if watchdog_endpoint is not None
+        else get_endpoint("epic-watchdog.service.consul")
+    )
     with grpc.insecure_channel(endpoint) as channel:
         stub = epic_image_pb2_grpc.epic_post_processStub(channel)
-        response = stub.fetch_watchlist(epic_image_pb2.empty(),timeout=5)
+        response = stub.fetch_watchlist(epic_image_pb2.empty(), timeout=5)
         df_json = json.loads(response.pd_json)
         df = pd.read_json(df_json)
         df.rename(columns=dict(patch_type="kernel_dim"), inplace=True)
-    # df = pd.DataFrame(
-    #     dict(id=[0], source_name=["sun"], ra=[0.0], dec=[0.0], kernel_dim=[5])
-    # ) 
+        # df = pd.DataFrame(
+        #     dict(id=[0], source_name=["sun"], ra=[0.0], dec=[0.0], kernel_dim=[5])
+        # )
         return df
-
 
 
 def get_image_headers_sv(seq_start_id, grid_size, grid_res):
@@ -153,10 +129,6 @@ def get_image_headers_sv(seq_start_id, grid_size, grid_res):
         lsts.deg, lwasv_station.lat * 180.0 / np.pi, obstime=t0, unit="deg"
     ).transform_to(FK5(equinox=Time("J2000")))
 
-    # img_data = np.transpose(output_arr[:, :, :, :], (0, 1, 3, 2))
-    # img_data = np.transpose(output_arr[:, :, :, :], (3, 0, 2, 1))
-    # img_data = np.fft.fftshift(img_data, axes=(2, 3))[:, :, ::-1, :]
-    # img_data = img_data / img_data.max(axis=(2, 3), keepdims=True)
     ihdu = fits.ImageHDU(np.zeros((grid_size, grid_size)))
 
     ihdu.header["DATETIME"] = t0.isot
@@ -174,17 +146,7 @@ def get_image_headers_sv(seq_start_id, grid_size, grid_res):
     ihdu.header["CDELT2"] = delta_y
     ihdu.header["CRVAL2"] = coords.dec.deg
     ihdu.header["CUNIT2"] = "deg"
-    # Coordinates - Freq
-    # ihdu.header["CTYPE3"] = "FREQ"
-    # ihdu.header["CRPIX3"] = crit_pix_f
-    # ihdu.header["CDELT3"] = delta_f
-    # ihdu.header["CRVAL3"] = cfreq
-    # ihdu.header["CUNIT3"] = "Hz"
-    # # # Coordinates - Stokes parameters
-    # ihdu.header["CTYPE4"] = "STOKES"
-    # ihdu.header["CRPIX4"] = 1
-    # ihdu.header["CDELT4"] = -1
-    # ihdu.header["CRVAL4"] = -5  # pol_nums[pol_order[0]]
+
     return phdu.header, ihdu.header
 
 
@@ -193,16 +155,9 @@ class EpicPixels:
         self,
         img_hdr: str,
         primary_hdr: str,
-        # img_array: NDArrayNum_t,
         watch_df: pd.DataFrame,
-        # epic_ver: str = "0.0.1",
-        # img_axes: List[int] = [1, 2],
         elevation_limit: float = 0.0,
     ) -> None:
-        # self.img_array = img_array
-        # self.header_str = header
-        # self.epic_ver = epic_ver
-
         self._watch_df = watch_df
         self.img_hdr = img_hdr
         self.primary_hdr = primary_hdr
@@ -224,15 +179,11 @@ class EpicPixels:
         self.dgridx = self.primary_hdr["DGRIDX"]
         self.dgrixy = self.primary_hdr["DGRIDY"]
 
-        # self.inttime = self.primary_hdr["INTTIM"]
-
         self.t_obs = self.img_hdr["DATETIME"]
 
         self.wcs = WCS(self.img_hdr, naxis=2)
 
         self.max_rad = self.xdim * 0.5 * np.cos(np.deg2rad(elevation_limit))
-
-        # self.filename = self.img_hdr["FILENAME"]
 
     def ra2x(
         self, ra: Union[float, NDArrayNum_t]
@@ -293,45 +244,16 @@ class EpicPixels:
         )
         return is_fov
 
-    # def header_to_metadict(self, source_names: List[str]) -> Dict[str, Any]:
-    #     ihdr = self.img_hdr
-    #     return dict(
-    #         id=[str(uuid4())],
-    #         img_time=[
-    #             datetime.strptime(ihdr["DATETIME"], "%Y-%m-%dT%H:%M:%S.%f")
-    #         ],
-    #         n_chan=[int(ihdr["NAXIS3"])],
-    #         n_pol=[int(ihdr["NAXIS4"])],
-    #         chan0=[ihdr["CRVAL3"] - ihdr["CDELT3"] * ihdr["CRPIX3"]],
-    #         chan_bw=[ihdr["CDELT3"]],
-    #         epic_version=[self.epic_ver],
-    #         img_size=[str((ihdr["NAXIS1"], ihdr["NAXIS2"]))],
-    #         int_time=self.inttime,
-    #         filename=self.filename,
-    #         source_names=[source_names.tolist()],
-    #     )
-
-    # def store_pg(self, s_hub: ServiceHub) -> None:
-    #     if self.pixel_idx_df is None or self.pixel_meta_df is None:
-    #         # no sources in the fov to update
-    #         return
-    #     s_hub.insert_single_epoch_pgdb(self.pixel_idx_df, self.pixel_meta_df)
-
     def get_pix_indices(
         self,
     ) -> pd.DataFrame:
-        self.idx_l = self._watch_df.reset_index().index.to_numpy() # the fetched indices correspond to orginal ids in the watchlist
+        self.idx_l = (
+            self._watch_df.reset_index().index.to_numpy()
+        )  # the fetched indices correspond to orginal ids in the watchlist
         self.src_l = self._watch_df["source_name"].to_numpy().astype(str)
         self.ra_l = self._watch_df["ra"].to_numpy()
         self.dec_l = self._watch_df["dec"].to_numpy()
         self.patch_size_l = self._watch_df["kernel_dim"].to_numpy()
-        # (
-        #     self._watch_df["kernel_dim"]
-        #     .str.split("x")
-        #     .str[0]
-        #     .astype(float)
-        #     .to_numpy()
-        # )
         self.patch_npix_l = self.patch_size_l**2
 
         self._update_src_skypos(self.t_obs)
@@ -363,7 +285,7 @@ class EpicPixels:
             self.pixel_meta_df = None
             return None
         self.watch_l = self.watch_l[:, self.in_fov]
-        
+
         xpatch_pix_idx, ypatch_pix_idx = np.hstack(
             list(map(PatchMan.get_patch_idx, self.watch_l[-1, :]))
         )
@@ -402,8 +324,8 @@ class EpicPixels:
         ypatch_pix_idx = ypatch_pix_idx[is_out_fov]
         src_ids = np.unique(self.watch_l[0, :]).astype(int)
         src_names_arr = self._watch_df.iloc[src_ids]["source_name"].tolist()
-        src_names_arr = '{"'+'","'.join(src_names_arr)+'"}'
-        
+        src_names_arr = '{"' + '","'.join(src_names_arr) + '"}'
+
         # grab lm coords
         lmn_grid = get_lmn_grid(self.xdim, self.ydim)
         l_vals = lmn_grid[
@@ -421,7 +343,7 @@ class EpicPixels:
             nsrc=np.array([src_ids.size]).copy(),
             ncoords=np.array([l_vals.size]).copy(),
             kernel_dim=np.array([self.patch_size_l[0]]).copy(),
-            #src_ids=src_ids.ravel().astype(float).copy(),
+            # src_ids=src_ids.ravel().astype(float).copy(),
             src_ids=source_names.ravel().astype(str).copy().tolist().copy(),
             l=l_vals.ravel().astype(float).copy(),
             m=m_vals.ravel().astype(float).copy(),
@@ -429,28 +351,8 @@ class EpicPixels:
             pix_y=pix_y_l.ravel().astype(float).copy(),
             pix_ofst_x=xpatch_pix_idx.ravel().astype(float).copy(),
             pix_ofst_y=ypatch_pix_idx.ravel().astype(float).copy(),
-            src_names_arr=src_names_arr
+            src_names_arr=src_names_arr,
         )
-
-        # self.pixel_meta_df = pd.DataFrame.from_dict(
-        #     self.header_to_metadict(source_names=np.unique(source_names))
-        # )
-
-        # self.pixel_idx_df = pd.DataFrame.from_dict(
-        #     dict(
-        #         id=[
-        #             self.pixel_meta_df.iloc[0]["id"]
-        #             for i in range(len(l_vals))
-        #         ],
-        #         pixel_coord=pix_coord_fmt,
-        #         pixel_values=pix_values_l,
-        #         pixel_skypos=skypos_pg_fmt,
-        #         source_names=source_names,
-        #         pixel_lm=lm_coord_fmt,
-        #         pix_ofst_x=xpatch_pix_idx,
-        #         pix_ofst_y=ypatch_pix_idx,
-        #     )
-        # )
 
     def _update_src_skypos(
         self,
@@ -466,7 +368,7 @@ class EpicPixels:
 
 def get_pixel_indices(
     seq_start_id, grid_size, grid_res, elev_limit, watchdog_endpoint
-):  
+):
     watchlist = get_watch_list(watchdog_endpoint)
     phdu, ihdu = get_image_headers_sv(seq_start_id, grid_size, grid_res)
 
@@ -484,12 +386,13 @@ def get_pixel_indices(
             pix_y=np.array([]).astype(float).copy(),
             pix_ofst_x=np.array([]).astype(float).copy(),
             pix_ofst_y=np.array([]).astype(float).copy(),
-            src_names=[]
+            src_names=[],
         )
     else:
         return indices
 
-def get_pixel_indices2(ihdu, phdu,elev_limit=10):
+
+def get_pixel_indices2(ihdu, phdu, elev_limit=10):
     watchlist = get_watch_list()
     pix_extractor = EpicPixels(ihdu, phdu, watchlist, elev_limit)
     indices = pix_extractor.get_pix_indices()
@@ -505,10 +408,11 @@ def get_pixel_indices2(ihdu, phdu,elev_limit=10):
             pix_y=np.array([]).astype(float).copy(),
             pix_ofst_x=np.array([]).astype(float).copy(),
             pix_ofst_y=np.array([]).astype(float).copy(),
-            src_names=[]
+            src_names=[],
         )
     else:
         return indices
+
 
 if __name__ == "__main__":
     for i in range(100):
@@ -517,6 +421,14 @@ if __name__ == "__main__":
         grid_res = 1
         elev_lim = 0
         kernel_dim = 5
-        indices = get_pixel_indices(seq_start, grid_size, grid_res, elev_lim,"169.254.128.1:1729")
-        print(i, indices["nsrc"], len(indices["pix_x"]), indices['src_ids'],indices['src_names_arr'])
+        indices = get_pixel_indices(
+            seq_start, grid_size, grid_res, elev_lim, "169.254.128.1:1729"
+        )
+        print(
+            i,
+            indices["nsrc"],
+            len(indices["pix_x"]),
+            indices["src_ids"],
+            indices["src_names_arr"],
+        )
         #

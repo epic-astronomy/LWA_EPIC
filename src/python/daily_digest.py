@@ -37,8 +37,6 @@ class EpicDailyDigestTable(Base):
 
 def ingest_daily_digest(ihdu, phdu, data):
     indices = get_pixel_indices2(ihdu, phdu, 0)
-    print(indices)
-    #print(indices.keys())
     if indices["nsrc"][0] <= 0:
         return
     nsrc = indices["nsrc"][0]
@@ -81,19 +79,7 @@ def ingest_daily_digest(ihdu, phdu, data):
                 stokes_v=stokes_V.tolist()
             )
         )
-    #print(rows)
-    # print(data[
-    #                 0,  # X*X, Y*Y
-    #                 0,  # all channels
-    #                 indices["pix_y"][0:25].astype(
-    #                     int
-    #                 )
-    #                 - 1,
-    #                 indices["pix_x"][0:25].astype(
-    #                     int
-    #                 )
-    #                 - 1,
-    #             ])
+
     engine = create_engine("postgresql:///")
     insert_stmnt = insert(EpicDailyDigestTable).values(rows)
     with engine.connect() as conn:
@@ -109,26 +95,6 @@ def test_extraction(
         data = hdul[1].data
 
     ingest_daily_digest(ihdu,phdu, data)
-    # print(phdu, ihdu)
-    
-    # connection = engine.connect()
-    # session = Session(connection)
-    # session.execute(insert_stmnt)
-    # session.commit()
-    # session.close()
-    # print(data.shape, indices)
-    # print(
-    #     data[
-    #         0:2,
-    #         :,
-    #         indices["pix_y"].astype(int) - 1,
-    #         indices["pix_x"].astype(int) - 1,
-    #     ].sum(axis=(0, 2))
-    # )
-    # wcs=WCS(ihdu, naxis=2)
-    # print(indices)
-    # radec=DynSources.get_lwasv_skypos('sun',ihdu['DATETIME'])
-    # print(wcs.all_world2pix([radec[0]],[radec[1]],1, ra_dec_order=True))
 
 
 if __name__ == "__main__":

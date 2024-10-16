@@ -12,7 +12,6 @@ import time
 from MCS2 import Communicator
 import uuid
 from daily_digest import ingest_daily_digest
-# from pixel_extractor import get_pixel_indices2
 
 DATE_FORMAT = "%Y_%m_%dT%H_%M_%S"
 FS = 196.0e6
@@ -206,30 +205,19 @@ def save_output(output_arr, grid_size, nchan, outdir, metadata):
     ihdu.header["CRPIX4"] = 1
     ihdu.header["CDELT4"] = -1
     ihdu.header["CRVAL4"] = -5  # pol_nums[pol_order[0]]
-    # # Coordinates - Complex
-    # ihdu.header["CTYPE5"] = "COMPLEX"
-    # ihdu.header["CRVAL5"] = 1.0
-    # ihdu.header["CRPIX5"] = 1.0
-    # ihdu.header["CDELT5"] = 1.0
 
-    # print(f"Save time: {time.time()-start}")
     hdulist = fits.HDUList([phdu, ihdu])
     unix_time = metadata["time_tag"] / FS +\
      1e-3 * metadata["img_len_ms"] / 2.0
     filename = f"EPIC_{unix_time:.3f}_{cfreq/1e6:.3f}MHz"
     hdulist.writeto(f"{outdir}{filename}.fits", overwrite=True)
-    #chan_out = 0
-    #temp_im = img_data[0, chan_out, :, :]
+
     matplotlib.image.imsave(f"{outdir}{filename}_QL.png", img_data[0, 0, :, :], origin="lower")
 
     # extract and ingest the pixels to DB
     ingest_daily_digest(ihdu.header, phdu.header, img_data)
 
     return f"{outdir}{filename}.fits"
-    # matplotlib.image.imsave(
-    #     "original_test_out.png", (output_arr[0, chan_out, :, :])
-    # )
-
 
 
 def get_ADP_time_from_unix_epoch():
@@ -343,20 +331,8 @@ def get_correction_grid(corr_ker_arr, grid_size, support, nchan, oversample=1):
     grid_size = int(grid_size * oversample)
     corr_ker_arr = corr_ker_arr.reshape((nchan, support, support))
     corr_grid_arr = np.zeros((nchan, grid_size, grid_size))
-    # print('saving kernel')
-    # np.savez("auto_corr.npz",arr=corr_ker_arr[0,:,:])
-    # print('done', corr_ker_arr.shape)
+
     offset = (grid_size - grid_size_orig) // 2
-
-    # hs = support//2
-    # _center = corr_ker_arr[:,hs,hs]
-    # taper = 10000
-    # corr_ker_arr[:,:,:] *= taper
-    # corr_ker_arr[:,hs,hs] = _center
-
-    # g2d = get_gaussian_2D(support)
-
-    # corr_grid_arr[:,:,:]=5
 
     kernel_offset = int(grid_size / 2)
     for i in range(nchan):
@@ -397,16 +373,10 @@ def get_correction_grid(corr_ker_arr, grid_size, support, nchan, oversample=1):
     )
     matplotlib.image.imsave("gpu_corr_kernel.png", (corr_ker_arr[0, :, :]))
     ac = corr_ker_arr[0, :, :] / corr_ker_arr[0, :, :].sum()
-    # np.savez(
-    #     "auto_corr.npz",
-    #     arr=correlate2d(corr_ker_arr[0, :, :], corr_ker_arr[0, :, :]),
-    # )
+
     corr_grid_arr = np.reciprocal(corr_grid_arr)
-    # corr_grid_arr = corr_grid_arr / corr_grid_arr.sum(
-    #     axis=(1, 2), keepdims=True
-    # )
+
     np.savez('corr_grid_arr.npz',corr_grid_arr)
-    #corr_grid_arr = np.ones(corr_grid_arr.shape)
     return (corr_grid_arr).copy().ravel()
 
 
@@ -425,26 +395,10 @@ def meta2pgtime(time_tag0, img_len_ms):
 
 
 if __name__ == "__main__":
-    # a = gen_phases_lwasv(132, 800)
-    # print(a[:4])
-
     freq = 1260 * 25000
-
-    # b = lwasv.antennas[0]
-    # delay = b.cable.delay(freq) - b.stand.z / speed_of_light.value
-    # cphase = np.exp(2j * np.pi * freq * delay) / np.sqrt(b.cable.gain(freq))
-    # print(a[0], cphase)
-    # # assert(a[0]==cphase)
-
-    # b = lwasv.antennas[1]
-    # delay = b.cable.delay(freq) - b.stand.z / speed_of_light.value
-    # print(a[1],cphase)
 
     res = gen_loc_lwasv(64, 2)
     print(freq)
-    # print(res['locations'][:3*256].astype(float))
     print(
         32 + (res["locations"][3 * 256 : 6 * 256].astype(float) * freq / 3e8)
     )
-
-    # assert(a[1]==cphase)
