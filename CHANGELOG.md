@@ -1,3 +1,12 @@
+## [0.14.1](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.14.0...v0.14.1) (2024-10-16)
+
+
+### Bug Fixes
+
+* Added cfreq to the daily digest table ([6d6f4aa](https://github.com/epic-astronomy/LWA_EPIC/commit/6d6f4aa985e04b641717e4d734f1dbce8b70b782))
+
+
+
 # [0.14.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.13.1...v0.14.0) (2024-10-16)
 
 
@@ -31,15 +40,6 @@
 ### Features
 
 * Changed video output to stokes I ([5b7a6a6](https://github.com/epic-astronomy/LWA_EPIC/commit/5b7a6a61caf863e6423040e438b07dff41abd68b))
-
-
-
-## [0.11.3](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.11.2...v0.11.3) (2024-10-04)
-
-
-### Bug Fixes
-
-* Added gap between labels for Tau A and Jupiter ([1427419](https://github.com/epic-astronomy/LWA_EPIC/commit/14274196f5361d0ba45022f5d8f5a6e8135f67f0))
 
 
 
