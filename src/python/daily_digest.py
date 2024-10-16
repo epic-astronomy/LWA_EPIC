@@ -34,7 +34,7 @@ class EpicDailyDigestTable(Base):
     img_time = Column(TIMESTAMP, nullable=False, primary_key=True)
     stokes_i = Column(ARRAY(Float), nullable=False)
     stokes_v = Column(ARRAY(Float), nullable=False)
-    cfreq = Column(Float, nullable=False)
+    cfreq = Column(Float, nullable=False, primary_key=True)
 
 def ingest_daily_digest(ihdu, phdu, data, cfreq):
     """
