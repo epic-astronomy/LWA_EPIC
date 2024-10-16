@@ -1,3 +1,12 @@
+# [0.14.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.13.1...v0.14.0) (2024-10-16)
+
+
+### Features
+
+* Added daily digest ingestion ([ed210ed](https://github.com/epic-astronomy/LWA_EPIC/commit/ed210ed404ea98baf48766f48a4be8bd561f8568))
+
+
+
 ## [0.13.1](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.13.0...v0.13.1) (2024-10-10)
 
 
@@ -31,15 +40,6 @@
 ### Bug Fixes
 
 * Added gap between labels for Tau A and Jupiter ([1427419](https://github.com/epic-astronomy/LWA_EPIC/commit/14274196f5361d0ba45022f5d8f5a6e8135f67f0))
-
-
-
-## [0.11.2](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.11.1...v0.11.2) (2024-10-04)
-
-
-### Bug Fixes
-
-* Updated text alignment ([dbf16f9](https://github.com/epic-astronomy/LWA_EPIC/commit/dbf16f9bc4d4f7d0b4b083bad6bfe637b2e96b51))
 
 
 
