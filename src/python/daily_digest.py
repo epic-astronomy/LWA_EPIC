@@ -37,6 +37,11 @@ class EpicDailyDigestTable(Base):
     cfreq = Column(Float, nullable=False)
 
 def ingest_daily_digest(ihdu, phdu, data, cfreq):
+    """
+    Extract pixel values for each source in the watch list, 
+    create stokes I and V by adding all the values in the kernel,
+    and ingest it into the DB
+    """
     indices = get_pixel_indices2(ihdu, phdu, 0)
     if indices["nsrc"][0] <= 0:
         return
