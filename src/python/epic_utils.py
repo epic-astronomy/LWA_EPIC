@@ -215,7 +215,7 @@ def save_output(output_arr, grid_size, nchan, outdir, metadata):
     matplotlib.image.imsave(f"{outdir}{filename}_QL.png", img_data[0, 0, :, :], origin="lower")
 
     # extract and ingest the pixels to DB
-    ingest_daily_digest(ihdu.header, phdu.header, img_data)
+    ingest_daily_digest(ihdu.header, phdu.header, img_data, cfreq)
 
     return f"{outdir}{filename}.fits"
 

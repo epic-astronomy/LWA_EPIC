@@ -34,8 +34,9 @@ class EpicDailyDigestTable(Base):
     img_time = Column(TIMESTAMP, nullable=False, primary_key=True)
     stokes_i = Column(ARRAY(Float), nullable=False)
     stokes_v = Column(ARRAY(Float), nullable=False)
+    cfreq = Column(Float, nullable=False)
 
-def ingest_daily_digest(ihdu, phdu, data):
+def ingest_daily_digest(ihdu, phdu, data, cfreq):
     indices = get_pixel_indices2(ihdu, phdu, 0)
     if indices["nsrc"][0] <= 0:
         return
@@ -76,7 +77,8 @@ def ingest_daily_digest(ihdu, phdu, data):
                     )
                     - 1,
                 ].sum(axis=(0, 2)).tolist(),
-                stokes_v=stokes_V.tolist()
+                stokes_v=stokes_V.tolist(),
+                cfreq=cfreq
             )
         )
 
