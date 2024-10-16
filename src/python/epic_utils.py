@@ -11,6 +11,8 @@ import datetime
 import time
 from MCS2 import Communicator
 import uuid
+from daily_digest import ingest_daily_digest
+# from pixel_extractor import get_pixel_indices2
 
 DATE_FORMAT = "%Y_%m_%dT%H_%M_%S"
 FS = 196.0e6
@@ -219,15 +221,15 @@ def save_output(output_arr, grid_size, nchan, outdir, metadata):
     #chan_out = 0
     #temp_im = img_data[0, chan_out, :, :]
     matplotlib.image.imsave(f"{outdir}{filename}_QL.png", img_data[0, 0, :, :], origin="lower")
-    # temp_im[:,0:4]=0
-    # temp_im[0:4,:]=0
-    # temp_im[:,-4:]=0
-    # temp_im[-4:,:]=0
-    #matplotlib.image.imsave(f"test.png", temp_im, origin="lower")
+
+    # extract and ingest the pixels to DB
+    ingest_daily_digest(ihdu.header, phdu.header, img_data)
+
     return f"{outdir}{filename}.fits"
     # matplotlib.image.imsave(
     #     "original_test_out.png", (output_arr[0, chan_out, :, :])
     # )
+
 
 
 def get_ADP_time_from_unix_epoch():

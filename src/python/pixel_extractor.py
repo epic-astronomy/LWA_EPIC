@@ -29,6 +29,7 @@ from epic_grpc import epic_image_pb2
 from epic_types import NDArrayBool_t
 from epic_types import NDArrayNum_t
 
+from adp import get_ADP_time_from_unix_epoch
 # from epic_types import Patch_t
 # from epic_types import WatchMode_t
 
@@ -41,9 +42,12 @@ from astropy.io import fits
 from astropy.time import Time
 from astropy.coordinates import SkyCoord, FK5
 
+import dns.resolver
+import socket
+
 # from scipy.signal import correlate2d
 
-from epic_utils import get_ADP_time_from_unix_epoch
+# from epic_utils import get_ADP_time_from_unix_epoch
 import grpc
 import json
 
@@ -57,12 +61,27 @@ FS = 196.0e6
 CHAN_BW = 25.0e3
 # from .service_hub import ServiceHub
 
+def get_endpoint(service='epic-watchdog.service.consul'):
+    try:
+        answers = dns.resolver.resolve(service,'SRV')
+        for rdata in answers:
+            port = rdata.port
+            target = rdata.target.to_text().strip()
 
-def get_watch_list(watchdog_endpoint):
+            ip_address = socket.gethostbyname(target)
+            return f'{ip_address}:{port}'
+    except dns.resolver.NoAnswer:
+        print(f"No SRV record found for {service}")
+    except Exception as e:
+        print(f"Error: {e}")
+
+
+def get_watch_list(watchdog_endpoint=None):
     """
     Fetch the watchlist for EPIC at Sevilleta
     """
-    with grpc.insecure_channel(watchdog_endpoint) as channel:
+    endpoint = watchdog_endpoint if watchdog_endpoint is not None else get_endpoint('epic-watchdog.service.consul')
+    with grpc.insecure_channel(endpoint) as channel:
         stub = epic_image_pb2_grpc.epic_post_processStub(channel)
         response = stub.fetch_watchlist(epic_image_pb2.empty(),timeout=5)
         df_json = json.loads(response.pd_json)
@@ -72,6 +91,7 @@ def get_watch_list(watchdog_endpoint):
     #     dict(id=[0], source_name=["sun"], ra=[0.0], dec=[0.0], kernel_dim=[5])
     # ) 
         return df
+
 
 
 def get_image_headers_sv(seq_start_id, grid_size, grid_res):
@@ -469,9 +489,29 @@ def get_pixel_indices(
     else:
         return indices
 
+def get_pixel_indices2(ihdu, phdu,elev_limit=10):
+    watchlist = get_watch_list()
+    pix_extractor = EpicPixels(ihdu, phdu, watchlist, elev_limit)
+    indices = pix_extractor.get_pix_indices()
+    if indices is None:  # no sources in the FOV
+        return dict(
+            nsrc=np.array([0]).copy(),
+            ncoords=np.array([0]).copy(),
+            kernel_dim=np.array([0]).copy(),
+            src_ids=np.array([]).astype(str).copy(),
+            l=np.array([]).astype(float).copy(),
+            m=np.array([]).astype(float).copy(),
+            pix_x=np.array([]).astype(float).copy(),
+            pix_y=np.array([]).astype(float).copy(),
+            pix_ofst_x=np.array([]).astype(float).copy(),
+            pix_ofst_y=np.array([]).astype(float).copy(),
+            src_names=[]
+        )
+    else:
+        return indices
 
 if __name__ == "__main__":
-    for i in range(1):
+    for i in range(100):
         seq_start = i * 3600 * CHAN_BW
         grid_size = 128
         grid_res = 1
@@ -479,3 +519,4 @@ if __name__ == "__main__":
         kernel_dim = 5
         indices = get_pixel_indices(seq_start, grid_size, grid_res, elev_lim,"169.254.128.1:1729")
         print(i, indices["nsrc"], len(indices["pix_x"]), indices['src_ids'],indices['src_names_arr'])
+        #
