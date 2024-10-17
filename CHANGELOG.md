@@ -1,3 +1,12 @@
+## [0.14.2](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.14.1...v0.14.2) (2024-10-17)
+
+
+### Bug Fixes
+
+* Fixed stokes_V generation ([20e1427](https://github.com/epic-astronomy/LWA_EPIC/commit/20e14275be380015d93ebd82d2342834a694992f))
+
+
+
 ## [0.14.1](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.14.0...v0.14.1) (2024-10-16)
 
 
@@ -31,15 +40,6 @@
 ### Features
 
 * Added gamma and saturation corrections ([71c08a7](https://github.com/epic-astronomy/LWA_EPIC/commit/71c08a71c49ff9d51d58733039b3a331b69857b1))
-
-
-
-# [0.12.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.11.3...v0.12.0) (2024-10-04)
-
-
-### Features
-
-* Changed video output to stokes I ([5b7a6a6](https://github.com/epic-astronomy/LWA_EPIC/commit/5b7a6a61caf863e6423040e438b07dff41abd68b))
 
 
 
