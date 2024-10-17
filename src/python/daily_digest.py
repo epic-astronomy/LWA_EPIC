@@ -53,19 +53,21 @@ def ingest_daily_digest(ihdu, phdu, data, cfreq):
     # loop over each source and insert
     for i in range(nsrc):
         stokes_V_re = data[
-            2,  # X*X, Y*Y
+            2,  # Re(X*Y)
             :,  # all channels
             indices["pix_y"][i * ncoords : (i + 1) * ncoords].astype(int) - 1,
             indices["pix_x"][i * ncoords : (i + 1) * ncoords].astype(int) - 1,
-        ].sum(axis=(1))
+        ]/1e3
         stokes_V_im = data[
-            2,  # X*X, Y*Y
+            3,  # Im(X*Y)
             :,  # all channels
             indices["pix_y"][i * ncoords : (i + 1) * ncoords].astype(int) - 1,
             indices["pix_x"][i * ncoords : (i + 1) * ncoords].astype(int) - 1,
-        ].sum(axis=(1))
+        ]/1e3
 
-        stokes_V = np.sqrt(stokes_V_re**2 + stokes_V_im**2)
+        print(stokes_V_im.shape, stokes_V_re.shape)
+
+        stokes_V = 1e3*np.sqrt(stokes_V_re**2 + stokes_V_im**2).sum(axis=(0))
         rows.append(
             dict(
                 source_name=indices["src_ids"][i * ncoords],
@@ -94,14 +96,14 @@ def ingest_daily_digest(ihdu, phdu, data, cfreq):
         conn.commit()
 
 def test_extraction(
-    file="accumulated_files/EPIC_1729035156.560_42.975MHz.fits",
+    file="accumulated_files/EPIC_1729064709.560_87.875MHz.fits",
 ):
     with fits.open(file) as hdul:
         phdu = hdul[0].header
         ihdu = hdul[1].header
         data = hdul[1].data
 
-    ingest_daily_digest(ihdu,phdu, data)
+    ingest_daily_digest(ihdu,phdu, data, -1)
 
 
 if __name__ == "__main__":
