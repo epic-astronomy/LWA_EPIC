@@ -65,8 +65,6 @@ def ingest_daily_digest(ihdu, phdu, data, cfreq):
             indices["pix_x"][i * ncoords : (i + 1) * ncoords].astype(int) - 1,
         ]/1e3
 
-        print(stokes_V_im.shape, stokes_V_re.shape)
-
         stokes_V = 1e3*np.sqrt(stokes_V_re**2 + stokes_V_im**2).sum(axis=(0))
         rows.append(
             dict(
