@@ -52,20 +52,20 @@ def ingest_daily_digest(ihdu, phdu, data, cfreq):
     rows = []
     # loop over each source and insert
     for i in range(nsrc):
-        stokes_V_re = data[
-            2,  # Re(X*Y)
-            :,  # all channels
-            indices["pix_y"][i * ncoords : (i + 1) * ncoords].astype(int) - 1,
-            indices["pix_x"][i * ncoords : (i + 1) * ncoords].astype(int) - 1,
-        ]/1e3
-        stokes_V_im = data[
+        # XYc_re = data[
+        #     2,  # Re(X*Y)
+        #     :,  # all channels
+        #     indices["pix_y"][i * ncoords : (i + 1) * ncoords].astype(int) - 1,
+        #     indices["pix_x"][i * ncoords : (i + 1) * ncoords].astype(int) - 1,
+        # ]/1e3
+        Xyc_im = data[
             3,  # Im(X*Y)
             :,  # all channels
             indices["pix_y"][i * ncoords : (i + 1) * ncoords].astype(int) - 1,
             indices["pix_x"][i * ncoords : (i + 1) * ncoords].astype(int) - 1,
-        ]/1e3
+        ]
 
-        stokes_V = 1e3*np.sqrt(stokes_V_re**2 + stokes_V_im**2).sum(axis=(0))
+        stokes_V = np.abs(Xyc_im).sum(axis=0)
         rows.append(
             dict(
                 source_name=indices["src_ids"][i * ncoords],
