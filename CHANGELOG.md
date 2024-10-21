@@ -1,3 +1,12 @@
+## [0.14.3](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.14.2...v0.14.3) (2024-10-21)
+
+
+### Bug Fixes
+
+* fixed stokes V ingestion ([d1a8849](https://github.com/epic-astronomy/LWA_EPIC/commit/d1a884904c9131be20359de9708891d1b74d2d1b))
+
+
+
 ## [0.14.2](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.14.1...v0.14.2) (2024-10-17)
 
 
@@ -31,15 +40,6 @@
 ### Bug Fixes
 
 * Adjusted gamma and saturation to show background during flares ([edf770f](https://github.com/epic-astronomy/LWA_EPIC/commit/edf770f4b4bd35afea6e69fb482cf8cc69701782))
-
-
-
-# [0.13.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.12.0...v0.13.0) (2024-10-08)
-
-
-### Features
-
-* Added gamma and saturation corrections ([71c08a7](https://github.com/epic-astronomy/LWA_EPIC/commit/71c08a71c49ff9d51d58733039b3a331b69857b1))
 
 
 
