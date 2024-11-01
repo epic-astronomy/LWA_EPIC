@@ -1,3 +1,12 @@
+## [0.15.2](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.1...v0.15.2) (2024-11-01)
+
+
+### Bug Fixes
+
+* added libunwind to remove deadlocks ([10d3145](https://github.com/epic-astronomy/LWA_EPIC/commit/10d31453d883bc9ec214742496f6755f7f70fee6))
+
+
+
 ## [0.15.1](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.0...v0.15.1) (2024-11-01)
 
 
@@ -31,15 +40,6 @@
 ### Bug Fixes
 
 * Fixed stokes_V generation ([20e1427](https://github.com/epic-astronomy/LWA_EPIC/commit/20e14275be380015d93ebd82d2342834a694992f))
-
-
-
-## [0.14.1](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.14.0...v0.14.1) (2024-10-16)
-
-
-### Bug Fixes
-
-* Added cfreq to the daily digest table ([6d6f4aa](https://github.com/epic-astronomy/LWA_EPIC/commit/6d6f4aa985e04b641717e4d734f1dbce8b70b782))
 
 
 
