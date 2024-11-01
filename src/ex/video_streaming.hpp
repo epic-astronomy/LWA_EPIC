@@ -286,6 +286,19 @@ class Streamer {
     StreamImage();
 
   }
+
+  ~Streamer(){
+    if (outputContext) {
+        // Send an empty packet to flush buffers
+        av_write_trailer(outputContext);
+        
+        // Close the output connection
+        avio_closep(&outputContext->pb);
+        
+        // Free the format context
+        avformat_free_context(outputContext);
+    }
+  }
 };
 
 
@@ -582,7 +595,11 @@ void Streamer::StreamImage() {
     pkt->pts = pkt->dts = _frame_counter * m_time_base_den / m_fps;
     // Write packet to output
     av_packet_rescale_ts(pkt, codecContext->time_base, videoStream->time_base);
-    av_interleaved_write_frame(outputContext, pkt);
+    ret = av_interleaved_write_frame(outputContext, pkt);
+    if(ret<0){
+      fprintf(stderr, "Error writing the frame to output (%d): %s\n", ret, av_err2str(ret));
+      CheckError("Error writing the frame to output");
+    }
 
     // Free packet data
     // av_frame_unref(scaledFrame);
