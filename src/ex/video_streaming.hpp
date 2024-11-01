@@ -304,6 +304,16 @@ class Streamer {
 
 void Streamer::CheckError(const Status_t &p_status) {
   if (p_status.value_or("none") != "none") {
+    if (outputContext) {
+        // Send an empty packet to flush buffers
+        av_write_trailer(outputContext);
+        
+        // Close the output connection
+        avio_closep(&outputContext->pb);
+        
+        // Free the format context
+        avformat_free_context(outputContext);
+    }
     //std::cout<<p_status.value()<<std::endl;
     LOG(FATAL) << p_status.value();
   }
