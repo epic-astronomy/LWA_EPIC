@@ -1,3 +1,12 @@
+# [0.15.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.14.3...v0.15.0) (2024-11-01)
+
+
+### Features
+
+* fix: Added video output write error handling ([6396533](https://github.com/epic-astronomy/LWA_EPIC/commit/63965331f2e00a3131b0e5602bc13cfc7a63ccb9))
+
+
+
 ## [0.14.3](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.14.2...v0.14.3) (2024-10-21)
 
 
@@ -31,15 +40,6 @@
 ### Features
 
 * Added daily digest ingestion ([ed210ed](https://github.com/epic-astronomy/LWA_EPIC/commit/ed210ed404ea98baf48766f48a4be8bd561f8568))
-
-
-
-## [0.13.1](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.13.0...v0.13.1) (2024-10-10)
-
-
-### Bug Fixes
-
-* Adjusted gamma and saturation to show background during flares ([edf770f](https://github.com/epic-astronomy/LWA_EPIC/commit/edf770f4b4bd35afea6e69fb482cf8cc69701782))
 
 
 
