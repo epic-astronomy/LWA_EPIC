@@ -1,3 +1,12 @@
+## [0.15.6](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.5...v0.15.6) (2024-11-02)
+
+
+### Bug Fixes
+
+* use hard exit ([2f662f2](https://github.com/epic-astronomy/LWA_EPIC/commit/2f662f22eed9db69c09ad4d2220012df89b7494d))
+
+
+
 ## [0.15.5](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.4...v0.15.5) (2024-11-02)
 
 
@@ -31,15 +40,6 @@
 ### Bug Fixes
 
 * added libunwind to remove deadlocks ([10d3145](https://github.com/epic-astronomy/LWA_EPIC/commit/10d31453d883bc9ec214742496f6755f7f70fee6))
-
-
-
-## [0.15.1](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.0...v0.15.1) (2024-11-01)
-
-
-### Bug Fixes
-
-* Added video output write error handling ([4e150f4](https://github.com/epic-astronomy/LWA_EPIC/commit/4e150f4dac4730e4c45855672f0d26355255fdf0))
 
 
 
