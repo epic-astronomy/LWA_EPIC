@@ -31,6 +31,10 @@
 #include "raft_kernels/epic_executor.hpp"
 
 namespace py = pybind11;
+void FailureHandler(){
+  // libunwind seems to introduce a deadlock
+  exit(EXIT_FAILURE);
+}
 // #define _USE_VMA 1
 int main(int argc, char** argv) {
   py::scoped_interpreter guard{};
@@ -40,8 +44,7 @@ int main(int argc, char** argv) {
   google::InitGoogleLogging(argv[0]);
   google::EnableLogCleaner(3);
   
-  LOG(INFO)<<"Disabling stack trace";
-  // google::InstallFailureSignalHandler();
+ google::InstallFailureFunction(&FailureHandler);
 
   RunEpic(argc, argv);
 
