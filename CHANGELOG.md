@@ -1,3 +1,12 @@
+## [0.15.4](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.3...v0.15.4) (2024-11-02)
+
+
+### Bug Fixes
+
+* disable stack trace ([1dec84e](https://github.com/epic-astronomy/LWA_EPIC/commit/1dec84ed6b8732e0adc3874bc0b4fdc8a3231d46))
+
+
+
 ## [0.15.3](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.2...v0.15.3) (2024-11-01)
 
 
@@ -31,15 +40,6 @@
 ### Features
 
 * fix: Added video output write error handling ([6396533](https://github.com/epic-astronomy/LWA_EPIC/commit/63965331f2e00a3131b0e5602bc13cfc7a63ccb9))
-
-
-
-## [0.14.3](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.14.2...v0.14.3) (2024-10-21)
-
-
-### Bug Fixes
-
-* fixed stokes V ingestion ([d1a8849](https://github.com/epic-astronomy/LWA_EPIC/commit/d1a884904c9131be20359de9708891d1b74d2d1b))
 
 
 
