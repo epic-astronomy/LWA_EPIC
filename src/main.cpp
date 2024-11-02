@@ -33,7 +33,7 @@
 namespace py = pybind11;
 void FailureHandler(){
   // libunwind seems to introduce a deadlock
-  exit(EXIT_FAILURE);
+  _exit(EXIT_FAILURE);
 }
 // #define _USE_VMA 1
 int main(int argc, char** argv) {
