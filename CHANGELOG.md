@@ -1,3 +1,12 @@
+## [0.15.5](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.4...v0.15.5) (2024-11-02)
+
+
+### Bug Fixes
+
+* added exit function to handle failures ([2949e00](https://github.com/epic-astronomy/LWA_EPIC/commit/2949e000f39578821fafac1696176c0d1c06014a))
+
+
+
 ## [0.15.4](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.3...v0.15.4) (2024-11-02)
 
 
@@ -31,15 +40,6 @@
 ### Bug Fixes
 
 * Added video output write error handling ([4e150f4](https://github.com/epic-astronomy/LWA_EPIC/commit/4e150f4dac4730e4c45855672f0d26355255fdf0))
-
-
-
-# [0.15.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.14.3...v0.15.0) (2024-11-01)
-
-
-### Features
-
-* fix: Added video output write error handling ([6396533](https://github.com/epic-astronomy/LWA_EPIC/commit/63965331f2e00a3131b0e5602bc13cfc7a63ccb9))
 
 
 
