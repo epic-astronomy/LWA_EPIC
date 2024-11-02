@@ -40,6 +40,7 @@ int main(int argc, char** argv) {
   google::InitGoogleLogging(argv[0]);
   google::EnableLogCleaner(3);
   
+  LOG(INFO)<<"Disabling stack trace";
   // google::InstallFailureSignalHandler();
 
   RunEpic(argc, argv);
