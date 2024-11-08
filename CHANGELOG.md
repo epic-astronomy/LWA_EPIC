@@ -1,3 +1,12 @@
+## [0.15.8](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.7...v0.15.8) (2024-11-08)
+
+
+### Bug Fixes
+
+* rolling back mpegts to flv ([92a779d](https://github.com/epic-astronomy/LWA_EPIC/commit/92a779dd5b792b1589a44a54c29e8065a0c92eab))
+
+
+
 ## [0.15.7](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.6...v0.15.7) (2024-11-08)
 
 
@@ -31,15 +40,6 @@
 ### Bug Fixes
 
 * disable stack trace ([1dec84e](https://github.com/epic-astronomy/LWA_EPIC/commit/1dec84ed6b8732e0adc3874bc0b4fdc8a3231d46))
-
-
-
-## [0.15.3](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.2...v0.15.3) (2024-11-01)
-
-
-### Bug Fixes
-
-* removed failure signal handler to prevent deadlocks ([06d5caa](https://github.com/epic-astronomy/LWA_EPIC/commit/06d5caa784756358739dac98d4fde344bbd0f7fe))
 
 
 
