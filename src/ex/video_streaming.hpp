@@ -329,7 +329,7 @@ Streamer::Status_t Streamer::ValidateCmap(std::string p_cmap) {
 }
 
 Streamer::Status_t Streamer::InitOutputContext() {
-  if (avformat_alloc_output_context2(&outputContext, nullptr, "mpegts",
+  if (avformat_alloc_output_context2(&outputContext, nullptr, "flv",
                                      m_stream_url.c_str()) < 0) {
     Status_t{"Error: Could not allocate output context"};
   }
