@@ -1,3 +1,12 @@
+## [0.15.7](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.6...v0.15.7) (2024-11-08)
+
+
+### Bug Fixes
+
+* changed output container from flv to mpegts ([99eb008](https://github.com/epic-astronomy/LWA_EPIC/commit/99eb0089c0ccffc232dcc17c6c13bef4ecb7d58e))
+
+
+
 ## [0.15.6](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.5...v0.15.6) (2024-11-02)
 
 
@@ -31,15 +40,6 @@
 ### Bug Fixes
 
 * removed failure signal handler to prevent deadlocks ([06d5caa](https://github.com/epic-astronomy/LWA_EPIC/commit/06d5caa784756358739dac98d4fde344bbd0f7fe))
-
-
-
-## [0.15.2](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.1...v0.15.2) (2024-11-01)
-
-
-### Bug Fixes
-
-* added libunwind to remove deadlocks ([10d3145](https://github.com/epic-astronomy/LWA_EPIC/commit/10d31453d883bc9ec214742496f6755f7f70fee6))
 
 
 
