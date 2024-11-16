@@ -44,7 +44,7 @@ int main(int argc, char** argv) {
   google::InitGoogleLogging(argv[0]);
   google::EnableLogCleaner(3);
   
-  google::InstallFailureSignalHandler();
+  // google::InstallFailureSignalHandler();
 
   RunEpic(argc, argv);
 
