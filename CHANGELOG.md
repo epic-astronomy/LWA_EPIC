@@ -1,3 +1,12 @@
+## [0.15.11](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.10...v0.15.11) (2024-11-16)
+
+
+### Bug Fixes
+
+* use abort instead of exit ([4c264c0](https://github.com/epic-astronomy/LWA_EPIC/commit/4c264c01e073f24046b1e90868034d971b7fbc22))
+
+
+
 ## [0.15.10](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.9...v0.15.10) (2024-11-16)
 
 
@@ -31,15 +40,6 @@
 ### Bug Fixes
 
 * changed output container from flv to mpegts ([99eb008](https://github.com/epic-astronomy/LWA_EPIC/commit/99eb0089c0ccffc232dcc17c6c13bef4ecb7d58e))
-
-
-
-## [0.15.6](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.5...v0.15.6) (2024-11-02)
-
-
-### Bug Fixes
-
-* use hard exit ([2f662f2](https://github.com/epic-astronomy/LWA_EPIC/commit/2f662f22eed9db69c09ad4d2220012df89b7494d))
 
 
 
