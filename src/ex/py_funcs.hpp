@@ -274,9 +274,16 @@ SaveImageToDisk(size_t grid_size, size_t nchan, T* data, std::string out_dir,
   }
 
   VLOG(2) << "Sending to saver";
-  auto filename =
+  std::string filename = "";
+  try{
+  filename =
       py::module_::import("epic_utils")\
           .attr("save_output")(result, grid_size, nchan, out_dir, meta_dict).template cast<std::string>();
+  } catch(const py::error_already_set& e){
+    LOG(ERROR)<<e.what();
+    PyErr_Clear();
+    filename="";
+  }
   // std::string test = filename.cast<std::string>();
   // for (int i = 0; i < 10; ++i) {
   //     std::cout << data[i] << std::endl;

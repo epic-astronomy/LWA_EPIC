@@ -114,17 +114,19 @@ class DiskSaverRft : public raft::kernel,
                     m_out_dir + "/"s, img_metadata);
 
     try {
-      InsertFilenametoDb(&pld, this->m_db_T.get(), m_file_stmt_id);
-      this->m_db_T.get()->commit();
+      if(std::get<std::string>(img_metadata["filename"])!=""){
+        InsertFilenametoDb(&pld, this->m_db_T.get(), m_file_stmt_id);
+        this->m_db_T.get()->commit();
+      }
     } catch (const std::exception& e) {
       LOG(FATAL) << e.what();
     }
     VLOG(3)<<"Streaming image";
     // m_streamer->Stream(chan0, cfreq, pld.get_mbuf()->GetDataPtr());
     // this->stream(chan0, cfreq, pld.get_mbuf()->GetDataPtr());
-    if ((++stream_counter) % 3 == 0) {
+    // if ((++stream_counter) % 3 == 0) {
       // this->stream(chan0, cfreq, pld.get_mbuf()->GetDataPtr());
-    }
+    // }
     // LOG(INFO)<<"streamed";
 
     m_timer.Tock();
