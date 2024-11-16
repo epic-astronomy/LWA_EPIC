@@ -1,3 +1,12 @@
+## [0.15.10](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.9...v0.15.10) (2024-11-16)
+
+
+### Bug Fixes
+
+* disabled  failure handler ([8f80009](https://github.com/epic-astronomy/LWA_EPIC/commit/8f8000976a9ea8e702cac6fecbc2c877e20bec12))
+
+
+
 ## [0.15.9](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.8...v0.15.9) (2024-11-16)
 
 
@@ -31,15 +40,6 @@
 ### Bug Fixes
 
 * use hard exit ([2f662f2](https://github.com/epic-astronomy/LWA_EPIC/commit/2f662f22eed9db69c09ad4d2220012df89b7494d))
-
-
-
-## [0.15.5](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.4...v0.15.5) (2024-11-02)
-
-
-### Bug Fixes
-
-* added exit function to handle failures ([2949e00](https://github.com/epic-astronomy/LWA_EPIC/commit/2949e000f39578821fafac1696176c0d1c06014a))
 
 
 
