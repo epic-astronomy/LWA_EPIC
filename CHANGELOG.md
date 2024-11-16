@@ -1,3 +1,12 @@
+## [0.15.9](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.8...v0.15.9) (2024-11-16)
+
+
+### Bug Fixes
+
+* added exception handling for savers ([74f0607](https://github.com/epic-astronomy/LWA_EPIC/commit/74f06070fa3f9d26e4530e1b664d1c0705131bcc))
+
+
+
 ## [0.15.8](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.7...v0.15.8) (2024-11-08)
 
 
@@ -31,15 +40,6 @@
 ### Bug Fixes
 
 * added exit function to handle failures ([2949e00](https://github.com/epic-astronomy/LWA_EPIC/commit/2949e000f39578821fafac1696176c0d1c06014a))
-
-
-
-## [0.15.4](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.3...v0.15.4) (2024-11-02)
-
-
-### Bug Fixes
-
-* disable stack trace ([1dec84e](https://github.com/epic-astronomy/LWA_EPIC/commit/1dec84ed6b8732e0adc3874bc0b4fdc8a3231d46))
 
 
 
