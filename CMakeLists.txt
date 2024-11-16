@@ -42,7 +42,10 @@ add_compile_options(-std=c++17  -DL1D_CACHE_LINE_SIZE=64 -DSTRING_NAMES=1 )
 
 
 #glog
+add_definitions(-DGLOG_NO_SYMBOLIZE)
+set(WITH_UNWIND off CACHE BOOL "Disable unwind" FORCE)
 add_subdirectory(src/extern/glog)
+
 
 
 #cxxopts
