@@ -56,6 +56,7 @@ extern "C" {
 
 #include "./constants.h"
 #include "glog/logging.h"
+#include "glog/raw_logging.h"
 
 // https://github.com/joncampbell123/composite-video-simulator/issues/5
 #ifdef av_err2str
@@ -315,7 +316,7 @@ void Streamer::CheckError(const Status_t &p_status) {
         avformat_free_context(outputContext);
     }
     //std::cout<<p_status.value()<<std::endl;
-    LOG(FATAL) << p_status.value();
+    PLOG(FATAL) << p_status.value();
   }
 }
 
