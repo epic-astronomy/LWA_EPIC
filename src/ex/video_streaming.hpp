@@ -82,7 +82,7 @@ class Streamer {
   int m_log_level{AV_LOG_DEBUG};
   int m_npixels_grid;
   int m_npixels_vid;
-  int _frame_counter{0};
+  long long int _frame_counter{0};
   AVRational dst_fps;
   AVFormatContext *outputContext{nullptr};
   AVStream *videoStream{nullptr};
@@ -611,7 +611,6 @@ void Streamer::StreamImage() {
       fprintf(stderr, "Error writing the frame to output (%d): %s\n", ret, av_err2str(ret));
       CheckError("Error writing the frame to output");
     }
-
     // Free packet data
     // av_frame_unref(scaledFrame);
     // av_frame_unref(frame);
