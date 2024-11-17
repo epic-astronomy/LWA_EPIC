@@ -1,3 +1,12 @@
+## [0.15.14](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.13...v0.15.14) (2024-11-17)
+
+
+### Bug Fixes
+
+* changed the frame counter to long long ([0441dfc](https://github.com/epic-astronomy/LWA_EPIC/commit/0441dfc6e3b318b1526dd8798f5a38c26f386f61))
+
+
+
 ## [0.15.13](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.12...v0.15.13) (2024-11-17)
 
 
@@ -31,15 +40,6 @@
 ### Bug Fixes
 
 * disabled  failure handler ([8f80009](https://github.com/epic-astronomy/LWA_EPIC/commit/8f8000976a9ea8e702cac6fecbc2c877e20bec12))
-
-
-
-## [0.15.9](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.8...v0.15.9) (2024-11-16)
-
-
-### Bug Fixes
-
-* added exception handling for savers ([74f0607](https://github.com/epic-astronomy/LWA_EPIC/commit/74f06070fa3f9d26e4530e1b664d1c0705131bcc))
 
 
 
