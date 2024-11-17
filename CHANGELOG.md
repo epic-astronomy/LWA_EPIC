@@ -1,3 +1,12 @@
+## [0.15.13](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.12...v0.15.13) (2024-11-17)
+
+
+### Bug Fixes
+
+* use raw logging ([1d2792e](https://github.com/epic-astronomy/LWA_EPIC/commit/1d2792e0127a33d645c86a3d759c6c2530bfb19f))
+
+
+
 ## [0.15.12](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.11...v0.15.12) (2024-11-16)
 
 
@@ -31,15 +40,6 @@
 ### Bug Fixes
 
 * added exception handling for savers ([74f0607](https://github.com/epic-astronomy/LWA_EPIC/commit/74f06070fa3f9d26e4530e1b664d1c0705131bcc))
-
-
-
-## [0.15.8](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.7...v0.15.8) (2024-11-08)
-
-
-### Bug Fixes
-
-* rolling back mpegts to flv ([92a779d](https://github.com/epic-astronomy/LWA_EPIC/commit/92a779dd5b792b1589a44a54c29e8065a0c92eab))
 
 
 
