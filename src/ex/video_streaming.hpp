@@ -35,6 +35,7 @@ extern "C" {
 #include <libavutil/channel_layout.h>
 #include <libavutil/dict.h>
 #include <libavutil/frame.h>
+#include <libavutil/time.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/log.h>
 #include <libavutil/mathematics.h>
@@ -603,9 +604,9 @@ void Streamer::StreamImage() {
 
   while (avcodec_receive_packet(codecContext, pkt) == 0) {
     // Set PTS and DTS (decoding timestamp) for the packet
-    pkt->pts = pkt->dts = _frame_counter * m_time_base_den / m_fps;
+    pkt->pts = pkt->dts = av_rescale_q(av_gettime(), codecContext->time_base, videoStream->time_base);
     // Write packet to output
-    av_packet_rescale_ts(pkt, codecContext->time_base, videoStream->time_base);
+    //av_packet_rescale_ts(pkt, codecContext->time_base, videoStream->time_base);
     ret = av_interleaved_write_frame(outputContext, pkt);
     if(ret<0){
       fprintf(stderr, "Error writing the frame to output (%d): %s\n", ret, av_err2str(ret));
