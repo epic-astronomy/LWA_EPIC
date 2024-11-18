@@ -1,3 +1,12 @@
+## [0.15.15](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.14...v0.15.15) (2024-11-18)
+
+
+### Bug Fixes
+
+* Use wallclock to set pts ([10aaf48](https://github.com/epic-astronomy/LWA_EPIC/commit/10aaf48ead962e19e83e017c270d8e574f78f9a6))
+
+
+
 ## [0.15.14](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.13...v0.15.14) (2024-11-17)
 
 
@@ -31,15 +40,6 @@
 ### Bug Fixes
 
 * use abort instead of exit ([4c264c0](https://github.com/epic-astronomy/LWA_EPIC/commit/4c264c01e073f24046b1e90868034d971b7fbc22))
-
-
-
-## [0.15.10](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.9...v0.15.10) (2024-11-16)
-
-
-### Bug Fixes
-
-* disabled  failure handler ([8f80009](https://github.com/epic-astronomy/LWA_EPIC/commit/8f8000976a9ea8e702cac6fecbc2c877e20bec12))
 
 
 
