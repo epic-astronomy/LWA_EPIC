@@ -1,3 +1,12 @@
+## [0.15.16](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.15...v0.15.16) (2024-11-19)
+
+
+### Bug Fixes
+
+* corrected PTS calculation ([9c00407](https://github.com/epic-astronomy/LWA_EPIC/commit/9c004076644b7979d0d429d389601e2bedd00a0f))
+
+
+
 ## [0.15.15](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.14...v0.15.15) (2024-11-18)
 
 
@@ -31,15 +40,6 @@
 ### Bug Fixes
 
 * Disabled unwind ([2367832](https://github.com/epic-astronomy/LWA_EPIC/commit/236783256efed034b7b4f49f3962aba1975c58a1))
-
-
-
-## [0.15.11](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.10...v0.15.11) (2024-11-16)
-
-
-### Bug Fixes
-
-* use abort instead of exit ([4c264c0](https://github.com/epic-astronomy/LWA_EPIC/commit/4c264c01e073f24046b1e90868034d971b7fbc22))
 
 
 
