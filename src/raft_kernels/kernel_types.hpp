@@ -293,7 +293,7 @@ std::unique_ptr<Streamer> GetStreamer(const KernelTypeDefs::opt_t& options) {
   int vid_size = options["video_size"].as<int>();
   int grid_size = options["imagesize"].as<int>();
   int seq_accum = options["seq_accum"].as<int>();
-  float fps = 1000 / seq_accum;
+  float fps = 1000.f / seq_accum;
   std::string url = options["stream_url"].as<std::string>();
   std::string cmap = options["stream_cmap"].as<std::string>();
 
