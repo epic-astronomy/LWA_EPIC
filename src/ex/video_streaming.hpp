@@ -78,12 +78,12 @@ class Streamer {
   float m_fps;
   int m_width;
   int m_height;
-  int m_time_base_den;
+  float m_time_base_den;
   std::string m_stream_url;
   int m_log_level{AV_LOG_DEBUG};
   int m_npixels_grid;
   int m_npixels_vid;
-  long long int _frame_counter{0};
+  int64_t _frame_counter{0};
   AVRational dst_fps;
   AVFormatContext *outputContext{nullptr};
   AVStream *videoStream{nullptr};
@@ -432,7 +432,7 @@ Streamer::Status_t Streamer::InitFilterGraph() {
 
   char src_buf[1024];
   std::snprintf(src_buf, sizeof(src_buf),
-                "width=%d:height=%d:pix_fmt=yuv420p10le:time_base=1/%d",
+                "width=%d:height=%d:pix_fmt=yuv420p10le:time_base=1/%f",
                 m_grid_size, m_grid_size, m_time_base_den);
 
   char scale_buf[1024];
@@ -594,6 +594,8 @@ void Streamer::StreamImage() {
     fprintf(stderr, "Error getting frame: %s\n", av_err2str(ret));
     CheckError("Error: Failed to get frame");
   }
+  scaledFrame->pts = _frame_counter;// * m_time_base_den / m_fps;
+    _frame_counter += av_rescale_q(1, codecContext->time_base, videoStream->time_base);
   ret=avcodec_send_frame(codecContext, scaledFrame);
   if ( ret< 0) {
     fprintf(stderr, "Error getting frame from buffersink: %s\n", av_err2str(ret));
@@ -604,7 +606,7 @@ void Streamer::StreamImage() {
 
   while (avcodec_receive_packet(codecContext, pkt) == 0) {
     // Set PTS and DTS (decoding timestamp) for the packet
-    pkt->pts = pkt->dts = av_rescale_q(av_gettime(), codecContext->time_base, videoStream->time_base);
+    pkt->pts = pkt->dts = _frame_counter;
     // Write packet to output
     //av_packet_rescale_ts(pkt, codecContext->time_base, videoStream->time_base);
     ret = av_interleaved_write_frame(outputContext, pkt);
@@ -618,7 +620,7 @@ void Streamer::StreamImage() {
     av_free_packet(pkt);
     av_packet_unref(pkt);
     // av_free(pkt);
-    ++_frame_counter;
+    // ++_frame_counter;
   }
 }
 
