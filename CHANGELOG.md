@@ -1,3 +1,12 @@
+## [0.15.17](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.16...v0.15.17) (2024-11-19)
+
+
+### Bug Fixes
+
+* corrected the framerate calculation ([f24c71f](https://github.com/epic-astronomy/LWA_EPIC/commit/f24c71f49988ea30dc14d28daf2a73e53cc45abb))
+
+
+
 ## [0.15.16](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.15...v0.15.16) (2024-11-19)
 
 
@@ -31,15 +40,6 @@
 ### Bug Fixes
 
 * use raw logging ([1d2792e](https://github.com/epic-astronomy/LWA_EPIC/commit/1d2792e0127a33d645c86a3d759c6c2530bfb19f))
-
-
-
-## [0.15.12](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.11...v0.15.12) (2024-11-16)
-
-
-### Bug Fixes
-
-* Disabled unwind ([2367832](https://github.com/epic-astronomy/LWA_EPIC/commit/236783256efed034b7b4f49f3962aba1975c58a1))
 
 
 
