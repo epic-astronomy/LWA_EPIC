@@ -1,3 +1,12 @@
+## [0.15.18](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.17...v0.15.18) (2024-11-21)
+
+
+### Bug Fixes
+
+* use system clock as time stamp ([e4730a4](https://github.com/epic-astronomy/LWA_EPIC/commit/e4730a49804220eaafebb911c7a180972cceea5d))
+
+
+
 ## [0.15.17](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.16...v0.15.17) (2024-11-19)
 
 
@@ -31,15 +40,6 @@
 ### Bug Fixes
 
 * changed the frame counter to long long ([0441dfc](https://github.com/epic-astronomy/LWA_EPIC/commit/0441dfc6e3b318b1526dd8798f5a38c26f386f61))
-
-
-
-## [0.15.13](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.12...v0.15.13) (2024-11-17)
-
-
-### Bug Fixes
-
-* use raw logging ([1d2792e](https://github.com/epic-astronomy/LWA_EPIC/commit/1d2792e0127a33d645c86a3d759c6c2530bfb19f))
 
 
 
