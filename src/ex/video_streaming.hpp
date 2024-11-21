@@ -611,7 +611,7 @@ void Streamer::StreamImage() {
     // Set PTS and DTS (decoding timestamp) for the packet
     pkt->pts = pkt->dts = av_rescale_q(av_gettime(), AV_TIME_BASE_Q, codecContext->time_base);//_frame_counter;
     // Write packet to output
-    //av_packet_rescale_ts(pkt, codecContext->time_base, videoStream->time_base);
+    av_packet_rescale_ts(pkt, codecContext->time_base, videoStream->time_base);
     ret = av_interleaved_write_frame(outputContext, pkt);
     if(ret<0){
       fprintf(stderr, "Error writing the frame to output (%d): %s\n", ret, av_err2str(ret));
