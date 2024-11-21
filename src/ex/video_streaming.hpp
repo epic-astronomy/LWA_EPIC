@@ -554,10 +554,12 @@ Streamer::Status_t Streamer::InitVideoFrameBuf() {
 
 Streamer::Status_t Streamer::InitOutput() {
   // Open RTMP output
-  videoStream->start_time = 0;
   if (avio_open(&outputContext->pb, outputContext->url, AVIO_FLAG_WRITE) < 0) {
     return Status_t{"Error: Could not open RTMP output"};
   }
+  videoStream->start_time = 0;
+  AVDictionary *options = NULL;
+  av_dict_set(&options, "live", "1", 0);
 
   // Write header
   if (avformat_write_header(outputContext, nullptr) < 0) {
