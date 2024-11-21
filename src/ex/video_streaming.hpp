@@ -554,6 +554,7 @@ Streamer::Status_t Streamer::InitVideoFrameBuf() {
 
 Streamer::Status_t Streamer::InitOutput() {
   // Open RTMP output
+  videoStream->start_time = 0;
   if (avio_open(&outputContext->pb, outputContext->url, AVIO_FLAG_WRITE) < 0) {
     return Status_t{"Error: Could not open RTMP output"};
   }
@@ -594,8 +595,8 @@ void Streamer::StreamImage() {
     fprintf(stderr, "Error getting frame: %s\n", av_err2str(ret));
     CheckError("Error: Failed to get frame");
   }
-  scaledFrame->pts = _frame_counter;// * m_time_base_den / m_fps;
-    _frame_counter += av_rescale_q(1, codecContext->time_base, videoStream->time_base);
+  // scaledFrame->pts = _frame_counter;// * m_time_base_den / m_fps;
+  //   _frame_counter += av_rescale_q(1, codecContext->time_base, videoStream->time_base);
   ret=avcodec_send_frame(codecContext, scaledFrame);
   if ( ret< 0) {
     fprintf(stderr, "Error getting frame from buffersink: %s\n", av_err2str(ret));
@@ -606,7 +607,7 @@ void Streamer::StreamImage() {
 
   while (avcodec_receive_packet(codecContext, pkt) == 0) {
     // Set PTS and DTS (decoding timestamp) for the packet
-    pkt->pts = pkt->dts = _frame_counter;
+    pkt->pts = pkt->dts = av_rescale_q(av_gettime(), AV_TIME_BASE_Q, codecContext->time_base);//_frame_counter;
     // Write packet to output
     //av_packet_rescale_ts(pkt, codecContext->time_base, videoStream->time_base);
     ret = av_interleaved_write_frame(outputContext, pkt);
