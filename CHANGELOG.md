@@ -1,3 +1,12 @@
+## [0.15.20](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.19...v0.15.20) (2024-11-21)
+
+
+### Bug Fixes
+
+* PTS and DTS rescaling ([07e24a8](https://github.com/epic-astronomy/LWA_EPIC/commit/07e24a80f53574954cb11c1a00ad778a5f1a3d8b))
+
+
+
 ## [0.15.19](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.18...v0.15.19) (2024-11-21)
 
 
@@ -31,15 +40,6 @@
 ### Bug Fixes
 
 * corrected PTS calculation ([9c00407](https://github.com/epic-astronomy/LWA_EPIC/commit/9c004076644b7979d0d429d389601e2bedd00a0f))
-
-
-
-## [0.15.15](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.14...v0.15.15) (2024-11-18)
-
-
-### Bug Fixes
-
-* Use wallclock to set pts ([10aaf48](https://github.com/epic-astronomy/LWA_EPIC/commit/10aaf48ead962e19e83e017c270d8e574f78f9a6))
 
 
 
