@@ -1,3 +1,12 @@
+## [0.15.21](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.20...v0.15.21) (2024-11-23)
+
+
+### Bug Fixes
+
+* add wait time before more empty gulps are received ([1d432a5](https://github.com/epic-astronomy/LWA_EPIC/commit/1d432a5b11bc2a1add0c90fb8809ede1cec39293))
+
+
+
 ## [0.15.20](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.19...v0.15.20) (2024-11-21)
 
 
@@ -31,15 +40,6 @@
 ### Bug Fixes
 
 * corrected the framerate calculation ([f24c71f](https://github.com/epic-astronomy/LWA_EPIC/commit/f24c71f49988ea30dc14d28daf2a73e53cc45abb))
-
-
-
-## [0.15.16](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.15...v0.15.16) (2024-11-19)
-
-
-### Bug Fixes
-
-* corrected PTS calculation ([9c00407](https://github.com/epic-astronomy/LWA_EPIC/commit/9c004076644b7979d0d429d389601e2bedd00a0f))
 
 
 
