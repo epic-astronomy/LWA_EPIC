@@ -114,10 +114,13 @@ class GulpGen_rft : public raft::kernel {
                      .count();
       VLOG(3) << "Receiving the gulp";
       auto gulp = m_assmblr.get()->get_gulp();
+      auto gulp_len_ms = m_assmblr.get()->GetNumSeqPerGulp()*40e-6;
       VLOG(3) << "Received";
       if (!gulp) {
         VLOG(2) << "Null gulp";
         ++m_num_empty_gulp;
+        LOG_EVERY_N(INFO,100)<<"100 Empty gulps received";
+        std::this_thread::sleep_for(std::chrono::duration<double, std::milli>(gulp_len_ms*10e3));
         PrometheusExporter::ObserveRunTimeValue(m_rt_gauge_id, 0);
         if(m_num_empty_gulp > m_max_empty_gulps){
           LOG(FATAL)<<m_max_empty_gulps<<" empty gulps received. Resetting the imager";
