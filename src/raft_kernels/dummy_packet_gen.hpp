@@ -72,7 +72,7 @@ class DummyPktGen : public raft::kernel {
       LOG_IF(FATAL, !static_cast<bool>(pld)) << "Empty buffer in packet gen";
 
       auto start = std::chrono::high_resolution_clock::now();
-      // Get40msGulp(pld.get_mbuf()->GetDataPtr());
+      Get40msGulp(pld.get_mbuf()->GetDataPtr());
       VLOG(3) << "Gulp gen duration: "
               << std::chrono::duration_cast<std::chrono::milliseconds>(
                      std::chrono::high_resolution_clock::now() - start)

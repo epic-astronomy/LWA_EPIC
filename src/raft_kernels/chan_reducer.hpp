@@ -88,7 +88,7 @@ class ChanReducerRft : public raft::kernel {
         m_hc_chans(GetHealthCheckChans<LWA_SV>()) {
     input.addPort<_PldIn>("in_img");
     output.addPort<_PldOut>("out_img");
-    output.addPort<uint64_t>("seq_start_id");
+    // output.addPort<uint64_t>("seq_start_id");
 
     if (m_in_nchan % m_ncombine != 0) {
       LOG(FATAL) << "The number of output channels: " << m_in_nchan
@@ -110,21 +110,23 @@ class ChanReducerRft : public raft::kernel {
   raft::kstatus run() override {
     m_timer.Tick();
     _PldIn in_pld;
-    raft::signal in_sig=raft::none;
+    raft::signal in_sig = raft::none;
     input["in_img"].pop(in_pld, &in_sig);
-    if(!static_cast<bool>(in_pld) || in_sig==INVALID_FREQ){
+    if (!static_cast<bool>(in_pld) || in_sig == INVALID_FREQ) {
       LOG_EVERY_N(WARNING, 3000) << "Health Checks. Ignoring data";
-      // in_pld = _PldIn();  // this releases the lock without waiting for raft's
-                          // runtime to destroy the object
+      // in_pld = _PldIn();  // this releases the lock without waiting for
+      // raft's runtime to destroy the object
       m_timer.Tock();
-      PrometheusExporter::ObserveRunTimeValue(m_rt_gauge_id, m_timer.Duration());
+      PrometheusExporter::ObserveRunTimeValue(m_rt_gauge_id,
+                                              m_timer.Duration());
       return raft::proceed;
     }
-    //auto chan0 =
-        //std::get<int64_t>(in_pld.get_mbuf()->GetMetadataRef()["chan0"]);
+    // auto chan0 =
+    // std::get<int64_t>(in_pld.get_mbuf()->GetMetadataRef()["chan0"]);
     // if (m_hc_chans.count(chan0) > 0) {
     //   LOG_EVERY_N(WARNING, 3000) << "Health Checks. Ignoring data";
-    //   // in_pld = _PldIn();  // this releases the lock without waiting for raft's
+    //   // in_pld = _PldIn();  // this releases the lock without waiting for
+    //   raft's
     //                       // runtime to destroy the object
     //   return raft::proceed;
     // }
@@ -146,7 +148,7 @@ class ChanReducerRft : public raft::kernel {
     m_in_tensor.combine_channels(&m_out_tensor);
 
     output["out_img"].push(out_pld);
-    output["seq_start_id"].push(std::get<uint64_t>(out_meta["seq_start"]));
+    // output["seq_start_id"].push(std::get<uint64_t>(out_meta["seq_start"]));
 
     m_timer.Tock();
     PrometheusExporter::ObserveRunTimeValue(m_rt_gauge_id, m_timer.Duration());

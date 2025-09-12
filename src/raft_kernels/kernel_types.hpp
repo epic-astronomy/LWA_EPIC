@@ -41,6 +41,7 @@
 #include "./correlator.hpp"
 #include "./db_ingester.hpp"
 #include "./disk_saver.hpp"
+#include "./dummy_kernel.hpp"
 #include "./dummy_packet_gen.hpp"
 #include "./epic_live_streamer.hpp"
 #include "./index_fetcher.hpp"
@@ -57,7 +58,8 @@ enum EPICKernelID {
   _DB_INGESTER = 6,
   _ACCUMULATOR = 7,
   _DISK_SAVER = 8,
-  _LIVE_STREAMER = 9
+  _LIVE_STREAMER = 9,
+  _DUMMY_KERNEL = 10
 };
 
 struct KernelTypeDefs {
@@ -115,12 +117,25 @@ struct Kernel<_DUMMY_PACK_GEN> : KernelTypeDefs {
   template <unsigned int _GpuId>
   static ktype get_kernel(const opt_t&) {
     VLOG(2) << "Creating dummy Pkt gen";
-    return ktype(2000);
+    return ktype(1);
   }
 };
 using DummyPktGen_kt = Kernel<_DUMMY_PACK_GEN>::ktype;
 template <unsigned int _GpuId>
 auto& get_dummy_pkt_gen_k = Kernel<_DUMMY_PACK_GEN>::get_kernel<_GpuId>;
+
+template <>
+struct Kernel<_DUMMY_KERNEL> : KernelTypeDefs {
+  using ktype = dummy<payload_u8_t>;
+  template <unsigned int _GpuId>
+  static ktype get_kernel(const opt_t&) {
+    VLOG(2) << "Creating dummy kernel";
+    return ktype();
+  }
+};
+using Dummy_kt = Kernel<_DUMMY_KERNEL>::ktype;
+template <unsigned int _GpuId>
+auto& get_dummy_k = Kernel<_DUMMY_KERNEL>::get_kernel<_GpuId>;
 
 template <>
 struct Kernel<_CORRELATOR> : KernelTypeDefs {

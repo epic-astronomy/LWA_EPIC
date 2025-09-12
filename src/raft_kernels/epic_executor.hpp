@@ -48,6 +48,7 @@ class EPICKernels {
   // DBIngester_kt m_db_ingester;
   Accumulator_kt m_accumulator;
   DiskSaver_kt m_disk_saver;
+  Dummy_kt m_dummy_kernel;
   // EpicLiveStream_kt m_live_streamer;
 
  protected:
@@ -106,6 +107,7 @@ class EPICKernels {
         // m_db_ingester(get_db_ingester_k<_GpuId>(p_options)),
         m_accumulator(get_accumulator_k<_GpuId>(p_options)),
         m_disk_saver(get_disk_saver_k<_GpuId>(p_options)),
+        m_dummy_kernel(get_dummy_k<_GpuId>(p_options)),
         // m_live_streamer(get_epic_live_stream_k<_GpuId>(p_options)),
         m_map(p_map) {
     m_is_offline = p_options["offline"].as<bool>();
