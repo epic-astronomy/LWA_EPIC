@@ -52,3 +52,11 @@ valgrind --leak-check=full \
 ```
 
 This creates an executable called `epic++`. If it needs to executed from a different directory please also copy all the python files from the build directory or ensure they are visible to the embedded python interpreter.
+
+## Instructions for running with offline data
+The following command runs the epic imager on offline data. It is assumed that epic is executed on on NVIDIA RTX 4090, which contains 128 SMs.
+```bash
+./epic++ --offline --out_dir offline_outputs --disable_metrics --imagesize 128 --channels 128 --chan_nbin 1 --seq_accum 40 --nts 1000 --imageres 1.056 --accum_16bit --nstreams 8 --support 5 --aeff 25 --kernel_oversample 4 --ngpus 1 --gpu_ids=0
+```
+
+This command reads a file npz file `data/40ms_128chan_600offset_gulp_c64_virtransit.npz` which provides a single `40 ms` gulp and writes the output image to `offline_outputs/EPIC_79905306897.629_44.775MHz.fits`. Additionally, a quick look png file is also saved to the `offline_outputs` folder.
