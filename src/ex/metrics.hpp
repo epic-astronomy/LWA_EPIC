@@ -25,9 +25,9 @@
 
 #include <prometheus/counter.h>
 #include <prometheus/exposer.h>
+#include <prometheus/info.h>
 #include <prometheus/registry.h>
 #include <prometheus/summary.h>
-#include <prometheus/info.h>
 
 #include <algorithm>
 #include <cassert>
@@ -35,8 +35,8 @@
 #include <iterator>
 #include <memory>
 #include <mutex>
-#include <string>
 #include <sstream>
+#include <string>
 #include <type_traits>
 #include <vector>
 
@@ -77,13 +77,13 @@ class PrometheusExporter {
   std::string m_runtime_summary_help =
       "Streaming summary metrics for individual kernels in epic";
   std::string m_runtime_info_name = "epic_runtime_info";
-  std::string m_runtime_info_help = 
-      "EPIC runtime options";
+  std::string m_runtime_info_help = "EPIC runtime options";
 
   explicit PrometheusExporter(const std::string &p_bind_addr,
                               bool p_disable_coll)
       : m_bind_addr(p_bind_addr) {
     m_disable_collection = p_disable_coll;
+    if (m_disable_collection) return;
     default_quantiles = {{0.5, 0.05}, {0.90, 0.01}, {0.99, 0.001}};
     default_summary_window = std::chrono::seconds{5};
     m_exposer = std::make_unique<pm::Exposer>(p_bind_addr);
@@ -101,14 +101,14 @@ class PrometheusExporter {
                                 .Name(m_runtime_summary_name)
                                 .Help(m_runtime_summary_help)
                                 .Register(*m_registry);
-    
+
     m_runtime_summary_family_ptr = &runtime_summary;
 
     auto &runtime_info = pm::BuildInfo()
-                              .Name(m_runtime_info_name)
-                              .Help(m_runtime_info_help)
-                              .Register(*m_registry);
-    
+                             .Name(m_runtime_info_name)
+                             .Help(m_runtime_info_help)
+                             .Register(*m_registry);
+
     m_runtime_info_family_ptr = &runtime_info;
   }
 
@@ -160,7 +160,7 @@ class PrometheusExporter {
 
   /**
    * @brief Add a runtime summary label to the registry
-   * 
+   *
    * @param p_labels Labels
    * @return Returns the registry id for the specified label
    */
@@ -170,19 +170,19 @@ class PrometheusExporter {
     std::lock_guard<std::mutex> lock(pmreg_mutex);
     m_runtime_summaries.push_back(&(m_runtime_summary_family_ptr->Add(
         p_labels, default_quantiles, default_summary_window)));
-    
-    return m_runtime_summaries.size()-1;
+
+    return m_runtime_summaries.size() - 1;
   }
 
   /**
    * @brief Observe the runtime value for the specified summary
-   * 
+   *
    * @param p_id Registry ID for the summary
    * @param p_value Value to observe
    */
-  static void ObserveRunTimeValue(unsigned int p_id, double p_value){
-    if(m_disable_collection) return;
-    if(p_id>= m_runtime_summaries.size()){
+  static void ObserveRunTimeValue(unsigned int p_id, double p_value) {
+    if (m_disable_collection) return;
+    if (p_id >= m_runtime_summaries.size()) {
       assert("Invalid summary id");
     }
     m_runtime_summaries[p_id]->Observe(p_value);
@@ -190,10 +190,10 @@ class PrometheusExporter {
 
   /**
    * @brief Add labels to the info metric
-   * 
+   *
    * @param p_labels Labels to add
    */
-  static void AddInfoLabels(const pm::Labels &p_labels){
+  static void AddInfoLabels(const pm::Labels &p_labels) {
     m_runtime_info_family_ptr->Add(p_labels);
   }
 
@@ -228,7 +228,5 @@ class Timer {
     return std::chrono::duration<double>(_end - _start).count();
   }
 };
-
-
 
 #endif  // SRC_EX_METRICS_HPP_

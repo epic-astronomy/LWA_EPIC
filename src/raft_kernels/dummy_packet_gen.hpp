@@ -48,8 +48,7 @@ class DummyPktGen : public raft::kernel {
   std::unique_ptr<BufferMngr> m_buf_mngr{nullptr};
 
  public:
-  DummyPktGen(size_t p_n_pkts = 1,
-                std::string utcstart = "2023_06_19T00_00_00")
+  DummyPktGen(size_t p_n_pkts = 1, std::string utcstart = "2023_06_19T00_00_00")
       : raft::kernel(), m_n_pkts(p_n_pkts) {
     VLOG(3) << "Dummy pkt constructor";
     m_buf_mngr = std::make_unique<BufferMngr>(
@@ -59,6 +58,7 @@ class DummyPktGen : public raft::kernel {
     if (utcstart == "") {
       m_time_from_unix_epoch_s = GetAdpTimeFromUnixEpoch();
     } else {
+      VLOG(3) << "Using provided utcstart: " << utcstart;
       m_time_from_unix_epoch_s = GetTimeFromUnixEpoch(utcstart);
     }
     m_time_tag0 = m_time_from_unix_epoch_s * FS;
@@ -72,7 +72,7 @@ class DummyPktGen : public raft::kernel {
       LOG_IF(FATAL, !static_cast<bool>(pld)) << "Empty buffer in packet gen";
 
       auto start = std::chrono::high_resolution_clock::now();
-      //Get40msGulp(pld.get_mbuf()->GetDataPtr());
+      // Get40msGulp(pld.get_mbuf()->GetDataPtr());
       VLOG(3) << "Gulp gen duration: "
               << std::chrono::duration_cast<std::chrono::milliseconds>(
                      std::chrono::high_resolution_clock::now() - start)

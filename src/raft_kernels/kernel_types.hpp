@@ -85,7 +85,7 @@ struct Kernel : KernelTypeDefs {
 template <>
 struct Kernel<_PKT_GEN> : KernelTypeDefs {
   using pkt_assembler_t = verbs_pkt_assembler;
-  //using pkt_assembler_t = vma_pkt_assembler;
+  // using pkt_assembler_t = vma_pkt_assembler;
   using ktype = std::unique_ptr<GulpGen_rft<pkt_assembler_t>>;
 
   template <unsigned int _GpuId>
@@ -156,6 +156,7 @@ struct Kernel<_CORRELATOR> : KernelTypeDefs {
     correlator_options.nstreams = options["nstreams"].as<int>();
     VLOG(2) << "Extracted options";
     auto corr_ptr = std::make_unique<MOFFCorrelator_t>(correlator_options);
+    VLOG(2) << "Created correlator";
     return ktype(&corr_ptr);
   }
 };
@@ -215,7 +216,7 @@ struct Kernel<_PIX_EXTRACTOR> : KernelTypeDefs {
     LOG(INFO) << "Getting watch indices";
     auto initial_watch_indices =
         GetWatchIndices(GetFirstSeqIdVerbs(ip[_GpuId], port[_GpuId]), grid_size,
-                          grid_res, elev_limit_deg, watchdog_addr);
+                        grid_res, elev_limit_deg, watchdog_addr);
     initial_watch_indices.print();
     config.nchan = reduced_nchan;
     config.ncoords = initial_watch_indices.m_ncoords;
@@ -282,7 +283,8 @@ struct Kernel<_DISK_SAVER> : KernelTypeDefs {
   template <unsigned int _GpuId>
   static ktype get_kernel(const opt_t& options) {
     VLOG(2) << "Creating disk saver";
-    return ktype(options["epic_data_schema"].as<std::string>(), options["out_dir"].as<std::string>());
+    return ktype(options["epic_data_schema"].as<std::string>(),
+                 options["out_dir"].as<std::string>());
   }
 };
 using DiskSaver_kt = Kernel<_DISK_SAVER>::ktype;

@@ -41,8 +41,7 @@
 // #include "./epic_live_streamer.hpp"
 
 template <class Payload>
-class DiskSaverRft : public raft::kernel,
-                     protected PgDbConnectMixin
+class DiskSaverRft : public raft::kernel
 /* ,protected EpicLiveStream */ {
  private:
   std::string m_img_suffix;
@@ -57,17 +56,17 @@ class DiskSaverRft : public raft::kernel,
   std::string m_out_dir{"./"};
 
  public:
-  explicit DiskSaverRft(std::string p_db_schema="public",
-    std::string p_out_dir = "./",
+  explicit DiskSaverRft(std::string p_db_schema = "public",
+                        std::string p_out_dir = "./",
                         std::string p_db_conn_str = "")
-      : raft::kernel(),
-        PgDbConnectMixin(p_db_conn_str) /* , EpicLiveStream() */ {
+      : raft::kernel()
+  /*PgDbConnectMixin(p_db_conn_str)  , EpicLiveStream() */ {
     input.addPort<Payload>("image");
-    m_filename_db_schema=p_db_schema!=""?p_db_schema:"public";
-    m_db_insert_stmt = GetFileMetaInsertStmt(m_filename_db_schema);
+    // m_filename_db_schema=p_db_schema!=""?p_db_schema:"public";
+    // m_db_insert_stmt = GetFileMetaInsertStmt(m_filename_db_schema);
     m_out_dir = p_out_dir;
     LOG(INFO) << "Preparing stmt";
-    this->prepare_stmt(m_file_stmt_id, m_db_insert_stmt);
+    // this->prepare_stmt(m_file_stmt_id, m_db_insert_stmt);
 
     // m_img_suffix = p_img_suffix;
     m_rt_gauge_id = PrometheusExporter::AddRuntimeSummaryLabel(
@@ -75,7 +74,6 @@ class DiskSaverRft : public raft::kernel,
          {"kernel", "disk_saver"},
          {"units", "s"},
          {"kernel_id", std::to_string(this->get_id())}});
-
   }
 
   // void SetStreamer(Streamer* p_streamer) { m_streamer = p_streamer; }
@@ -110,22 +108,23 @@ class DiskSaverRft : public raft::kernel,
     // img_metadata["filename"] = filename;
     img_metadata["cfreq"] = cfreq;
     img_metadata["epoch_time_s"] = epoch_s;
-    img_metadata["filename"]=SaveImageToDisk(imsize, nchan, pld.get_mbuf()->GetDataPtr(),
-                    m_out_dir + "/"s, img_metadata);
+    img_metadata["filename"] =
+        SaveImageToDisk(imsize, nchan, pld.get_mbuf()->GetDataPtr(),
+                        m_out_dir + "/"s, img_metadata);
 
-    try {
-      if(std::get<std::string>(img_metadata["filename"])!=""){
-        InsertFilenametoDb(&pld, this->m_db_T.get(), m_file_stmt_id);
-        this->m_db_T.get()->commit();
-      }
-    } catch (const std::exception& e) {
-      LOG(FATAL) << e.what();
-    }
-    VLOG(3)<<"Streaming image";
+    // try {
+    //   if(std::get<std::string>(img_metadata["filename"])!=""){
+    //     InsertFilenametoDb(&pld, this->m_db_T.get(), m_file_stmt_id);
+    //     this->m_db_T.get()->commit();
+    //   }
+    // } catch (const std::exception& e) {
+    //   LOG(FATAL) << e.what();
+    // }
+    VLOG(3) << "Streaming image";
     // m_streamer->Stream(chan0, cfreq, pld.get_mbuf()->GetDataPtr());
     // this->stream(chan0, cfreq, pld.get_mbuf()->GetDataPtr());
     // if ((++stream_counter) % 3 == 0) {
-      // this->stream(chan0, cfreq, pld.get_mbuf()->GetDataPtr());
+    // this->stream(chan0, cfreq, pld.get_mbuf()->GetDataPtr());
     // }
     // LOG(INFO)<<"streamed";
 

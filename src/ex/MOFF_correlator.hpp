@@ -165,6 +165,7 @@ MOFFCorrelator<Dtype, BuffMngr>::GetEmptyBuf() {
 
 template <typename Dtype, typename BuffMngr>
 MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc) {
+  VLOG(3) << "Creating MOFF correlator";
   m_accum_time = p_desc.accum_time_ms;
   LOG_IF(FATAL, m_accum_time <= 0) << "Total accumulation time must be >0.";
 
@@ -178,6 +179,8 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc) {
 
   m_grid_res = p_desc.grid_res_deg;
   LOG_IF(FATAL, m_grid_res <= 0) << "Grid resolution must be >0.";
+
+  VLOG(3) << "Creating MOFF correlator";
 
   m_support_size = p_desc.support_size;
   LOG_IF(FATAL, m_support_size <= 0) << "Gridding support must be >0.";
@@ -217,6 +220,8 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc) {
       << "The number of output channels must be divisible by the number of "
          "streams to process a gulp.";
 
+  VLOG(3) << "Creating MOFF correlator";
+
   // TODO(karthik): Check if the GPU can image specified channels
 
   float gulp_len_ms =
@@ -231,6 +236,7 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc) {
 
   LOG_IF(FATAL, p_desc.device_id < 0)
       << "Invalid GPU device ID: " << p_desc.device_id;
+  VLOG(3) << "Creating MOFF correlator label";
   this->m_device_id = p_desc.device_id;
   this->m_gulp_exec_gauge_id = PrometheusExporter::AddRuntimeSummaryLabel(
       {{"type", "exec_time"},
@@ -278,7 +284,7 @@ bool MOFFCorrelator<Dtype, BuffMngr>::ResetImagingConfig(int p_nchan,
   auto aeff = GetAEff(p_chan0);
   m_gcf_tex_dim = sqrt(aeff) * 10;  // in decimeters
   VLOG(3) << "Initializing GCF texture. New Aeff: " << aeff << " sq. m "
-            << m_gcf_tex_dim;
+          << m_gcf_tex_dim;
   ResetGcfKernel2D(m_gcf_tex_dim);
   this->ResetGcfTex(m_gcf_tex_dim, m_gcf_kernel2D.get());
 
