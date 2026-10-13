@@ -83,8 +83,10 @@ class EpicLiveStream : public raft::kernel {
     auto chan0 = std::get<int64_t>(img_metadata["chan0"]);
     double cfreq = (chan0 + nchan * chan_width / BANDWIDTH * 0.5) * BANDWIDTH *
                    1e-6;  // MHz
+    auto time_tag = std::get<uint64_t>(img_metadata["time_tag"]);
     bool is_hc_freq = m_hc_chans.count(chan0) > 0 ? true : false;
-    m_streamer->Stream(chan0, cfreq, pld.get_mbuf()->GetDataPtr(), is_hc_freq);
+    m_streamer->Stream(chan0, cfreq, time_tag, pld.get_mbuf()->GetDataPtr(),
+                       is_hc_freq);
     m_timer.Tock();
     PrometheusExporter::ObserveRunTimeValue(m_rt_gauge_id, m_timer.Duration());
     return raft::proceed;

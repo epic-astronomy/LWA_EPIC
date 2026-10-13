@@ -1066,3 +1066,5 @@ src/extern/RaftLib/build
 build2/
 
 !.swm/
+
+build2/*

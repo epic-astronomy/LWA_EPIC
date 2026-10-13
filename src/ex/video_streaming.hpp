@@ -48,6 +48,7 @@ extern "C" {
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <ctime>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -92,6 +93,7 @@ class Streamer {
   AVCodec *videoCodec;
   int m_vid_frame_size{0};
   uint64_t m_frame_PTS{0};
+  int64_t m_last_pts{AV_NOPTS_VALUE};
   uint8_t *framebuf{nullptr};
   std::string out_rtmp_url;
   AVPacket *pkt;
@@ -143,6 +145,8 @@ class Streamer {
   Status_t InitOutput();
   Status_t InitVideoPkt();
   Status_t ValidateCmap(std::string p_cmap);
+  void SetFramePts(int64_t p_pts);
+  void SetFrameTimestamp(uint64_t p_time_tag);
 
  public:
   Streamer(float p_fps = 6.25, int p_vid_width = 512, int p_vid_height = 512,
@@ -250,6 +254,14 @@ class Streamer {
   }
 
   void StreamEmpty(){
+    // force the data text to be restored on the next Stream call
+    m_chan0 = -1;
+    // There is no data timestamp for an empty frame. Advance by one tick
+    // to keep the PTS monotonic.
+    SetFramePts(m_last_pts == AV_NOPTS_VALUE
+                    ? av_rescale_q(av_gettime(), AV_TIME_BASE_Q,
+                                   codecContext->time_base)
+                    : m_last_pts + 1);
     std::string text = "text='Checking system health | %{gmtime\:%Y/%m/%d %H\\:%M\\:%S}'";
     if (avfilter_graph_send_command(filterGraph, "text", "reinit",
                                       text.c_str(), NULL, 0, 0) < 0) {
@@ -267,11 +279,13 @@ class Streamer {
     StreamImage();
   }
 
-  void Stream(int64_t chan0, double cfreq, const float *data_ptr,
-              bool is_hc_freq) {
+  void Stream(int64_t chan0, double cfreq, uint64_t time_tag,
+              const float *data_ptr, bool is_hc_freq) {
+    SetFrameTimestamp(time_tag);
     if (m_chan0 != chan0) {
       m_chan0 = chan0;
-      std::string text = "%{gmtime\:%Y/%m/%d %H\\:%M\\:%S}'";
+      // the timestamp is taken from the frame metadata set above
+      std::string text = "%{metadata:epic_time}'";
       char buf[1024];
       std::snprintf(buf, sizeof(buf), "%.2f MHz", cfreq);
       text = "text='" + std::string(buf) + " |  " + text;
@@ -456,7 +470,7 @@ Streamer::Status_t Streamer::InitFilterGraph() {
       avfilter_init_str(scaleContext, scale_buf) < 0 ||
       avfilter_init_str(
           textContext,
-          "text='%{gmtime\:%Y/%m/%d %H\\:%M\\:%S}':fontsize=h/"
+          "text='%{metadata:epic_time}':fontsize=h/"
           "25:font=Times:fontcolor=black:box=1:boxcolor=white@0.7:boxborderw="
           "5:x=(w-1.05*text_w):y=(h-1.4*text_h)") < 0 ||
       avfilter_init_str(
@@ -574,6 +588,35 @@ Streamer::Status_t Streamer::InitVideoPkt() {
   return {};
 }
 
+void Streamer::SetFramePts(int64_t p_pts) {
+  // The encoder requires strictly increasing PTS
+  if (m_last_pts != AV_NOPTS_VALUE && p_pts <= m_last_pts) {
+    p_pts = m_last_pts + 1;
+  }
+  frame->pts = p_pts;
+  m_last_pts = p_pts;
+}
+
+/**
+ * @brief Stamp the frame with the observation time of the image
+ *
+ * @param p_time_tag Number of FS samples since the Unix epoch
+ */
+void Streamer::SetFrameTimestamp(uint64_t p_time_tag) {
+  SetFramePts(av_rescale_q_rnd(p_time_tag, AVRational{1, static_cast<int>(FS)},
+                               codecContext->time_base,
+                               static_cast<AVRounding>(AV_ROUND_NEAR_INF |
+                                                       AV_ROUND_PASS_MINMAX)));
+
+  std::time_t epoch_s = p_time_tag / FS;
+  std::tm tm_utc;
+  gmtime_r(&epoch_s, &tm_utc);
+  char buf[64];
+  std::strftime(buf, sizeof(buf), "%Y/%m/%d %H:%M:%S", &tm_utc);
+  // read by the drawtext filter via %{metadata:epic_time}
+  av_dict_set(&frame->metadata, "epic_time", buf, 0);
+}
+
 void Streamer::StreamImage() {
   int ret;
   ret = av_buffersrc_write_frame(buffersrcContext, frame);
@@ -597,8 +640,9 @@ void Streamer::StreamImage() {
     fprintf(stderr, "Error getting frame: %s\n", av_err2str(ret));
     CheckError("Error: Failed to get frame");
   }
-  // scaledFrame->pts = _frame_counter;// * m_time_base_den / m_fps;
-  //   _frame_counter += av_rescale_q(1, codecContext->time_base, videoStream->time_base);
+  scaledFrame->pts =
+      av_rescale_q(scaledFrame->pts, av_buffersink_get_time_base(buffersinkContext),
+                   codecContext->time_base);
   ret=avcodec_send_frame(codecContext, scaledFrame);
   if ( ret< 0) {
     fprintf(stderr, "Error getting frame from buffersink: %s\n", av_err2str(ret));
@@ -608,8 +652,7 @@ void Streamer::StreamImage() {
   av_frame_unref(scaledFrame);
 
   while (avcodec_receive_packet(codecContext, pkt) == 0) {
-    // Set PTS and DTS (decoding timestamp) for the packet
-    pkt->pts = pkt->dts = av_rescale_q(av_gettime(), AV_TIME_BASE_Q, codecContext->time_base);//_frame_counter;
+    // PTS and DTS are carried over from the frame timestamps by the encoder
     // Write packet to output
     av_packet_rescale_ts(pkt, codecContext->time_base, videoStream->time_base);
     ret = av_interleaved_write_frame(outputContext, pkt);
