@@ -266,6 +266,8 @@ class Communicator(object):
     def __init__(self, subsystem='MCS'):
         # TODO: Load port numbers etc. from config
         #sender   = MsgSender(("localhost",1742), subsystem=subsystem)
+        # NDP replaced ADP and answers on the same address. It drops any
+        # message not addressed to NDP.
         self.sender   = MsgSender(("adp",1742), subsystem=subsystem)
         self.receiver = MsgReceiver(("0.0.0.0",1743))
         self.sender.input_queue = queue.Queue()
@@ -300,7 +302,7 @@ class Communicator(object):
         self.status, data = self._get_reply(timeout)
         return data
     def report(self, data, fmt=None, timeout=5.):
-        msg = Msg(dst='ADP', cmd='RPT', data=data)
+        msg = Msg(dst='NDP', cmd='RPT', data=data)
         data = self._send(msg, timeout)
         if fmt is None or fmt == 's':
             try:
@@ -312,7 +314,7 @@ class Communicator(object):
         else:
             return struct.unpack('>'+fmt, data)
     def command(self, cmd, data='', timeout=5.):
-        msg = Msg(dst='ADP', cmd=cmd, data=data)
+        msg = Msg(dst='NDP', cmd=cmd, data=data)
         self._send(msg, timeout)
 
 class SafeSocket(socket.socket):

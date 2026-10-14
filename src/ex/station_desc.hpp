@@ -65,10 +65,12 @@ int GetChan0Verbs(std::string ip, int port) {
   receiver.set_address(ip, port);
   receiver.bind_socket();
   receiver.init_receiver();
-  int nbytes = receiver.recv_packet(buf, ChipsOffset_t::value);
+  int nbytes = receiver.recv_packet(buf, Snap2Offset_t::value);
   // std::cout<<nbytes;
-  const chips_hdr_type* pkt_hdr = reinterpret_cast<chips_hdr_type*>(buf);
-  return (ntohs(pkt_hdr->chan0));
+  const snap2_hdr_type* pkt_hdr = reinterpret_cast<snap2_hdr_type*>(buf);
+  // first channel of the stream, not of this packet's channel block
+  return be32toh(pkt_hdr->chan0) -
+         be32toh(pkt_hdr->chan_block_id) * be16toh(pkt_hdr->nchan);
 }
 
 #ifdef _USE_VMA
@@ -91,18 +93,15 @@ uint64_t GetFirstSeqIdVerbs(std::string ip, int port) {
   receiver.set_address(ip, port);
   receiver.bind_socket();
   receiver.init_receiver();
-  int nbytes = receiver.recv_packet(buf, ChipsOffset_t::value);
+  int nbytes = receiver.recv_packet(buf, Snap2Offset_t::value);
   // std::cout<<nbytes;
-  const chips_hdr_type* pkt_hdr = reinterpret_cast<chips_hdr_type*>(buf);
+  const snap2_hdr_type* pkt_hdr = reinterpret_cast<snap2_hdr_type*>(buf);
   return (be64toh(pkt_hdr->seq));
 }
 
-// 239.168.40.11 4015/4016
-// 239.168.40.12 4015/4016
-// 239.168.40.13 4015/4016
-// 239.168.40.14 4015/4016
-// 239.168.40.15 4015/4016
-// 239.168.40.16 4015/4016
+// NDP F-Engine streams at LWA-SV (see config/hosts in ng_digital_processor)
+// 239.168.40.11-14  10000/11000
+// 239.168.40.211-214 10000/11000
 
 /**
  * @brief Print all end points and their frequencies
@@ -119,10 +118,10 @@ void PrintStationEndPoints() {}
  */
 template <>
 void PrintStationEndPoints<LWA_SV>() {
-  auto address_v = std::vector<std::string>{"239.168.40.11", "239.168.40.12",
-                                            "239.168.40.13", "239.168.40.14",
-                                            "239.168.40.15", "239.168.40.16"};
-  auto port_v = std::vector<int>{4015, 4016};
+  auto address_v = std::vector<std::string>{
+      "239.168.40.11",  "239.168.40.12",  "239.168.40.13",  "239.168.40.14",
+      "239.168.40.211", "239.168.40.212", "239.168.40.213", "239.168.40.214"};
+  auto port_v = std::vector<int>{10000, 11000};
 
   for (auto& port : port_v) {
     for (auto& ip : address_v) {

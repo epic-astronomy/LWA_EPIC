@@ -32,7 +32,8 @@ import json
 
 
 FS = 196.0e6
-CHAN_BW = 25.0e3
+SEQ_MULT_S = 8192  # FS samples per NDP spectrum
+CHAN_BW = FS / SEQ_MULT_S  # NDP channel width
 
 
 def get_endpoint(service="epic-watchdog.service.consul"):
@@ -77,7 +78,8 @@ def get_image_headers_sv(seq_start_id, grid_size, grid_res):
     at Sevilleta
     """
     phdu = fits.PrimaryHDU()
-    time_tag = get_ADP_time_from_unix_epoch() + seq_start_id / CHAN_BW
+    # NDP sequences count from the Unix epoch
+    time_tag = seq_start_id * SEQ_MULT_S / FS
     phdu.header["DATE-OBS"] = Time(
         time_tag,
         format="unix",

@@ -276,7 +276,11 @@ bool MOFFCorrelator<Dtype, BuffMngr>::ResetImagingConfig(int p_nchan,
       LOG(FATAL) << "Number of output channels exceeds the input channels";
     }
     this->m_f_eng_bytes = m_nchan_in * LWA_SV_INP_PER_CHAN * m_nseq_per_gulp;
-    this->m_nbytes_f_eng_per_stream = m_f_eng_bytes / m_nstreams;
+    // Each stream copies only the channels it images (the data are channel
+    // major). Splitting the input channels instead hands a stream channels
+    // copied on other streams, which races when nchan_in != nchan_out.
+    this->m_nbytes_f_eng_per_stream =
+        (m_nchan_out / m_nstreams) * LWA_SV_INP_PER_CHAN * m_nseq_per_gulp;
     VLOG(3) << "Allocating F-eng data on the GPU. Size: " << this->m_f_eng_bytes
             << " bytes";
     this->AllocateFEngGpu(m_f_eng_bytes);

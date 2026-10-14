@@ -1,3 +1,12 @@
+# [0.16.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.22...v0.16.0) (2026-10-14)
+
+
+### Features
+
+* support the NDP F-Engine after the ADP retirement ([327db66](https://github.com/epic-astronomy/LWA_EPIC/commit/327db66127b9367d40d61f36ea7182e726ee042c))
+
+
+
 ## [0.15.22](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.21...v0.15.22) (2026-10-13)
 
 
@@ -31,15 +40,6 @@
 ### Bug Fixes
 
 * set the live option ([0abde82](https://github.com/epic-astronomy/LWA_EPIC/commit/0abde820c72c8ee3e0c916f5b82d56f98e78b06c))
-
-
-
-## [0.15.18](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.17...v0.15.18) (2024-11-21)
-
-
-### Bug Fixes
-
-* use system clock as time stamp ([e4730a4](https://github.com/epic-astronomy/LWA_EPIC/commit/e4730a49804220eaafebb911c7a180972cceea5d))
 
 
 
