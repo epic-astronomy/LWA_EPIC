@@ -47,11 +47,14 @@ enum CONSTANTS {
   // this is ~2x the typical size
   SINGLE_SEQ_SIZE = MAX_PACKET_SIZE * NROACH_BOARDS,
   GULP_1K_SEQ_SIZE = 1000 * SINGLE_SEQ_SIZE,
-  BANDWIDTH = 25000,
   FS = static_cast<int>(196e6),
-  SEQ_MULT_S = FS / BANDWIDTH,
-  SAMPLING_LEN_uS = 40,  // micro-seconds
-  NSEQ_PER_SEC = static_cast<int>(1e6 / SAMPLING_LEN_uS),
+  // NDP F-Engine: 8192-point FFT of the FS sample stream. Also the number of
+  // FS samples per spectrum (sequence).
+  SEQ_MULT_S = 8192,
+  // NDP sends each stream's channels in this many packets per board
+  NDP_CHAN_BLOCKS = 2,
+  // Number of channels kept from the centre of each NDP stream (192 channels)
+  NDP_NCHAN_SELECT = 128,
   LWA_SV_NSTANDS = 256,
   LWA_SV_NPOLS = 2,
   LWA_SV_INP_PER_CHAN = LWA_SV_NSTANDS * LWA_SV_NPOLS,
@@ -65,6 +68,13 @@ enum CONSTANTS {
   MAX_ALLOWED_SUPPORT_SIZE = 9,
   NSTOKES = 4
 };
+
+/// Channel width in Hz (~23.93 kHz)
+constexpr double BANDWIDTH = static_cast<double>(FS) / SEQ_MULT_S;
+/// Length of a sequence (one spectrum) in micro-seconds (~41.8 us)
+constexpr double SAMPLING_LEN_uS = 1e6 / BANDWIDTH;
+/// Number of sequences per second. Not an integer.
+constexpr double NSEQ_PER_SEC = BANDWIDTH;
 
 enum STATIONS { LWA_SV = 1 };
 

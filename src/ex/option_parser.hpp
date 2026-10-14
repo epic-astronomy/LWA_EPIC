@@ -42,7 +42,7 @@ cxxopts::Options GetEpicOptions() {
       cxxopts::value<std::vector<std::string>>()->default_value(
           "239.168.40.11,239.168.40.12"))(
       "port", "F-Engine UDP Stream Port",
-      cxxopts::value<std::vector<int>>()->default_value("4015,4015"))(
+      cxxopts::value<std::vector<int>>()->default_value("10000,10000"))(
       "printendpoints",
       "Print the IP/port values and their channels for each endpoint in the "
       "LWA-SV station and exit",
@@ -141,7 +141,7 @@ std::optional<std::string> ValidateOptions(const cxxopts::ParseResult& result) {
            ". Image size can only be 64 or 128"s;
   }
 
-  int nts = result["nts"].as<int>() * 40e-3;
+  int nts = result["nts"].as<int>() * SAMPLING_LEN_uS * 1e-3;
   int accumulate = result["seq_accum"].as<int>();
 
   if (accumulate < nts) {

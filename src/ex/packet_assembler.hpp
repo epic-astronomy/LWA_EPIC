@@ -79,7 +79,8 @@ class PacketAssembler : public PktProcessor {
   size_t m_n_valid_bytes;
   size_t m_min_pkt_limit;
   void m_reset_pkt_stats();
-  void m_nudge_seq_start();  // to the nearest second
+  void m_nudge_seq_start();  // to a gulp boundary about a second away
+  uint64_t m_next_gulp_boundary(uint64_t p_seq);
   bool m_last_pkt_available{false};
 
   unsigned int m_gauge_pktqual_id{0};
@@ -115,15 +116,17 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::PacketAssembler(
   m_receiver->bind_socket();
   // std::cout << "initing receiver address\n";
   if (Receiver::type == VERBS) {
-    VLOG(4) << AlignmentOffset<chips_hdr_type, uint8_t,
-                               BF_VERBS_PAYLOAD_OFFSET>::value
+    using hdr_t = typename PktProcessor::header_t;
+    VLOG(4) << AlignmentOffset<hdr_t, uint8_t, BF_VERBS_PAYLOAD_OFFSET>::value
             << "\n";
-    m_receiver->init_receiver(AlignmentOffset<chips_hdr_type, uint8_t,
-                                              BF_VERBS_PAYLOAD_OFFSET>::value);
+    m_receiver->init_receiver(
+        AlignmentOffset<hdr_t, uint8_t, BF_VERBS_PAYLOAD_OFFSET>::value);
   }
   m_min_pkt_limit = static_cast<float>(ALLOWED_PKT_DROP) * 0.01 *
                     PktProcessor::nsrc * m_nseq_per_gulp;
-  m_time_tag0 = GetAdpTimeFromUnixEpoch() * FS;
+  // NDP sequence numbers count from the Unix epoch. The UTC start time from
+  // the station control is no longer needed to time tag the gulps.
+  m_time_tag0 = 0;
 
   m_gauge_pktqual_id = PrometheusExporter::AddRuntimeSummaryLabel(
       {{"type", "data_quality"},
@@ -142,10 +145,19 @@ void PacketAssembler<BufferMngr, Receiver, PktProcessor>::m_reset_pkt_stats() {
 
 template <typename BufferMngr, class Receiver, class PktProcessor>
 void PacketAssembler<BufferMngr, Receiver, PktProcessor>::m_nudge_seq_start() {
+  // Start about a second from now. There is no integer number of sequences
+  // per second, so align the gulps to a multiple of the gulp size instead of
+  // to a second. The sequence numbers are absolute, hence every instance ends
+  // up with the same gulp boundaries.
   m_seq_start =
-      size_t((m_seq_start - 1) / static_cast<double>(NSEQ_PER_SEC) + 2) *
-      NSEQ_PER_SEC;
+      m_next_gulp_boundary(m_seq_start + static_cast<uint64_t>(NSEQ_PER_SEC));
   m_seq_end = m_seq_start + m_nseq_per_gulp;
+}
+
+template <typename BufferMngr, class Receiver, class PktProcessor>
+uint64_t PacketAssembler<BufferMngr, Receiver, PktProcessor>::
+    m_next_gulp_boundary(uint64_t p_seq) {
+  return (p_seq + m_nseq_per_gulp - 1) / m_nseq_per_gulp * m_nseq_per_gulp;
 }
 
 template <typename BufferMngr, class Receiver, class PktProcessor>
@@ -206,9 +218,11 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::get_gulp() {
                 << int(mbuf->GetDataPtr()[1]);
 
         if (m_recent_hdr.seq >= (m_seq_end + m_nseq_per_gulp)) {
-          m_seq_start = std::ceil(static_cast<double>(m_recent_hdr.seq) /
-                                  static_cast<double>(NSEQ_PER_SEC)) *
-                        NSEQ_PER_SEC;  // m_recent_hdr.seq;
+          // Skip ahead to the gulp holding the pending packet. Rounding up
+          // would leave the packet before m_seq_start and give it a negative
+          // time index in copy_to_buffer.
+          m_seq_start =
+              m_recent_hdr.seq / m_nseq_per_gulp * m_nseq_per_gulp;
           m_seq_end = m_seq_start + m_nseq_per_gulp;
         } else {
           m_seq_start = m_seq_end;  // m_recent_hdr.seq;
@@ -269,8 +283,12 @@ using vma_receiver_t =
 #endif
 using verbs_receiver_t =
     VerbsReceiver<uint8_t, AlignedBuffer, MultiCastUDPSocket, REG_COPY>;
-using default_pkt_processor_t =
+// ADP (ROACH2) F-Engine packets. ADP was retired in February 2026.
+using adp_pkt_processor_t =
     PacketProcessor<chips_hdr_type, uint8_t, AlignedCopier, CHAN_MAJOR>;
+// NDP (ZCU102) F-Engine packets
+using default_pkt_processor_t =
+    PacketProcessor<snap2_hdr_type, uint8_t, AlignedCopier, CHAN_MAJOR>;
 
 template class PacketAssembler<default_buf_mngr_t, default_receiver_t,
                                default_pkt_processor_t>;

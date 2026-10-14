@@ -41,4 +41,23 @@ struct __attribute__((packed)) chips_hdr_type {
                  ///< of the service.
 };
 
+/**
+ * @brief NDP (ZCU102) F-Engine packet structure. Same as bifrost's snap2
+ * format. Each board sends its 32 inputs for a stream's channels split into
+ * blocks of nchan channels.
+ *
+ */
+struct __attribute__((packed)) snap2_hdr_type {
+  // Note: Big endian
+  uint64_t seq;            ///< Spectrum number since the Unix epoch
+  uint32_t sync_time;      ///< Unix sync time
+  uint16_t npol;           ///< Number of inputs in this packet (32)
+  uint16_t npol_tot;       ///< Total number of inputs (512)
+  uint16_t nchan;          ///< Number of channels in this packet
+  uint16_t nchan_tot;      ///< Number of channels in this stream
+  uint32_t chan_block_id;  ///< Index of this block of channels in the stream
+  uint32_t chan0;          ///< First channel in this packet
+  uint32_t pol0;           ///< First input in this packet
+};
+
 #endif  // SRC_EX_FORMATS_H_
