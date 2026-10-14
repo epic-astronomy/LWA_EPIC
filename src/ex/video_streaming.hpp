@@ -53,6 +53,7 @@ extern "C" {
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 #include <set>
 #include <thread>
 
@@ -105,6 +106,14 @@ class Streamer {
 
   std::unique_ptr<float[]> m_frame_buf;
   std::unique_ptr<float[]> m_raw_frame;
+  /// Colour scale (UpdateColourScale): limits smoothed over m_scale_tau_s
+  float m_scale_lo{0}, m_scale_hi{1};
+  bool m_scale_set{false};
+  double m_scale_tau_s{3.0};
+  double m_scale_time_s{0};
+  /// Observation time of the current frame (s since the Unix epoch)
+  double m_frame_time_s{0};
+  std::vector<float> m_sky, m_zenith_sky;
   int64_t m_chan0{0};
   int m_chan_stream_no{1};
   int m_grid_size{128};
@@ -219,38 +228,65 @@ class Streamer {
       }
     }
 
-    // check for the normalization above 30 degrees
-    // radius = grid_size * 0.44 * cos(30 deg)
-    //        = grid_size * 0.38
-    int xcen = m_grid_size / 2;
-    int ycen = xcen;
-    float radius2 = (m_grid_size * 0.38) * (m_grid_size * 0.38);
-    float min_val = *std::min_element(m_frame_buf.get(), m_frame_buf.get()+m_grid_size*m_grid_size);
-    //float max_val_full = *std::max_element(m_frame_buf.get(), m_frame_buf.get()+m_grid_size*m_grid_size);
-    float max_val = 0;
-
-
-    for (int i = 0; i < m_grid_size; ++i) {
-      for (int j = 0; j < m_grid_size; ++j) {
-        if (((i - xcen) * (i - xcen) + (j - ycen) * (j - ycen)) <= radius2) {
-          max_val = std::max(max_val, m_frame_buf.get()[i * m_grid_size + j]);
-        }
-      }
-    }
-
-    
-
+    UpdateColourScale();
+    const float lo = m_scale_lo, span = std::max(m_scale_hi - m_scale_lo, 1e-12f);
     auto *frame16 = reinterpret_cast<uint16_t*>(frame->data[0]);
+    for (int i = 0; i < m_npixels_grid; ++i) {
+      const float v = (m_frame_buf.get()[i] - lo) * (1023.f / span);
+      frame16[i] = static_cast<uint16_t>(std::clamp(v, 0.f, 1023.f));
+    }
+  }
+
+  /**
+   * @brief Update the colour scale (m_scale_lo, m_scale_hi) for the current frame.
+   *
+   * Every image used to be scaled to its own minimum (over the whole grid,
+   * beyond the horizon too) and maximum (within ~30 deg elevation). Without a
+   * bright source in view the maximum is the brightest noise pixel, which
+   * changes from image to image, so the colours flickered, and a single deep
+   * negative pixel beyond the horizon pushed the sky into the top of the
+   * colour map. Instead, take robust limits from the sky only and smooth them
+   * over a few seconds of observation time:
+   *   low  = 1st percentile above ~10 deg elevation
+   *   high = 99.9th percentile above ~30 deg elevation
+   */
+  void UpdateColourScale() {
+    const int cen = m_grid_size / 2;
+    // radius of elevation e in pixels: 0.44 * grid_size * cos(e)
+    const float r10 = 0.44f * m_grid_size * std::cos(10.f * float(M_PI) / 180.f);
+    const float r30 = 0.44f * m_grid_size * std::cos(30.f * float(M_PI) / 180.f);
+    m_sky.clear();
+    m_zenith_sky.clear();
     for (int i = 0; i < m_grid_size; ++i) {
       for (int j = 0; j < m_grid_size; ++j) {
-        auto val = m_frame_buf.get()[i * m_grid_size + j];
-        if (val > max_val) {
-          frame16[i * m_grid_size + j] = 512;
-        } else {
-          frame16[i * m_grid_size + j] =  (val-min_val) * (1023.f) / (max_val-min_val);
-        }
+        const float r2 = float((i - cen) * (i - cen) + (j - cen) * (j - cen));
+        const float v = m_frame_buf.get()[i * m_grid_size + j];
+        if (!std::isfinite(v)) continue;
+        if (r2 <= r10 * r10) m_sky.push_back(v);
+        if (r2 <= r30 * r30) m_zenith_sky.push_back(v);
       }
     }
+    if (m_sky.empty() || m_zenith_sky.empty()) return;
+    auto pct = [](std::vector<float>& a, double q) {
+      auto k = static_cast<size_t>(q * (a.size() - 1));
+      std::nth_element(a.begin(), a.begin() + k, a.end());
+      return a[k];
+    };
+    const float lo = pct(m_sky, 0.01);
+    const float hi = std::max(pct(m_zenith_sky, 0.999), lo);
+    // Exponential average over m_scale_tau_s of observation time; start over
+    // after a gap (restart, frequency change)
+    const double dt = m_frame_time_s - m_scale_time_s;
+    if (!m_scale_set || dt <= 0 || dt > 5.0) {
+      m_scale_lo = lo;
+      m_scale_hi = hi;
+      m_scale_set = true;
+    } else {
+      const float a = static_cast<float>(1.0 - std::exp(-dt / m_scale_tau_s));
+      m_scale_lo += a * (lo - m_scale_lo);
+      m_scale_hi += a * (hi - m_scale_hi);
+    }
+    m_scale_time_s = m_frame_time_s;
   }
 
   void StreamEmpty(){
@@ -608,6 +644,7 @@ void Streamer::SetFrameTimestamp(uint64_t p_time_tag) {
                                static_cast<AVRounding>(AV_ROUND_NEAR_INF |
                                                        AV_ROUND_PASS_MINMAX)));
 
+  m_frame_time_s = static_cast<double>(p_time_tag) / FS;
   std::time_t epoch_s = p_time_tag / FS;
   std::tm tm_utc;
   gmtime_r(&epoch_s, &tm_utc);
