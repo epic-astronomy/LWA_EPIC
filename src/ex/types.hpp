@@ -75,6 +75,8 @@ struct MOFFCorrelatorDesc {
   float grid_res_deg{1};
   int support_size{3};
   bool is_remove_autocorr{false};
+  /// Sequences per kernel launch; -1 = 100 with 16-bit accumulation, else 0
+  int seq_chunk{-1};
   /// @brief Number of streams to split a gulp into. Can be at most
   /// MAX_GULP_STREAMS
   int nstreams{1};
@@ -88,6 +90,8 @@ struct MOFFCorrelatorDesc {
   int max_tries_acq_buf{5};
   int kernel_oversampling_factor{2};
   bool use_bf16_accum{false};
+  /// @brief Use complex w-projected gridding kernels
+  bool use_wproj{false};
 };
 
 struct OutImgDesc {

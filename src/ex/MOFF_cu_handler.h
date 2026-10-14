@@ -106,6 +106,22 @@ class MOFFCuHandler {
   float* m_gcf_elem;
   bool is_m_gcf_elem_set{false};
 
+  /// Optional complex (w-projected) kernel elements, interleaved re/im with the
+  /// same layout as m_gcf_elem. nullptr selects the real kernel path.
+  float* m_gcf_elem_cplx{nullptr};
+
+  /// Per-stand auto-correlations of the gridding weights (ComputeAcorrKernels),
+  /// [chan][stand][(2 support - 1)^2]. nullptr leaves the antenna
+  /// auto-correlations in the image.
+  float2* m_acorr_kernels{nullptr};
+  /// Stand powers carried between the chunked launches of a gulp
+  /// [chan][stand], so the auto-correlations are removed once per gulp
+  float4* m_acorr_power{nullptr};
+  /// Sequences per kernel launch (0 = the whole gulp in one launch)
+  int m_seq_chunk{0};
+  bool m_remove_autocorrs{false};
+  void UpdateAcorrKernels(int p_nchan, int p_support);
+
   /// GCF correction kernel
   /// The inverse of the iFFT of this kernel must be multipled with the final
   /// image The correction kernel can be the GCF itself or an average of the
@@ -142,6 +158,7 @@ class MOFFCuHandler {
   void SetImgGridDim();
 
   bool use_bf16_accum{false};
+
   unsigned int m_gulp_exec_gauge_id{0};
 
  public:
@@ -204,6 +221,37 @@ class MOFFCuHandler {
 
   void ResetGcfElem(int p_nchan, int p_support, int p_chan0, float p_delta,
                     int p_grid_size);
+
+  /**
+   * @brief Copy the real GCF kernel elements to the host
+   *
+   * @param p_out Host buffer of p_nchan * LWA_SV_NSTANDS * p_support^2 floats
+   */
+  void GetGcfElem(float* p_out, int p_nchan, int p_support);
+
+  /**
+   * @brief Upload complex (w-projected) kernel elements and switch the gridder
+   * to them. Passing nullptr frees them and restores the real kernel path.
+   *
+   * @param p_in Host buffer of p_nchan * LWA_SV_NSTANDS * p_support^2 complex
+   * values, interleaved re/im
+   */
+  void SetGcfElemCplx(const float* p_in, int p_nchan, int p_support);
+
+  /**
+   * @brief Remove the antenna auto-correlations from the images. Takes effect
+   * when the gridding weights are next set (SetGcfElemCplx).
+   */
+  void SetRemoveAutocorrs(bool p_remove);
+
+  /**
+   * @brief Image each gulp in kernel launches of p_seq_chunk sequences (0 =
+   * one launch). Each launch adds its sum into the output image, so the
+   * 16-bit on-chip accumulator never sums more than p_seq_chunk terms; summed
+   * over a whole 1000-sequence gulp it stalls and the image comes out ~24%
+   * low. Each extra launch costs ~0.17 ms per gulp on an RTX 4090.
+   */
+  void SetSeqChunk(int p_seq_chunk);
 
   ~MOFFCuHandler();
 };

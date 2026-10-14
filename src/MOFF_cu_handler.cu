@@ -28,7 +28,9 @@
 #include <cooperative_groups.h>
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
+#include <algorithm>
 #include <iostream>
+#include <string>
 #include <nvml.h>
 #include <glog/logging.h>
 
@@ -135,6 +137,61 @@ void MOFFCuHandler::ResetGcfElem(int p_nchan, int p_support, int p_chan0, float 
     cuda_check_err(cudaPeekAtLastError());
 }
 
+void MOFFCuHandler::GetGcfElem(float* p_out, int p_nchan, int p_support){
+    cuda_check_err(cudaSetDevice(m_device_id));
+    LOG_IF(FATAL, !is_m_gcf_elem_set) << "GCF elements are not set";
+    size_t nbytes = size_t(LWA_SV_NSTANDS) * p_nchan * p_support * p_support * sizeof(float);
+    cuda_check_err(cudaMemcpy(p_out, m_gcf_elem, nbytes, cudaMemcpyDeviceToHost));
+}
+
+void MOFFCuHandler::SetGcfElemCplx(const float* p_in, int p_nchan, int p_support){
+    cuda_check_err(cudaSetDevice(m_device_id));
+    if(m_gcf_elem_cplx != nullptr){
+        cuda_check_err(cudaFree(m_gcf_elem_cplx));
+        m_gcf_elem_cplx = nullptr;
+    }
+    if(p_in != nullptr){
+        size_t nbytes = size_t(LWA_SV_NSTANDS) * p_nchan * p_support * p_support * 2 * sizeof(float);
+        cuda_check_err(cudaMalloc(&m_gcf_elem_cplx, nbytes));
+        cuda_check_err(cudaMemcpy(m_gcf_elem_cplx, p_in, nbytes, cudaMemcpyHostToDevice));
+    }
+    // The gridding weights are final here (real or w-projected)
+    UpdateAcorrKernels(p_nchan, p_support);
+}
+
+void MOFFCuHandler::SetSeqChunk(int p_seq_chunk){
+    m_seq_chunk = std::max(0, p_seq_chunk);
+    LOG(INFO) << "Imaging each gulp in launches of "
+              << (m_seq_chunk > 0 ? std::to_string(m_seq_chunk) : std::string("all"))
+              << " sequences";
+}
+
+void MOFFCuHandler::SetRemoveAutocorrs(bool p_remove){
+    m_remove_autocorrs = p_remove;
+}
+
+void MOFFCuHandler::UpdateAcorrKernels(int p_nchan, int p_support){
+    cuda_check_err(cudaSetDevice(m_device_id));
+    if(m_acorr_kernels != nullptr){
+        cuda_check_err(cudaFree(m_acorr_kernels));
+        m_acorr_kernels = nullptr;
+    }
+    if(!m_remove_autocorrs || !is_m_gcf_elem_set){
+        return;
+    }
+    // Stand powers carried between the chunked launches of a gulp
+    if(m_acorr_power != nullptr){
+        cuda_check_err(cudaFree(m_acorr_power));
+    }
+    cuda_check_err(cudaMalloc(&m_acorr_power, size_t(LWA_SV_NSTANDS) * p_nchan * sizeof(float4)));
+    size_t ncell = size_t(2 * p_support - 1) * (2 * p_support - 1);
+    cuda_check_err(cudaMalloc(&m_acorr_kernels, size_t(LWA_SV_NSTANDS) * p_nchan * ncell * sizeof(float2)));
+    ComputeAcorrKernels<<<p_nchan, 256>>>(m_gcf_elem, reinterpret_cast<const float2*>(m_gcf_elem_cplx),
+                                          p_support, m_acorr_kernels, LWA_SV_NSTANDS);
+    cuda_check_err(cudaDeviceSynchronize());
+    cuda_check_err(cudaPeekAtLastError());
+}
+
 void MOFFCuHandler::GetCorrectionKernel(float* p_out_kernel, int p_support, int p_nchan){
     cuda_check_err(cudaSetDevice(m_device_id));
     if(m_nchan_in==0){
@@ -228,6 +285,7 @@ MOFFCuHandler::SetImagingKernel()
         m_img_block_dim = FFT128x128::block_dim;
         m_shared_mem_size = FFT128x128::shared_memory_size*1.5;
     }
+
     cudaFuncSetAttribute(
           m_imaging_kernel,
           cudaFuncAttributeMaxDynamicSharedMemorySize,
@@ -287,9 +345,6 @@ MOFFCuHandler::ProcessGulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, 
         auto stream_i = *(m_gulp_custreams.get() + i);
         int chan_offset = i * m_nchan_per_stream;
 
-        void* args[] = {
-            &m_f_eng_cu, &m_antpos_cu, &m_phases_cu, &m_nseq_per_gulp, &m_nchan_in, &m_gcf_tex, &m_output_cu, &chan_offset, &p_first, &m_gcf_elem, &m_correction_grid_d
-        };
 
         cuda_check_err(
           cudaMemcpyAsync(
@@ -303,7 +358,18 @@ MOFFCuHandler::ProcessGulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, 
             VLOG(2)<<"Null imaging kernel\n";
         }
         VLOG(2)<<m_img_grid_dim.x<<" "<<m_img_grid_dim.y<<" "<<m_img_block_dim.x<<" "<<m_img_block_dim.y<<" "<<m_shared_mem_size<<std::endl;
-        cuda_check_err(cudaLaunchKernel(m_imaging_kernel, m_img_grid_dim, m_img_block_dim, args, m_shared_mem_size, stream_i));
+        // The gulp is imaged in launches of m_seq_chunk sequences, each adding
+        // its sum into the output image, so the 16-bit on-chip accumulator
+        // never sums more than m_seq_chunk terms (see SetSeqChunk).
+        const int chunk = m_seq_chunk > 0 ? m_seq_chunk : m_nseq_per_gulp;
+        for (int seq_begin = 0; seq_begin < m_nseq_per_gulp; seq_begin += chunk) {
+            int seq_end = std::min(m_nseq_per_gulp, seq_begin + chunk);
+            bool first = p_first && seq_begin == 0;
+            void* args[] = {
+                &m_f_eng_cu, &m_antpos_cu, &m_phases_cu, &m_nseq_per_gulp, &m_nchan_in, &m_gcf_tex, &m_output_cu, &chan_offset, &first, &m_gcf_elem, &m_correction_grid_d, &m_gcf_elem_cplx, &m_acorr_kernels, &seq_begin, &seq_end, &m_acorr_power
+            };
+            cuda_check_err(cudaLaunchKernel(m_imaging_kernel, m_img_grid_dim, m_img_block_dim, args, m_shared_mem_size, stream_i));
+        }
 
         VLOG(2)<<"chan0: "<<p_chan0<<" delta: "<<p_delta<<"\n";
 
@@ -362,6 +428,18 @@ MOFFCuHandler::~MOFFCuHandler()
 
     if(is_m_gcf_elem_set){
         cudaFree(m_gcf_elem);
+    }
+
+    if(m_gcf_elem_cplx != nullptr){
+        cudaFree(m_gcf_elem_cplx);
+    }
+
+    if(m_acorr_kernels != nullptr){
+        cudaFree(m_acorr_kernels);
+    }
+
+    if(m_acorr_power != nullptr){
+        cudaFree(m_acorr_power);
     }
 
     if(is_out_mem_set){

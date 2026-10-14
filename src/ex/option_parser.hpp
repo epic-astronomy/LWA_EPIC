@@ -82,7 +82,23 @@ cxxopts::Options GetEpicOptions() {
       "precise.",
       cxxopts::value<bool>()->default_value("false"))(
       "chan_nbin", "Binning factor for the number of channels",
-      cxxopts::value<int>()->default_value("4"))
+      cxxopts::value<int>()->default_value("4"))(
+      "wproj",
+      "Fold each stand's residual w-term into complex per-antenna gridding "
+      "kernels (w-projection). The phase centre is set with the "
+      "EPIC_PHASE_CENTER environment variable (plane|zenith).",
+      cxxopts::value<bool>()->default_value("false"))(
+      "remove_autocorr",
+      "Remove the antenna auto-correlations from the images, per stand "
+      "(Thyagarajan et al. 2017, sec. 3.2). Without it the images carry a "
+      "smooth positive background equal to the total antenna power.",
+      cxxopts::value<bool>()->default_value("false"))(
+      "seq_chunk",
+      "Sequences per imaging kernel launch. The 16-bit on-chip accumulator "
+      "(--accum_16bit) under-sums long runs (~24% low over 1000 sequences), "
+      "so each gulp is imaged in launches of this many sequences. -1: 100 "
+      "with --accum_16bit, otherwise the whole gulp.",
+      cxxopts::value<int>()->default_value("-1"))
       ("out_dir","Output directory to store the long accumulation files. Defaults to the current directory.",cxxopts::value<std::string>()->default_value("./"));
 
   options.add_options("Execution options")(
@@ -267,6 +283,9 @@ void InitInfoMetric(const cxxopts::ParseResult& result){
     {"kernel_oversample",std::to_string(result["kernel_oversample"].as<int>())},
     {"accum_16bit",std::to_string(result["accum_16bit"].as<bool>())},
     {"chan_nbin",std::to_string(result["chan_nbin"].as<int>())},
+    {"wproj",std::to_string(result["wproj"].as<bool>())},
+    {"remove_autocorr",std::to_string(result["remove_autocorr"].as<bool>())},
+    {"seq_chunk",std::to_string(result["seq_chunk"].as<int>())},
     {"nstreams",std::to_string(result["nstreams"].as<int>())},
     {"ngpus",std::to_string(result["ngpus"].as<int>())},
     {"gpu_ids",VJoin(result["gpu_ids"].as<iVec>())},

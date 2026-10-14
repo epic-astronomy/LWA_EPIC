@@ -28,6 +28,7 @@
 #include <pybind11/numpy.h>
 
 #include <chrono>
+#include <complex>
 #include <cmath>
 #include <iostream>
 #include <string>
@@ -185,6 +186,68 @@ double GetLwasvLocs(T* out_ptr, int grid_size, double grid_resolution) {
  * @param nchan Number of channels
  * @param chan0 Initial channel number
  */
+/**
+ * @brief Compute complex w-projected kernel elements from the real ones
+ *
+ * Calls epic_geometry.wproj_kernel_weights, which folds each stand's residual
+ * w-term into its kernel and truncates it to the same support cells.
+ *
+ * @param p_gcf_elems Real kernel elements, nchan x LWA_SV_NSTANDS x support^2
+ * @param p_antpos_freq Grid positions used by the gridder, nchan x LWA_SV_NSTANDS x 3
+ * @param out_ptr Output, nchan x LWA_SV_NSTANDS x support^2 complex, interleaved re/im
+ */
+/**
+ * @brief Per-pixel gridding correction from the actual per-stand kernels
+ *
+ * Calls epic_geometry.gridding_correction: 1 / |mean_a FT(K_a)|^2 with each
+ * stand's kernel taken relative to its true grid position, scaled so the
+ * phase-centre value is (grid_size * oversample)^4 as before.
+ *
+ * @param out_ptr Output, nchan x grid_size x grid_size, kernel output order
+ */
+inline void GetGriddingCorrection(const float* p_gcf_elems,
+                                  const float* p_antpos_freq, int nchan,
+                                  int chan0, int support, int grid_size,
+                                  int oversample, float* out_ptr) {
+  py::gil_scoped_acquire acquire;
+  auto elems = py::array_t<float>({size_t(nchan), size_t(LWA_SV_NSTANDS),
+                                   size_t(support * support)},
+                                  p_gcf_elems);
+  auto antpos = py::array_t<float>(
+      {size_t(nchan), size_t(LWA_SV_NSTANDS), size_t(3)}, p_antpos_freq);
+  auto res = py::module_::import("epic_geometry")
+                 .attr("gridding_correction")(elems, antpos, chan0, nchan,
+                                              support, grid_size, oversample)
+                 .cast<py::array_t<float, py::array::c_style |
+                                              py::array::forcecast>>();
+  size_t n = size_t(nchan) * grid_size * grid_size;
+  LOG_IF(FATAL, size_t(res.size()) != n)
+      << "gridding_correction returned " << res.size() << " values, expected " << n;
+  std::copy(res.data(), res.data() + n, out_ptr);
+}
+
+inline void GetWprojGcfElems(const float* p_gcf_elems, const float* p_antpos_freq,
+                             int nchan, int chan0, int support, int grid_size,
+                             double grid_res, float* out_ptr) {
+  py::gil_scoped_acquire acquire;
+  size_t nelem = size_t(nchan) * LWA_SV_NSTANDS * support * support;
+  auto elems = py::array_t<float>({size_t(nchan), size_t(LWA_SV_NSTANDS),
+                                   size_t(support * support)},
+                                  p_gcf_elems);
+  auto antpos = py::array_t<float>(
+      {size_t(nchan), size_t(LWA_SV_NSTANDS), size_t(3)}, p_antpos_freq);
+  auto res = py::module_::import("epic_geometry")
+                 .attr("wproj_kernel_weights")(elems, antpos, chan0, nchan,
+                                               support, grid_size, grid_res)
+                 .cast<py::array_t<std::complex<float>,
+                                   py::array::c_style | py::array::forcecast>>();
+  LOG_IF(FATAL, size_t(res.size()) != nelem)
+      << "wproj_kernel_weights returned " << res.size() << " values, expected "
+      << nelem;
+  auto* ptr = reinterpret_cast<const float*>(res.data());
+  std::copy(ptr, ptr + 2 * nelem, out_ptr);
+}
+
 template <typename T>
 void GetLwasvPhases(T* out_ptr, int nchan, int chan0) {
   py::gil_scoped_acquire acquire;

@@ -261,6 +261,53 @@ __device__ float GcfPixelIntegral(cudaTextureObject_t gcf_tex, float dx,
 }
 
 /**
+ * @brief Auto-correlation of each stand's gridding weights, for removing the
+ * antenna auto-correlations from the image (BlockEpicImager, acorr_kernels).
+ *
+ * A stand's auto-correlation appears in the image as P |K^(l, m)|^2, where K^
+ * is the transform of its weights. Its uv-plane form is
+ *   A(d) = sum over cell pairs (e, e') with cell_e - cell_e' = d of K[e] conj(K[e'])
+ * (Thyagarajan et al. 2017, MNRAS 467, 715, sec. 3.2), computed here per
+ * stand so that each stand's own sub-cell sampling of the kernel is kept.
+ * Cell offsets follow the gridder: row dy = half - e / S, column dx = e % S - half.
+ *
+ * @param real Real weights, [chan][stand][S * S] (used when cplx is nullptr)
+ * @param cplx Optional complex (w-projected) weights, same layout
+ * @param support Support size S
+ * @param out [chan][stand][(2S - 1)^2], index (drow + S - 1) * (2S - 1) + dcol + S - 1
+ */
+__global__ void ComputeAcorrKernels(const float* __restrict__ real,
+                                    const float2* __restrict__ cplx,
+                                    int support, float2* out,
+                                    int nants = LWA_SV_NSTANDS) {
+  const int nelements = support * support;
+  const int half = support / 2;
+  const int s2 = 2 * support - 1;
+  const int ncell = s2 * s2;
+  const size_t chan_base = size_t(blockIdx.x) * nants;
+  for (int i = threadIdx.x; i < nants * ncell; i += blockDim.x) {
+    const int ant = i / ncell;
+    const int cell = i - ant * ncell;
+    const int drow = cell / s2 - (support - 1);
+    const int dcol = cell % s2 - (support - 1);
+    const size_t k0 = (chan_base + ant) * nelements;
+    float2 acc{0.f, 0.f};
+    for (int e = 0; e < nelements; ++e) {
+      // cell e' with row_e - row_e' = drow and col_e - col_e' = dcol
+      const int row2 = (half - e / support) - drow;
+      const int col2 = (e % support - half) - dcol;
+      if (row2 < -half || row2 > half || col2 < -half || col2 > half) continue;
+      const int e2 = (half - row2) * support + (col2 + half);
+      float2 a = cplx ? cplx[k0 + e] : float2{real[k0 + e], 0.f};
+      float2 b = cplx ? cplx[k0 + e2] : float2{real[k0 + e2], 0.f};
+      acc.x += a.x * b.x + a.y * b.y;  // a conj(b)
+      acc.y += a.y * b.x - a.x * b.y;
+    }
+    out[(chan_base + ant) * ncell + cell] = acc;
+  }
+}
+
+/**
  * @brief Compute gcf kernel cell scaling values for each antenna and frequency.
  *
  * The gcf is integrated over each cell to estimate the scaling value and are
@@ -502,7 +549,8 @@ template <
         std::is_same<__half2, typename FFT::output_type::value_type>::value,
         bool> = true>
 inline __host__ __device__ T ComputeUU(typename FFT::value_type pix) {
-  return static_cast<T>(pix.x.x * pix.y.x + pix.x.y * pix.y.y);
+  // RRII layout: x = (Re X, Re Y), y = (Im X, Im Y); Re(XY*) = ReX ReY + ImX ImY
+  return static_cast<T>(pix.x.x * pix.x.y + pix.y.x * pix.y.y);
 }
 
 /**

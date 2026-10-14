@@ -26,9 +26,12 @@
 #include <hwy/highway.h>
 
 #include <cmath>
+#include <cstdlib>
+#include <string>
 #include <iostream>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "./MOFF_cu_handler.h"
 #include "./buffer.hpp"
@@ -100,6 +103,8 @@ class MOFFCorrelator : public MOFFCuHandler {
   float m_accum_time;
   int m_ngulps_per_img;
   int m_kernel_oversampling_factor{2};
+  /// Use complex w-projected gridding kernels (--wproj)
+  bool m_use_wproj{false};
   int m_support_oversample{5};
 
   bool is_raw_ant_pos_set{false};
@@ -186,6 +191,7 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc) {
   LOG_IF(FATAL, m_nchan_out <= 0) << "Number of output channels must be >0.";
 
   m_kernel_oversampling_factor = p_desc.kernel_oversampling_factor;
+  m_use_wproj = p_desc.use_wproj;
 
   // Allocate the arrays for the over-sampled correction kernel and grid
   m_support_oversample = m_kernel_oversampling_factor > 1
@@ -207,8 +213,12 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc) {
       << "Number of sequences per gulp must be >0.";
 
   m_rm_autocorrs = p_desc.is_remove_autocorr;
-  LOG_IF(ERROR, m_rm_autocorrs)
-      << "Autocorrelation removal is not supported yet.";
+  this->SetRemoveAutocorrs(m_rm_autocorrs);
+  LOG_IF(INFO, m_rm_autocorrs) << "Removing antenna auto-correlations";
+  // 16-bit accumulation: launches of 100 sequences keep the image within ~0.6%
+  // of 32-bit accumulation at ~95% of the 40 ms budget (tests/gpu results).
+  this->SetSeqChunk(p_desc.seq_chunk >= 0 ? p_desc.seq_chunk
+                                          : (p_desc.use_bf16_accum ? 100 : 0));
 
   m_nstreams = p_desc.nstreams;
   LOG_IF(FATAL, (m_nstreams < 1 || m_nstreams > MAX_GULP_STREAMS))
@@ -299,14 +309,44 @@ bool MOFFCorrelator<Dtype, BuffMngr>::ResetImagingConfig(int p_nchan,
   // int finer_support =
   // (int(orig_support/2)+m_kernel_oversampling_factor/2)*2+1; m_support_size =
   // finer_support;
-  this->ResetGcfElem(m_nchan_out, m_support_oversample, m_chan0,
-                     m_delta / static_cast<float>(m_kernel_oversampling_factor),
-                     m_grid_size);
-  ResetCorrectionGrid(m_nchan_out);
-  // recompute the gcf elements with the original support
-  //  m_support_size = orig_support;
+  const char* corr_env = std::getenv("EPIC_GCF_CORRECTION");
+  const bool legacy_correction =
+      corr_env != nullptr && std::string(corr_env) == "legacy";
+  if (legacy_correction) {
+    // Previous method: average oversampled kernel. It omits the one-cell
+    // integration of GcfPixelIntegral and leaves the image too faint towards
+    // the horizon (~33% at 30 deg elevation for support 5).
+    this->ResetGcfElem(m_nchan_out, m_support_oversample, m_chan0,
+                       m_delta / static_cast<float>(m_kernel_oversampling_factor),
+                       m_grid_size);
+    ResetCorrectionGrid(m_nchan_out);
+  }
+  // Kernel elements used for gridding
   this->ResetGcfElem(m_nchan_out, m_support_size, m_chan0, m_delta,
                      m_grid_size);
+  size_t nelem = size_t(m_nchan_out) * LWA_SV_NSTANDS * m_support_size *
+                 m_support_size;
+  std::vector<float> real_elems(nelem);
+  this->GetGcfElem(real_elems.data(), m_nchan_out, m_support_size);
+  if (!legacy_correction) {
+    // Correction from the actual per-stand kernels (epic_geometry)
+    GetGriddingCorrection(real_elems.data(), m_ant_pos_freq.get(), m_nchan_out,
+                          m_chan0, m_support_size, m_grid_size,
+                          m_kernel_oversampling_factor, m_correction_grid_h.get());
+    this->SetCorrectionGrid(m_correction_grid_h.get(), m_grid_size, m_nchan_out);
+  }
+  if (m_use_wproj) {
+    // Fold each stand's residual w into its kernel (complex weights) using the
+    // real elements just computed on the GPU. Done once per frequency setup.
+    std::vector<float> cplx_elems(2 * nelem);
+    GetWprojGcfElems(real_elems.data(), m_ant_pos_freq.get(), m_nchan_out,
+                     m_chan0, m_support_size, m_grid_size, m_grid_res,
+                     cplx_elems.data());
+    this->SetGcfElemCplx(cplx_elems.data(), m_nchan_out, m_support_size);
+    LOG(INFO) << "Using w-projected gridding kernels";
+  } else {
+    this->SetGcfElemCplx(nullptr, m_nchan_out, m_support_size);
+  }
 
   return true;
 }

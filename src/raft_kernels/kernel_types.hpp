@@ -153,6 +153,9 @@ struct Kernel<_CORRELATOR> : KernelTypeDefs {
     correlator_options.kernel_oversampling_factor =
         options["kernel_oversample"].as<int>();
     correlator_options.use_bf16_accum = options["accum_16bit"].as<bool>();
+    correlator_options.use_wproj = options["wproj"].as<bool>();
+    correlator_options.is_remove_autocorr = options["remove_autocorr"].as<bool>();
+    correlator_options.seq_chunk = options["seq_chunk"].as<int>();
     correlator_options.nstreams = options["nstreams"].as<int>();
     VLOG(2) << "Extracted options";
     auto corr_ptr = std::make_unique<MOFFCorrelator_t>(correlator_options);

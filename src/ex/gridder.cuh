@@ -479,15 +479,65 @@ __device__ inline void grid_dual_pol_dx8(
   }
 }
 
+/**
+ * @brief Where the gridder reads the per-cell kernel weights from.
+ *
+ * The weights do not change during a launch, so they can be loaded once per
+ * launch instead of once per sequence. kGcfGlobal is the original behaviour.
+ * Benchmarked by tests/gpu (bench_imager, axis WeightMode).
+ */
+enum GcfWeightMode : int {
+  /// Global memory for every sequence (float real, float2 complex)
+  kGcfGlobal = 0,
+  /// Global memory for every sequence, complex weights stored as half2
+  kGcfGlobalHalf = 1,
+  /// This channel's weights staged in shared memory once per launch (float
+  /// real, half2 complex). Uses the 25,600 B left after the FFT grid, antenna
+  /// positions and auto-correlations in the 1.5 x FFT::shared_memory_size
+  /// allocation, so it needs NStands * Support^2 * 4 B <= 25,600 (Support <= 5).
+  kGcfShared = 2,
+  /// Staged in registers once per launch (float2; real weights as (w, 0))
+  kGcfReg = 3,
+  /// Staged in registers once per launch (half2; real weights as (w, 0))
+  kGcfRegHalf = 4,
+};
+
+/// Antennas handled by each gridding thread (passes over the stands)
+template <class FFT, unsigned int Support, unsigned int NStands>
+__host__ __device__ constexpr int GcfAntPasses() {
+  constexpr int nants_per_pass =
+      (FFT::block_dim.x * FFT::block_dim.y) / (Support * Support);
+  return (NStands + nants_per_pass - 1) / nants_per_pass;
+}
+
+/**
+ * @brief Kernel weights for one launch, wherever they are kept.
+ *
+ * real/cplx point to global memory (cplx is nullptr unless w-projection is
+ * on; for kGcfGlobalHalf it holds half2 values). staged points to this
+ * channel's weights in shared memory (kGcfShared). reg/reg_h hold this
+ * thread's weights for each pass over the stands (kGcfReg/kGcfRegHalf).
+ */
+template <int WMode, int KPasses>
+struct GcfWeights {
+  const float* real{nullptr};
+  const float* cplx{nullptr};
+  const void* staged{nullptr};
+  float2 reg[WMode == kGcfReg ? KPasses : 1];
+  __half2 reg_h[WMode == kGcfRegHalf ? KPasses : 1];
+};
+
 template <
     typename FFT, unsigned int Support, unsigned int NStands, typename InDtype,
+    int WMode, int KPasses,
     std::enable_if_t<
         std::is_same<__half2, typename FFT::output_type::value_type>::value,
         bool> = true>
 __device__ inline void DualPolEpicHalfGridder(
     cg::thread_block tb, const InDtype* f_eng, const float3* __restrict__ antpos,
     const float4* __restrict__ phases, typename FFT::value_type* smem,
-    float* gcf_grid_elem, ImageDiv Div, ACorrType acorr) {
+    const GcfWeights<WMode, KPasses>& w, ImageDiv Div, ACorrType acorr,
+    int channel_idx) {
   // auto tb = cg::this_thread_block();
   constexpr int nelements = Support * Support;
   constexpr float inv_nelements = 1.f / float(nelements);
@@ -503,14 +553,27 @@ __device__ inline void DualPolEpicHalfGridder(
   constexpr int half_grid = size_of<FFT>::value / 2;
   constexpr int nants_per_pass =
       (FFT::block_dim.x * FFT::block_dim.y) / nelements;
+  static_assert(KPasses == GcfAntPasses<FFT, Support, NStands>() || KPasses == 1,
+                "KPasses must match the gridder's passes over the stands");
   int offset = Div == UPPER ? 0 : size_of<FFT>::value / 2;
 
   if (this_thread_ant >= nants_per_pass) {  // cannot grid with these threads
     return;
   }
-  int channel_idx = blockIdx.x;
+  // channel_idx is the absolute channel (blockIdx.x + chan_offset). Indexing the
+  // kernel weights with blockIdx.x alone gave every stream after the first the
+  // weights of the first stream's channels.
+  const bool use_cplx = w.cplx != nullptr;
 
-  for (int ant = this_thread_ant; ant < NStands; ant += nants_per_pass) {
+  // Pass k grids stand this_thread_ant + k * nants_per_pass. Written with a
+  // compile-time trip count so register-staged weights (w.reg[k]) stay in
+  // registers.
+#pragma unroll
+  for (int k = 0; k < GcfAntPasses<FFT, Support, NStands>(); ++k) {
+    const int ant = this_thread_ant + k * nants_per_pass;
+    if (ant >= NStands) {
+      break;
+    }
     typename FFT::value_type temp_data;
     temp_data = __half2half2(0);
 
@@ -537,8 +600,37 @@ __device__ inline void DualPolEpicHalfGridder(
       continue;
     }
 
-    float scale = gcf_grid_elem[channel_idx * NStands * nelements +
-                                ant * nelements + this_thread_elem];
+    // Kernel weight of this cell: real (scale) or complex (kc, w-projection)
+    float scale = 0.f;
+    float2 kc{0.f, 0.f};
+    const int elem_idx =
+        channel_idx * NStands * nelements + ant * nelements + this_thread_elem;
+    if constexpr (WMode == kGcfGlobal) {
+      if (use_cplx) {
+        kc = reinterpret_cast<const float2*>(w.cplx)[elem_idx];
+      } else {
+        scale = w.real[elem_idx];
+      }
+    } else if constexpr (WMode == kGcfGlobalHalf) {
+      if (use_cplx) {
+        kc = __half22float2(reinterpret_cast<const __half2*>(w.cplx)[elem_idx]);
+      } else {
+        scale = w.real[elem_idx];
+      }
+    } else if constexpr (WMode == kGcfShared) {
+      const int sidx = ant * nelements + this_thread_elem;
+      if (use_cplx) {
+        kc = __half22float2(reinterpret_cast<const __half2*>(w.staged)[sidx]);
+      } else {
+        scale = reinterpret_cast<const float*>(w.staged)[sidx];
+      }
+    } else if constexpr (WMode == kGcfReg) {
+      kc = w.reg[k];
+      scale = kc.x;
+    } else {
+      kc = __half22float2(w.reg_h[k]);
+      scale = kc.x;
+    }
     auto phase_ant = phases[ant];
     // CNib _t;
     // _t.re=1;
@@ -548,6 +640,20 @@ __device__ inline void DualPolEpicHalfGridder(
     float c = 1;  // cosf(3.14 / 64. * ypix);
     float s = 0;  // sinf(3.14 / 64. * ypix);
     if constexpr(std::is_same_v<InDtype, CNib2>){
+    if (use_cplx) {
+      // w-projected kernel (--wproj): complex weight per cell, shared by both
+      // pols. Fold it into the antenna phase so the cell still costs one
+      // complex multiply per pol.
+      float one = 1.f;
+      __cms_f(temp_data.x,
+              float2{phase_ant.x * kc.x - phase_ant.y * kc.y,
+                     phase_ant.y * kc.x + phase_ant.x * kc.y},
+              f_eng[ant].X, one);
+      __cms_f(temp_data.y,
+              float2{phase_ant.z * kc.x - phase_ant.w * kc.y,
+                     phase_ant.w * kc.x + phase_ant.z * kc.y},
+              f_eng[ant].Y, one);
+    } else {
     __cms_f(temp_data.x,
             float2{phase_ant.x * c - phase_ant.y * s,
                    phase_ant.y * c + phase_ant.x * s},
@@ -556,6 +662,7 @@ __device__ inline void DualPolEpicHalfGridder(
             float2{phase_ant.z * c - phase_ant.w * s,
                    phase_ant.w * c + phase_ant.z * s},
             f_eng[ant].Y, scale);
+    }
     }
     if constexpr(std::is_same_v<InDtype,float4>){
       if(acorr==XX_YY){// perform fft for X*X and Y*Y independently
@@ -593,15 +700,18 @@ __device__ inline void DualPolEpicHalfGridder(
   // 0:1;
 };
 
-template<class FFT, unsigned int Support, unsigned int NStands, typename InDtype = CNib2>
+template<class FFT, unsigned int Support, unsigned int NStands, typename InDtype,
+         int WMode, int KPasses>
 __device__ inline void DualPolEpicFullGridder(cg::thread_block tb,
  const InDtype* f_eng,
   const float3* __restrict__ antpos,
     const float4* __restrict__ phases,
     typename FFT::value_type* shared_mem,
     typename FFT::value_type (&thread_data)[FFT::elements_per_thread],
-    float* gcf_grid_elem, ACorrType acorr){
-      auto HalfGridder = DualPolEpicHalfGridder<FFT,Support, NStands, InDtype>;
+    const GcfWeights<WMode, KPasses>& w, ACorrType acorr, int channel_idx){
+      // Called directly (not through a function pointer) so that the
+      // register-staged weights in w stay in registers.
+#define HalfGridder DualPolEpicHalfGridder<FFT, Support, NStands, InDtype, WMode, KPasses>
       constexpr int stride = size_of<FFT>::value / FFT::elements_per_thread;
   constexpr int row_size =
       size_of<FFT>::value;  // blockDim.x * FFT::elements_per_thread;
@@ -613,7 +723,7 @@ __device__ inline void DualPolEpicFullGridder(cg::thread_block tb,
         phases,
         shared_mem,
         //  gcf_tex,
-        gcf_grid_elem, UPPER, acorr);
+        w, UPPER, acorr, channel_idx);
 
     tb.sync();
 
@@ -624,11 +734,15 @@ __device__ inline void DualPolEpicFullGridder(cg::thread_block tb,
       auto index = (threadIdx.x + _reg * stride) + threadIdx.y * row_size;
       thread_data[_reg] = shared_mem[index];
     }
+    // Every thread must have read the upper half before it is cleared...
+    tb.sync();
 
     for (int i = tb.thread_rank();
          i < size_of<FFT>::value * size_of<FFT>::value / 2; i += tb.size()) {
       shared_mem[i] = __half2half2(0);
     }
+    // ...and the clear must finish before the lower half is gridded into it.
+    tb.sync();
 
     HalfGridder(
         tb,
@@ -638,7 +752,7 @@ __device__ inline void DualPolEpicFullGridder(cg::thread_block tb,
         phases,
         shared_mem,
         //  gcf_tex,
-        gcf_grid_elem, LOWER, acorr);
+        w, LOWER, acorr, channel_idx);
 
     tb.sync();
 
@@ -652,6 +766,7 @@ __device__ inline void DualPolEpicFullGridder(cg::thread_block tb,
     }
 
     tb.sync();
+#undef HalfGridder
 }
 
 template <
