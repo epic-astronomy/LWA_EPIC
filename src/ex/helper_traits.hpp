@@ -96,6 +96,9 @@ template struct AlignmentOffset<chips_hdr_type, uint8_t>;
 template struct AlignmentOffset<chips_hdr_type, uint8_t, 42>;
 using VerbsOffset_t = AlignmentOffset<chips_hdr_type, uint8_t, 42>;
 using ChipsOffset_t = AlignmentOffset<chips_hdr_type, uint8_t>;
+template struct AlignmentOffset<snap2_hdr_type, uint8_t>;
+template struct AlignmentOffset<snap2_hdr_type, uint8_t, 42>;
+using Snap2Offset_t = AlignmentOffset<snap2_hdr_type, uint8_t>;
 
 template <size_t N>
 using RftAffinityGrp = raft::parallel::affinity_group<N>;

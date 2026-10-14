@@ -138,7 +138,8 @@ class ChanReducerRft : public raft::kernel {
 
     out_meta = in_pld.get_mbuf()->GetMetadataRef();
     out_meta["nchan"] = (uint8_t)m_out_nchan;
-    out_meta["chan_width"] = BANDWIDTH * m_ncombine;
+    // stored as an int (Hz). The NDP channel width is not an integer.
+    out_meta["chan_width"] = static_cast<int>(std::lround(BANDWIDTH * m_ncombine));
 
     m_in_tensor.assign_data(in_pld.get_mbuf()->GetDataPtr());
     m_out_tensor.assign_data(out_pld.get_mbuf()->GetDataPtr());

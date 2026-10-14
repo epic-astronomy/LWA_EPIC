@@ -114,7 +114,7 @@ class GulpGen_rft : public raft::kernel {
                      .count();
       VLOG(3) << "Receiving the gulp";
       auto gulp = m_assmblr.get()->get_gulp();
-      auto gulp_len_ms = m_assmblr.get()->GetNumSeqPerGulp()*40e-6;
+      auto gulp_len_ms = m_assmblr.get()->GetNumSeqPerGulp()*SAMPLING_LEN_uS*1e-6;
       VLOG(3) << "Received";
       if (!gulp) {
         VLOG(2) << "Null gulp";
