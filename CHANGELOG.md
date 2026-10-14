@@ -1,3 +1,12 @@
+## [0.17.1](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.17.0...v0.17.1) (2026-10-14)
+
+
+### Bug Fixes
+
+* **build:** device-link epic++ for sm_89 ([cc6757e](https://github.com/epic-astronomy/LWA_EPIC/commit/cc6757efe2af741e38ef5a0280078ea859c44ca5))
+
+
+
 # [0.17.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.16.0...v0.17.0) (2026-10-14)
 
 
@@ -37,15 +46,6 @@
 ### Bug Fixes
 
 * add wait time before more empty gulps are received ([1d432a5](https://github.com/epic-astronomy/LWA_EPIC/commit/1d432a5b11bc2a1add0c90fb8809ede1cec39293))
-
-
-
-## [0.15.20](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.19...v0.15.20) (2024-11-21)
-
-
-### Bug Fixes
-
-* PTS and DTS rescaling ([07e24a8](https://github.com/epic-astronomy/LWA_EPIC/commit/07e24a80f53574954cb11c1a00ad778a5f1a3d8b))
 
 
 
