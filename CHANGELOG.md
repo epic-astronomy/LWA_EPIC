@@ -1,3 +1,18 @@
+# [0.17.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.16.0...v0.17.0) (2026-10-14)
+
+
+### Bug Fixes
+
+* use the NDP channel width in the geometry and GPU tests ([74d50a5](https://github.com/epic-astronomy/LWA_EPIC/commit/74d50a5eb6c812b5c771d4802b306716e51cc379))
+
+
+### Features
+
+* **geometry:** phase to the stand-plane normal and write precessed image WCS ([23fcaeb](https://github.com/epic-astronomy/LWA_EPIC/commit/23fcaebf7597d702674dd742c7ae2e4f9b87a7f6))
+* **imager:** w-projection, exact gridding correction, auto-correlation removal ([810b1fb](https://github.com/epic-astronomy/LWA_EPIC/commit/810b1fb455751bc0821c733e1c92f133f06e4ee3))
+
+
+
 # [0.16.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.22...v0.16.0) (2026-10-14)
 
 
@@ -31,15 +46,6 @@
 ### Bug Fixes
 
 * PTS and DTS rescaling ([07e24a8](https://github.com/epic-astronomy/LWA_EPIC/commit/07e24a80f53574954cb11c1a00ad778a5f1a3d8b))
-
-
-
-## [0.15.19](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.18...v0.15.19) (2024-11-21)
-
-
-### Bug Fixes
-
-* set the live option ([0abde82](https://github.com/epic-astronomy/LWA_EPIC/commit/0abde820c72c8ee3e0c916f5b82d56f98e78b06c))
 
 
 
