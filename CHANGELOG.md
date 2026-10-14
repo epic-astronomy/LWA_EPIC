@@ -1,3 +1,12 @@
+## [0.17.2](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.17.1...v0.17.2) (2026-10-14)
+
+
+### Bug Fixes
+
+* **packet_gen:** keep up after empty gulps and exit timed runs ([decc9b6](https://github.com/epic-astronomy/LWA_EPIC/commit/decc9b6191d229ed3e0ef27570aecc61aace4cf2))
+
+
+
 ## [0.17.1](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.17.0...v0.17.1) (2026-10-14)
 
 
@@ -37,15 +46,6 @@
 ### Bug Fixes
 
 * timestamping bug in video export ([77011a7](https://github.com/epic-astronomy/LWA_EPIC/commit/77011a7abb8a59c7e2449f9f4faf04b48a888dea))
-
-
-
-## [0.15.21](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.20...v0.15.21) (2024-11-23)
-
-
-### Bug Fixes
-
-* add wait time before more empty gulps are received ([1d432a5](https://github.com/epic-astronomy/LWA_EPIC/commit/1d432a5b11bc2a1add0c90fb8809ede1cec39293))
 
 
 
