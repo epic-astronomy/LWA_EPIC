@@ -117,6 +117,10 @@ target_compile_options(epic++ PRIVATE -march=haswell -maes -O3 -pthread  -Wall -
 
 set_target_properties( epic++
                        PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+# The device link of epic_cu's relocatable kernels happens here, so it needs
+# the same architecture; otherwise it uses the CMAKE_CUDA_ARCHITECTURES default
+# (52) and every kernel launch fails with "no kernel image is available".
+set_target_properties(epic++ PROPERTIES CUDA_ARCHITECTURES "89")
 
 
 add_dependencies(epic++ raft hwy epiclib)
