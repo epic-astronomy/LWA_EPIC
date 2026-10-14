@@ -12,6 +12,7 @@ import time
 from MCS2 import Communicator
 import uuid
 from daily_digest import ingest_daily_digest
+from epic_geometry import apply_wcs, array_frame
 
 DATE_FORMAT = "%Y_%m_%dT%H_%M_%S"
 FS = 196.0e6
@@ -34,6 +35,10 @@ def gen_loc_lwasv(grid_size, grid_resolution):
     lsl_locsf = np.array(
         [(ant.stand.x, ant.stand.y, ant.stand.z) for ant in lwasv[::2]]
     )
+    # Express the stands in the grid frame of the phase centre (rows: grid x,
+    # grid y, phase centre). For EPIC_PHASE_CENTER=zenith this is the identity.
+    _, frame, _ = array_frame()
+    lsl_locsf = lsl_locsf @ frame.T
     lsl_locsf[
         [i for i, a in enumerate(lwasv[::2]) if a.stand.id == 256], :
     ] = 0.0
@@ -67,18 +72,20 @@ def gen_phases_lwasv(nchan, chan0):
     phases = np.zeros((nchan, nstand, npol), dtype=np.complex64)
     bandwidth = CHAN_BW
     freq = np.arange(chan0, chan0 + nchan) * bandwidth
+    # Geometric delay towards the phase centre (zenith: p = (0, 0, 1), i.e. z/c)
+    pc, _, _ = array_frame()
 
     for i in range(nstand):
         # X
         a = lwasv.antennas[2 * i + 0]
-        delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
+        delay = a.cable.delay(freq) - np.dot(pc, (a.stand.x, a.stand.y, a.stand.z)) / speed_of_light.value
         phases[:, i, 0] = np.exp(2j * np.pi * freq * delay)
         phases[:, i, 0] /= np.sqrt(a.cable.gain(freq))
         # phases[:, i, 0] = np.exp(1j * np.pi)
 
         # Y
         a = lwasv.antennas[2 * i + 1]
-        delay = a.cable.delay(freq) - a.stand.z / speed_of_light.value
+        delay = a.cable.delay(freq) - np.dot(pc, (a.stand.x, a.stand.y, a.stand.z)) / speed_of_light.value
         phases[:, i, 1] = np.exp(2j * np.pi * freq * delay)
         phases[:, i, 1] /= np.sqrt(a.cable.gain(freq))
         # Explicit bad and suspect antenna masking - this will
@@ -142,18 +149,6 @@ def save_output(output_arr, grid_size, nchan, outdir, metadata):
     phdu.header["CFREQ"] = cfreq
     phdu.header["CFREQU"] = "HZ"
 
-    # dt = TimeDelta(1e-3 * metadata["img_len_ms"], format="sec")
-    dtheta_x = 2 * np.arcsin(0.5 / (metadata["grid_size"] * sll))
-    dtheta_y = 2 * np.arcsin(0.5 / (metadata["grid_size"] * sll))
-    crit_pix_x = float(metadata["grid_size"] / 2 + 1)
-
-    # Need to correct for shift in center pixel when we flipped dec dimension
-    # when writing npz, Only applies for even dimension size
-    crit_pix_y = (
-        float(metadata["grid_size"] / 2 + 1) - (metadata["grid_size"] + 1) % 2
-    )
-    delta_x = -dtheta_x * 180.0 / np.pi
-    delta_y = dtheta_y * 180.0 / np.pi
     delta_f = CHAN_BW
 
     crit_pix_f = (metadata["nchan"] - 1) * 0.5 + 1  # +1 for FITS numbering
@@ -169,9 +164,6 @@ def save_output(output_arr, grid_size, nchan, outdir, metadata):
     )
 
     lsts = t0.sidereal_time("apparent")
-    coords = SkyCoord(
-        lsts.deg, lwasv_station.lat * 180.0 / np.pi, obstime=t0, unit="deg"
-    ).transform_to(FK5(equinox="J2000"))
 
     # img_data = np.transpose(output_arr[:, :, :, :], (0, 1, 3, 2))
     img_data = np.transpose(output_arr[:, :, :, :], (3, 0, 2, 1))
@@ -181,19 +173,10 @@ def save_output(output_arr, grid_size, nchan, outdir, metadata):
 
     ihdu.header["DATETIME"] = t0.isot
     ihdu.header["LST"] = lsts.hour
-    ihdu.header["EQUINOX"] = "J2000"
 
-    ihdu.header["CTYPE1"] = "RA---SIN"
-    ihdu.header["CRPIX1"] = crit_pix_x
-    ihdu.header["CDELT1"] = delta_x
-    ihdu.header["CRVAL1"] = coords.ra.deg
-    ihdu.header["CUNIT1"] = "deg"
-
-    ihdu.header["CTYPE2"] = "DEC--SIN"
-    ihdu.header["CRPIX2"] = crit_pix_y
-    ihdu.header["CDELT2"] = delta_y
-    ihdu.header["CRVAL2"] = coords.dec.deg
-    ihdu.header["CUNIT2"] = "deg"
+    # Celestial axes: CRVAL at the phase centre via AltAz (precession included)
+    # and the grid-axis rotation in a PC matrix. See epic_geometry.apply_wcs.
+    apply_wcs(ihdu.header, t0, metadata["grid_size"], metadata["grid_res"])
     # Coordinates - Freq
     ihdu.header["CTYPE3"] = "FREQ"
     ihdu.header["CRPIX3"] = crit_pix_f

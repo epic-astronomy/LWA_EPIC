@@ -14,6 +14,8 @@ from astropy.coordinates import get_body
 
 import click
 
+from epic_geometry import apply_wcs
+
 
 lwasv_lat = 0.5994919397537344
 lwasv_lon = -1.8655088369221824
@@ -29,31 +31,16 @@ def create_grid_overlay(img_size,file_name,video_size, resolution,dpi):
   img_data = np.zeros((img_size,img_size))
   ihdu = fits.ImageHDU(img_data)
 
-  # get the ra dec for the zenith
+  # observation time for the image header
   lwasv_location = EarthLocation(lat=lwasv_lat*180/np.pi*u.deg, lon=lwasv_lon*180/np.pi*u.deg, height=0)
   t0 = Time(Time.now(),location=lwasv_location)
   lsts = t0.sidereal_time("apparent")
 
-  zenith_radec  = SkyCoord(
-        lsts.deg, lwasv_lat * 180.0 / np.pi, obstime=t0, unit="deg"
-    ).transform_to(FK5(equinox=Time("J2000")))
 
   ihdu.header["DATETIME"] = t0.isot
   ihdu.header["LST"] = lsts.hour
-  ihdu.header["CTYPE1"] = "RA---SIN"
-  ihdu.header["CRPIX1"] = img_size/2 + 1
-  ihdu.header["CDELT1"] = -resolution
-  ihdu.header["CRVAL1"] = zenith_radec.ra.deg
-  ihdu.header["CUNIT1"] = "deg"
-
-  ihdu.header["CTYPE2"] = "DEC--SIN"
-  ihdu.header["CRPIX2"] = img_size/2 +1 - (img_size/2 + 1)%2
-  ihdu.header["CDELT2"] = resolution
-  ihdu.header["CRVAL2"] = zenith_radec.dec.deg
-  ihdu.header["CUNIT2"] = "deg"
-
-  ihdu.header["EQUINOX"] = 2000
-  ihdu.header["RADESYS"] = "FK5"
+  # Same celestial WCS as the saved EPIC images (phase centre via AltAz, PC rotation)
+  apply_wcs(ihdu.header, t0, img_size, resolution)
 
   wcs = WCS(ihdu.header)
   center=wcs.pixel_to_world(img_size/2+0.5,img_size/2+0.5)

@@ -21,6 +21,7 @@ from lsl.common.stations import lwasv as lwasv_station
 from astropy.io import fits
 from astropy.time import Time
 from astropy.coordinates import SkyCoord, FK5
+from epic_geometry import apply_wcs
 
 import dns.resolver
 import socket
@@ -100,20 +101,6 @@ def get_image_headers_sv(seq_start_id, grid_size, grid_res):
     # phdu.header["CFREQ"] = cfreq
     # phdu.header["CFREQU"] = "HZ"
 
-    # dt = TimeDelta(1e-3 * metadata["img_len_ms"], format="sec")
-    dtheta_x = 2 * np.arcsin(0.5 / (grid_size * sll))
-    dtheta_y = 2 * np.arcsin(0.5 / (grid_size * sll))
-    crit_pix_x = float(grid_size / 2 + 1)
-
-    # Need to correct for shift in center pixel when we flipped dec dimension
-    # when writing npz, Only applies for even dimension size
-    crit_pix_y = float(grid_size / 2 + 1) - (grid_size + 1) % 2
-    delta_x = -dtheta_x * 180.0 / np.pi
-    delta_y = dtheta_y * 180.0 / np.pi
-    # delta_f = CHAN_BW
-
-    # crit_pix_f = (metadata["nchan"] - 1) * 0.5 + 1  # +1 for FITS numbering
-
     t0 = Time(
         time_tag,
         format="unix",
@@ -125,27 +112,13 @@ def get_image_headers_sv(seq_start_id, grid_size, grid_res):
     )
 
     lsts = t0.sidereal_time("apparent")
-    coords = SkyCoord(
-        lsts.deg, lwasv_station.lat * 180.0 / np.pi, obstime=t0, unit="deg"
-    ).transform_to(FK5(equinox=Time("J2000")))
 
     ihdu = fits.ImageHDU(np.zeros((grid_size, grid_size)))
 
     ihdu.header["DATETIME"] = t0.isot
     ihdu.header["LST"] = lsts.hour
-    ihdu.header["EQUINOX"] = 2000
-
-    ihdu.header["CTYPE1"] = "RA---SIN"
-    ihdu.header["CRPIX1"] = crit_pix_x
-    ihdu.header["CDELT1"] = delta_x
-    ihdu.header["CRVAL1"] = coords.ra.deg
-    ihdu.header["CUNIT1"] = "deg"
-
-    ihdu.header["CTYPE2"] = "DEC--SIN"
-    ihdu.header["CRPIX2"] = crit_pix_y
-    ihdu.header["CDELT2"] = delta_y
-    ihdu.header["CRVAL2"] = coords.dec.deg
-    ihdu.header["CUNIT2"] = "deg"
+    # Same celestial WCS as the saved images (phase centre via AltAz, PC rotation)
+    apply_wcs(ihdu.header, t0, grid_size, grid_res)
 
     return phdu.header, ihdu.header
 

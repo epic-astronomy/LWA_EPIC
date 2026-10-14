@@ -131,4 +131,8 @@ glog::glog nvidia-ml pqxx pq ibverbs prometheus-cpp::pull cmake_git_version_trac
 add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
                    COMMAND ${CMAKE_COMMAND} -E create_symlink
                    ${CMAKE_SOURCE_DIR}/src/python/epic_utils.py $<TARGET_FILE_DIR:${PROJECT_NAME}>/epic_utils.py)
+# epic_utils imports epic_geometry (phase centre, image WCS, w-projected kernels)
+add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
+                   COMMAND ${CMAKE_COMMAND} -E create_symlink
+                   ${CMAKE_SOURCE_DIR}/src/python/epic_geometry.py $<TARGET_FILE_DIR:${PROJECT_NAME}>/epic_geometry.py)
 
