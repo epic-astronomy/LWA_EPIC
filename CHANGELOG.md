@@ -1,3 +1,12 @@
+## [0.17.3](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.17.2...v0.17.3) (2026-10-14)
+
+
+### Bug Fixes
+
+* **streamer:** stable colour scale for the live video ([863218f](https://github.com/epic-astronomy/LWA_EPIC/commit/863218f11570f08b01c65527a07273f3edb8ec82))
+
+
+
 ## [0.17.2](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.17.1...v0.17.2) (2026-10-14)
 
 
@@ -37,15 +46,6 @@
 ### Features
 
 * support the NDP F-Engine after the ADP retirement ([327db66](https://github.com/epic-astronomy/LWA_EPIC/commit/327db66127b9367d40d61f36ea7182e726ee042c))
-
-
-
-## [0.15.22](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.21...v0.15.22) (2026-10-13)
-
-
-### Bug Fixes
-
-* timestamping bug in video export ([77011a7](https://github.com/epic-astronomy/LWA_EPIC/commit/77011a7abb8a59c7e2449f9f4faf04b48a888dea))
 
 
 
