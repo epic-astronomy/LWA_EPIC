@@ -40,7 +40,8 @@ typedef __nv_bfloat162 f16_accum_t;
   } while (0)
 
 constexpr double kSol = 299792458.0;
-constexpr double kChanBw = 25e3;
+// Channel width of the F-Engine (constants.h: NDP, FS / 8192)
+constexpr double kChanBw = BANDWIDTH;
 
 enum class PhaseCenter { kPlane, kZenith };
 

@@ -66,7 +66,7 @@ zen, _ = gen_loc("zenith")
 _, _, w_plane = eg.array_frame("plane")
 _, _, w_zen = eg.array_frame("zenith")
 pc_az, pc_el = eg.phase_center_azel("plane")
-lam0 = 299792458.0 / (chan0 * 25e3)
+lam0 = 299792458.0 / (chan0 * 196.0e6 / 8192)  # NDP channel width
 tex_dim = int(np.sqrt(0.1313 * lam0 ** 2) * 10)   # station_desc.hpp:GetAEff, MOFF_correlator.hpp
 gcf = tex(tex_dim)
 

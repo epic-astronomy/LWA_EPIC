@@ -126,8 +126,8 @@ int main(int argc, char** argv) {
     else if (k == "--graph") graph = std::stoi(v) != 0;
     else { std::fprintf(stderr, "unknown option %s\n", k.c_str()); return 2; }
   }
-  // One sequence is 40 us of data (25 kHz channels)
-  const double gulp_ms = base.nseq * 0.04;
+  // One sequence (spectrum) of data: ~41.8 us for the NDP F-Engine
+  const double gulp_ms = base.nseq * SAMPLING_LEN_uS * 1e-3;
   const int gulps_per_image = std::max(1, int(std::lround(seq_accum / gulp_ms)));
   int dev;
   cudaDeviceProp prop;

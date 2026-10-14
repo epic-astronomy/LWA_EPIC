@@ -29,7 +29,8 @@ from astropy.coordinates import AltAz, EarthLocation, FK5, SkyCoord
 from lsl.common.stations import lwasv
 
 SOL = 299792458.0
-CHAN_BW = 25.0e3
+# NDP F-Engine channel width (FS / 8192, ~23.93 kHz), as constants.h BANDWIDTH
+CHAN_BW = 196.0e6 / 8192
 
 # Stands excluded from imaging in addition to the status mask (see gen_phases_lwasv)
 EXCLUDED_STANDS = frozenset([256] + list(range(122, 129)) + [185, 186])
