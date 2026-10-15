@@ -1,3 +1,12 @@
+# [0.18.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.17.4...v0.18.0) (2026-10-15)
+
+
+### Features
+
+* **pixels:** store the exact source position; one transaction per image ([5d7ac26](https://github.com/epic-astronomy/LWA_EPIC/commit/5d7ac26c0421b8bb81c5e8fb5a0bde5f380c6352))
+
+
+
 ## [0.17.4](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.17.3...v0.17.4) (2026-10-15)
 
 
@@ -31,21 +40,6 @@
 ### Bug Fixes
 
 * **build:** device-link epic++ for sm_89 ([cc6757e](https://github.com/epic-astronomy/LWA_EPIC/commit/cc6757efe2af741e38ef5a0280078ea859c44ca5))
-
-
-
-# [0.17.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.16.0...v0.17.0) (2026-10-14)
-
-
-### Bug Fixes
-
-* use the NDP channel width in the geometry and GPU tests ([74d50a5](https://github.com/epic-astronomy/LWA_EPIC/commit/74d50a5eb6c812b5c771d4802b306716e51cc379))
-
-
-### Features
-
-* **geometry:** phase to the stand-plane normal and write precessed image WCS ([23fcaeb](https://github.com/epic-astronomy/LWA_EPIC/commit/23fcaebf7597d702674dd742c7ae2e4f9b87a7f6))
-* **imager:** w-projection, exact gridding correction, auto-correlation removal ([810b1fb](https://github.com/epic-astronomy/LWA_EPIC/commit/810b1fb455751bc0821c733e1c92f133f06e4ee3))
 
 
 
