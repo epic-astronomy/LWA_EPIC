@@ -51,8 +51,12 @@ class DBIngesterRft : public raft::kernel {
   int m_ext_kernel_size{5};
   int m_nkernel_elems{25};
   bool is_db_alive{false};
+  // Each image is written in its own transaction. A transaction opened at
+  // start-up and reused would hold locks on epic_pixels and
+  // epic_img_metadata2 until its first commit (hours, if no watched source is
+  // up), blocking schema changes and partition maintenance.
   std::unique_ptr<pqxx::connection> m_pg_conn;
-  std::unique_ptr<pqxx::work> m_db_T;  // transaction
+  std::string m_conn_string;
   const std::string m_pix_stmnt_id{"insert_pixels"};
   const std::string m_meta_stmnt_id{"insert_meta"};
   std::string m_pix_stmnt_id_n{m_pix_stmnt_id + "_1"};
@@ -73,6 +77,7 @@ class DBIngesterRft : public raft::kernel {
       : raft::kernel() {
     input.addPort<_PldIn>("in_pixel_rows");
 
+    m_conn_string = p_conn_string;
     try {
       m_pg_conn = std::make_unique<pqxx::connection>(p_conn_string);
     } catch (const std::exception& e) {
@@ -82,7 +87,6 @@ class DBIngesterRft : public raft::kernel {
     m_schema = p_schema==""?"public":p_schema;
 
     is_db_alive = true;
-    m_db_T = std::make_unique<pqxx::work>(*(m_pg_conn.get()));
 
     // insertions will be made source-wise
     // for example, if the kernel size is 5 for a source, 25 rows will
@@ -132,6 +136,17 @@ class DBIngesterRft : public raft::kernel {
     }
   }
 
+  void Reconnect() {
+    try {
+      m_pg_conn = std::make_unique<pqxx::connection>(m_conn_string);
+      // prepared statements belong to the old connection
+      m_avail_ksizes.clear();
+      m_ext_kernel_size = -1;
+    } catch (const std::exception& e) {
+      LOG(ERROR) << "Reconnecting to the database failed: " << e.what();
+    }
+  }
+
   raft::kstatus run() override {
     m_timer.Tick();
     _PldIn pld;
@@ -140,11 +155,18 @@ class DBIngesterRft : public raft::kernel {
       m_timer.Tock();
       return raft::proceed;
     }
-    UpdatePreparedStmnts(pld.get_mbuf()->m_kernel_dim);
     try {
-      IngestPayload(&pld, m_db_T.get(), m_nkernel_elems, m_pix_stmnt_id_n,
+      if (!m_pg_conn->is_open()) {
+        Reconnect();
+      }
+      UpdatePreparedStmnts(pld.get_mbuf()->m_kernel_dim);
+      pqxx::work tx(*(m_pg_conn.get()));
+      IngestPayload(&pld, &tx, m_nkernel_elems, m_pix_stmnt_id_n,
                     m_meta_stmnt_id_n);
-      m_db_T.get()->commit();
+      tx.commit();
+    } catch (const pqxx::broken_connection& e) {
+      LOG(ERROR) << "Lost the database connection: " << e.what();
+      Reconnect();
     } catch (const std::exception& e) {
       LOG(ERROR) << e.what();
     }

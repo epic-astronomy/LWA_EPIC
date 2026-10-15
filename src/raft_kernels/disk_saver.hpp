@@ -115,8 +115,9 @@ class DiskSaverRft : public raft::kernel,
 
     try {
       if(std::get<std::string>(img_metadata["filename"])!=""){
-        InsertFilenametoDb(&pld, this->m_db_T.get(), m_file_stmt_id);
-        this->m_db_T.get()->commit();
+        pqxx::work tx(*(this->m_pg_conn.get()));
+        InsertFilenametoDb(&pld, &tx, m_file_stmt_id);
+        tx.commit();
       }
     } catch (const std::exception& e) {
       LOG(FATAL) << e.what();

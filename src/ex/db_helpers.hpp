@@ -66,7 +66,12 @@ std::string GetSinglePixelInsertStmnt(
 
   stmnt += "point(" + name.get() + ",";  // pixel offset start
   name.next();
-  stmnt += name.get() + ")";  // pixel offset end
+  stmnt += name.get() + "),";  // pixel offset end
+  name.next();
+
+  stmnt += "point(" + name.get() + ",";  // source pixel position start
+  name.next();
+  stmnt += name.get() + ")";  // source pixel position end
   name.next();
 
   stmnt += ")";
@@ -79,7 +84,7 @@ std::string GetMultiPixelInsertStmnt(int nrows, std::string schema="public") {
   std::string stmnt = "INSERT INTO ";
   stmnt +=  schema + ".epic_pixels";
   stmnt += "(img_time, chan0, pixel_values, pixel_coord, pixel_lm";
-  stmnt += ", source_name,  pix_offset) ";
+  stmnt += ", source_name,  pix_offset, source_pix) ";
   stmnt += "VALUES ";
   for (int i = 0; i < nrows; ++i) {
     stmnt += GetSinglePixelInsertStmnt(&name);
@@ -167,6 +172,7 @@ void IngestPixelsSingleSrc(const _PgT& data, pqxx::work* work_ptr, int src_idx,
     auto pix_coord = data.pixel_coords[coord_idx];
     auto pix_lm = data.pixel_lm[coord_idx];
     auto pix_offst = data.pixel_offst[coord_idx];
+    auto src_pix = data.source_pix[coord_idx];
 
     pqxx::params pix_pars(
         //data.m_uuid,
@@ -178,7 +184,8 @@ void IngestPixelsSingleSrc(const _PgT& data, pqxx::work* work_ptr, int src_idx,
                                          i * nelem_per_pix),
             nelem_per_pix * sizeof(float)),
         pix_coord.first, pix_coord.second, pix_lm.first, pix_lm.second,
-        data.source_ids[coord_idx], pix_offst.first, pix_offst.second);
+        data.source_ids[coord_idx], pix_offst.first, pix_offst.second,
+        src_pix.first, src_pix.second);
 
     pars.append(pix_pars);
   }
@@ -307,8 +314,9 @@ void InsertFilenametoDb(_Pld* pld_ptr, pqxx::work* work_ptr,
 class PgDbConnectMixin {
  protected:
   bool is_db_alive{false};
+  // Each write opens its own short transaction. A transaction opened here and
+  // kept open would hold locks on the tables until its first commit.
   std::unique_ptr<pqxx::connection> m_pg_conn;
-  std::unique_ptr<pqxx::work> m_db_T;  // transaction
   std::string m_conn_str;
 
  public:
@@ -320,7 +328,6 @@ class PgDbConnectMixin {
     }
 
     is_db_alive = true;
-    m_db_T = std::make_unique<pqxx::work>(*(m_pg_conn.get()));
   }
 
   void prepare_stmt(std::string p_name, std::string p_stmt) {

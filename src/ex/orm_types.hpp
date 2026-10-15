@@ -47,6 +47,8 @@ struct EpicPixelTableMetaRows {
   std::vector<std::pair<int, int>> pixel_coords;
   std::vector<std::pair<int, int>> pixel_coords_sft;
   std::vector<std::pair<float, float>> pixel_lm;
+  // exact (fractional, 1-based FITS) pixel position of the pixel's source
+  std::vector<std::pair<float, float>> source_pix;
   // std::vector<std::pair<float, float>> pixel_skypos;
   std::vector<std::pair<int, int>> pixel_offst;
 
@@ -65,6 +67,7 @@ struct EpicPixelTableMetaRows {
     pixel_coords.resize(ncoords);
     pixel_coords_sft.resize(ncoords);
     pixel_lm.resize(ncoords);
+    source_pix.resize(ncoords);
     // pixel_skypos.resize(ncoords);
     pixel_offst.resize(ncoords);
 
@@ -127,7 +130,7 @@ struct EpicPixelTableMetaRows {
    */
   bool diff(const EpicPixelTableMetaRows& rhs) {
     return (m_ncoords != rhs.m_ncoords) || (pixel_coords != rhs.pixel_coords) ||
-           (pixel_lm != rhs.pixel_lm) ||
+           (pixel_lm != rhs.pixel_lm) || (source_pix != rhs.source_pix) ||
            //    (pixel_skypos != rhs.pixel_skypos) ||
            (pixel_offst != rhs.pixel_offst);
   }
@@ -210,6 +213,7 @@ struct EpicPixelTableDataRows : EpicPixelTableMetaRows {
     }
     pixel_coords = meta.pixel_coords;
     pixel_lm = meta.pixel_lm;
+    source_pix = meta.source_pix;
     // pixel_skypos = meta.pixel_skypos;
     pixel_offst = meta.pixel_offst;
 
@@ -235,6 +239,7 @@ EpicPixelTableMetaRows CreateDummyMeta(int xdim, int ydim, int nsrcs = 1,
   meta.pixel_coords.insert(meta.pixel_coords.end(), ncoords,
                            std::pair<int, int>(32, 33));
   meta.pixel_lm.insert(meta.pixel_lm.end(), ncoords, std::pair<int, int>(1, 1));
+  meta.source_pix.insert(meta.source_pix.end(), ncoords, std::pair<float, float>(32.f, 33.f));
   meta.pixel_offst.insert(meta.pixel_offst.end(), ncoords,
                           std::pair<int, int>(0, 0));
   meta.source_ids.insert(meta.source_ids.end(), ncoords, "test");

@@ -8,7 +8,6 @@ from astropy.wcs import WCS
 
 from pixel_extract_utils import DynSources
 from pixel_extract_utils import PatchMan
-from pixel_extract_utils import get_lmn_grid
 from epic_grpc import epic_image_pb2_grpc
 from epic_grpc import epic_image_pb2
 
@@ -243,6 +242,9 @@ class EpicPixels:
         self.x_l, self.y_l = self.wcs.all_world2pix(
             self.ra_l, self.dec_l, 1, ra_dec_order=True
         )  # 1-based index
+        # exact (fractional) source positions, kept so that pixel values can be
+        # interpolated at the source instead of read from the nearest pixel
+        self.xf_l, self.yf_l = self.x_l.copy(), self.y_l.copy()
         self.x_l, self.y_l = self.nearest_pix(self.x_l), self.nearest_pix(
             self.y_l
         )
@@ -267,14 +269,15 @@ class EpicPixels:
             self.pixel_meta_df = None
             return None
         self.watch_l = self.watch_l[:, self.in_fov]
+        src_xf, src_yf = self.xf_l[self.in_fov], self.yf_l[self.in_fov]
 
         xpatch_pix_idx, ypatch_pix_idx = np.hstack(
             list(map(PatchMan.get_patch_idx, self.watch_l[-1, :]))
         )
 
-        self.watch_l = np.repeat(
-            self.watch_l, self.watch_l[-1, :].astype(int) ** 2, axis=1
-        )
+        npix = self.watch_l[-1, :].astype(int) ** 2
+        self.watch_l = np.repeat(self.watch_l, npix, axis=1)
+        src_xf, src_yf = np.repeat(src_xf, npix), np.repeat(src_yf, npix)
 
         # update the pixel indices
         self.watch_l[3, :] += xpatch_pix_idx
@@ -304,18 +307,15 @@ class EpicPixels:
         self.watch_l = self.watch_l[:, is_out_fov]
         xpatch_pix_idx = xpatch_pix_idx[is_out_fov]
         ypatch_pix_idx = ypatch_pix_idx[is_out_fov]
+        src_xf, src_yf = src_xf[is_out_fov], src_yf[is_out_fov]
         src_ids = np.unique(self.watch_l[0, :]).astype(int)
         src_names_arr = self._watch_df.iloc[src_ids]["source_name"].tolist()
         src_names_arr = '{"' + '","'.join(src_names_arr) + '"}'
 
-        # grab lm coords
-        lmn_grid = get_lmn_grid(self.xdim, self.ydim)
-        l_vals = lmn_grid[
-            0, self.watch_l[3, :].astype(int), self.watch_l[4, :].astype(int)
-        ]
-        m_vals = lmn_grid[
-            1, self.watch_l[3, :].astype(int), self.watch_l[4, :].astype(int)
-        ]
+        # direction cosines of each pixel in the image frame (east is -x).
+        # A pixel spans 1 / (N * grid spacing) = 2 sin(res / 2) in l and m.
+        l_vals = -(self.watch_l[3, :] - self.x0) / (self.xdim * self.dgridx)
+        m_vals = (self.watch_l[4, :] - self.y0) / (self.ydim * self.dgrixy)
 
         pix_x_l = self.watch_l[3, :].astype(int)
         pix_y_l = self.watch_l[4, :].astype(int)
@@ -333,6 +333,8 @@ class EpicPixels:
             pix_y=pix_y_l.ravel().astype(float).copy(),
             pix_ofst_x=xpatch_pix_idx.ravel().astype(float).copy(),
             pix_ofst_y=ypatch_pix_idx.ravel().astype(float).copy(),
+            src_x=src_xf.ravel().astype(float).copy(),
+            src_y=src_yf.ravel().astype(float).copy(),
             src_names_arr=src_names_arr,
         )
 

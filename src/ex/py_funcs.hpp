@@ -493,8 +493,16 @@ EpicPixelTableMetaRows GetWatchIndices(uint64_t seq_start_no, int grid_size,
   auto* pix_ofst_y = static_cast<double*>(
       ret_dict["pix_ofst_y"].cast<np_array<double>>().request().ptr);
 
+  // exact source positions
+  VLOG(3) << "Reading source positions";
+  auto* src_x = static_cast<double*>(
+      ret_dict["src_x"].cast<np_array<double>>().request().ptr);
+  auto* src_y = static_cast<double*>(
+      ret_dict["src_y"].cast<np_array<double>>().request().ptr);
+
   for (int i = 0; i < ncoords; ++i) {
     watch_indices.pixel_coords[i] = std::pair<int, int>(x_idx[i], y_idx[i]);
+    watch_indices.source_pix[i] = std::pair<float, float>(src_x[i], src_y[i]);
     watch_indices.pixel_lm[i] = std::pair<float, float>(l_idx[i], m_idx[i]);
     watch_indices.pixel_offst[i] =
         std::pair<int, int>(pix_ofst_x[i], pix_ofst_y[i]);
