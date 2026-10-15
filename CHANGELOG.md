@@ -1,3 +1,12 @@
+# [0.19.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.18.0...v0.19.0) (2026-10-15)
+
+
+### Features
+
+* **python:** source_track helper for exact source positions on the image ([033e126](https://github.com/epic-astronomy/LWA_EPIC/commit/033e12699fd2e9f2cf0c15f00926fbf6c9ce2eb1))
+
+
+
 # [0.18.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.17.4...v0.18.0) (2026-10-15)
 
 
@@ -31,15 +40,6 @@
 ### Bug Fixes
 
 * **packet_gen:** keep up after empty gulps and exit timed runs ([decc9b6](https://github.com/epic-astronomy/LWA_EPIC/commit/decc9b6191d229ed3e0ef27570aecc61aace4cf2))
-
-
-
-## [0.17.1](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.17.0...v0.17.1) (2026-10-14)
-
-
-### Bug Fixes
-
-* **build:** device-link epic++ for sm_89 ([cc6757e](https://github.com/epic-astronomy/LWA_EPIC/commit/cc6757efe2af741e38ef5a0280078ea859c44ca5))
 
 
 
