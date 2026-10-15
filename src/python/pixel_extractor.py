@@ -24,7 +24,6 @@ from astropy.coordinates import SkyCoord, FK5
 from epic_geometry import apply_wcs
 
 import dns.resolver
-import socket
 
 
 import grpc
@@ -36,19 +35,27 @@ SEQ_MULT_S = 8192  # FS samples per NDP spectrum
 CHAN_BW = FS / SEQ_MULT_S  # NDP channel width
 
 
-def get_endpoint(service="epic-watchdog.service.consul"):
-    try:
-        answers = dns.resolver.resolve(service, "SRV")
-        for rdata in answers:
-            port = rdata.port
-            target = rdata.target.to_text().strip()
+def _consul_resolvers():
+    # The host resolver, then the local Consul agent, in case the host's DNS
+    # does not forward the .consul domain
+    yield dns.resolver.get_default_resolver()
+    agent = dns.resolver.Resolver(configure=False)
+    agent.nameservers = ["127.0.0.1"]
+    agent.port = 8600
+    yield agent
 
-            ip_address = socket.gethostbyname(target)
-            return f"{ip_address}:{port}"
-    except dns.resolver.NoAnswer:
-        print(f"No SRV record found for {service}")
-    except Exception as e:
-        print(f"Error: {e}")
+
+def get_endpoint(service="epic-watchdog.service.consul"):
+    errors = []
+    for resolver in _consul_resolvers():
+        try:
+            rdata = resolver.resolve(service, "SRV")[0]
+            target = rdata.target.to_text()
+            ip_address = resolver.resolve(target, "A")[0].to_text()
+            return f"{ip_address}:{rdata.port}"
+        except Exception as e:
+            errors.append(f"{resolver.nameservers}: {e}")
+    raise RuntimeError(f"Cannot resolve {service}: {'; '.join(errors)}")
 
 
 def get_watch_list(watchdog_endpoint=None):
