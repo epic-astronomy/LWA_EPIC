@@ -1,3 +1,12 @@
+## [0.17.4](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.17.3...v0.17.4) (2026-10-15)
+
+
+### Bug Fixes
+
+* **pixel_extractor:** resolve the watchdog via the local Consul agent ([33057a9](https://github.com/epic-astronomy/LWA_EPIC/commit/33057a9236b3ea296ccbe2028494cae0283dce35))
+
+
+
 ## [0.17.3](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.17.2...v0.17.3) (2026-10-14)
 
 
@@ -37,15 +46,6 @@
 
 * **geometry:** phase to the stand-plane normal and write precessed image WCS ([23fcaeb](https://github.com/epic-astronomy/LWA_EPIC/commit/23fcaebf7597d702674dd742c7ae2e4f9b87a7f6))
 * **imager:** w-projection, exact gridding correction, auto-correlation removal ([810b1fb](https://github.com/epic-astronomy/LWA_EPIC/commit/810b1fb455751bc0821c733e1c92f133f06e4ee3))
-
-
-
-# [0.16.0](https://github.com/epic-astronomy/LWA_EPIC/compare/v0.15.22...v0.16.0) (2026-10-14)
-
-
-### Features
-
-* support the NDP F-Engine after the ADP retirement ([327db66](https://github.com/epic-astronomy/LWA_EPIC/commit/327db66127b9367d40d61f36ea7182e726ee042c))
 
 
 
