@@ -1,0 +1,278 @@
+"""CPU gain solvers for EPIC and a tracking filter (prototype: research/sim_loop.py).
+
+stefcal      visibility-domain StEFCal (Salvini & Wijnholds 2014) for the
+             voltage-tap path: R ~ G M G^H on a baseline mask.
+gridcal      grid-domain solver for the image path: fits the residual gains
+             delta to the Fourier transform of accumulated EPIC images,
+             D ~ G(phi delta M delta^H phi^H), by Gauss-Newton with a
+             matrix-free, Jacobi-preconditioned conjugate gradient. The
+             forward operator is epicop.scatter, its adjoint epicop.gather.
+Tracker      per-antenna Kalman filter on (phase offset, delay) plus a slow
+             per-channel complex bandpass, fed by per-channel solutions.
+
+Gauge: an overall phase per polarisation is unobservable; every solution is
+referenced so that sum_a g_a has zero phase.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import numpy as np
+
+try:
+    from . import epicop as E  # grid-domain solver only; needs numba
+except ImportError:  # pragma: no cover
+    E = None
+
+
+def reference_phase(g):
+    s = np.sum(g)
+    return g * (np.conj(s) / abs(s)) if abs(s) > 0 else g
+
+
+# ---------------------------------------------------------------- StEFCal
+
+
+def stefcal(R, M, W, g0=None, niter=60, tol=1e-6, free=None):
+    """Solve R ~ diag(g) (M + sum_k s_k F_k) diag(g)^H on weights W (0 on autos / short baselines).
+
+    free: optional list of model matrices F_k whose real scale s_k is solved too
+          (the Sun). Returns (g, s, n_iter).
+    """
+    n = R.shape[0]
+    g = np.ones(n, complex) if g0 is None else g0.copy()
+    s = np.zeros(0) if not free else np.ones(len(free))
+    Mt = M + sum(sk * F for sk, F in zip(s, free or []))
+    for it in range(niter):
+        g_old = g
+        Z = (g[:, None] * Mt) * W
+        num = np.sum(np.conj(R * W) * Z, axis=0)
+        den = np.sum(np.abs(Z) ** 2, axis=0)
+        gn = np.where(den > 0, num / np.where(den > 0, den, 1), g)
+        g = 0.5 * (gn + g_old) if it % 2 == 1 else gn
+        if free and it % 4 == 3:
+            GG = np.outer(g, g.conj()) * W
+            A = np.stack([(GG * F).ravel() for F in free], 1)
+            b = (R * W - GG * M).ravel()
+            s = np.linalg.lstsq(np.vstack([A.real, A.imag]), np.concatenate([b.real, b.imag]), rcond=None)[0]
+            Mt = M + sum(sk * F for sk, F in zip(s, free))
+        if it % 2 == 1 and np.linalg.norm(g - g_old) / np.linalg.norm(g) < tol:
+            break
+    return reference_phase(g), s, it + 1
+
+
+def baseline_mask(op: E.GridOp, n, min_cells):
+    W = np.zeros((n, n))
+    keep = np.hypot(*op.off.T) >= min_cells
+    W[op.a[keep], op.b[keep]] = 1
+    return W
+
+
+# ---------------------------------------------------------------- grid-domain
+
+
+def uv_mask(N, min_cells, margin=4.5):
+    k = np.fft.fftfreq(N) * N
+    r = np.hypot(k[:, None], k[None, :])
+    return (r >= min_cells + margin).astype(float)
+
+
+@dataclass
+class GridProblem:
+    op: E.GridOp
+    Vt: np.ndarray  # [nbl] phi_a phi_b^* M_ab  (model, geometric phase applied)
+    mask: np.ndarray  # [N, N] 0/1
+    free: list = None  # list of [nbl] arrays phi phi^* F_k (solved real scale)
+
+    def model_vis(self, d, s=None):
+        V = self.Vt
+        if self.free:
+            V = V + sum(sk * F for sk, F in zip(s, self.free))
+        return d[self.op.a] * np.conj(d[self.op.b]) * V
+
+    def J(self, d, Vs, x):
+        a, b = self.op.a, self.op.b
+        v = (x[a] * np.conj(d[b]) + d[a] * np.conj(x[b])) * Vs
+        return self.mask * E.scatter(self.op, v)
+
+    def JH(self, d, Vs, r):
+        a, b = self.op.a, self.op.b
+        rho = E.gather(self.op, self.mask * r)
+        out = np.zeros(len(d), complex)
+        np.add.at(out, a, np.conj(np.conj(d[b]) * Vs) * rho)
+        np.add.at(out, b, d[a] * Vs * np.conj(rho))
+        return out
+
+    def precond(self, d, Vs):
+        a, b = self.op.a, self.op.b
+        w = np.abs(Vs) ** 2 * self.op.Qn2
+        p = np.zeros(len(d))
+        np.add.at(p, a, np.abs(d[b]) ** 2 * w)
+        np.add.at(p, b, np.abs(d[a]) ** 2 * w)
+        return p
+
+
+def _rdot(x, y):
+    return float(np.real(np.vdot(x, y)))
+
+
+def gridcal(prob: GridProblem, D, d0=None, n_outer=3, n_cg=12, damping=1e-3, s0=None):
+    """Fit residual gains d to D (the FFT of the accumulated image, autos masked).
+
+    Returns (d, s, info). d multiplies the gains that were applied when the
+    image was made: g_new = g_applied * d.
+    """
+    op = prob.op
+    n = len(op.ant)
+    d = np.ones(n, complex) if d0 is None else d0.copy()
+    s = np.ones(len(prob.free)) if prob.free else None
+    if s0 is not None and prob.free:
+        s = np.array(s0, float)
+    Dm = prob.mask * D
+    hist = []
+    for it in range(n_outer):
+        Vs = prob.Vt if not prob.free else prob.Vt + sum(sk * F for sk, F in zip(s, prob.free))
+        r = Dm - prob.mask * E.scatter(op, d[op.a] * np.conj(d[op.b]) * Vs)
+        hist.append(np.linalg.norm(r) ** 2)
+        g = prob.JH(d, Vs, r)
+        P = prob.precond(d, Vs)
+        lam = damping * np.median(P)
+        Pinv = 1.0 / (P + lam)
+        x = np.zeros(n, complex)
+        res = g.copy()
+        z = Pinv * res
+        p = z.copy()
+        rz = _rdot(res, z)
+        for _ in range(n_cg):
+            Ap = prob.JH(d, Vs, prob.J(d, Vs, p)) + lam * p
+            alpha = rz / _rdot(p, Ap)
+            x += alpha * p
+            res -= alpha * Ap
+            z = Pinv * res
+            rz_new = _rdot(res, z)
+            p = z + (rz_new / rz) * p
+            rz = rz_new
+        d = d + x
+        if prob.free:
+            base = prob.mask * E.scatter(op, d[op.a] * np.conj(d[op.b]) * prob.Vt)
+            A = [prob.mask * E.scatter(op, d[op.a] * np.conj(d[op.b]) * F) for F in prob.free]
+            Am = np.stack([x_.ravel() for x_ in A], 1)
+            bb = (Dm - base).ravel()
+            s = np.linalg.lstsq(np.vstack([Am.real, Am.imag]), np.concatenate([bb.real, bb.imag]), rcond=None)[0]
+    Vs = prob.Vt if not prob.free else prob.Vt + sum(sk * F for sk, F in zip(s, prob.free))
+    r = Dm - prob.mask * E.scatter(op, d[op.a] * np.conj(d[op.b]) * Vs)
+    hist.append(np.linalg.norm(r) ** 2)
+    # per-antenna variance estimate: sigma^2 / diag(J^H J)
+    ncell = prob.mask.sum()
+    sig2 = hist[-1] / max(ncell - 2 * n, 1)
+    var = sig2 / np.maximum(prob.precond(d, Vs), 1e-30)
+    return reference_phase(d), s, dict(chi2=hist, var=var)
+
+
+# ---------------------------------------------------------------- tracking
+
+
+def wrap(x):
+    return (x + np.pi) % (2 * np.pi) - np.pi
+
+
+class Tracker:
+    """Per-antenna Kalman filter on x = (phase offset at nu_c [rad], delay [ns]).
+
+    Measurements are per-channel phases of the absolute gain solutions; the
+    amplitude and a slow per-channel phase bandpass are exponentially averaged.
+    Produces a gain table for any channel list.
+    """
+
+    def __init__(self, n_ant, nu_hz, nu_c, q_phase=np.radians(2.0) ** 2, q_delay=0.05 ** 2,
+                 tau_bp=600.0, tau_amp=60.0, jump_nsigma=5.0, jump_count=3):
+        self.n = n_ant
+        self.nu = np.asarray(nu_hz, float)  # channels being solved
+        self.nu_c = nu_c
+        self.x = np.zeros((n_ant, 2))
+        self.P = np.tile(np.diag([np.pi ** 2, 10.0 ** 2]), (n_ant, 1, 1))
+        self.q = np.diag([q_phase, q_delay])  # per second
+        self.logamp = np.zeros((n_ant, len(self.nu)))
+        self.bp = np.zeros((n_ant, len(self.nu)))  # slow per-channel phase
+        self.tau_bp, self.tau_amp = tau_bp, tau_amp
+        self.jump_nsigma, self.jump_count = jump_nsigma, jump_count
+        self.strikes = np.zeros(n_ant, int)
+        self.initialised = False
+
+    def H(self, nu):
+        return np.stack([np.ones_like(nu), 2 * np.pi * (nu - self.nu_c) * 1e-9], 1)
+
+    def phase_model(self, nu):
+        return self.x @ self.H(nu).T  # [n_ant, nchan]
+
+    def update(self, g, var, dt):
+        """g [n_ant, nchan] absolute gain solutions on self.nu, var [n_ant, nchan] |dg|^2 variances."""
+        Hm = self.H(self.nu)
+        self.P += self.q * dt
+        ph = np.angle(g)
+        sig2 = np.clip(var / np.maximum(np.abs(g) ** 2, 1e-12), 1e-6, 10.0)  # phase variance
+        good = np.isfinite(ph) & (np.abs(g) > 0)
+        if not self.initialised:
+            self._initialise(g, good)
+        for a in range(self.n):
+            m = good[a]
+            if m.sum() < 2:
+                continue
+            pred = Hm[m] @ self.x[a] + self.bp[a, m]
+            y = wrap(ph[a, m] - pred)
+            Ha = Hm[m]
+            Rm = np.diag(sig2[a, m])
+            S = Ha @ self.P[a] @ Ha.T + Rm
+            Si = np.linalg.inv(S)
+            nis = y @ Si @ y / m.sum()
+            if nis > self.jump_nsigma ** 2:
+                self.strikes[a] += 1
+                if self.strikes[a] < self.jump_count:
+                    continue
+                # persistent jump: re-acquire this antenna
+                self.P[a] = np.diag([np.pi ** 2, 10.0 ** 2])
+                S = Ha @ self.P[a] @ Ha.T + Rm
+                Si = np.linalg.inv(S)
+            self.strikes[a] = 0
+            K = self.P[a] @ Ha.T @ Si
+            self.x[a] += K @ y
+            self.P[a] = (np.eye(2) - K @ Ha) @ self.P[a]
+            self.x[a, 0] = wrap(self.x[a, 0])
+            # slow per-channel phase bandpass (zero mean, no slope)
+            resid = wrap(ph[a, m] - Hm[m] @ self.x[a])
+            resid -= Hm[m] @ np.linalg.lstsq(Hm[m], resid, rcond=None)[0]
+            k = min(1.0, dt / self.tau_bp)
+            self.bp[a, m] += k * wrap(resid - self.bp[a, m])
+        la = np.log(np.maximum(np.abs(np.nan_to_num(g)), 1e-6))
+        k = min(1.0, dt / self.tau_amp)
+        self.logamp = np.where(good, self.logamp + k * (la - self.logamp), self.logamp)
+
+    def _initialise(self, g, good):
+        Hm = self.H(self.nu)
+        for a in range(self.n):
+            m = good[a]
+            if m.sum() < 2:
+                continue
+            ph = np.unwrap(np.angle(g[a, m]))
+            self.x[a] = np.linalg.lstsq(Hm[m], ph, rcond=None)[0]
+            self.x[a, 0] = wrap(self.x[a, 0])
+            self.P[a] = np.diag([np.radians(10) ** 2, 1.0])
+        self.logamp = np.where(good, np.log(np.maximum(np.abs(np.nan_to_num(g)), 1e-6)), 0.0)
+        self.initialised = True
+
+    def gains(self, nu=None):
+        """Gain table on the solved channels (nu=None) or interpolated to other channels."""
+        if nu is None:
+            return np.exp(self.logamp + 1j * (self.phase_model(self.nu) + self.bp))
+        nu = np.asarray(nu, float)
+        la = np.array([np.interp(nu, self.nu, r) for r in self.logamp])
+        bp = np.array([np.interp(nu, self.nu, r) for r in self.bp])
+        return np.exp(la + 1j * (self.phase_model(nu) + bp))
+
+
+def ml_weights(op: E.GridOp, min_cells, margin=0.0, floor=1e-3):
+    """sqrt of inverse-noise cell weights times the short-spacing mask (pass as GridProblem.mask)."""
+    rho = E.density(op)
+    w = uv_mask(op.N, min_cells, margin) / np.maximum(rho, floor * rho.max())
+    w[rho < floor * rho.max()] = 0
+    return np.sqrt(w / w.max())

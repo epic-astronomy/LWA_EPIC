@@ -156,6 +156,19 @@ struct Kernel<_CORRELATOR> : KernelTypeDefs {
     correlator_options.use_wproj = options["wproj"].as<bool>();
     correlator_options.is_remove_autocorr = options["remove_autocorr"].as<bool>();
     correlator_options.seq_chunk = options["seq_chunk"].as<int>();
+    auto with_gpu = [&](std::string p) {
+      auto pos = p.find("{gpu}");
+      if (pos != std::string::npos) {
+        p.replace(pos, 5, std::to_string(correlator_options.device_id));
+      }
+      return p;
+    };
+    correlator_options.gain_table_path = with_gpu(options["gain_table"].as<std::string>());
+    correlator_options.caltap_nseq = options["caltap_nseq"].as<int>();
+    correlator_options.caltap_path =
+        correlator_options.caltap_nseq > 0 ? with_gpu(options["caltap_out"].as<std::string>()) : "";
+    correlator_options.caltap_interval_s = options["caltap_interval"].as<float>();
+    correlator_options.caltap_threads = options["caltap_threads"].as<int>();
     correlator_options.nstreams = options["nstreams"].as<int>();
     VLOG(2) << "Extracted options";
     auto corr_ptr = std::make_unique<MOFFCorrelator_t>(correlator_options);

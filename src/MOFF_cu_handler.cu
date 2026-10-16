@@ -56,6 +56,17 @@ MOFFCuHandler::ResetAntpos(int p_nchan, float* p_antpos_ptr)
 }
 
 void
+MOFFCuHandler::UpdatePhases(int p_nchan, const float* p_phases_ptr)
+{
+    cuda_check_err(cudaSetDevice(m_device_id));
+    if (!is_phases_set) {
+        return;
+    }
+    auto nbytes = LWA_SV_NSTANDS * p_nchan * LWA_SV_NPOLS * 2 * sizeof(float);
+    cuda_check_err(cudaMemcpy(m_phases_cu, p_phases_ptr, nbytes, cudaMemcpyHostToDevice));
+}
+
+void
 MOFFCuHandler::ResetPhases(int p_nchan, float* p_phases_ptr)
 {
     cuda_check_err(cudaSetDevice(m_device_id));

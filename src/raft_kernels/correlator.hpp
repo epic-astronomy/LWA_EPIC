@@ -31,7 +31,9 @@
 #include <utility>
 #include <variant>
 
+#include "../ex/cal_tap.hpp"
 #include "../ex/constants.h"
+#include "../ex/gain_table.hpp"
 #include "../ex/metrics.hpp"
 #include "../ex/station_desc.hpp"
 #include "../ex/types.hpp"
@@ -59,6 +61,22 @@ class CorrelatorRft : public raft::kernel {
   int m_is_GPU_setup_once{false};
   std::set<int> m_incl_freqs;
   std::string m_session_id; //changes with frequency
+  /// Calibration gains from streamcal (null: off)
+  std::unique_ptr<GainTableReader> m_gain_reader{nullptr};
+  /// CPU X-engine on a slice of every gulp for streamcal (null: off)
+  std::unique_ptr<CalTap> m_cal_tap{nullptr};
+
+  template <typename T, typename Map>
+  static T MetaOr(Map& p_meta, const std::string& p_key, T p_default) {
+    auto it = p_meta.find(p_key);
+    if (it == p_meta.end()) {
+      return p_default;
+    }
+    if (auto* v = std::get_if<T>(&it->second)) {
+      return *v;
+    }
+    return p_default;
+  }
 
  public:
   explicit CorrelatorRft(std::unique_ptr<_Correlator>* p_correlator)
@@ -75,6 +93,22 @@ class CorrelatorRft : public raft::kernel {
     // using out_t = typ
     output.addPort<typename _Correlator::payload_t>("img");
     output.addPort<typename _Correlator::payload_t>("img_stream");
+
+    const auto& cal = m_correlator.get()->GetCalDesc();
+    if (!cal.gain_table_path.empty()) {
+      m_gain_reader = std::make_unique<GainTableReader>(cal.gain_table_path);
+      LOG(INFO) << "Calibration gains will be read from " << cal.gain_table_path;
+    }
+    if (cal.caltap_nseq > 0 && !cal.caltap_path.empty()) {
+      CalTapOptions o;
+      o.path = cal.caltap_path;
+      o.nseq = cal.caltap_nseq;
+      o.interval_s = cal.caltap_interval_s;
+      o.nthreads = cal.caltap_threads;
+      m_cal_tap = std::make_unique<CalTap>(o);
+      LOG(INFO) << "Calibration tap: " << o.nseq << " sequences per gulp, " << o.interval_s << " s tables to "
+                << o.path;
+    }
 
     m_rt_gauge_id = PrometheusExporter::AddRuntimeSummaryLabel(
         {{"type", "info"},
@@ -123,6 +157,9 @@ class CorrelatorRft : public raft::kernel {
     if ((m_hc_chans.count(chan0) == 0 || !m_is_GPU_setup_once) &&
       m_correlator.get()->ResetImagingConfig(nchan, chan0)) {
       m_is_GPU_setup_once = true;
+      if (m_gain_reader) {
+        m_gain_reader->Reset();  // tables for the old window do not apply
+      }
       DLOG(INFO) << "Resetting GPU setup";
       m_delta = m_correlator.get()->GetScalingLen();
       m_gulp_counter = 1;
@@ -137,6 +174,25 @@ class CorrelatorRft : public raft::kernel {
     VLOG(2) << "Setting the start id";
     if (m_is_first) {
       m_seq_start_id = std::get<uint64_t>(gulp_metadata["seq_start"]);
+      // Gains change only at image boundaries, so every image is made with a
+      // single gain table (recorded in its metadata as gain_version).
+      if (m_gain_reader) {
+        if (auto snap = m_gain_reader->Poll(chan0, nchan, m_seq_start_id)) {
+          if (m_correlator.get()->ApplyGainTable(*snap)) {
+            LOG(INFO) << "Applied calibration gain table version " << snap->version
+                      << (snap->valid ? "" : " (revert to nominal phases)");
+          }
+        } else if (!m_gain_reader->LastError().empty()) {
+          LOG_EVERY_N(WARNING, 100) << "Gain table rejected: " << m_gain_reader->LastError();
+        }
+      }
+    }
+    // The tap stages its slice while ProcessGulp runs (WaitCopied below).
+    bool tapped = false;
+    if (m_cal_tap) {
+      tapped = m_cal_tap->Offer(pld.get_mbuf()->GetDataPtr(), std::get<uint64_t>(gulp_metadata["seq_start"]), chan0,
+                                nchan, MetaOr<int>(gulp_metadata, "nseqs", 0),
+                                float(MetaOr<double>(gulp_metadata, "data_quality", 1.0)));
     }
 
     if (m_is_last) {
@@ -158,6 +214,7 @@ class CorrelatorRft : public raft::kernel {
       img_metadata["nchan"] = nchan;
       img_metadata["chan0"] = chan0;
       img_metadata["session_id"] = m_session_id;
+      img_metadata["gain_version"] = m_correlator.get()->GetGainVersion();
       // img_metadata["cfreq"] = int((chan0+ceil(nchan/2f))*BANDWIDTH);
       VLOG(3)
           << "Processing gulp at: "
@@ -169,6 +226,9 @@ class CorrelatorRft : public raft::kernel {
           pld.get_mbuf()->GetDataPtr(), buf.get_mbuf()->GetDataPtr(),
           m_is_first, m_is_last, static_cast<int>(chan0), m_delta);
       DLOG(INFO) << "Done processing the gulp";
+      if (tapped) {
+        m_cal_tap->WaitCopied();
+      }
       m_gulp_counter = 1;
       VLOG(3) << "Pushing the output image";
       output["img"].push(buf);
@@ -185,6 +245,9 @@ class CorrelatorRft : public raft::kernel {
     m_correlator.get()->ProcessGulp(pld.get_mbuf()->GetDataPtr(),
                                     static_cast<float*>(nullptr), m_is_first,
                                     m_is_last);
+    if (tapped) {
+      m_cal_tap->WaitCopied();
+    }
     ++m_gulp_counter;
     return raft::proceed;
   }

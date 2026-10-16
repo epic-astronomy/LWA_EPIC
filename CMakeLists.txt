@@ -125,7 +125,7 @@ set_target_properties(epic++ PROPERTIES CUDA_ARCHITECTURES "89")
 
 add_dependencies(epic++ raft hwy epiclib)
 #add_compile_definitions(EPIC_VERSION="${CMAKE_PROJECT_VERSION}")
-target_link_libraries(epic++ PRIVATE pybind11::embed raft hwy epiclib epic_cu cudart
+target_link_libraries(epic++ PRIVATE OpenMP::OpenMP_CXX pybind11::embed raft hwy epiclib epic_cu cudart
 glog::glog nvidia-ml pqxx pq ibverbs prometheus-cpp::pull cmake_git_version_tracking ${AV_LIBS}  
 )
 

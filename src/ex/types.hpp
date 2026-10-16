@@ -92,6 +92,15 @@ struct MOFFCorrelatorDesc {
   bool use_bf16_accum{false};
   /// @brief Use complex w-projected gridding kernels
   bool use_wproj{false};
+  /// Calibration gain table published by streamcal ("" = off). "{gpu}" is
+  /// replaced by the device id.
+  std::string gain_table_path;
+  /// Calibration tap: output file ("" = off), sequences per gulp, integration
+  /// (s) and X-engine threads.
+  std::string caltap_path;
+  int caltap_nseq{0};
+  float caltap_interval_s{10.f};
+  int caltap_threads{2};
 };
 
 struct OutImgDesc {

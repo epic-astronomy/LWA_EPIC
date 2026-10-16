@@ -97,6 +97,11 @@ class MOFFCuHandler {
   /// @param p_phases_ptr Host pointer to the phases array
   void ResetPhases(int p_nchan, float* p_phases_ptr);
 
+  /// @brief Overwrite the device phases in place (same size as the last
+  /// ResetPhases), e.g. with calibration gains folded in. Synchronous; call
+  /// only between gulps (ProcessGulp returns after all streams finish).
+  void UpdatePhases(int p_nchan, const float* p_phases_ptr);
+
   /// Number of streams to split a gulp into
   int m_nstreams;
   std::unique_ptr<cudaStream_t[]> m_gulp_custreams{nullptr};

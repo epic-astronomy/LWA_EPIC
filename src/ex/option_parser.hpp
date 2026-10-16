@@ -98,7 +98,25 @@ cxxopts::Options GetEpicOptions() {
       "(--accum_16bit) under-sums long runs (~24% low over 1000 sequences), "
       "so each gulp is imaged in launches of this many sequences. -1: 100 "
       "with --accum_16bit, otherwise the whole gulp.",
-      cxxopts::value<int>()->default_value("-1"))
+      cxxopts::value<int>()->default_value("-1"))(
+      "gain_table",
+      "Shared-memory gain table written by the CPU calibrator (streamcal), "
+      "e.g. /dev/shm/epic_gains_gpu{gpu}. Read at image boundaries and "
+      "multiplied into the per-antenna phases. Empty: no calibration.",
+      cxxopts::value<std::string>()->default_value(""))(
+      "caltap_nseq",
+      "Calibration tap: sequences of every gulp correlated on the CPU and "
+      "published for streamcal (0: off; 50 = 5% of a 1000-sequence gulp).",
+      cxxopts::value<int>()->default_value("0"))(
+      "caltap_out",
+      "Calibration tap output file ({gpu} is replaced by the device id).",
+      cxxopts::value<std::string>()->default_value("/dev/shm/epic_vis_gpu{gpu}"))(
+      "caltap_interval",
+      "Calibration tap integration per published table, in seconds.",
+      cxxopts::value<float>()->default_value("10"))(
+      "caltap_threads",
+      "Calibration tap X-engine threads.",
+      cxxopts::value<int>()->default_value("2"))
       ("out_dir","Output directory to store the long accumulation files. Defaults to the current directory.",cxxopts::value<std::string>()->default_value("./"));
 
   options.add_options("Execution options")(
@@ -286,6 +304,9 @@ void InitInfoMetric(const cxxopts::ParseResult& result){
     {"wproj",std::to_string(result["wproj"].as<bool>())},
     {"remove_autocorr",std::to_string(result["remove_autocorr"].as<bool>())},
     {"seq_chunk",std::to_string(result["seq_chunk"].as<int>())},
+    {"gain_table",result["gain_table"].as<std::string>()},
+    {"caltap_nseq",std::to_string(result["caltap_nseq"].as<int>())},
+    {"caltap_interval",std::to_string(result["caltap_interval"].as<float>())},
     {"nstreams",std::to_string(result["nstreams"].as<int>())},
     {"ngpus",std::to_string(result["ngpus"].as<int>())},
     {"gpu_ids",VJoin(result["gpu_ids"].as<iVec>())},
