@@ -172,7 +172,17 @@ class TestGeometry(unittest.TestCase):
         np.testing.assert_allclose(w.sum(), 1.0, rtol=1e-6)
         img = np.add.outer(8.0 * np.arange(12), np.arange(12))  # linear: 8 y0 + x0
         val = float((img.ravel()[idx[0]] * w[0]).sum())
-        self.assertAlmostEqual(val, 8 * 4.5 + 3.25, places=4)  # exact for a plane
+        # Keys a = -0.75 keeps a beam's peak (below) at the cost of exactness on a
+        # plane: a gradient g per pixel is offset by at most 0.048 g
+        self.assertAlmostEqual(val, 8 * 4.5 + 3.25, delta=0.048 * 9)
+        # the peak of a Gaussian beam of three image pixels per FWHM, between pixels
+        yy, xx = np.mgrid[0:12, 0:12]
+        sig = 1.22
+        for x0, y0 in ((4.25, 5.5), (4.5, 5.5), (4.0, 5.0)):
+            beam = np.exp(-((xx - (x0 - 1)) ** 2 + (yy - (y0 - 1)) ** 2) / (2 * sig ** 2))
+            idx, w = bicubic(np.array([x0]), np.array([y0]), 12)
+            peak = float((beam.ravel()[idx[0]] * w[0]).sum())
+            self.assertTrue(0.999 < peak < 1.009, (x0, y0, peak))
 
     def test_tracked_pixels_follow_the_sky(self):
         g = SkyGrid(8, el_min_deg=10.0)

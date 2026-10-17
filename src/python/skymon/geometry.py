@@ -149,8 +149,17 @@ def bilinear(x, y, grid_size):
     return idx.astype(np.int32), w.astype(np.float32)
 
 
-def _keys(f, a=-0.5):
-    """Keys cubic convolution weights for offsets f in [0, 1), taps at -1, 0, 1, 2"""
+def _keys(f, a=-0.75):
+    """
+    Keys cubic convolution weights for offsets f in [0, 1), taps at -1, 0, 1, 2.
+    a = -0.75 rather than Keys' -0.5: on the beam of the images (about three
+    image pixels per FWHM) a = -0.5 underestimates a peak by 2.5% on average
+    (up to 4.8%), a = -0.75 reproduces it to within +0.8% (+0.4% on average). The price is that
+    a plane is no longer reproduced exactly: a gradient of g per pixel is
+    offset by at most 0.048 g, which ripples with the sub-pixel position over
+    minutes as the sky turns and is removed, like the slow sky, by the
+    running mean, the high-pass and the detrend.
+    """
     t = np.stack([1 + f, f, 1 - f, 2 - f], -1)
     near = (a + 2) * t ** 3 - (a + 3) * t ** 2 + 1
     far = a * t ** 3 - 5 * a * t ** 2 + 8 * a * t - 4 * a
@@ -159,14 +168,16 @@ def _keys(f, a=-0.5):
 
 def bicubic(x, y, grid_size):
     """
-    Bicubic (Keys, a = -0.5) taps for 1-based FITS pixel coordinates on a [y][x]
+    Bicubic (Keys, a = -0.75) taps for 1-based FITS pixel coordinates on a [y][x]
     array: flat indices [P, 16] (int32) and weights [P, 16] (float32). Points
     within two pixels of the edge, or not finite, get zero weight.
 
     On a beam sampled with about three image pixels per FWHM, bilinear
-    interpolation misses the peak by up to 6% depending on where the position
-    falls between pixels, and that error ripples as the sky turns; bicubic
-    interpolation reduces it to about 2%.
+    interpolation loses 10% of a peak on average (up to 15%), depending on
+    where the position falls between pixels, and that error ripples as the
+    sky turns. Keys' a = -0.5 loses 2.5% on average (up to 4.8%); a = -0.75
+    reproduces the peak to between 0.0% and +0.8%, +0.4% on average (Gaussian beam,
+    1500 random positions; docs/skymon/DESIGN.md section 2.2).
     """
     x = np.asarray(x, float) - 1.0
     y = np.asarray(y, float) - 1.0
