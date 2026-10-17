@@ -96,12 +96,17 @@ The visibility table holds raw F-engine correlations, before cable model and pha
 | Module | Content |
 |---|---|
 | `geometry.py` | Wraps `epic_geometry` (stands, plane frame, used-stand mask), `CHAN_BW` |
-| `sky.py` | A-team spectra (Baars et al. 1977 with Cas A decay; Tau A, Vir A low-frequency fits), quiet Sun, LFSM diffuse sky through pygdsm, optional small-scale fluctuations for simulation |
-| `forward.py` | Sky snapshot (directions and beam-weighted fluxes per component) and model matrices $`M = A\,\mathrm{diag}(BS)\,A^H`$ as complex64 GEMMs |
-| `solvers.py` | `stefcal` (with free fluxes), `gridcal` (grid-domain Gauss-Newton/CG), `Tracker` (Kalman filter on phase and delay, amplitude and bandpass smoothing, jump detection) |
+| `sky.py` | A-team spectra: de Gasperin et al. 2020 for Cas A, Cyg A and Vir A by default (`STREAMCAL_ATEAM`); Baars et al. 1977 shapes below 30 MHz; Tau A low-frequency fit. Also the quiet Sun and the diffuse sky: `diffuse(model="auto")` uses the OVRO-LWA hybrid at 30–80 MHz and LFSM otherwise, with the A-team inpainted. Optional VLSSr sources as fixed flux (`STREAMCAL_CATALOG`), small-scale fluctuations for simulation, and the tables in `data/` |
+| `forward.py` | Sky snapshot (directions and beam-weighted fluxes per component; `diffuse_model`, optional `beam_corr`) and model matrices $`M = A\,\mathrm{diag}(BS)\,A^H`$ as complex64 GEMMs |
+| `beamcorr.py` | Beam-correction basis and `Table` (section 9.7) |
+| `solvers.py` | `stefcal` (with free fluxes), `stefcal_sky` (source fluxes and positions, guard rails, the refraction prior `prior_off_deg`/`prior_neff`/`prior_nsamp`), `anchor_offsets`, `sky_fraction`, `gridcal` (grid-domain Gauss-Newton/CG), `Tracker` (Kalman filter on phase and delay, amplitude and bandpass smoothing, jump detection) |
 | `epicop.py` | Exact epic++ image operator (scatter and gather, numba) for the grid-domain solver and the image monitor |
 | `shm.py` | `GainTableWriter`, `VisTableReader` |
-| `daemon.py` | `python -m streamcal.daemon --vis … --gains … [--dry-run]`. Two passes per table. The first solves gains, fluxes and positions per channel; on a cold start, gains are solved first against the nominal sky. The source offsets are then fitted to $`(f_c/f)^2`$ across the band. The second pass re-solves gains and fluxes with positions fixed. Channel jobs run in a process pool (`--workers`, default 8). The Kalman time step comes from the data timestamps. |
+| `daemon.py` | `python -m streamcal.daemon --vis … --gains … [--dry-run]`. Two passes per table. The first solves gains, fluxes and positions per channel; on a cold start, gains are solved first against the nominal sky. The source offsets are then fitted to $`(f_c/f)^2`$ across the band. The second pass re-solves gains and fluxes with positions fixed. Channel jobs run in a process pool (`--workers`, default 8). The Kalman time step comes from the data timestamps. Section 10 adds:
+  - the anchored source frame (`--free-frame` to disable);
+  - the refraction prior (`--refraction-prior-deg`, `--refraction-prior-neff`, `--refraction-tau`);
+  - matched-filter weights (`--plain-weights` to disable);
+  - the diffuse map choice (`--diffuse-model`, default `auto`). |
 | `research/` | Every simulation and real-data script behind sections 3, 6 and 7, including the benchmark tools (`make_bench_model.py`, `make_bench_gulps.py`, `bench_run.sh`, `bench_watch.py`, `bench_images.py`) |
 
 Dependencies beyond the epic310 environment: `pygdsm`, plus `numba` for `epicop` only. `lsl` provides the dipole beam and the cable model. The daemon imports neither numba nor the GPU stack.
@@ -124,7 +129,8 @@ The X-engine benchmark is `research`-level code in `tests/streamcal/test_io.cpp`
 None of these steps has been carried out. Each starts or reconfigures the imager and must be scheduled with the operators.
 
 1. **Tap only.**
-   - Deploy the branch build on one node with `--caltap_nseq 25 --caltap_interval 10`.
+   - Deploy the branch build on one node with `--caltap_gpu --caltap_interval 10` (full-rate tensor-core tap; the build needs `-DEPIC_TCC_ROOT`), or with `--caltap_nseq 25 --caltap_interval 10` for the CPU tap.
+   - Prefer a 57–76 MHz node (epic4–6): these bands matter most for FRBs and have no real-data validation yet (section 10.6), and their data quality is about 1.0. The GPU tap skips gulps below 98% valid data.
    - Check that `BlockEpicImager` exec_time and the gulp rate are unchanged (the tap runs on its own threads), and watch `nskipped`.
 2. **Dry run.**
    - Run `streamcal.daemon --dry-run` beside it.

@@ -8,11 +8,20 @@ The EPIC imager (Thyagarajan et al. 2017) mixes all antennas before any averagin
 
 The adopted formalism (section 1.5) has five parts:
 
-1. **Tap.** A tap inside epic++ correlates a small slice of every gulp on the CPU: 2.5–5% of the samples, with an AVX2 X-engine on the raw 4+4-bit voltages. Every 10 s it publishes the 256×256 XX and YY covariance of all 128 channels to shared memory. The tap reads the voltages before any gains are applied, so **there is no feedback loop**.
-2. **Forward model.** A CPU service, `streamcal`, predicts the visibilities of the sky every 60 s: A-team, the LFSM diffuse sky at nside 64, and the Sun as a free flux, through the LSL dipole beam.
-3. **Solution.** Each solved channel and polarisation is fitted with warm-started StEFCal. The flux and position of every bright source (A-team, Sun) are solved together with the gains, so scintillation, solar bursts and ionospheric refraction stay in the sky model rather than in the gains (section 6). Channels whose χ²/dof shows RFI are rejected.
+1. **Tap.** A tap inside epic++ correlates the gulps and publishes the 256×256 XX and YY covariance of all 128 channels to shared memory every 10 s. The tap reads the voltages before any gains are applied, so **there is no feedback loop**. Two forms:
+   - on the CPU, a slice of every gulp (2.5–5% of the samples) with an AVX2 X-engine on the raw 4+4-bit voltages;
+   - on the GPU, every sample, with the tensor-core correlator (`--caltap_gpu`, section 8.9.2).
+2. **Forward model.** A CPU service, `streamcal`, predicts the visibilities of the sky every 60 s through the LSL dipole beam:
+   - the A-team, with de Gasperin et al. 2020 spectra;
+   - the diffuse sky: the OVRO-LWA hybrid map at 30–80 MHz, LFSM outside;
+   - the Sun as a free flux.
+
+   An optional beam correction fitted to real data is described in section 9.7.
+3. **Solution.** Each solved channel and polarisation is fitted with warm-started StEFCal. The flux and position of every bright source (A-team, Sun) are solved together with the gains, so scintillation, solar bursts and ionospheric refraction stay in the sky model rather than in the gains (section 6).
+   - The source frame is anchored to the catalogue positions, and the offsets carry a refraction prior that separates thermal noise from model error (section 10.3).
+   - Channels whose χ²/dof, relative to the band median, shows RFI are rejected.
 4. **Tracking.** A per-antenna Kalman filter tracks phase and delay; amplitudes and the bandpass are averaged slowly. Gains are interpolated to all channels.
-5. **Application.** epic++ reads the gain table at image boundaries and folds it into `phases_g`, the per-antenna phases the GPU kernel already applies. Calibration costs the GPU nothing, and the autocorrelation removal stays consistent.
+5. **Application.** epic++ reads the gain table at image boundaries and folds it into `phases_g`, the per-antenna phases the GPU kernel already applies. Calibration costs the GPU nothing, and the autocorrelation removal stays consistent. The published weights are the matched filter $`(1/g)\min(1,\rho/\bar\rho)`$, not plain 1/g, so stands with excess receiver noise are down-weighted (section 10.2).
 
 ## Main results
 
@@ -79,6 +88,26 @@ The benchmark also found and fixed six defects, among them a buffer-release race
 - **Useful in the image domain:** kernel-StEFCal estimates the whole-sky screens to 1–2° in simulation. Using them to predict the static image halves the residual (211 → 117 Jy), which is the route for difference imaging and A-team subtraction.
 - **Tensor-core correlator:** built on the workers. It correlates a full gulp in 0.23 ms (4-bit). Run beside the imager on the same GPU, it correlated every gulp, including the 65.5 MB host-to-device copy, with the imager staying exactly real time; in the unpaced worst case imaging slowed by 2% (p99 38.4 ms of the 41.8 ms budget). The calibration tap can therefore move to 100% of the data on the GPU.
 
+**GPU calibration tap** (section 8.9.2):
+- `--caltap_gpu` correlates every sample on the imaging GPU in about 0.4 ms per gulp, and the imager stays real time.
+- It matches the CPU X-engine to float rounding.
+- In the benchmark the gains reach 0.54–0.59°, against 0.73–0.82° with the 5% CPU tap.
+- At full rate the sky model, not noise, sets the error floor (χ²/dof about 3).
+
+**Real-data methodology** (sections 4.7, 8.11, 9.7 and 10, on the 2023 TBF captures at 28–48 MHz):
+- **Sky model:** the de Gasperin A-team spectra make the fitted Cas A / Cyg A scale ratio 0.96 (Baars: 1.70). The OVRO-LWA diffuse map and an azimuthal beam correction each lower the excess χ² by about 20%.
+- **Direction-dependent screens:** kernel-StEFCal finds a station-fixed component that improves held-out data on a rotated sky by about 7% (8 smooth modes).
+- **Imaging the captures after calibration:**
+  - residual against the model 2.6–2.7× lower than with the cable model;
+  - peak S/N +12–18%;
+  - thermal noise +3–8% with the matched-filter weights (plain 1/g: +16–25%).
+- **Refraction prior:** pins the sources on quiet nights and follows a simulated storm (0.77° and 0.04°, against 0.75° and 0.02° free).
+- **Upper bands:** all real-data results are at 28–48 MHz. The 57–88 MHz bands need their own data (section 10.6).
+
+**FRB requirements** (section 10.5): the expected rate (about 0.1–1.7 per year at 57–76 MHz) is limited by sensitivity, not calibration. The calibration requirements that matter for detection are:
+- no outlier stands and noise-preserving weights, both met;
+- image stability over 1–30 s, which needs A-team subtraction and smooth gain interpolation, still open.
+
 **Primary beam** (section 9): epic++ applies no primary-beam correction. The dipole beam changes the apparent brightness of the watched sources by ×3–8 over a day and differs between X and Y by up to 1.7×. Correction is not needed for detection, which works in S/N, but is needed for fluxes, fluences, light curves and spectra. It belongs downstream of the GPU (pixel extractor, FITS), with the beam model refined from the A-team flux scales the calibration already solves.
 - **Real-data fixes to the forward model:** the A-team removed from the LFSM map (it was counted twice); guard rails on the free source fluxes and positions.
 
@@ -95,8 +124,9 @@ The benchmark also found and fixed six defects, among them a buffer-release race
 | [05_literature.md](05_literature.md) | Survey of real-time and direct-imaging calibration, with references |
 | [06_ionosphere.md](06_ionosphere.md) | Scintillation, refraction, absorption and solar bursts; sky parameters solved with the gains; storm simulations; direction dependence |
 | [07_benchmark.md](07_benchmark.md) | epic++ benchmark mode, timing with and without calibration, end-to-end calibration of simulated F-engine data through the imager, defects found |
-| [09_primary_beam.md](09_primary_beam.md) | Primary-beam correction: what EPIC images contain, beam variation for the watched sources (×3–8 over a day), when it is needed (flux, fluence, light curves; not detection), how to apply it, beam-model accuracy |
-| [08_direction_dependent.md](08_direction_dependent.md) | Per-antenna direction-dependent gains: kernel formalism, representability, cost of uncorrected errors, measurement method, LWA-SV measurements (TBF 2023, TBN 2021), why kernels cannot apply them in a dirty imager, kernel-StEFCal, image-domain prediction, tensor-core correlator and the GPU calibration tap (`--caltap_gpu`) |
+| [08_direction_dependent.md](08_direction_dependent.md) | Per-antenna direction-dependent gains: kernel formalism, representability, cost of uncorrected errors, measurement method, LWA-SV measurements (TBF 2023, TBN 2021), why kernels cannot apply them in a dirty imager, kernel-StEFCal and the real-data pilot, image-domain prediction, tensor-core correlator and the GPU calibration tap (`--caltap_gpu`) |
+| [09_primary_beam.md](09_primary_beam.md) | Primary-beam correction: what EPIC images contain, beam variation for the watched sources (×3–8 over a day), when it is needed (flux, fluence, light curves; not detection), how to apply it, beam-model accuracy, the beam correction fitted to the TBF captures |
+| [10_real_data_methodology.md](10_real_data_methodology.md) | Matched-filter imaging weights, the catalogue-anchored source frame and the refraction prior; before/after images of the TBF captures; FRB-driven calibration requirements; validity in the upper band; open work on the direction-dependent position excess |
 
 ## Code
 
