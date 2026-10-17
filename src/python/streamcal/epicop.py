@@ -139,8 +139,11 @@ class GridOp:
         self.Qf = self.Q.reshape(len(self.off), -1).astype(np.complex128)
 
 
-def build_gridop(cfg: EpicConfig, chan: int, min_uv_cells: float = 0.0) -> GridOp:
+def build_gridop(cfg: EpicConfig, chan: int, min_uv_cells: float = 0.0, kc_override=None) -> GridOp:
+    """kc_override: complex [256, S*S] kernels replacing the production ones (same cells)."""
     kc, xp, yp, pos, used = kernels(cfg, chan)
+    if kc_override is not None:
+        kc = np.asarray(kc_override, np.complex64)
     S = cfg.support
     ant = np.flatnonzero(used)
     # 5x5 patch of each stand, indexed [iy, ix] with iy along +y (row 0 = lowest y)
