@@ -93,7 +93,7 @@ The visibility table holds raw F-engine correlations, before cable model and pha
 |---|---|
 | `geometry.py` | Wraps `epic_geometry` (stands, plane frame, used-stand mask), `CHAN_BW` |
 | `sky.py` | A-team spectra (Baars et al. 1977 with Cas A decay; Tau A, Vir A low-frequency fits), quiet Sun, LFSM diffuse sky through pygdsm, optional small-scale fluctuations for simulation |
-| `forward.py` | Sky snapshot (directions and beam-weighted fluxes per component) and model matrices $M = A\,\mathrm{diag}(BS)\,A^H$ as complex64 GEMMs |
+| `forward.py` | Sky snapshot (directions and beam-weighted fluxes per component) and model matrices $`M = A\,\mathrm{diag}(BS)\,A^H`$ as complex64 GEMMs |
 | `solvers.py` | `stefcal` (with free fluxes), `gridcal` (grid-domain Gauss-Newton/CG), `Tracker` (Kalman filter on phase and delay, amplitude and bandpass smoothing, jump detection) |
 | `epicop.py` | Exact epic++ image operator (scatter and gather, numba) for the grid-domain solver and the image monitor |
 | `shm.py` | `GainTableWriter`, `VisTableReader` |
@@ -139,6 +139,6 @@ None of these steps has been carried out. Each starts or reconfigures the imager
   - Replace the Baars spectra with de Gasperin et al. 2020.
   - Add the AARTFAAC 60 MHz catalogue for the next brightest sources.
   - Cache model matrices on an LST grid for every band.
-- **Tracker tuning.** The process noise ($2^\circ/\sqrt{\rm s}$, $0.05\ \mathrm{ns}/\sqrt{\rm s}$) was chosen for simulated drifts. The measured drifts (section 3.6) are about 10× slower, so $Q$ can be lowered and the effective integration lengthened.
+- **Tracker tuning.** The process noise ($`2^\circ/\sqrt{\rm s}`$, $`0.05\ \mathrm{ns}/\sqrt{\rm s}`$) was chosen for simulated drifts. The measured drifts (section 3.6) are about 10× slower, so $`Q`$ can be lowered and the effective integration lengthened.
 - **Gridding correction.** `gridding_correction` takes its live-stand mask from non-zero kernels, not from flags. Stands flagged by calibration remain in the correction's mean kernel, which is a small, smooth image-plane effect.
 - **Prometheus metrics.** Export χ², flags, Sun scale, gain version and tap `nskipped` from the daemon. The image metadata already carries `gain_version`. The FITS writer should copy it into a `GAINVER` header keyword.

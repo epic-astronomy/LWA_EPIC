@@ -168,7 +168,7 @@ Daemon cost, measured on one Xeon Silver 4210 node with 8 BLAS threads:
   - amplitude 10–12% (MAD, after removing the bandpass common to all stands);
   - a heavy tail (plain rms 25–29°), including at least one stand 50–85° off with a 2 ns slope;
   - 0.5–2% of inputs with near-zero gain that the SSMIF does not flag.
-- **Sensitivity cost.** The point-source coherence of the cable-only weights, $|\sum\varepsilon|^2/(N\sum|\varepsilon|^2)$, is 0.83–0.87. Calibration therefore recovers 13–17% of point-source S/N in EPIC images, and more dynamic range through the outliers.
+- **Sensitivity cost.** The point-source coherence of the cable-only weights, $`|\sum\varepsilon|^2/(N\sum|\varepsilon|^2)`$, is 0.83–0.87. Calibration therefore recovers 13–17% of point-source S/N in EPIC images, and more dynamic range through the outliers.
 - **Stability.** Between 02:00 and 06:00 UTC, the core of the per-channel phase-change distribution matches the noise of two 0.4 s solutions (about 5° per channel). The rms, which includes the tails, is 12–16°, with structured parts of 5–7° (offset) and 1.3–3 ns (delay) and about 10% in amplitude. Instrumental gains drift on hour time scales, so 10–60 s solution intervals with tracking are ample.
 
 ## 3.7 CPU X-engine throughput
