@@ -134,8 +134,13 @@ class BenchGulpGen : public raft::kernel {
       mref["time_tag"] = seq_start * SEQ_MULT_S;
       mref["data_quality"] = 1.0;
       if (m_opts.realtime) {
-        std::this_thread::sleep_until(t_start + std::chrono::duration_cast<clock::duration>(
-                                                    std::chrono::duration<double>(i * gulp_s)));
+        auto due = t_start + std::chrono::duration_cast<clock::duration>(std::chrono::duration<double>(i * gulp_s));
+        if (clock::now() - due > std::chrono::duration<double>(2 * gulp_s)) {
+          // far behind schedule (pipeline start-up): re-anchor instead of replaying the backlog unpaced
+          t_start = clock::now() - std::chrono::duration_cast<clock::duration>(std::chrono::duration<double>(i * gulp_s));
+          due = clock::now();
+        }
+        std::this_thread::sleep_until(due);
       }
       auto now = clock::now();
       if (i > 0) interval_ms.push_back(std::chrono::duration<double, std::milli>(now - t_last).count());
