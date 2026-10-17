@@ -167,6 +167,12 @@ def main(argv=None):
                    help="mean hours between coordinated injections (0 = off)")
     p.add_argument("--inject-dm", type=float, nargs=2, default=(50.0, 1000.0))
     p.add_argument("--seed", type=int, default=None)
+    p.add_argument("--context-swpc", action=argparse.BooleanOptionalAction, default=True,
+                   help="attach NOAA SWPC solar radio sweeps and X-ray flares to events")
+    p.add_argument("--lightning-url", default=None,
+                   help="URL or local file of lightning strikes (JSON; see context.py), off by default")
+    p.add_argument("--context-every", type=float, default=15.0,
+                   help="minutes between polls of each external context source")
 
     p = sub.add_parser("archive", help="copy what is worth keeping to the archive; free local disk")
     p.add_argument("--db", default=os.environ.get("SKYMON_DB"), required=False)
@@ -371,7 +377,9 @@ def cmd_combine(a):
                                    token=os.environ.get("SKYMON_TOKEN"),
                                    confirm_snr=a.confirm_snr,
                                    inject_interval_s=a.inject_every * 3600,
-                                   inject_dm=tuple(a.inject_dm), seed=a.seed))
+                                   inject_dm=tuple(a.inject_dm), seed=a.seed,
+                                   context_swpc=a.context_swpc, lightning_url=a.lightning_url,
+                                   context_interval_s=a.context_every * 60))
     if a.port:
         serve_combiner(comb, port=a.port)
         print(f"combiner: HTTP on port {a.port}", flush=True)

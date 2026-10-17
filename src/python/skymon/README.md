@@ -69,6 +69,14 @@ Monitors keep the data of RFI candidates too, unless the RFI is certain (DM < 2,
 
 Events go to `<out>/events/YYYYMMDD/*.json` and are served on :8096 (`/api/status`, `/api/events`).
 
+**External context** (`context.py`). Solar radio bursts and nearby thunderstorms produce false events. When an event is decided or reopened, the combiner attaches `context` for the reviewer:
+- `sun_el_deg` and `sun_sep_deg`: the Sun's elevation at LWA-SV at the first arrival, and its angle from the event's position (astropy, without downloads);
+- `solar`: NOAA SWPC reports within ±15 min of the arrival in any band. These are radio sweeps (`RSP`, types II, III, IV, ...) overlapping the band in frequency, and X-ray flares (`XRA` and the GOES flare lists), each with its class and its begin, maximum and end times (UTC);
+- `lightning`: strikes within ±10 min of the arrivals, as `strikes_100km` and `nearest_km` (with `complete` when the data cover the whole window);
+- `sources` lists the providers with data; `unavailable` lists those that are enabled but have none.
+
+Each provider is polled in its own thread every `--context-every` minutes (15). The last good data are kept in memory and in `<out>/context/`. A failure is logged once and does not affect the combiner. The context of an event decided in the last 24 h is updated when new reports arrive, since SWPC edits its lists hours after the events. SWPC is on by default (`--no-context-swpc` turns it off). Lightning is off unless `--lightning-url` gives a URL or a local file of JSON strikes, `{"strikes": [{"time": <Unix s or ISO 8601>, "lat": <deg>, "lon": <deg>}, ...]}`.
+
 **Coordinated injections.** The combiner sends `POST /api/inject` with the same burst to every monitor, which checks the consensus end to end.
 
 **Independence.** The monitors never depend on the combiner. The combiner keeps its state on disk, so it can be restarted on any node.
@@ -121,7 +129,7 @@ python -m skymon evaluate --truth /tmp/simtest/truth.jsonl --out /tmp/simtest
 ## Tests
 
 ```bash
-cd tests/python && python -m unittest -v test_skymon
+cd tests/python && python -m unittest -v test_skymon test_combiner test_localdb test_context
 ```
 
 The tests cover:
@@ -134,3 +142,4 @@ The tests cover:
 - an end-to-end simulated sky with stored candidates and the HTTP interface;
 - live injections;
 - a monitor that waits for a missing imager and survives a restart and a gap.
+- the combiner's consensus, and the external context (parsing of saved SWPC samples in `tests/python/data/`, matching, lightning, unreachable sources).

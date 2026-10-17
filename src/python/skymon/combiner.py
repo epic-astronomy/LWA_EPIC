@@ -46,6 +46,12 @@ The combiner also makes coordinated injections. It asks every monitor to
 inject the same burst (position, DM and t_inf), and checks that the events
 come out confirmed: a measurement of the whole chain.
 
+Every decided or reopened event also carries external context for the
+reviewer (context.py): the Sun's elevation, NOAA SWPC solar radio sweeps and
+X-ray flares at its arrival times, and nearby lightning when a source is
+configured. These are fetched in the background and never hold up or fail the
+combiner.
+
 The combiner needs the monitors, but the monitors never need the combiner.
 Its state is in its output directory (/FileStore), so it can be restarted on
 any node.
@@ -93,6 +99,11 @@ class CombinerConfig:
     inject_dm: tuple = (50.0, 1000.0)
     inject_el_min: float = 30.0
     seed: int | None = None
+    # external context for the reviewers (context.py); polled only by run()
+    context_swpc: bool = True
+    lightning_url: str | None = None
+    context_interval_s: float = 900.0
+    context_refresh_s: float = 24 * 3600.0  # update the context of events decided this recently
 
 
 def utc(unix: float) -> str:
@@ -134,6 +145,10 @@ class Combiner:
         self.next_inject = None
         self.started = time.time()
         os.makedirs(os.path.join(cfg.out_dir, "events"), exist_ok=True)
+        from .context import make_service
+        self.context = make_service(cfg.context_swpc, cfg.lightning_url,
+                                    os.path.join(cfg.out_dir, "context"), cfg.context_interval_s)
+        self._context_gen: dict[str, int] = {}  # event id -> context generation attached
         self._load()
 
     # ------------------------------------------------------------ persistence
@@ -369,6 +384,24 @@ class Combiner:
         if ev["status"] != "pending":  # a late detection reopens a decided event
             ev["notes"].append(f"{utc(time.time())} reopened by a detection in {node}")
             ev["status"] = "pending"
+            self._attach_context(ev)
+
+    def _attach_context(self, ev):
+        """
+        Solar reports, lightning and the Sun's elevation for the reviewers.
+        Returns True if the context changed. Never fails the combiner.
+        """
+        try:
+            gen = self.context.generation
+            ctx = self.context.for_event(ev)
+        except Exception as e:
+            print(f"combiner: context of {ev['id']} failed: {e!r}", flush=True)
+            return False
+        self._context_gen[ev["id"]] = gen
+        if ctx == ev.get("context"):
+            return False
+        ev["context"] = ctx
+        return True
 
     def _refit(self, ev):
         """Position from the highest band, DM and t_inf from all detections"""
@@ -524,6 +557,7 @@ class Combiner:
                   review=ev.get("review") or ("pending" if ev["kind"] == "sky" else "not needed"),
                   review_priority=dict(confirmed=1, band_limited=2, unconfirmable=3,
                                        implausible=4)[status])
+        self._attach_context(ev)
         print(f"combiner: {ev['id']} {status}: seen in {seen or '-'}, could see "
               f"{could or '-'}, DM {ev['dm']:.1f} +- {ev['dm_err']:.2f}", flush=True)
         if ev["injection_id"] and ev["injection_id"] in self.injections:
@@ -567,6 +601,11 @@ class Combiner:
                 changed.add(ev["id"])
             for ev in list(self.events.values()):
                 if ev["status"] != "pending":
+                    # the external reports often come in after the decision
+                    if now - ev.get("decided", now) < self.cfg.context_refresh_s and \
+                            self._context_gen.get(ev["id"]) != self.context.generation and \
+                            self._attach_context(ev):
+                        changed.add(ev["id"])
                     # the records a monitor keeps for passed arrivals come later
                     if now - ev.get("decided", now) < 7200 and any(
                             b.get("watch_id") and not b.get("data_id")
@@ -585,6 +624,7 @@ class Combiner:
             cutoff = now - self.cfg.keep_hours * 3600
             for eid in [k for k, e in self.events.items() if e["created"] < cutoff]:
                 del self.events[eid]
+                self._context_gen.pop(eid, None)
         self._maybe_inject(now)
 
     def _maybe_inject(self, now):
@@ -646,6 +686,7 @@ class Combiner:
             return ev
 
     def run(self, stop: threading.Event):
+        self.context.start(stop)  # background threads; they never block the loop
         while not stop.is_set():
             t0 = time.time()
             try:
@@ -664,6 +705,7 @@ class Combiner:
             to_review = sum(1 for e in self.events.values()
                             if e.get("review") == "pending" and e["status"] != "pending")
             return dict(started=self.started, now=time.time(), events=counts, to_review=to_review,
+                        context=self.context.status(),
                         nodes=[dict(name=n["name"], up=n["up"], error=n["error"],
                                     last_ok=n["last_ok"], band=(n["status"] or {}).get("band"))
                                for n in self.nodes.values()],
