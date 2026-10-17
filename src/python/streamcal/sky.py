@@ -8,6 +8,7 @@ geometry code needs nothing from astropy at solve time.
 from __future__ import annotations
 
 import functools
+import os
 from dataclasses import dataclass
 
 import numpy as np
@@ -17,6 +18,24 @@ from astropy.time import Time
 
 K_B = 1.380649e-23
 C = 299792458.0
+
+# Sky-model choices (environment, so the daemon and the research scripts share them):
+#   STREAMCAL_ATEAM    dg2020_taubaars (default: de Gasperin et al. 2020 for Cas A, Cyg A and Vir A,
+#                      Tau A as before) | dg2020 (de Gasperin for all four) | baars (Baars et al. 1977).
+#                      On the TBF captures the fitted Cas A / Cyg A scale ratio is 0.96 with
+#                      de Gasperin and 1.70 with Baars; Tau A fits ~1.5x the de Gasperin value.
+#   STREAMCAL_CATALOG  "" (default) | vlssr: fixed compact sources from VLSSr (data/vlssr_bright.csv),
+#                      part of the fixed (diffuse) model, not solved for
+#   STREAMCAL_CATALOG_MIN   lower flux limit, Jy at 74 MHz (default 20)
+#   STREAMCAL_CATALOG_ALPHA spectral index assumed below 74 MHz (default -0.75)
+#   STREAMCAL_INPAINT_MIN   catalogue sources above this (Jy at 74 MHz, default 150) are also
+#                           inpainted out of the LFSM map, like the A-team (r 3 deg, annulus 3-5 deg)
+ATEAM_MODEL = os.environ.get("STREAMCAL_ATEAM", "dg2020_taubaars")
+CATALOG = os.environ.get("STREAMCAL_CATALOG", "")
+CATALOG_MIN = float(os.environ.get("STREAMCAL_CATALOG_MIN", "20"))
+CATALOG_ALPHA = float(os.environ.get("STREAMCAL_CATALOG_ALPHA", "-0.75"))
+INPAINT_MIN = float(os.environ.get("STREAMCAL_INPAINT_MIN", "150"))
+DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
 # LWA-SV (lsl.common.stations.lwasv)
 LWASV = EarthLocation.from_geodetic(lon=-106.885778 * u.deg, lat=34.348361 * u.deg, height=1477.8 * u.m)
@@ -51,6 +70,79 @@ def vir_a(nu_mhz):
     return 2.1e3 * (nu_mhz / 74.0) ** -0.8
 
 
+def _read_csv(fn):
+    """Small CSV with '#' comment lines and a header row -> dict of float arrays."""
+    lines = [ln.strip() for ln in open(os.path.join(DATA, fn)) if ln.strip() and not ln.startswith("#")]
+    cols = lines[0].split(",")
+    vals = np.array([[float(x) for x in ln.split(",")] for ln in lines[1:]])
+    return {c: vals[:, i] for i, c in enumerate(cols)}
+
+
+@functools.lru_cache(maxsize=1)
+def _dg2020_table():
+    return _read_csv("ateam_degasperin2020.csv")
+
+
+def _dg2020(name, nu_mhz):
+    """de Gasperin et al. 2020 integrated spectrum, log-log interpolated over 30-77 MHz and
+    extrapolated outside with the slope of the end 5 MHz. Cas A is faded from the model epoch
+    (2015.65) at 0.7 per cent per year (an assumption: the Baars rate overestimates the
+    low-frequency fading)."""
+    t = _dg2020_table()
+    ln, ls = np.log(t["nu_mhz"]), np.log(t[name])
+    x = np.log(np.atleast_1d(nu_mhz).astype(float))
+    y = np.interp(x, ln, ls)
+    lo, hi = x < ln[0], x > ln[-1]
+    s_lo = (ls[5] - ls[0]) / (ln[5] - ln[0])
+    s_hi = (ls[-1] - ls[-6]) / (ln[-1] - ln[-6])
+    y[lo] = ls[0] + s_lo * (x[lo] - ln[0])
+    y[hi] = ls[-1] + s_hi * (x[hi] - ln[-1])
+    out = np.exp(y)
+    if name == "CasA":
+        out = out * (1 - 0.007) ** (_EPOCH_YEAR - 2015.65)
+    return out if np.ndim(nu_mhz) else float(out[0])
+
+
+_EPOCH_YEAR = 2026.8  # year at which Cas A is evaluated (overridden by set_epoch)
+
+
+def set_epoch(year):
+    global _EPOCH_YEAR
+    _EPOCH_YEAR = float(year)
+
+
+def _ateam_spectrum(name, baars_fn):
+    def f(nu_mhz):
+        use_dg = ATEAM_MODEL == "dg2020" or (ATEAM_MODEL == "dg2020_taubaars" and name != "TauA")
+        if use_dg:
+            return _dg2020(name, nu_mhz)
+        return baars_fn(nu_mhz, year=_EPOCH_YEAR) if name == "CasA" else baars_fn(nu_mhz)
+    return f
+
+
+@functools.lru_cache(maxsize=1)
+def catalog_sources():
+    """(SkyCoord[k], S74[k]) of the fixed catalogue sources, or None."""
+    if CATALOG != "vlssr":
+        return None
+    t = _read_csv("vlssr_bright.csv")
+    k = t["s74_jy"] >= CATALOG_MIN
+    return SkyCoord(t["ra_deg"][k] * u.deg, t["dec_deg"][k] * u.deg), t["s74_jy"][k]
+
+
+def catalog_fixed(t: Time, nu_mhz: np.ndarray, min_alt_deg=5.0):
+    """Catalogue sources above min_alt: (enu[k, 3], flux[k, nchan]); empty arrays if none."""
+    cat = catalog_sources()
+    nu_mhz = np.atleast_1d(nu_mhz)
+    if cat is None:
+        return np.zeros((0, 3)), np.zeros((0, len(nu_mhz)))
+    coords, s74 = cat
+    aa = coords.transform_to(AltAz(obstime=t, location=LWASV))
+    up = aa.alt.deg > min_alt_deg
+    enu = enu_from_altaz(aa.alt.rad[up], aa.az.rad[up])
+    return enu, s74[up, None] * (nu_mhz[None, :] / 74.0) ** CATALOG_ALPHA
+
+
 @dataclass(frozen=True)
 class PointSource:
     name: str
@@ -60,10 +152,10 @@ class PointSource:
 
 
 ATEAM = (
-    PointSource("CygA", SkyCoord("19h59m28.36s", "+40d44m02.1s"), cyg_a),
-    PointSource("CasA", SkyCoord("23h23m24.0s", "+58d48m54s"), cas_a),
-    PointSource("TauA", SkyCoord("05h34m31.94s", "+22d00m52.2s"), tau_a),
-    PointSource("VirA", SkyCoord("12h30m49.42s", "+12d23m28.0s"), vir_a),
+    PointSource("CygA", SkyCoord("19h59m28.36s", "+40d44m02.1s"), _ateam_spectrum("CygA", cyg_a)),
+    PointSource("CasA", SkyCoord("23h23m24.0s", "+58d48m54s"), _ateam_spectrum("CasA", cas_a)),
+    PointSource("TauA", SkyCoord("05h34m31.94s", "+22d00m52.2s"), _ateam_spectrum("TauA", tau_a)),
+    PointSource("VirA", SkyCoord("12h30m49.42s", "+12d23m28.0s"), _ateam_spectrum("VirA", vir_a)),
 )
 
 
@@ -117,15 +209,18 @@ def remove_compact(m, r_in_deg=6.0, r_out_deg=9.0):
     catalogue. Pixels within r_in of each source take the median of the r_in-r_out annulus.
     """
     import healpy as hp
-    from astropy.coordinates import SkyCoord
 
     m = np.array(m, float)
     nside = hp.npix2nside(len(m))
-    for s in ATEAM:
-        g = s.coord.galactic
+    discs = [(s.coord.galactic, r_in_deg, r_out_deg) for s in ATEAM]
+    cat = catalog_sources()
+    if cat is not None:  # bright catalogue sources are in the map too
+        coords, s74 = cat
+        discs += [(c.galactic, 3.0, 5.0) for c in coords[s74 >= INPAINT_MIN]]
+    for g, rin, rout in discs:
         v = hp.ang2vec(g.l.deg, g.b.deg, lonlat=True)
-        inner = hp.query_disc(nside, v, np.radians(r_in_deg))
-        ring = np.setdiff1d(hp.query_disc(nside, v, np.radians(r_out_deg)), inner)
+        inner = hp.query_disc(nside, v, np.radians(rin))
+        ring = np.setdiff1d(hp.query_disc(nside, v, np.radians(rout)), inner)
         m[inner] = np.median(m[ring])
     return m
 

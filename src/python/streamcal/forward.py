@@ -118,7 +118,9 @@ def build_snapshot(t: Time, chans, pol="XX", nside=32, extra_sources=None, flux_
             parts.append(("extra", es[up], (s74[:, None] * (nu_mhz[None, :] / 74.0) ** alpha[:, None])[up]))
     if nside:
         denu, djy = sm.diffuse(t, nu_mhz, nside=nside, fluct_rms=fluct_rms)
-        parts.append(("diffuse", denu, djy))
+        # fixed catalogue sources (STREAMCAL_CATALOG) join the fixed "diffuse" component
+        cenu, cjy = sm.catalog_fixed(t, nu_mhz)
+        parts.append(("diffuse", np.concatenate([denu, cenu]), np.concatenate([djy, cjy])))
     if not parts:
         return snap
     allenu = np.concatenate([p[1] for p in parts])
