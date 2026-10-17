@@ -29,12 +29,14 @@ F-engine packets ──> packet assembler ──> gulp [chan 128][seq 1000][stan
 |---|---|
 | `src/ex/gain_table.hpp` (new) | `GainTableHeader` (128 bytes) and `GainTableReader`, which reads under a seqlock. A table is rejected if the magic or layout is wrong, if the version is not newer, if `valid_from_seq` lies in the future, if it does not cover the imaged channels, or if it contains non-finite values or values above `max_abs` (64). Also `ApplyGainCorrections`, which multiplies nominal × table. |
 | `src/ex/xengine.hpp` (new) | CPU X-engine: 4+4-bit unpack to int16 pairs, `vpmaddwd` in 2×3 register tiles, OpenMP over channels. Output is int64 accumulators for the XX and YY upper triangles. |
-| `src/ex/cal_tap.hpp` (new) | `CalTap`: one-slot mailbox and worker thread. It stages `nseq` sequences per channel from the offered gulp, runs the X-engine, and publishes `VisTableHeader` plus R as complex64 (Hermitian, R = Σxx^H / nsamp) under a seqlock. No `Payload` is shared across threads: `Payload` unlocks its buffer on `use_count() == 2`, which is not thread safe, so the worker copies its slice while `ProcessGulp` runs and the correlator calls `WaitCopied()`. |
+| `src/ex/cal_tap.hpp` (new) | `CalTap` has a one-slot mailbox, a stager thread and an X-engine thread. The stager copies `nseq` sequences per channel from the offered gulp into one of two staging batches while `ProcessGulp` runs; the correlator calls `WaitCopied()` before releasing the gulp. A full batch (`--caltap_batch` gulps, default 8) goes to the X-engine thread. Correlating one gulp per call kept up with only every second gulp, because the read-modify-write of the 134 MB accumulator dominates at 50 samples; batching keeps up with every gulp (section 7). The X-engine thread publishes `VisTableHeader` plus R as complex64 (Hermitian, R = Σxxᴴ / nsamp) under a seqlock. No `Payload` is shared across threads, because `Payload` unlocks its buffer on `use_count() == 2`, which is not thread safe. |
 | `src/ex/MOFF_cu_handler.{h,cu}` | `UpdatePhases`: an in-place synchronous `cudaMemcpy` into the existing `m_phases_cu`, with no reallocation. It is safe between gulps because `ProcessGulp` returns only after all streams finish. |
 | `src/ex/MOFF_correlator.hpp` | Keeps `m_phases_nominal` (from `GetLwasvPhases`). `ApplyGainTable` sets `m_phases = nominal ⊙ table` and uploads it. A new spectral window resets the gain version to 0, i.e. nominal phases. Adds `GetGainVersion` and `GetCalDesc`. |
 | `src/raft_kernels/correlator.hpp` | Polls the gain table at the first gulp of every image, so each image is made with exactly one table. Offers every gulp to the tap. Adds `gain_version` (uint64) to the image metadata. |
 | `src/ex/types.hpp`, `option_parser.hpp`, `kernel_types.hpp` | New options (below). `{gpu}` in paths is replaced by the device id. |
 | `CMakeLists.txt` | Links `OpenMP::OpenMP_CXX` into epic++, for the X-engine. |
+| `src/ex/buffer.hpp` (fix) | `Payload::unlock` released the buffer (`m_lock = 0`) before `ResetBuf()` cleared its metadata. A producer acquiring the buffer in that window wrote metadata concurrently with the reset and crashed in `unordered_map::operator[]`. It reproduced reliably with the benchmark generator under backpressure; the production packet assembler is exposed to the same race. Fixed by resetting first, then releasing with release ordering. |
+| `src/raft_kernels/bench_kernels.hpp` (new), `epic_executor.hpp` | `epic++ --bench`: `BenchGulpGen` → `CorrelatorRft` (with tap and gain table) → `BenchSink`. Only these kernels are constructed, so nothing connects to the database, video server or network. The generator plays simulated gulps from a file, rotating each channel's sequences on every pass so the tap sees new samples, or sends empty gulps; it runs unpaced or at the real-time rate. The sink reports image cadence and gain version and dumps sampled images. |
 
 New options:
 
@@ -45,12 +47,14 @@ New options:
 | `--caltap_out PATH` | `/dev/shm/epic_vis_gpu{gpu}` | Visibility table output |
 | `--caltap_interval S` | 10 | Integration per published table, in seconds of F-engine time |
 | `--caltap_threads N` | 2 | X-engine threads (not pinned; the raft kernels use CPUs 3–11 for GPU 0) |
+| `--caltap_batch N` | 8 | Gulps staged per X-engine call |
+| `--bench`, `--bench_data`, `--bench_seq0`, `--bench_ngulps`, `--bench_realtime`, `--bench_rotate`, `--bench_dump`, `--bench_dump_every`, `--bench_report` | off | Benchmark mode (section 7) |
 
 ## 4.3 Shared-memory layouts
 
 Both tables are little-endian files in `/dev/shm` with a 128-byte header. The `seq` field is odd while the writer is updating the table. A reader copies the header and data, then re-reads `seq` and discards the copy if it changed. The Python twins are in `src/python/streamcal/shm.py`.
 
-**Gain table** (`EPICGAIN`, layout 1):
+**Gain table** (`EPICGAIN`, layout 1). The corrections must be relative: the reader rejects a table whose median non-zero |c| lies outside 0.25–4, and the Python writer refuses to write one. The solved gains carry an absolute scale (F-engine counts per Jy^½, about 0.01). Publishing 1/g directly would scale the voltages by about 100 and overflow the half-precision gridding and FFT. In the integration test a table clipped at |c| = 32 turned every image into NaN (section 7.3). The daemon normalises each channel and polarisation to median |c| = 1 and keeps the absolute scale for the flux-scale monitor.
 
 | Offset | Field |
 |---|---|
@@ -97,8 +101,8 @@ The visibility table holds raw F-engine correlations, before cable model and pha
 | `solvers.py` | `stefcal` (with free fluxes), `gridcal` (grid-domain Gauss-Newton/CG), `Tracker` (Kalman filter on phase and delay, amplitude and bandpass smoothing, jump detection) |
 | `epicop.py` | Exact epic++ image operator (scatter and gather, numba) for the grid-domain solver and the image monitor |
 | `shm.py` | `GainTableWriter`, `VisTableReader` |
-| `daemon.py` | `python -m streamcal.daemon --vis … --gains … [--dry-run]` |
-| `research/` | Every simulation and real-data script behind section 3 |
+| `daemon.py` | `python -m streamcal.daemon --vis … --gains … [--dry-run]`. Two passes per table. The first solves gains, fluxes and positions per channel; on a cold start, gains are solved first against the nominal sky. The source offsets are then fitted to $`(f_c/f)^2`$ across the band. The second pass re-solves gains and fluxes with positions fixed. Channel jobs run in a process pool (`--workers`, default 8). The Kalman time step comes from the data timestamps. |
+| `research/` | Every simulation and real-data script behind sections 3, 6 and 7, including the benchmark tools (`make_bench_model.py`, `make_bench_gulps.py`, `bench_run.sh`, `bench_watch.py`, `bench_images.py`) |
 
 Dependencies beyond the epic310 environment: `pygdsm`, plus `numba` for `epicop` only. `lsl` provides the dipole beam and the cable model. The daemon imports neither numba nor the GPU stack.
 
@@ -106,11 +110,12 @@ Dependencies beyond the epic310 environment: `pygdsm`, plus `numba` for `epicop`
 
 | Test | Result (2026-10-16) |
 |---|---|
-| `tests/streamcal/test_io.cpp selftest` (epic1, g++ 11.4) | 11/11 pass: the tap R matches a scalar reference; the gain reader handles a missing file, slicing, repeated versions, a torn seqlock, deferral by `valid_from_seq`, coverage, NaN and clamping; application and zero flags are correct |
+| `tests/streamcal/test_io.cpp selftest` (epic1, g++ 11.4) | 13/13 pass: the tap R (batched, two threads) matches a scalar reference; the gain reader handles a missing file, slicing, repeated versions, a torn seqlock, deferral by `valid_from_seq`, coverage, NaN, clamping and unnormalised tables; application and zero flags are correct |
 | `tests/streamcal/test_shm_roundtrip.py` (epic1, epic310 Python) | Pass: Python writer → C++ reader, and C++ tap → Python reader |
 | `tests/streamcal/test_daemon.py` | End to end on synthetic tap tables: see section 3.5 |
 | `research/test_epicop.py` | epicop against literal MOFF: relative error 2.5×10⁻⁸; adjoint exact |
 | Full epic++ build (epic1, CUDA 12.3, `build-streamcal/`) | Builds; no new warnings |
+| `epic++ --bench` with simulated F-engine data, tap, daemon and gain table (section 7) | Real time kept (35.8 ms per 41.8 ms gulp); gains to 0.6° / 3–4% from ±70° / 20%; GPU image residual against exact gains 0.219 → 0.019 |
 
 The X-engine benchmark is `research`-level code in `tests/streamcal/test_io.cpp` (tap mode); throughput was measured with the standalone bench (section 1.6).
 

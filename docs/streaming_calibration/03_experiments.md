@@ -127,7 +127,7 @@ The test runs `streamcal.daemon` (8 of 128 channels solved, Sun free), reads the
 | 1 | 1.31° / 1.35° | 4.6% / 4.8% | flagged |
 | 6 | 1.10° / 1.15° | 2.2% / 2.4% | flagged |
 
-The test passes. A first run caught dead stands that were excluded by the power check but left unflagged (correction 1 instead of 0). The daemon now flags stands with abnormal power in most channels.
+The test passes. A first run caught dead stands that were excluded by the power check but left unflagged (correction 1 instead of 0). The daemon flags stands with abnormal power in most channels.
 
 Daemon cost, measured on one Xeon Silver 4210 node with 8 BLAS threads:
 

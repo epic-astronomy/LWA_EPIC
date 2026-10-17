@@ -10,7 +10,7 @@ The adopted formalism (section 1.5) has five parts:
 
 1. **Tap.** A tap inside epic++ correlates a small slice of every gulp on the CPU: 2.5–5% of the samples, with an AVX2 X-engine on the raw 4+4-bit voltages. Every 10 s it publishes the 256×256 XX and YY covariance of all 128 channels to shared memory. The tap reads the voltages before any gains are applied, so **there is no feedback loop**.
 2. **Forward model.** A CPU service, `streamcal`, predicts the visibilities of the sky every 60 s: A-team, the LFSM diffuse sky at nside 64, and the Sun as a free flux, through the LSL dipole beam.
-3. **Solution.** Each solved channel and polarisation is fitted with warm-started StEFCal. Channels whose χ²/dof shows RFI are rejected.
+3. **Solution.** Each solved channel and polarisation is fitted with warm-started StEFCal. The flux and position of every bright source (A-team, Sun) are solved together with the gains, so scintillation, solar bursts and ionospheric refraction stay in the sky model rather than in the gains (section 6). Channels whose χ²/dof shows RFI are rejected.
 4. **Tracking.** A per-antenna Kalman filter tracks phase and delay; amplitudes and the bandpass are averaged slowly. Gains are interpolated to all channels.
 5. **Application.** epic++ reads the gain table at image boundaries and folds it into `phases_g`, the per-antenna phases the GPU kernel already applies. Calibration costs the GPU nothing, and the autocorrelation removal stays consistent.
 
@@ -50,7 +50,29 @@ The tap route used a 2% tap. It recovers from 120° jumps in 20–30 s and flags
 
 **GPU cost:** none in the kernel; a 512 kB copy between gulps when the table changes.
 
-**Tests:** epic++ with the tap and gain table builds on epic1. The C++ shared-memory I/O tests (11/11), the Python–C++ round trip and the end-to-end daemon test pass (1.1° and 2.2% after 60 s). Nothing has been deployed; the imager was not started or restarted.
+**Ionosphere and the Sun** (section 6). With the bright-source fluxes fixed, a 30× solar burst destroys the gain solution (90°). With fluxes and positions solved, the same burst costs 0.02°. In a closed-loop storm (scintillation σ = 0.3, refraction up to 1.4°, a 30× burst, 30% absorption), the applied gains held:
+
+| Band | Phase error | Image shift |
+|---|---|---|
+| 34.5 MHz | 0.56° median, 0.79° worst | 0.016° |
+| 75.8 MHz | 0.65° | 0.006° |
+
+Without position solving, the shift was 0.24° and the burst pushed the error to 2.7°. The gains are direction-independent; the direction-dependent effects are parameters of the sky model (section 6.4).
+
+**Imager and calibrator benchmark** (section 7). epic++ was run in its benchmark mode on epic1 with production imaging options and simulated 4+4-bit F-engine data with wrong gains (±70°, 3 ns, 20%, three dead inputs). The tap, the daemon and the gain table ran in the loop.
+
+| Configuration | Per gulp, mean / p99 |
+|---|---|
+| Baseline (empty gulps, no calibration) | 35.5 / 35.9 ms |
+| Full calibration loop | 35.8 / 36.4–36.8 ms |
+
+- **Real time:** a 41.8 ms gulp leaves 5 ms of headroom, and in a 5-minute run paced at the real-time rate the imager never fell behind.
+- **Gains:** the first table (10 s) brought them to 0.7°/5%, and they held at 0.6°/3–4%.
+- **Images:** the residual of the GPU images against images made with the exact gains fell from 0.219 to 0.019.
+
+The benchmark also found and fixed six defects, among them a buffer-release race in `buffer.hpp`, which the production pipeline is exposed to too, and an amplitude-scale bug that would have overflowed the GPU's half-precision FFT.
+
+**Tests:** epic++ with the tap, the gain table and the benchmark mode builds on epic1. The C++ shared-memory I/O tests (13/13), the Python–C++ round trip, the end-to-end daemon test (1.1° and 2.2% after 60 s) and the imager integration test (section 7) pass. The production imager was not deployed, started or restarted; the benchmark ran the branch build on an idle GPU.
 
 ## Documents
 
@@ -61,12 +83,16 @@ The tap route used a 2% tap. It recovers from 120° jumps in 20–30 s and flags
 | [03_experiments.md](03_experiments.md) | All simulations, the LWA-SV data analysis, X-engine benchmark |
 | [04_implementation.md](04_implementation.md) | epic++ changes, options, shared-memory layouts, streamcal modules, tests, commissioning plan, open items |
 | [05_literature.md](05_literature.md) | Survey of real-time and direct-imaging calibration, with references |
+| [06_ionosphere.md](06_ionosphere.md) | Scintillation, refraction, absorption and solar bursts; sky parameters solved with the gains; storm simulations; direction dependence |
+| [07_benchmark.md](07_benchmark.md) | epic++ benchmark mode, timing with and without calibration, end-to-end calibration of simulated F-engine data through the imager, defects found |
 
 ## Code
 
 | Path | Content |
 |---|---|
 | `src/ex/xengine.hpp`, `src/ex/cal_tap.hpp`, `src/ex/gain_table.hpp` | CPU X-engine, calibration tap, gain-table reader |
+| `src/raft_kernels/bench_kernels.hpp`, `src/raft_kernels/epic_executor.hpp` | `epic++ --bench` (generator → correlator → sink) |
+| `src/ex/buffer.hpp` | Fix: reset a buffer before releasing it |
 | `src/raft_kernels/correlator.hpp`, `src/ex/MOFF_correlator.hpp`, `src/MOFF_cu_handler.cu` | Hooks: tap offer, gain polling at image boundaries, in-place phase upload, `gain_version` metadata |
 | `src/python/streamcal/` | `daemon.py` (service), `forward.py`, `sky.py`, `solvers.py`, `epicop.py`, `shm.py`, `geometry.py` |
 | `src/python/streamcal/research/` | Simulation and real-data scripts behind section 3 |

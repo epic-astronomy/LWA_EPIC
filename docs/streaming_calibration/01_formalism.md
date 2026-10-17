@@ -147,7 +147,7 @@ The snapshot solution, per channel and polarisation, solves
 \min_{\mathbf g,\,s_\odot}\ \big\|\,\mathcal W\odot\big(\kappa\hat R\kappa^H - G(M_0 + s_\odot M_\odot)G^H\big)\big\|_F^2
 ```
 
-by StEFCal (Salvini & Wijnholds 2014), alternating with linear least squares for $`s_\odot`$. The details:
+by StEFCal (Salvini & Wijnholds 2014), alternating with linear least squares for $`s_\odot`$. In the service, every bright compact source (A-team and Sun) enters this way, with a free flux scale and a free position offset, so that scintillation, solar bursts and refraction are absorbed by the sky model and not by the gains (section 6.2). The details:
 
 - **Warm start:** from the tracker's prediction. AARTFAAC reports a speed-up above 250× from warm starting.
 - **Baseline weights:** $`\mathcal W`$ removes the autocorrelations, baselines shorter than 1λ, and inputs whose power lies outside 0.3–3× the median.
