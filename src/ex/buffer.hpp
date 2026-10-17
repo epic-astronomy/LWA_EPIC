@@ -467,10 +467,12 @@ Payload<Mbuf>::~Payload() {
 
 template <typename Mbuf>
 void Payload<Mbuf>::unlock(bool p_reset) {
-  m_mbuf.get()->m_lock.store(0, std::memory_order::memory_order_relaxed);
+  // Reset before releasing: once m_lock is 0 a producer can acquire the buffer
+  // and write its metadata, which must not race with ResetBuf() clearing it.
   if (p_reset) {
     m_mbuf.get()->ResetBuf();
   }
+  m_mbuf.get()->m_lock.store(0, std::memory_order_release);
 }
 
 template <typename Mbuf>
