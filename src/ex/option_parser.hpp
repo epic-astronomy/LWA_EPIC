@@ -68,6 +68,11 @@ cxxopts::Options GetEpicOptions() {
       cxxopts::value<int>()->default_value("40"))(
       "nimg_accum", "Number of images to accumulate before saving to the disk",
       cxxopts::value<int>()->default_value("1"))(
+      "nimg_accum_min",
+      "Fewest images a partial accumulation, ended by a gap in the images or a "
+      "change of frequency, must hold to be saved (with its true length). "
+      "-1: 10% of --nimg_accum.",
+      cxxopts::value<int>()->default_value("-1"))(
       "channels", "Number of channels in the output image",
       cxxopts::value<int>()->default_value("128"))(
       "support", "Support size of the kernel. Must be a non-zero power of 2",
@@ -289,6 +294,7 @@ void InitInfoMetric(const cxxopts::ParseResult& result){
     {"nts",std::to_string(result["nts"].as<int>())},
     {"seq_accum",std::to_string(result["seq_accum"].as<int>())},
     {"nimg_accum",std::to_string(result["nimg_accum"].as<int>())},
+    {"nimg_accum_min",std::to_string(result["nimg_accum_min"].as<int>())},
     {"channels",std::to_string(result["channels"].as<int>())},
     {"support",std::to_string(result["support"].as<int>())},
     {"kernel_oversample",std::to_string(result["kernel_oversample"].as<int>())},

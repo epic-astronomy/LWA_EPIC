@@ -285,14 +285,12 @@ std::string GetFileMetaInsertStmt(std::string schema="public") {
   return stmnt;
 }
 
-template <typename _Pld>
-void InsertFilenametoDb(_Pld* pld_ptr, pqxx::work* work_ptr,
-                        const std::string& insert_stmt) {
+inline void InsertFileMetaToDb(dict_t& meta, pqxx::work* work_ptr,
+                               const std::string& insert_stmt) {
   //  "filename",    "chan_width",   "nchan",        "support_size",
   //  "gulp_len_ms", "image_len_ms", "epoch_time_s", "grid_size",
   //  "grid_res",    "cfreq_mhz",    "epic_version"
 
-  auto& meta = pld_ptr->get_mbuf()->GetMetadataRef();
   auto filename = std::get<std::string>(meta["filename"]);
   auto chan_width = std::get<int>(meta["chan_width"]);
   int nchan = std::get<uint8_t>(meta["nchan"]);
@@ -309,6 +307,13 @@ void InsertFilenametoDb(_Pld* pld_ptr, pqxx::work* work_ptr,
                     git_CommitSHA1());
 
   (*work_ptr).exec_prepared0(insert_stmt, pars);
+}
+
+template <typename _Pld>
+void InsertFilenametoDb(_Pld* pld_ptr, pqxx::work* work_ptr,
+                        const std::string& insert_stmt) {
+  InsertFileMetaToDb(pld_ptr->get_mbuf()->GetMetadataRef(), work_ptr,
+                     insert_stmt);
 }
 
 class PgDbConnectMixin {

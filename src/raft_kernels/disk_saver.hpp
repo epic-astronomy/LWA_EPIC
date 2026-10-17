@@ -31,7 +31,9 @@
 #include <raft>
 #include <raftio>
 #include <string>
+#include <vector>
 
+#include "../ex/async_writer.hpp"
 #include "../ex/constants.h"
 #include "../ex/db_helpers.hpp"
 #include "../ex/metrics.hpp"
@@ -40,49 +42,123 @@
 #include "../ex/video_streaming.hpp"
 // #include "./epic_live_streamer.hpp"
 
+/**
+ * @brief Writes the long accumulations (FITS, quick look, daily digest) and
+ * registers each file in epic_files_metadata2.
+ *
+ * The writing happens off the pipeline: run() copies the accumulation into a
+ * bounded queue (m_queue_len entries) served by a writer thread and returns at
+ * once. A full queue (the writer stalled, e.g. on a hung NFS mount) drops the
+ * accumulation with a rate-limited warning, so the imager never stalls or
+ * stops because of the long-integration archive. Write and database errors
+ * are logged (rate-limited) and the accumulation is dropped.
+ */
 template <class Payload>
 class DiskSaverRft : public raft::kernel,
                      protected PgDbConnectMixin
 /* ,protected EpicLiveStream */ {
  private:
-  std::string m_img_suffix;
+  struct Job {
+    std::vector<float> data;
+    dict_t meta;
+    int imsize{0};
+    int nchan{0};
+  };
+
   unsigned int m_rt_gauge_id{0};
   std::string m_db_insert_stmt;
   Timer m_timer;
-  // Streamer* m_streamer;
-  uint64_t stream_counter{0};
 
   std::string m_file_stmt_id{"insert_file_meta"};
   std::string m_filename_db_schema{"public"};
   std::string m_out_dir{"./"};
 
+  RateLimit m_drop_log{std::chrono::seconds(300)};
+  RateLimit m_write_log{std::chrono::seconds(300)};
+  RateLimit m_db_log{std::chrono::seconds(300)};
+  std::chrono::steady_clock::time_point m_next_reconnect{};
+  bool m_db_ok{true};
+  // last: constructed after, and destroyed before, everything the writer uses
+  std::unique_ptr<BoundedWorker<Job>> m_writer;
+
+  /// Reconnect after a database failure, at most once a minute.
+  bool EnsureDb() {
+    if (m_db_ok) return true;
+    auto now = std::chrono::steady_clock::now();
+    if (now < m_next_reconnect) return false;
+    m_next_reconnect = now + std::chrono::seconds(60);
+    try {
+      m_pg_conn = std::make_unique<pqxx::connection>(m_conn_str);
+      m_pg_conn->prepare(m_file_stmt_id, m_db_insert_stmt);
+      m_db_ok = true;
+      LOG(INFO) << "disk saver: database connection restored";
+    } catch (const std::exception& e) {
+      size_t held;
+      if (m_db_log.Due(&held)) {
+        LOG(WARNING) << "disk saver: database unavailable: " << e.what();
+      }
+    }
+    return m_db_ok;
+  }
+
+  void Write(Job& job) {
+    auto filename = SaveImageToDisk(job.imsize, job.nchan, job.data.data(),
+                                    m_out_dir + "/", job.meta);
+    if (filename.empty()) {
+      size_t held;
+      if (m_write_log.Due(&held)) {
+        LOG(ERROR) << "disk saver: accumulation not written to " << m_out_dir
+                   << " (" << held << " more since the last report)";
+      }
+      return;
+    }
+    job.meta["filename"] = filename;
+    if (!EnsureDb()) return;
+    try {
+      pqxx::work tx(*m_pg_conn);
+      InsertFileMetaToDb(job.meta, &tx, m_file_stmt_id);
+      tx.commit();
+    } catch (const std::exception& e) {
+      m_db_ok = false;
+      size_t held;
+      if (m_db_log.Due(&held)) {
+        LOG(ERROR) << "disk saver: " << filename
+                   << " not registered in epic_files_metadata2: " << e.what()
+                   << " (" << held << " more since the last report)";
+      }
+    }
+  }
+
  public:
-  explicit DiskSaverRft(std::string p_db_schema="public",
-    std::string p_out_dir = "./",
-                        std::string p_db_conn_str = "")
+  explicit DiskSaverRft(std::string p_db_schema = "public",
+                        std::string p_out_dir = "./",
+                        std::string p_db_conn_str = "", size_t p_queue_len = 4)
       : raft::kernel(),
         PgDbConnectMixin(p_db_conn_str) /* , EpicLiveStream() */ {
     input.addPort<Payload>("image");
-    m_filename_db_schema=p_db_schema!=""?p_db_schema:"public";
+    m_filename_db_schema = p_db_schema != "" ? p_db_schema : "public";
     m_db_insert_stmt = GetFileMetaInsertStmt(m_filename_db_schema);
     m_out_dir = p_out_dir;
     LOG(INFO) << "Preparing stmt";
     this->prepare_stmt(m_file_stmt_id, m_db_insert_stmt);
+    try {
+      // a statement that hangs must not hold the writer forever
+      pqxx::nontransaction(*m_pg_conn).exec("SET statement_timeout = 30000");
+    } catch (const std::exception& e) {
+      LOG(WARNING) << "disk saver: " << e.what();
+    }
 
-    // m_img_suffix = p_img_suffix;
     m_rt_gauge_id = PrometheusExporter::AddRuntimeSummaryLabel(
         {{"type", "exec_time"},
          {"kernel", "disk_saver"},
          {"units", "s"},
          {"kernel_id", std::to_string(this->get_id())}});
-
+    m_writer = std::make_unique<BoundedWorker<Job>>(
+        p_queue_len, [this](Job& job) { this->Write(job); });
   }
-
-  // void SetStreamer(Streamer* p_streamer) { m_streamer = p_streamer; }
 
   raft::kstatus run() override {
     m_timer.Tick();
-    using std::string_literals::operator""s;
     Payload pld;
     input["image"].pop(pld);
 
@@ -91,44 +167,30 @@ class DiskSaverRft : public raft::kernel,
       return raft::proceed;
     }
 
-    auto& img_metadata = pld.get_mbuf()->GetMetadataRef();
-    for (auto it = img_metadata.begin(); it != img_metadata.end(); ++it) {
-      VLOG(3) << it->first << std::endl;
-    }
-    auto imsize = std::get<int>(img_metadata["grid_size"]);
-    auto nchan = std::get<uint8_t>(img_metadata["nchan"]);
-    int chan_width = std::get<int>(img_metadata["chan_width"]);
-    auto chan0 = std::get<int64_t>(img_metadata["chan0"]);
-    double cfreq = (chan0 + nchan * chan_width / BANDWIDTH * 0.5) * BANDWIDTH *
-                   1e-6;  // MHz
-    auto time_tag = std::get<uint64_t>(img_metadata["time_tag"]);
-    // // auto seq_start = std::get<uint64_t>(img_metadata["seq_start"]);
-    double epoch_s = time_tag / static_cast<double>(FS);
-    // char _buf[50];
-    // std::snprintf(_buf, sizeof(_buf), "%.2fMHz_%.2f.fits", cfreq, epoch_s);
-    // std::string filename = "EPIC_" + std::string(_buf);
-    // img_metadata["filename"] = filename;
-    img_metadata["cfreq"] = cfreq;
-    img_metadata["epoch_time_s"] = epoch_s;
-    img_metadata["filename"]=SaveImageToDisk(imsize, nchan, pld.get_mbuf()->GetDataPtr(),
-                    m_out_dir + "/"s, img_metadata);
+    Job job;
+    job.meta = pld.get_mbuf()->GetMetadataRef();
+    job.imsize = std::get<int>(job.meta["grid_size"]);
+    job.nchan = std::get<uint8_t>(job.meta["nchan"]);
+    int chan_width = std::get<int>(job.meta["chan_width"]);
+    auto chan0 = std::get<int64_t>(job.meta["chan0"]);
+    double cfreq = (chan0 + job.nchan * chan_width / BANDWIDTH * 0.5) *
+                   BANDWIDTH * 1e-6;  // MHz
+    auto time_tag = std::get<uint64_t>(job.meta["time_tag"]);
+    job.meta["cfreq"] = cfreq;
+    job.meta["epoch_time_s"] = time_tag / static_cast<double>(FS);
+    // a copy, so the pipeline's buffer returns to its pool at once
+    const float* src = pld.get_mbuf()->GetDataPtr();
+    job.data.assign(src, src + size_t(job.imsize) * job.imsize * job.nchan * 4);
+    pld = Payload();
 
-    try {
-      if(std::get<std::string>(img_metadata["filename"])!=""){
-        pqxx::work tx(*(this->m_pg_conn.get()));
-        InsertFilenametoDb(&pld, &tx, m_file_stmt_id);
-        tx.commit();
+    if (!m_writer->TryPush(std::move(job))) {
+      size_t held;
+      if (m_drop_log.Due(&held)) {
+        LOG(WARNING) << "disk saver: writer busy (output directory slow or "
+                        "hung?); accumulation dropped ("
+                     << held << " more since the last report)";
       }
-    } catch (const std::exception& e) {
-      LOG(FATAL) << e.what();
     }
-    VLOG(3)<<"Streaming image";
-    // m_streamer->Stream(chan0, cfreq, pld.get_mbuf()->GetDataPtr());
-    // this->stream(chan0, cfreq, pld.get_mbuf()->GetDataPtr());
-    // if ((++stream_counter) % 3 == 0) {
-      // this->stream(chan0, cfreq, pld.get_mbuf()->GetDataPtr());
-    // }
-    // LOG(INFO)<<"streamed";
 
     m_timer.Tock();
     PrometheusExporter::ObserveRunTimeValue(m_rt_gauge_id, m_timer.Duration());
