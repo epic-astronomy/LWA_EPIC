@@ -28,6 +28,7 @@
 
 #include "../ex/metrics.hpp"
 #include "../ex/station_desc.hpp"
+#include "./bench_kernels.hpp"
 #include "./kernel_types.hpp"
 #include "../ex/option_parser.hpp"
 
@@ -146,6 +147,44 @@ class EPIC<1> : public EPICKernels<0> {
       : EPICKernels<0>(p_options, p_map) {}
 };
 
+/// `--bench`: generator -> CorrelatorRft (tap, gain table) -> sinks, on GPU 0.
+/// Only these kernels are constructed, so nothing connects to the database,
+/// the video server or the network.
+void RunEpicBench(const KernelTypeDefs::opt_t& p_options) {
+  BenchOptions bo;
+  bo.data_path = p_options["bench_data"].as<std::string>();
+  bo.chan0 = p_options["bench_chan0"].as<int64_t>();
+  bo.nchan = NDP_NCHAN_SELECT;
+  bo.nseq = p_options["nts"].as<int>();
+  bo.seq0 = p_options["bench_seq0"].as<uint64_t>();
+  if (bo.seq0 == 0) {
+    double now = std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
+    bo.seq0 = uint64_t(now / (SEQ_MULT_S / double(FS))) / bo.nseq * bo.nseq;
+  }
+  bo.ngulps = p_options["bench_ngulps"].as<int64_t>();
+  bo.realtime = p_options["bench_realtime"].as<bool>();
+  bo.rotate = p_options["bench_rotate"].as<int>();
+  bo.dump_dir = p_options["bench_dump"].as<std::string>();
+  bo.dump_every = p_options["bench_dump_every"].as<int>();
+  bo.report_every = p_options["bench_report"].as<int>();
+  using gen_t = BenchGulpGen<KernelTypeDefs::payload_u8_t, LFBufMngr<AlignedBuffer<uint8_t>>>;
+  using sink_t = BenchSink<KernelTypeDefs::moffcorr_t::payload_t>;
+  raft::map m;
+  gen_t gen(bo);
+  auto corr = get_epiccorr_k<0>(p_options);
+  sink_t sink_img("img", bo, true);
+  sink_t sink_stream("img_stream", bo, false);
+  RftManip<3, 1>::bind(gen);
+  RftManip<4, 1>::bind(corr);
+  RftManip<5, 1>::bind(sink_img);
+  RftManip<6, 1>::bind(sink_stream);
+  m += gen >> corr["gulp"]["img"] >> sink_img;
+  m += corr["img_stream"] >> sink_stream;
+  LOG(INFO) << "bench: chan0 " << bo.chan0 << ", seq0 " << bo.seq0 << ", " << bo.ngulps << " gulps"
+            << (bo.realtime ? ", real-time pacing" : ", unpaced");
+  m.exe();
+}
+
 void RunEpic(int argc, char** argv) {
   using std::string_literals::operator""s;
   auto option_list = GetEpicOptions();
@@ -175,6 +214,11 @@ void RunEpic(int argc, char** argv) {
       options["disable_metrics"].as<bool>());
 
   InitInfoMetric(options);
+
+  if (options["bench"].as<bool>()) {
+    RunEpicBench(options);
+    return;
+  }
   
   LOG(INFO) << "Looking for GPUs";
   int num_gpus =

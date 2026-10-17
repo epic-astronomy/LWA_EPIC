@@ -41,6 +41,11 @@ class GainTableWriter:
         self.seq = old[3] + (old[3] & 1)
         self.version = old[4] if old[0] == b"EPICGAIN" else 0
         self.solver = solver.encode()[:47]
+        if old[0] != b"EPICGAIN":
+            # a valid, inactive header (version 0) until the first table, so the reader
+            # sees "nothing new" rather than a malformed file
+            self.mm[:GAIN_HDR.size] = GAIN_HDR.pack(b"EPICGAIN", 1, GAIN_HDR.size, self.seq, 0, self.chan0,
+                                                    self.nchan, NSTAND, NPOL, 0, 0, 0.0, 0.0, 0, self.solver)
 
     def publish(self, corr: np.ndarray | None, valid_from_seq: int = 0, t_solved_unix: float | None = None,
                 max_abs: float = 64.0):
@@ -51,6 +56,10 @@ class GainTableWriter:
             assert corr.shape == (self.nchan, NSTAND, NPOL)
             if not np.all(np.isfinite(corr)) or np.abs(corr).max() > max_abs:
                 raise ValueError("gain table has non-finite or out-of-range values")
+            mags = np.abs(corr[corr != 0])
+            if mags.size and not 0.25 <= np.median(mags) <= 4.0:
+                # epic++ rejects these too: large factors overflow its half-precision FFT
+                raise ValueError(f"gain table is not normalised (median |c| = {np.median(mags):.3g})")
         self.seq += 1  # odd: writing
         struct.pack_into("<Q", self.mm, 16, self.seq)
         if valid:

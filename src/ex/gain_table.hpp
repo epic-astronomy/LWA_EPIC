@@ -20,6 +20,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <complex>
@@ -124,10 +125,25 @@ class GainTableReader {
     if (seq_ptr->load(std::memory_order_relaxed) != s1) {
       return std::nullopt;  // torn read, retry at the next poll
     }
+    std::vector<float> mags;
+    mags.reserve(snap.corr.size());
     for (auto& c : snap.corr) {
       if (!std::isfinite(c.real()) || !std::isfinite(c.imag()) || std::abs(c) > m_max_abs) {
         m_last_error = "non-finite or out-of-range gain";
         m_last_version = h.version;  // do not retry this table
+        return std::nullopt;
+      }
+      if (std::abs(c) > 0) mags.push_back(std::abs(c));
+    }
+    // Corrections must be relative (median |c| ~ 1). Scaling the voltages by a
+    // large factor overflows the half-precision gridding and FFT (measured: a
+    // table clipped at |c| = 32 turned every image into NaN).
+    if (!mags.empty()) {
+      std::nth_element(mags.begin(), mags.begin() + mags.size() / 2, mags.end());
+      const float med = mags[mags.size() / 2];
+      if (med < 0.25f || med > 4.f) {
+        m_last_error = "table not normalised (median |c| = " + std::to_string(med) + ")";
+        m_last_version = h.version;
         return std::nullopt;
       }
     }

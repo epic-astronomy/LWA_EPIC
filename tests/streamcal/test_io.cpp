@@ -136,6 +136,10 @@ int SelfTest(const std::string& dir) {
   check(!rd.Poll(3104, 128, 600), "gain: NaN -> rejected");
   WriteGain(gp, 5, 10, 3040, 192, 0, {100, 0});
   check(!rd.Poll(3104, 128, 600), "gain: |c| above clamp -> rejected");
+  WriteGain(gp, 6, 12, 3040, 192, 0, {8, 0});
+  check(!rd.Poll(3104, 128, 600), "gain: unnormalised table (median |c| 32) -> rejected");
+  WriteGain(gp, 7, 14, 3040, 192, 0, {0.5f, 0});
+  check(static_cast<bool>(rd.Poll(3104, 128, 600)), "gain: normalised table after rejections -> applied");
   std::vector<float> nominal(128 * 512 * 2, 0.f), out(nominal.size());
   for (size_t i = 0; i < nominal.size() / 2; ++i) { nominal[2 * i] = 0.f; nominal[2 * i + 1] = 1.f; }  // i
   GainSnapshot snap;

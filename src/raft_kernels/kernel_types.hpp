@@ -169,6 +169,7 @@ struct Kernel<_CORRELATOR> : KernelTypeDefs {
         correlator_options.caltap_nseq > 0 ? with_gpu(options["caltap_out"].as<std::string>()) : "";
     correlator_options.caltap_interval_s = options["caltap_interval"].as<float>();
     correlator_options.caltap_threads = options["caltap_threads"].as<int>();
+    correlator_options.caltap_batch = options["caltap_batch"].as<int>();
     correlator_options.nstreams = options["nstreams"].as<int>();
     VLOG(2) << "Extracted options";
     auto corr_ptr = std::make_unique<MOFFCorrelator_t>(correlator_options);

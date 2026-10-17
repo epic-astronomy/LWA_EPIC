@@ -101,6 +101,7 @@ struct MOFFCorrelatorDesc {
   int caltap_nseq{0};
   float caltap_interval_s{10.f};
   int caltap_threads{2};
+  int caltap_batch{8};
 };
 
 struct OutImgDesc {

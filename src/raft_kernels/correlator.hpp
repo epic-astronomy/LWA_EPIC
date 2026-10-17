@@ -105,6 +105,7 @@ class CorrelatorRft : public raft::kernel {
       o.nseq = cal.caltap_nseq;
       o.interval_s = cal.caltap_interval_s;
       o.nthreads = cal.caltap_threads;
+      o.batch = cal.caltap_batch;
       m_cal_tap = std::make_unique<CalTap>(o);
       LOG(INFO) << "Calibration tap: " << o.nseq << " sequences per gulp, " << o.interval_s << " s tables to "
                 << o.path;

@@ -276,3 +276,88 @@ def ml_weights(op: E.GridOp, min_cells, margin=0.0, floor=1e-3):
     w = uv_mask(op.N, min_cells, margin) / np.maximum(rho, floor * rho.max())
     w[rho < floor * rho.max()] = 0
     return np.sqrt(w / w.max())
+
+
+# ------------------------------------------------- StEFCal with a live sky model
+
+
+def _tangent(s):
+    """Orthonormal tangent basis (t1 ~ east, t2 ~ north) at unit vector s (ENU)."""
+    t1 = np.cross([0.0, 0.0, 1.0], s)
+    if np.linalg.norm(t1) < 1e-8:
+        t1 = np.array([1.0, 0.0, 0.0])
+    t1 /= np.linalg.norm(t1)
+    t2 = np.cross(s, t1)
+    return t1, t2
+
+
+def shift_direction(s, d):
+    """Move unit vector s by d = (d1, d2) radians in its tangent plane."""
+    t1, t2 = _tangent(s)
+    v = s + d[0] * t1 + d[1] * t2
+    return v / np.linalg.norm(v)
+
+
+def point_matrix(r, f, s, app):
+    """app * a a^H with a = exp(2 pi i f r.s / c) (r: stand ENU positions [n, 3])."""
+    a = np.exp(2j * np.pi * f / 299792458.0 * (r @ s))
+    return app * np.outer(a, a.conj())
+
+
+def stefcal_sky(R, M_fixed, sources, W, r, f, g0=None, niter=4, n_outer=20, solve_pos=True, fixed_pos=None,
+                max_step_deg=1.0, tol=1e-6):
+    """StEFCal with the bright compact sources as live model components.
+
+    R, M_fixed  data and the fixed part of the model (diffuse sky, faint sources)
+    sources     list of (enu unit vector, apparent flux in Jy) from the forward model
+    r, f        stand ENU positions [n, 3] and frequency (Hz)
+    g0          starting gains (the tracker prediction when streaming)
+    Solves the gains and, per source, a real flux scale and (solve_pos) a
+    tangent-plane offset in radians; fixed_pos [k, 2] imposes offsets instead.
+
+    Each pass first updates the source parameters by linear least squares with
+    the current gains (scale and scale x offset enter linearly around the
+    current directions), then runs `niter` StEFCal iterations warm-started from
+    the current gains. Updating the sky first matters in streaming, where the
+    gains are known from the previous interval but the sky (scintillation, a
+    solar burst, refraction) may have changed.
+    Returns (g, scale[k], offset[k, 2], info).
+    """
+    K = len(sources)
+    n = R.shape[0]
+    scale = np.ones(K)
+    off = np.zeros((K, 2)) if fixed_pos is None else np.array(fixed_pos, float).copy()
+    k2pi = 2 * np.pi * f / 299792458.0
+    g = np.ones(n, complex) if g0 is None else g0.copy()
+    it_total = 0
+    for outer in range(n_outer):
+        dirs = [shift_direction(src, off[k]) for k, (src, _) in enumerate(sources)]
+        P = [point_matrix(r, f, dirs[k], sources[k][1]) for k in range(K)]
+        if K:
+            GG = np.outer(g, g.conj()) * W
+            cols = []
+            for k in range(K):
+                cols.append((GG * P[k]).ravel())
+                if solve_pos:
+                    t1, t2 = _tangent(dirs[k])
+                    for t in (t1, t2):
+                        b = r @ t
+                        cols.append((GG * P[k] * (1j * k2pi) * (b[:, None] - b[None, :])).ravel())
+            A = np.stack(cols, 1)
+            y = (R * W - GG * M_fixed).ravel()
+            theta = np.linalg.lstsq(np.vstack([A.real, A.imag]), np.concatenate([y.real, y.imag]), rcond=None)[0]
+            step = 3 if solve_pos else 1
+            scale = np.maximum(theta[0::step], 0.0)
+            if solve_pos:
+                d = np.stack([theta[1::3], theta[2::3]], 1) / np.maximum(scale, 1e-3)[:, None]
+                lim = np.radians(max_step_deg)
+                off = off + np.clip(d, -lim, lim)
+                dirs = [shift_direction(src, off[k]) for k, (src, _) in enumerate(sources)]
+                P = [point_matrix(r, f, dirs[k], sources[k][1]) for k in range(K)]
+        M = M_fixed + sum(scale[k] * P[k] for k in range(K))
+        g_old = g
+        g, _, it = stefcal(R, M, W, g0=g, niter=niter, tol=0)
+        it_total += it
+        if outer > 2 and np.linalg.norm(g - g_old) / np.linalg.norm(g) < tol:
+            break
+    return g, scale, off, dict(iterations=it_total, passes=outer + 1)

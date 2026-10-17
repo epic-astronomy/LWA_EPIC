@@ -52,6 +52,28 @@ cxxopts::Options GetEpicOptions() {
       ("include_chans","Image only certain frequencies. Specify the value(s) of chan0.", cxxopts::value<std::vector<int>>());
   // ("utcstart", "F-Engine UDP Stream Start Time")
 
+  options.add_options("Benchmark (no F-engine, database, disk or video)")(
+      "bench", "Run the imager on generated gulps: generator -> correlator (with the calibration tap and gain table) -> sink",
+      cxxopts::value<bool>()->default_value("false"))(
+      "bench_data", "File of simulated gulps (CHAN_MAJOR CNib); empty: zero gulps",
+      cxxopts::value<std::string>()->default_value(""))(
+      "bench_chan0", "First channel of the generated gulps",
+      cxxopts::value<int64_t>()->default_value("3104"))(
+      "bench_seq0", "First F-engine sequence (from the Unix epoch); 0: now",
+      cxxopts::value<uint64_t>()->default_value("0"))(
+      "bench_ngulps", "Gulps to generate (0: unlimited)",
+      cxxopts::value<int64_t>()->default_value("2400"))(
+      "bench_realtime", "Pace the gulps at the F-engine rate instead of as fast as possible",
+      cxxopts::value<bool>()->default_value("false"))(
+      "bench_rotate", "Rotation of each channel's sequences per pass through the data file",
+      cxxopts::value<int>()->default_value("50"))(
+      "bench_dump", "Directory for image dumps (empty: none)",
+      cxxopts::value<std::string>()->default_value(""))(
+      "bench_dump_every", "Dump every Nth image",
+      cxxopts::value<int>()->default_value("0"))(
+      "bench_report", "Images per statistics line",
+      cxxopts::value<int>()->default_value("120"));
+
   options.add_options("Offline data processing")(
       "offline", "Load numpy-TBN data from disk",
       cxxopts::value<bool>()->default_value("false"))(
@@ -116,7 +138,10 @@ cxxopts::Options GetEpicOptions() {
       cxxopts::value<float>()->default_value("10"))(
       "caltap_threads",
       "Calibration tap X-engine threads.",
-      cxxopts::value<int>()->default_value("2"))
+      cxxopts::value<int>()->default_value("2"))(
+      "caltap_batch",
+      "Calibration tap: gulps staged per X-engine call (amortises the accumulator updates).",
+      cxxopts::value<int>()->default_value("8"))
       ("out_dir","Output directory to store the long accumulation files. Defaults to the current directory.",cxxopts::value<std::string>()->default_value("./"));
 
   options.add_options("Execution options")(

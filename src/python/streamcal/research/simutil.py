@@ -14,3 +14,17 @@ def gain_error(g_est, g_true):
     r = g_est / g_true
     r = r * np.conj(np.sum(r)) / abs(np.sum(r))
     return np.sqrt(np.mean(np.abs(r - 1) ** 2)), np.degrees(np.sqrt(np.mean(np.angle(r) ** 2)))
+
+
+def gain_error_tiptilt(g_est, g_true, r, f):
+    """gain_error after also removing a linear phase gradient across the array (an image shift).
+
+    Returns (amp+phase rms, phase rms deg, equivalent image shift in deg)."""
+    q = g_est / g_true
+    q = q * np.conj(np.sum(q)) / abs(np.sum(q))
+    ph = np.angle(q)
+    A = np.c_[np.ones(len(ph)), 2 * np.pi * f / 299792458.0 * r[:, :2]]
+    c = np.linalg.lstsq(A, ph, rcond=None)[0]
+    q2 = q * np.exp(-1j * (A @ c))
+    q2 = q2 * np.conj(np.sum(q2)) / abs(np.sum(q2))
+    return np.sqrt(np.mean(np.abs(q2 - 1) ** 2)), np.degrees(np.sqrt(np.mean(np.angle(q2) ** 2))), np.degrees(np.hypot(*c[1:]))

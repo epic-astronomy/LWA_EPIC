@@ -47,7 +47,8 @@ def main(d):
     t0 = Time("2026-10-16T06:00:00")
     a = D.argparse.Namespace(vis=vis, gains=gains, dry_run=False, nside=64, model_refresh=60.0, chan_stride=stride,
                              umin=1.0, niter=40, max_chi2=3.0, min_power=0.3, max_power=3.0, flag_amp=0.15,
-                             max_abs=32.0, q_phase_deg=2.0, q_delay_ns=0.05, interval=10.0, save="")
+                             max_abs=32.0, q_phase_deg=2.0, q_delay_ns=0.05, interval=10.0, save="",
+                             passes=12, passes_warm=4, workers=4, no_positions=False, fixed_time="")
     sc = D.StreamCal(a)
     ant = sc.ant
     n = len(ant)

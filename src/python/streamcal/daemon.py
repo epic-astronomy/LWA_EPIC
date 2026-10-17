@@ -7,8 +7,12 @@ Loop:
   2. forward model: sky snapshot (A-team + LFSM + Sun) through the dipole beam
      at the table's mid time, refreshed every --model-refresh seconds
   3. per solved channel and polarisation: apply the LSL cable model, flag
-     inputs with abnormal power, StEFCal against the model (Sun flux free),
-     reject channels whose chi^2/dof shows RFI
+     inputs with abnormal power, and solve the gains together with the flux and
+     position of every bright compact source (A-team, Sun): scintillation,
+     absorption and solar bursts change fluxes, refraction moves sources.
+     The source offsets of all channels are fitted to d = d0 (f_c/f)^2 and the
+     band is re-solved with positions fixed to the fit. Channels whose
+     chi^2/dof shows RFI are rejected
   4. Kalman tracker per stand and polarisation (phase, delay) plus slow
      amplitude and per-channel bandpass; interpolate to all channels
   5. publish c = 1/g to the gain table (epic++ --gain_table), unless --dry-run
@@ -45,12 +49,33 @@ def cable_correction(freq_hz, pol):
                      for a in ants])
 
 
+def _solve_job(job):
+    """One channel and polarisation: stefcal_sky (cold start: plain StEFCal first), chi^2, variances."""
+    R, Md, srcs, W, r, f, g0, solve_pos, passes, fixed_pos, ac, ok, T, max_chi2 = job
+    if g0 is None:  # cold start: gains against the nominal sky before freeing the sky parameters
+        M0 = Md + sum(C.point_matrix(r, f, s_[0], s_[1]) for s_ in srcs)
+        g0, _, _ = C.stefcal(R, M0, W, niter=60)
+    g, sc, off, _ = C.stefcal_sky(R, Md, srcs, W, r, f, g0=g0, solve_pos=solve_pos, fixed_pos=fixed_pos,
+                                  n_outer=passes)
+    dirs = [C.shift_direction(s_[0], off[j]) for j, s_ in enumerate(srcs)]
+    Mfit = Md + sum(sc[j] * C.point_matrix(r, f, dirs[j], srcs[j][1]) for j in range(len(srcs)))
+    d = np.maximum(ac, 1e-30)
+    res = R - np.outer(g, g.conj()) * Mfit
+    chi_ant = (np.abs(res) ** 2 / (np.outer(d, d) / T) * W).sum(1) / np.maximum(W.sum(1), 1)
+    chi = float(np.median(chi_ant[ok])) if ok.any() else float("nan")
+    den = np.sum(np.abs(g[None, :] * Mfit) ** 2 * W, axis=1)
+    sig2 = np.sum(np.abs(res * W) ** 2) / max(W.sum(), 1)
+    return dict(g=g, scale=sc, off=off, chi=chi, good=ok & (chi_ant < max_chi2 * 3),
+                var=sig2 / np.maximum(den, 1e-30))
+
+
 class StreamCal:
     def __init__(self, a):
         self.a = a
         self.ant = np.flatnonzero(E.eg.used_stands())
         xyz = E.eg.stand_xyz()[self.ant]
         self.bl = np.linalg.norm(xyz[:, None, :2] - xyz[None, :, :2], axis=-1)
+        self.r = xyz
         self.reader = shm.VisTableReader(a.vis)
         self.writer = None
         self.chan0 = None
@@ -59,6 +84,10 @@ class StreamCal:
         self.trackers = None
         self.last_t = None
         self.history = []
+        self.pool = None
+        if a.workers > 1:
+            import multiprocessing as mp
+            self.pool = mp.get_context("fork").Pool(a.workers)
 
     def reset_window(self, chan0, nchan):
         a = self.a
@@ -76,64 +105,98 @@ class StreamCal:
         log.info("spectral window chan0=%d nchan=%d: solving %d channels", chan0, nchan, len(self.solve_idx))
 
     def refresh_model(self, t: Time):
+        """Fixed model part (diffuse sky) and the bright sources, per pol and solved channel."""
         chans = self.freq / E.CHAN_BW
         self.models = []
         for pol in ("XX", "YY"):
             snap = F.build_snapshot(t, chans, pol=pol, nside=self.a.nside)
-            M = [snap.matrix(self.ant, i) for i in range(len(chans))]
-            Ms = [snap.matrix(self.ant, i, names=["Sun"]) for i in range(len(chans))]
-            self.models.append((M, Ms))
+            Md = [snap.matrix(self.ant, i, names=["diffuse"]) for i in range(len(chans))]
+            srcs = [[(c.enu[0], float(c.flux[0, i]), c.name) for c in snap.comps if c.name != "diffuse"]
+                    for i in range(len(chans))]
+            self.models.append((Md, srcs))
         self.model_t = t
+
+    def _prepare(self, tab, p, k):
+        a = self.a
+        ci = self.solve_idx[k]
+        f = self.freq[k]
+        R = tab.R[ci, p][np.ix_(self.ant, self.ant)].astype(np.complex128)
+        cc = self.cc[p][k]
+        R = cc[:, None] * R * np.conj(cc)[None, :]
+        ac = np.real(np.diag(R))
+        med = np.median(ac)
+        ok = (ac > a.min_power * med) & (ac < a.max_power * med)
+        W = ((self.bl / (SOL / f)) >= a.umin).astype(float)
+        np.fill_diagonal(W, 0)
+        W *= np.outer(ok, ok)
+        return R, ac, ok, W
 
     def solve(self, tab: shm.VisTable):
         a = self.a
         n = len(self.ant)
-        g = np.full((2, n, len(self.freq)), np.nan, complex)
-        var = np.full((2, n, len(self.freq)), np.inf)
-        chi = np.full((2, len(self.freq)), np.nan)
-        sun = np.full((2, len(self.freq)), np.nan)
-        powered = np.zeros((2, n, len(self.freq)), bool)
-        T = tab.nsamp
+        nk = len(self.freq)
+        g = np.full((2, n, nk), np.nan, complex)
+        var = np.full((2, n, nk), np.inf)
+        chi = np.full((2, nk), np.nan)
+        powered = np.zeros((2, n, nk), bool)
+        names = [s_[2] for s_ in self.models[0][1][0]]
+        K = len(names)
+        scale = np.full((2, nk, K), np.nan)
+        offs = np.zeros((2, nk, K, 2))
+        warm = all(tr.initialised for tr in self.trackers)
+        passes = a.passes_warm if warm else a.passes
+        pred = [self.trackers[p].gains() if self.trackers[p].initialised else None for p in range(2)]
+        prep, jobs = {}, []
         for p in range(2):
-            pred = self.trackers[p].gains() if self.trackers[p].initialised else None
-            for k, ci in enumerate(self.solve_idx):
-                f = self.freq[k]
-                R = tab.R[ci, p][np.ix_(self.ant, self.ant)].astype(np.complex128)
-                cc = self.cc[p][k]
-                R = cc[:, None] * R * np.conj(cc)[None, :]
-                ac = np.real(np.diag(R))
-                med = np.median(ac)
-                ok = (ac > a.min_power * med) & (ac < a.max_power * med)
+            for k in range(nk):
+                R, ac, ok, W = prep[(p, k)] = self._prepare(tab, p, k)
                 powered[p, :, k] = ok
-                W = ((self.bl / (SOL / f)) >= a.umin).astype(float)
-                np.fill_diagonal(W, 0)
-                W *= np.outer(ok, ok)
-                M, Ms = self.models[p][0][k], self.models[p][1][k]
-                g0 = pred[:, k] if pred is not None else None
-                if g0 is not None:
-                    g0 = np.where(np.isfinite(g0) & (np.abs(g0) > 1e-3), g0, 1.0)
-                if np.abs(Ms).max() > 0:
-                    gk, s, _ = C.stefcal(R, M - Ms, W, g0=g0, niter=a.niter, free=[Ms])
-                    Mfit = M - Ms + s[0] * Ms
-                    sun[p, k] = s[0]
-                else:
-                    gk, _, _ = C.stefcal(R, M, W, g0=g0, niter=a.niter)
-                    Mfit = M
-                d = np.maximum(ac, 1e-30)
-                r2 = np.abs(R - np.outer(gk, gk.conj()) * Mfit) ** 2 / (np.outer(d, d) / T) * W
-                chi_ant = r2.sum(1) / np.maximum(W.sum(1), 1)
-                chi[p, k] = np.median(chi_ant[ok])
-                if not np.isfinite(chi[p, k]) or chi[p, k] > a.max_chi2:
-                    continue  # RFI or a model failure: leave this channel out of the update
-                den = np.sum(np.abs(gk[None, :] * Mfit) ** 2 * W, axis=1)
-                sig2 = np.sum(np.abs((R - np.outer(gk, gk.conj()) * Mfit) * W) ** 2) / max(W.sum(), 1)
-                good = ok & (chi_ant < a.max_chi2 * 3)
-                g[p, good, k] = gk[good]
-                var[p, good, k] = sig2 / np.maximum(den[good], 1e-30)
-        return g, var, chi, sun, powered
+                g0 = None
+                if pred[p] is not None:
+                    x = pred[p][:, k]
+                    g0 = np.where(np.isfinite(x) & (np.abs(x) > 1e-12), x, np.nanmedian(np.abs(x)))
+                Md, srcs = self.models[p][0][k], self.models[p][1][k]
+                jobs.append((R, Md, [(s_[0], s_[1]) for s_ in srcs], W, self.r, self.freq[k], g0,
+                             K > 0 and not a.no_positions, passes, None, ac, ok, tab.nsamp, a.max_chi2))
+        # pass 1: gains, fluxes and per-channel positions
+        res1 = list(self.pool.map(_solve_job, jobs)) if self.pool else [_solve_job(j) for j in jobs]
+        for (p, k), r_ in zip(prep, res1):
+            scale[p, k], offs[p, k] = r_["scale"], r_["off"]
+        # refraction law d = d0 (f_c / f)^2 per source, weighted by the solved flux, both pols
+        x = (self.freq_all[self.nchan // 2] / self.freq) ** 2
+        law = np.zeros((K, 2))
+        for j in range(K):
+            w = np.nan_to_num(np.clip(scale[:, :, j], 0, None))
+            for c in range(2):
+                den = np.sum(w * x[None, :] ** 2)
+                law[j, c] = np.sum(w * x[None, :] * offs[:, :, j, c]) / den if den > 0 else 0.0
+        if a.no_positions:
+            law[:] = 0
+        # pass 2: gains and fluxes with the positions fixed to the law, warm-started from pass 1
+        jobs2 = []
+        for (p, k), j1, r_ in zip(prep, jobs, res1):
+            jobs2.append(j1[:6] + (r_["g"], False, passes, law * x[k]) + j1[10:])
+        res2 = list(self.pool.map(_solve_job, jobs2)) if self.pool else [_solve_job(j) for j in jobs2]
+        for (p, k), r_ in zip(prep, res2):
+            scale[p, k] = r_["scale"]
+            chi[p, k] = r_["chi"]
+            if not np.isfinite(chi[p, k]) or chi[p, k] > a.max_chi2:
+                continue  # RFI or a model failure: leave this channel out of the update
+            good = r_["good"]
+            g[p, good, k] = r_["g"][good]
+            var[p, good, k] = r_["var"][good]
+        sky = dict(names=names, scale=np.nanmedian(scale, axis=(0, 1)) if K else np.zeros(0),
+                   offset_deg=np.degrees(law))  # offsets at the band centre
+        return g, var, chi, sky, powered
 
     def table(self):
+        """Relative corrections: per channel and polarisation the median |c| is 1.
+
+        The solved gains carry the absolute scale (data counts per Jy^1/2); it is kept in
+        self.flux_scale and not applied, so the image bandpass and the numeric range of
+        the GPU's half-precision gridding are unchanged by calibration."""
         corr = np.zeros((self.nchan, 256, 2), np.complex64)
+        self.flux_scale = np.zeros((2, self.nchan))
         for p in range(2):
             gt = self.trackers[p].gains(self.freq_all)  # [ant, nchan]
             amp = np.abs(gt).mean(axis=1)
@@ -141,9 +204,12 @@ class StreamCal:
             flag = self.power_flag[p] | ~np.isfinite(amp)
             flag |= amp < self.a.flag_amp * np.median(amp[~flag])
             c = np.where(flag[:, None], 0, 1.0 / np.where(np.abs(gt) > 0, gt, 1))
+            norm = np.median(np.abs(c[~flag]), axis=0)  # per channel
+            self.flux_scale[p] = 1.0 / np.maximum(norm, 1e-30)
+            c = c / np.maximum(norm, 1e-30)[None, :]
             # gauge: corrections average to zero phase in every channel
-            s = np.sum(c, axis=0)
-            c = c * (np.conj(s) / np.maximum(np.abs(s), 1e-30))[None, :]
+            s_ = np.sum(c, axis=0)
+            c = c * (np.conj(s_) / np.maximum(np.abs(s_), 1e-30))[None, :]
             corr[:, self.ant, p] = c.T
         return np.clip(np.abs(corr), 0, self.a.max_abs) * np.exp(1j * np.angle(corr))
 
@@ -151,7 +217,7 @@ class StreamCal:
         tab = self.reader.poll()
         if tab is None:
             return False
-        t = Time(tab.t_mid_unix, format="unix")
+        t = Time(self.a.fixed_time) if self.a.fixed_time else Time(tab.t_mid_unix, format="unix")
         if tab.chan0 != self.chan0 or tab.nchan != getattr(self, "nchan", None):
             self.reset_window(tab.chan0, tab.nchan)
         if self.models is None or abs((t - self.model_t).sec) > self.a.model_refresh:
@@ -159,23 +225,26 @@ class StreamCal:
             self.refresh_model(t)
             log.info("model refreshed for %s in %.1f s", t.isot, time.time() - T0)
         T0 = time.time()
-        g, var, chi, sun, powered = self.solve(tab)
+        g, var, chi, sky, powered = self.solve(tab)
         self.power_flag = powered.mean(axis=2) < 0.5  # [pol, stand]
-        dt = self.a.interval if self.last_t is None else max((t - self.last_t).sec, 1.0)
-        self.last_t = t
+        # tracker time step from the data timestamps (not the model time, which --fixed-time freezes)
+        dt = self.a.interval if self.last_t is None else max(tab.t_mid_unix - self.last_t, 1.0)
+        self.last_t = tab.t_mid_unix
         for p in range(2):
             self.trackers[p].update(g[p], var[p], dt)
         nbad = int(np.sum(~np.isfinite(chi) | (chi > self.a.max_chi2)))
         nflag = [int(x) for x in self.power_flag.sum(axis=1)]
         msg = (f"table v{tab.version} {t.isot} nsamp {tab.nsamp} (skipped {tab.nskipped}); chi2/dof median "
                f"{np.nanmedian(chi):.2f}, RFI channels {nbad}/{chi.size}; power-flagged X/Y {nflag[0]}/{nflag[1]}; "
-               f"Sun x{np.nanmedian(sun):.2f}; "
+               "sky " + ", ".join(f"{nm} x{sc:.2f} ({o[0]:+.2f},{o[1]:+.2f})deg" for nm, sc, o in
+                                  zip(sky["names"], sky["scale"], sky["offset_deg"])) + "; "
                f"solve {time.time() - T0:.1f} s")
         if not self.a.dry_run:
             v = self.writer.publish(self.table(), t_solved_unix=tab.t_mid_unix)
             msg += f"; published gains v{v}"
         log.info(msg)
-        self.history.append(dict(t=t.unix, chi=chi, sun=sun, x=[tr.x.copy() for tr in self.trackers]))
+        self.history.append(dict(t=tab.t_mid_unix, chi=chi, sky=sky, x=[tr.x.copy() for tr in self.trackers],
+                                 flux_scale=getattr(self, "flux_scale", None)))
         if self.a.save and len(self.history) % 30 == 0:
             np.save(self.a.save, self.history, allow_pickle=True)
         return True
@@ -200,6 +269,11 @@ def main(argv=None):
     ap.add_argument("--q-delay-ns", type=float, default=0.05, help="delay random walk, ns/sqrt(s)")
     ap.add_argument("--interval", type=float, default=10.0)
     ap.add_argument("--save", default="", help="np.save the solution history here")
+    ap.add_argument("--passes", type=int, default=12, help="sky-then-StEFCal passes per solve (cold start)")
+    ap.add_argument("--passes-warm", type=int, default=4, help="passes once the tracker predicts the gains")
+    ap.add_argument("--workers", type=int, default=8, help="processes solving channels in parallel")
+    ap.add_argument("--no-positions", action="store_true", help="solve source fluxes only (no refraction offsets)")
+    ap.add_argument("--fixed-time", default="", help="evaluate the sky model at this time (tests on static data)")
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     sc = StreamCal(a)
