@@ -42,6 +42,28 @@ unclear) is recorded with the event (POST /api/events/<id>/review).
 With two or more detections, the DM and t_inf are refitted to all of them,
 which pins the DM far more closely than one 3 MHz band can.
 
+Cross-band coincidence veto. Terrestrial impulsive interference (lightning
+sferics, meteor afterglows, sparks) is undispersed: it reaches every band at
+the same moment, whereas a burst from the sky reaches the bands seconds to
+hours apart. The combiner keeps the new candidates (and RFI) of every node for
+coinc_history_s, and calls two candidates from different nodes simultaneous
+when
+
+    |t_bottom_a - t_bottom_b| <= coinc_slack_s + tier_dt_a + tier_dt_b + width_a + width_b.
+
+A simultaneous pair is undispersed, and so terrestrial, when the dispersion
+law at either candidate's DM puts the two bands further apart in time than
+coinc_disp_margin_s plus the same tolerances: a burst at that DM could not
+reach both at once. Positions are not compared, because interference in the
+near field is imaged at different places in different bands. Bands close in
+frequency, or a low DM, predict a gap too small to tell the two apart, and
+such pairs are left to the consensus above.
+
+The candidates of all bands involved form one event of kind and status
+terrestrial (review not needed), with the reason. A coincident candidate
+opens no sky event; a pending sky event whose detections are all coincident
+is given status terrestrial with a note, and kept.
+
 The combiner also makes coordinated injections. It asks every monitor to
 inject the same burst (position, DM and t_inf), and checks that the events
 come out confirmed: a measurement of the whole chain.
@@ -73,6 +95,8 @@ from .geometry import altaz, beam_fwhm_deg, time_to_set
 from .spectrum import band_values, characterise
 
 SEEN_STATES = ("detected", "followup")
+COINC_KEYS = ("id", "cls", "snr", "dm", "dm_step", "t_bottom", "ra", "dec", "tier_dt", "width_s",
+              "f_lo_mhz", "f_hi_mhz")
 
 
 @dataclass
@@ -93,6 +117,9 @@ class CombinerConfig:
     inject_dm: tuple = (50.0, 1000.0)
     inject_el_min: float = 30.0
     seed: int | None = None
+    coinc_history_s: float = 900.0  # candidates kept for the coincidence veto
+    coinc_slack_s: float = 1.5  # simultaneity, beyond the tiers' and widths' tolerances
+    coinc_disp_margin_s: float = 3.0  # least dispersive gap that makes a pair undispersed
 
 
 def utc(unix: float) -> str:
@@ -133,6 +160,8 @@ class Combiner:
         self.injections: dict[str, dict] = {}
         self.next_inject = None
         self.started = time.time()
+        self.recent: list = []  # [(received, node, candidate)] for the coincidence veto
+        self.terrestrial: dict = {}  # (node, candidate id) -> terrestrial event id
         os.makedirs(os.path.join(cfg.out_dir, "events"), exist_ok=True)
         self._load()
 
@@ -211,6 +240,20 @@ class Combiner:
                     self.seen.add((node, b["candidate"]["id"]))
                 for cid in b.get("others", []):
                     self.seen.add((node, cid))
+        # the coincidence veto continues where it stopped
+        now = time.time()
+        for ev in self.events.values():
+            if ev.get("kind") == "terrestrial":
+                for c in ev.get("candidates", []):
+                    self.terrestrial[(c["node"], c["id"])] = ev["id"]
+                    self.seen.add((c["node"], c["id"]))
+                    if ev["created"] >= now - self.cfg.coinc_history_s:
+                        self.recent.append((now, c["node"], {k: c.get(k) for k in COINC_KEYS}))
+            elif ev["created"] >= now - self.cfg.coinc_history_s:
+                for node, b in ev["bands"].items():
+                    if b.get("candidate") and b["candidate"].get("cls") == "candidate":
+                        self.recent.append((now, node, {k: b["candidate"].get(k)
+                                                        for k in COINC_KEYS}))
         if self.events:
             print(f"combiner: reopened {len(self.events)} events", flush=True)
 
@@ -534,6 +577,150 @@ class Combiner:
             self._log_injection(rec)
         return True
 
+    # ------------------------------------------------------------ coincidence veto
+    @staticmethod
+    def _tolerance(a, b):
+        return sum(float(x.get(k) or 0.0) for x in (a, b) for k in ("tier_dt", "width_s"))
+
+    def _undispersed(self, a, b):
+        """
+        Simultaneous in two bands, although the dispersion law at either DM
+        would separate them: the predicted gap is that DM times the lever
+        K (f_lo_a^-2 - f_lo_b^-2), and a burst of the sky must show it
+        """
+        tol = self._tolerance(a, b)
+        if abs(a["t_bottom"] - b["t_bottom"]) > self.cfg.coinc_slack_s + tol:
+            return False
+        lever = K_DM * abs(a["f_lo_mhz"] ** -2 - b["f_lo_mhz"] ** -2)
+        return lever * max(a["dm"], b["dm"]) > self.cfg.coinc_disp_margin_s + tol
+
+    def _coincidences(self, now):
+        """
+        Groups of candidates linked by undispersed pairs, over the history.
+        The candidates are sorted by arrival, so each is compared only with
+        those that follow it within the largest possible tolerance.
+        """
+        self.recent = [r for r in self.recent if r[0] >= now - self.cfg.coinc_history_s]
+        items = sorted(self.recent, key=lambda r: r[2]["t_bottom"])
+        if len(items) < 2:
+            return []
+        reach = self.cfg.coinc_slack_s + 2 * max(
+            float(c.get("tier_dt") or 0.0) + float(c.get("width_s") or 0.0) for _, _, c in items)
+        parent = {}
+
+        def find(k):
+            parent.setdefault(k, k)
+            while parent[k] != k:
+                parent[k] = parent[parent[k]]
+                k = parent[k]
+            return k
+
+        for i, (_, na, a) in enumerate(items):
+            for _, nb, b in items[i + 1:]:
+                if b["t_bottom"] - a["t_bottom"] > reach:
+                    break
+                if na != nb and self._undispersed(a, b):
+                    parent[find((na, a["id"]))] = find((nb, b["id"]))
+        groups = {}
+        recs = {(n, c["id"]): c for _, n, c in items}
+        for k in parent:
+            groups.setdefault(find(k), []).append((k[0], recs[k]))
+        return list(groups.values())
+
+    def _reason(self, members):
+        """The pair that the dispersion law separates most, in words"""
+        best = None
+        for i, (na, a) in enumerate(members):
+            for nb, b in members[i + 1:]:
+                if na == nb or not self._undispersed(a, b):
+                    continue
+                dm = max(a["dm"], b["dm"])
+                gap = K_DM * dm * abs(a["f_lo_mhz"] ** -2 - b["f_lo_mhz"] ** -2)
+                if best is None or gap > best[0]:
+                    best = (gap, dm, a, b, na, nb)
+        gap, dm, a, b, na, nb = best
+        return (f"undispersed: {na} ({a['f_lo_mhz']:.1f} MHz) and {nb} ({b['f_lo_mhz']:.1f} MHz) "
+                f"were triggered {abs(a['t_bottom'] - b['t_bottom']):.2f} s apart, whereas a "
+                f"burst at DM {dm:.1f} reaches them {gap:.1f} s apart")
+
+    def _veto(self, now, changed):
+        """Record undispersed coincidences as terrestrial events, and move out sky events"""
+        for members in self._coincidences(now):
+            keys = [(n, c["id"]) for n, c in members]
+            new = [(n, c) for n, c in members if (n, c["id"]) not in self.terrestrial]
+            if not new:
+                continue
+            eids = sorted({self.terrestrial[k] for k in keys if k in self.terrestrial})
+            ev = self.events.get(eids[0]) if eids else None
+            if ev is None:
+                ev = self._new_terrestrial(members, now)
+            for n, c in new:
+                self.terrestrial[(n, c["id"])] = ev["id"]
+                ev["candidates"].append(dict(node=n, utc_bottom=utc(c["t_bottom"]), **c))
+                b = ev["bands"].setdefault(n, dict(state="terrestrial"))
+                if b.get("candidate") is None or b["candidate"]["snr"] < c["snr"]:
+                    if b.get("candidate"):
+                        b.setdefault("others", []).append(b["candidate"]["id"])
+                    b["candidate"] = dict(c)
+                else:
+                    b.setdefault("others", []).append(c["id"])
+            cands = ev["candidates"]
+            best = max(cands, key=lambda c: c["snr"])
+            ev.update(nodes=sorted({c["node"] for c in cands}),
+                      t_inf=min(ev["t_inf"], min(c["t_bottom"] for c in cands)),
+                      ra=best["ra"], dec=best["dec"], dm=best["dm"], dm_err=best["dm_step"],
+                      best_snr=float(best["snr"]),
+                      reason=self._reason([(c["node"], c) for c in cands]))
+            ev["utc_inf"] = utc(ev["t_inf"])
+            ev["n_bands"] = len(ev["nodes"])
+            changed.add(ev["id"])
+            self._move_out(ev, now, changed)
+            print(f"combiner: terrestrial {ev['id']} in {ev['nodes']}: {ev['reason']}", flush=True)
+
+    def _new_terrestrial(self, members, now):
+        t0 = min(c["t_bottom"] for _, c in members)
+        eid = f"tr-{time.strftime('%Y%m%dT%H%M%S', time.gmtime(t0))}-{uuid.uuid4().hex[:6]}"
+        ev = dict(id=eid, created=time.time(), kind="terrestrial", injection_id=None,
+                  status="terrestrial", review="not needed", t_inf=t0, utc_inf=utc(t0),
+                  ra=None, dec=None, dm=None, dm_err=None, ref_f_lo=None, ref_beam=None,
+                  refits=0, combined_snr=None, best_snr=None, n_seen=0, bands={},
+                  candidates=[], sky_events=[], notes=[], decided=now)
+        self.events[eid] = ev
+        return ev
+
+    def _move_out(self, tev, now, changed):
+        """
+        Give status terrestrial to every pending sky event whose detections are
+        all part of terrestrial coincidences. An event with a detection outside
+        them (a burst that happened to coincide with interference in another
+        band) stays open, with a note.
+        """
+        mine = {(c["node"], c["id"]) for c in tev["candidates"]}
+        for ev in self.events.values():
+            if ev["kind"] != "sky" or ev["status"] != "pending":
+                continue
+            ids = {(n, b["candidate"]["id"]) for n, b in ev["bands"].items()
+                   if b.get("state") == "detected" and b.get("candidate")}
+            ids |= {(n, cid) for n, b in ev["bands"].items() for cid in b.get("others", [])}
+            if not ids & mine:
+                continue
+            dets = {(n, b["candidate"]["id"]) for n, b in ev["bands"].items()
+                    if b.get("state") == "detected" and b.get("candidate")}
+            if dets and all(k in self.terrestrial for k in dets):
+                ev["notes"].append(f"{utc(now)} moved to terrestrial event {tev['id']}: "
+                                   f"{tev['reason']}")
+                ev.update(status="terrestrial", review="not needed", terrestrial_event=tev["id"],
+                          decided=now)
+            elif tev["id"] in ev.setdefault("terrestrial_links", []):
+                continue
+            else:
+                ev["terrestrial_links"].append(tev["id"])
+                ev["notes"].append(f"{utc(now)} a candidate is part of terrestrial event "
+                                   f"{tev['id']}; other detections keep the event open")
+            if ev["id"] not in tev["sky_events"]:
+                tev["sky_events"].append(ev["id"])
+            changed.add(ev["id"])
+
     # ------------------------------------------------------------ main loop
     def poll(self, now=None):
         now = time.time() if now is None else now
@@ -552,13 +739,19 @@ class Combiner:
                 if (name, c["id"]) in self.seen:
                     continue
                 self.seen.add((name, c["id"]))
+                if c["cls"] in ("candidate", "rfi"):
+                    self.recent.append((now, name, {k: c.get(k) for k in COINC_KEYS}))
                 if c["cls"] == "candidate" or (c["cls"] == "injection" and
                                                str(c.get("injection_id", "")).startswith("cinj-")):
                     new.append((name, c))
         with self.lock:
             changed = set()
+            self._veto(now, changed)
             for name, c in sorted(new, key=lambda x: -x[1]["snr"]):
+                if (name, c["id"]) in self.terrestrial:
+                    continue  # recorded with its terrestrial event
                 ev = next((e for e in self.events.values()
+                           if e["kind"] != "terrestrial" and e["status"] != "terrestrial"
                            if e["status"] in ("pending",) or now - e.get("decided", now) < 3600
                            if self._matches(e, c)), None)
                 if ev is None:
@@ -585,6 +778,7 @@ class Combiner:
             cutoff = now - self.cfg.keep_hours * 3600
             for eid in [k for k, e in self.events.items() if e["created"] < cutoff]:
                 del self.events[eid]
+            self.terrestrial = {k: v for k, v in self.terrestrial.items() if v in self.events}
         self._maybe_inject(now)
 
     def _maybe_inject(self, now):
@@ -660,10 +854,14 @@ class Combiner:
             counts = {}
             for e in self.events.values():
                 counts[e["status"]] = counts.get(e["status"], 0) + 1
+            counts.setdefault("terrestrial", 0)
             injs = [i.get("result", {}).get("status") for i in self.injections.values()]
             to_review = sum(1 for e in self.events.values()
                             if e.get("review") == "pending" and e["status"] != "pending")
             return dict(started=self.started, now=time.time(), events=counts, to_review=to_review,
+                        terrestrial=dict(events=sum(1 for e in self.events.values()
+                                                    if e["kind"] == "terrestrial"),
+                                         candidates=len(self.terrestrial)),
                         nodes=[dict(name=n["name"], up=n["up"], error=n["error"],
                                     last_ok=n["last_ok"], band=(n["status"] or {}).get("band"))
                                for n in self.nodes.values()],
