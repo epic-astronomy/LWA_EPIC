@@ -305,7 +305,7 @@ def point_matrix(r, f, s, app):
 
 
 def stefcal_sky(R, M_fixed, sources, W, r, f, g0=None, niter=4, n_outer=20, solve_pos=True, fixed_pos=None,
-                max_step_deg=1.0, tol=1e-6, max_off_deg=None, scale_bounds=None):
+                max_step_deg=1.0, tol=1e-6, max_off_deg=None, scale_bounds=None, prior_off_deg=None):
     """StEFCal with the bright compact sources as live model components.
 
     R, M_fixed  data and the fixed part of the model (diffuse sky, faint sources)
@@ -326,6 +326,11 @@ def stefcal_sky(R, M_fixed, sources, W, r, f, g0=None, niter=4, n_outer=20, solv
     max_off_deg (default 0.5 deg x (74 MHz / f)^2, a generous refraction prior) or whose
     scale leaves scale_bounds[k] (default 0.25-4) is reset to its catalogue flux and
     position and frozen for the rest of the solve. info["frozen"] lists them.
+    prior_off_deg: optional Gaussian refraction prior (1-sigma per axis, degrees, at this
+    frequency): a Tikhonov row per offset component pulls the total offset toward zero, weighted
+    by the data residual rms / prior width. A poorly constrained offset (or one that would absorb
+    direction-dependent phase errors or sky-model error) then stays near the catalogue position;
+    a well-measured refraction shift still comes through.
     Returns (g, scale[k], offset[k, 2], info).
     """
     K = len(sources)
@@ -366,7 +371,25 @@ def stefcal_sky(R, M_fixed, sources, W, r, f, g0=None, niter=4, n_outer=20, solv
             theta = np.zeros(A.shape[1])
             if live.any():
                 Al = A[:, live]
-                theta[live] = np.linalg.lstsq(np.vstack([Al.real, Al.imag]), np.concatenate([y.real, y.imag]), rcond=None)[0]
+                Ar, yr = np.vstack([Al.real, Al.imag]), np.concatenate([y.real, y.imag])
+                if solve_pos and prior_off_deg:
+                    # rows alpha * (u_t + s_k off_t) = 0 for u_t = s_k d_t, the offset increment
+                    # times the scale, so the prior acts on the total offset off + d
+                    th0 = np.zeros(A.shape[1])
+                    th0[0::step] = scale
+                    res0 = yr - np.vstack([A.real, A.imag]) @ th0
+                    alpha = np.sqrt(np.mean(res0 ** 2)) / np.radians(prior_off_deg)
+                    rows, rhs = [], []
+                    idx_live = np.flatnonzero(live)
+                    for k in np.flatnonzero(~frozen):
+                        for t in (0, 1):
+                            col = 3 * k + 1 + t
+                            row = np.zeros(len(idx_live))
+                            row[np.searchsorted(idx_live, col)] = alpha
+                            rows.append(row)
+                            rhs.append(-alpha * scale[k] * off[k, t])
+                    Ar, yr = np.vstack([Ar, np.array(rows)]), np.concatenate([yr, rhs])
+                theta[live] = np.linalg.lstsq(Ar, yr, rcond=None)[0]
             new_scale = np.where(frozen, 1.0, theta[0::step])
             new_off = off
             if solve_pos:

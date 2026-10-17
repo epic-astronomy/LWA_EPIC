@@ -51,13 +51,15 @@ def cable_correction(freq_hz, pol):
 
 def _solve_job(job):
     """One channel and polarisation: stefcal_sky (cold start: plain StEFCal first), chi^2, variances."""
-    R, Md, srcs, W, r, f, g0, solve_pos, passes, fixed_pos, ac, ok, T, max_chi2 = job
+    R, Md, srcs, W, r, f, g0, solve_pos, passes, fixed_pos, ac, ok, T, max_chi2 = job[:14]
+    prior = job[14] if len(job) > 14 else None
     if g0 is None:  # cold start: gains against the nominal sky before freeing the sky parameters
         M0 = Md + sum(C.point_matrix(r, f, s_[0], s_[1]) for s_ in srcs)
         g0, _, _ = C.stefcal(R, M0, W, niter=60)
     bounds = [(0.1, 1000.0) if s_[2] == "Sun" else (0.25, 4.0) for s_ in srcs]
     g, sc, off, info = C.stefcal_sky(R, Md, [(s_[0], s_[1]) for s_ in srcs], W, r, f, g0=g0, solve_pos=solve_pos,
-                                     fixed_pos=fixed_pos, n_outer=passes, scale_bounds=bounds)
+                                     fixed_pos=fixed_pos, n_outer=passes, scale_bounds=bounds,
+                                     prior_off_deg=prior)
     dirs = [C.shift_direction(s_[0], off[j]) for j, s_ in enumerate(srcs)]
     Mfit = Md + sum(sc[j] * C.point_matrix(r, f, dirs[j], srcs[j][1]) for j in range(len(srcs)))
     d = np.maximum(ac, 1e-30)
@@ -160,7 +162,8 @@ class StreamCal:
                     g0 = np.where(np.isfinite(x) & (np.abs(x) > 1e-12), x, np.nanmedian(np.abs(x)))
                 Md, srcs = self.models[p][0][k], self.models[p][1][k]
                 jobs.append((R, Md, [(s_[0], s_[1], s_[2]) for s_ in srcs], W, self.r, self.freq[k], g0,
-                             K > 0 and not a.no_positions, passes, None, ac, ok, tab.nsamp, a.max_chi2))
+                             K > 0 and not a.no_positions, passes, None, ac, ok, tab.nsamp, a.max_chi2,
+                             getattr(a, "refraction_prior_deg", 0.05) * (74e6 / self.freq[k]) ** 2 or None))
         # pass 1: gains, fluxes and per-channel positions
         res1 = list(self.pool.map(_solve_job, jobs)) if self.pool else [_solve_job(j) for j in jobs]
         for (p, k), r_ in zip(prep, res1):
@@ -180,6 +183,13 @@ class StreamCal:
             # gradient in the gains); only differential refraction stays with the sources
             law = C.anchor_offsets(law, np.nanmedian(np.nan_to_num(scale), axis=(0, 1)) *
                                    np.array([np.nanmedian(np.abs(s_[1])) for s_ in self.models[0][1][0]]))
+        # pool the law over tables: refraction changes over minutes, the per-table estimate is noisy
+        tau = getattr(a, "refraction_tau", 600.0)
+        prev = getattr(self, "law_pooled", None)
+        if tau > 0 and prev is not None and prev.shape == law.shape and self.last_t is not None:
+            alpha = 1.0 - np.exp(-max(tab.t_mid_unix - self.last_t, 1.0) / tau)
+            law = prev + alpha * (law - prev)
+        self.law_pooled = law
         # pass 2: gains and fluxes with the positions fixed to the law, warm-started from pass 1
         jobs2 = []
         for (p, k), j1, r_ in zip(prep, jobs, res1):
@@ -312,6 +322,10 @@ def main(argv=None):
     ap.add_argument("--passes-warm", type=int, default=4, help="passes once the tracker predicts the gains")
     ap.add_argument("--workers", type=int, default=8, help="processes solving channels in parallel")
     ap.add_argument("--no-positions", action="store_true", help="solve source fluxes only (no refraction offsets)")
+    ap.add_argument("--refraction-prior-deg", type=float, default=0.05,
+                    help="1-sigma refraction prior on source offsets at 74 MHz (scales as f^-2; 0: none)")
+    ap.add_argument("--refraction-tau", type=float, default=600.0,
+                    help="time constant (s) for pooling the refraction law over tables (0: no pooling)")
     ap.add_argument("--free-frame", action="store_true",
                     help="do not anchor the mean source offset to zero (default: anchored to the catalogue)")
     ap.add_argument("--plain-weights", action="store_true",
