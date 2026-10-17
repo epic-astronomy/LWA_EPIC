@@ -15,6 +15,9 @@ The database is also the node's mailbox:
   events      the combiner's events, copied to every node it can reach, so
               that a combiner started on any node can continue
   status      the monitor's health counters
+  conditions  the monitor's data-quality samples (conditions.py), one row
+              per 10 s of data; samples wait in memory while the database
+              is away
 
 If the database cannot be reached, the monitor keeps searching: records go
 to a spool directory on local disk and are inserted when the database is
@@ -75,6 +78,10 @@ CREATE TABLE IF NOT EXISTS status (
     key         text PRIMARY KEY,
     value       jsonb NOT NULL,
     updated     timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS conditions (
+    t           double precision PRIMARY KEY,
+    value       jsonb NOT NULL
 );
 """
 
@@ -233,6 +240,18 @@ class LocalDB:
             "INSERT INTO status (key, value, updated) VALUES (%s, %s, now()) "
             "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated = now()",
             (key, json.dumps(_finite(value))))
+
+    def put_conditions(self, samples: list) -> bool:
+        """Insert conditions samples (one statement); False if the database is away"""
+        if not samples:
+            return True
+        sql = "INSERT INTO conditions (t, value) VALUES " + \
+            ", ".join(["(%s, %s)"] * len(samples)) + \
+            " ON CONFLICT (t) DO UPDATE SET value = EXCLUDED.value"
+        args = []
+        for s in samples:
+            args += [s["t"], json.dumps(_finite(s))]
+        return bool(self.execute(sql, args))
 
 
 def _finite(o):

@@ -40,6 +40,14 @@ epic++ (ChanReducer) ──Stokes I──▶ /dev/shm/<ring> ──▶ skymon ru
    - 30 min of the raw accumulated spectrum;
    - the noise table.
 7. **Accumulation.** The raw spectrum of every tracked pixel, averaged over 10 s, is kept for 6 h in float16. This serves the spectrograms on the website.
+8. **Conditions** (`conditions.py`). Thunderstorms, solar activity and interference episodes raise the noise or the trigger rate for minutes to hours. Every 10 s of data (on the image clock) the monitor records a sample:
+   - `noise_ratio`: the median over tracked pixels and channels of the running variance over its slow baseline (exponential average, 1 h; it starts at 1);
+   - `rfi_rate` and `cand_rate`: RFI-class and all candidates per minute, over the last minute;
+   - `sky_fraction_triggered`: the fraction of tracked pixels with a hit in the search blocks of the interval;
+   - `missing_fraction`: the fraction of missing images;
+   - `disturbed`: noise ratio above 1.5, RFI rate above `--disturbed-rfi-rate` (2 per minute), or more than 1% of the sky triggered.
+
+   The last 6 h are kept in memory (`/api/status`, `/api/conditions`) and written to the table `conditions` of the node's database by the database thread; samples wait in memory while the database is away. Each candidate carries in `quality.conditions` the summary of the minute before its arrival, and each decided event of the combiner carries the conditions of the bands that detected or measured it, with `disturbed` set when any of them was disturbed.
 
 ## Consensus across bands (combiner.py)
 
@@ -115,13 +123,14 @@ python -m skymon evaluate --truth /tmp/simtest/truth.jsonl --out /tmp/simtest
 | `GET /api/sky` | tracked pixels with their age and noise |
 | `GET /api/injections` | injection summary |
 | `GET /api/watches?event=` | watches requested by the combiner, and their results |
+| `GET /api/conditions?since=` | data-quality samples (10 s, last 6 h), thresholds and summary |
 | `POST /api/watch` | measure a position, DM and arrival time (from the combiner) |
 | `POST /api/inject` | inject a burst (the combiner's coordinated injections) |
 
 ## Tests
 
 ```bash
-cd tests/python && python -m unittest -v test_skymon
+cd tests/python && python -m unittest -v test_skymon test_combiner test_localdb test_conditions
 ```
 
 The tests cover:
@@ -133,4 +142,5 @@ The tests cover:
 - detection by the searcher;
 - an end-to-end simulated sky with stored candidates and the HTTP interface;
 - live injections;
-- a monitor that waits for a missing imager and survives a restart and a gap.
+- a monitor that waits for a missing imager and survives a restart and a gap;
+- conditions during a minute of threefold noise, over HTTP, in the combiner's events, and in the database through an outage.

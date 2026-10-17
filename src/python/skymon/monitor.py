@@ -7,6 +7,11 @@ each for dispersed bursts in real time (search.py) and stores what it finds
 (candidates.py). It needs nothing from any other node: each worker runs its
 own monitor for its own band, and the loss of a worker only removes that band.
 
+Every 10 s of images the monitor also records the data quality of its band
+(conditions.py): noise relative to the last hour, RFI and trigger rates,
+missing images, and whether the period is disturbed. Each candidate carries
+the summary of the minute before it.
+
 Images are processed in time order. A missing image (packet loss, a gap in
 the ring) is searched as zeros, so the time axis stays regular; a gap longer
 than max_gap_s restarts the search state.
@@ -26,6 +31,7 @@ import numpy as np
 
 from . import kernels
 from .accumulate import Accumulator
+from .conditions import Conditions
 from .candidates import (Candidate, CandidateStore, cluster_hits, elevation_radius,
                          separation_deg, utc)
 from .dedisp import K_DM, fdmt, fdmt_plan
@@ -64,6 +70,14 @@ class Config:
     inject_snr: tuple = (10.0, 30.0)
     inject_dm: tuple = (10.0, 3000.0)
     store_rfi: bool = True
+    # data-quality periods (conditions.py), sampled on the image clock
+    cond_interval_s: float = 10.0
+    cond_baseline_tau_s: float = 3600.0  # slow baseline of the noise
+    cond_hours: float = 6.0  # samples kept in memory
+    cond_noise_ratio: float = 1.5  # disturbed above this noise over its baseline
+    cond_rfi_rate: float = 2.0  # disturbed above this many RFI candidates per minute
+    cond_sky_fraction: float = 0.01  # disturbed above this fraction of the sky with hits
+    cond_npix: int = 1024  # pixels in the median of the noise ratio
     seed: int | None = None
     host: str = field(default_factory=socket.gethostname)
 
@@ -84,6 +98,10 @@ class Monitor:
         self.injector = LiveInjector(cfg.out_dir, cfg.inject_interval_s, cfg.inject_snr,
                                      cfg.inject_dm, rng=self.rng)
         self.watches = Watches()
+        self.cond = Conditions(cfg.cond_interval_s, cfg.cond_baseline_tau_s, cfg.cond_hours,
+                               cfg.cond_noise_ratio, cfg.cond_rfi_rate, cfg.cond_sky_fraction,
+                               cfg.cond_npix, rng=np.random.default_rng(cfg.seed))
+        self._disturbed = False
         self.band = None
         self.searcher = None
         self.grid = None
@@ -125,6 +143,7 @@ class Monitor:
         self.config_key = (meta.chan0, meta.nchan, meta.nbin, meta.grid, meta.grid_res,
                            meta.nseqs, meta.phase_mode)
         self.wcs_unix = None
+        self.cond.restart((self.band.nchan, self.grid.capacity))
         print(f"skymon: band {self.band.f_lo:.3f}-{self.band.f_hi:.3f} MHz, {self.band.nchan} ch, "
               f"dt {self.dt * 1e3:.1f} ms, nside {nside} ({self.grid.pix_deg:.2f} deg), "
               f"capacity {self.grid.capacity} px, beam {self.beam:.2f} deg", flush=True)
@@ -142,6 +161,7 @@ class Monitor:
             # before another pixel can rise into it
             self.searcher.reset_slots(removed)
             self.accum.reset_slots(removed)
+            self.cond.reset_slots(removed)
         self.searcher.set_live(self.grid.active())
         self.wcs = self.grid.wcs
         self.wcs_unix = unix
@@ -184,6 +204,9 @@ class Monitor:
     def _push(self, item, n):
         t0 = time.perf_counter()
         unix = self.unix0 + n * self.dt
+        if self.cond.due(unix):
+            self._sample_conditions()
+        self.cond.note_image(item is None)
         if self.grid_next is None or unix >= self.grid_next:
             self._update_grid(unix)
         else:
@@ -205,6 +228,7 @@ class Monitor:
             self.accum.end_image(unix + self.dt)
         found = []
         for res in results:
+            self.cond.note_block(res)
             found += self._candidates(res)
             found += self._measure_watches(res)
         self._expire_watches(unix)
@@ -216,6 +240,24 @@ class Monitor:
 
     def cfg_pix_deg(self, meta):
         return meta.grid_res
+
+    def _sample_conditions(self):
+        """
+        Close a conditions interval (every cond_interval_s of images). The
+        sample is only queued for the database, which the database thread
+        writes (sync_db), so the search never waits for it.
+        """
+        s = self.searcher
+        rec = self.cond.sample(s.var, s.age, s.live, s.warmup, self.metrics["tracked"])
+        was, self._disturbed = self._disturbed, rec["disturbed"]
+        if rec["disturbed"] and not was:
+            print(f"skymon: disturbed period from {utc(rec['t'] - rec['interval_s'])} "
+                  f"({', '.join(rec['reasons'])}; noise ratio {rec['noise_ratio'] or 0:.2f}, "
+                  f"RFI {rec['rfi_rate']:.1f}/min, sky triggered "
+                  f"{rec['sky_fraction_triggered']:.3f})", flush=True)
+        elif was and not rec["disturbed"]:
+            print(f"skymon: disturbed period ended at {utc(rec['t'] - rec['interval_s'])}",
+                  flush=True)
 
     # ------------------------------------------------------------ candidates
     def _candidates(self, res):
@@ -301,11 +343,14 @@ class Monitor:
                     c.injection_id = inj.id
                     self.injector.record(inj, c)
             elif not self.cfg.store_rfi:
+                self.cond.note_candidate(cls)
                 continue
             # keep the data of everything that is not certainly RFI
             products = None if (cls == "rfi" and certain) else self._products(res, b, c)
+            c.quality["conditions"] = self.cond.around(c.t_bottom)
             stored = self.store.add(c, products, self.radius)
             if stored is not None:
+                self.cond.note_candidate(stored.cls)
                 found.append(stored)
                 print(f"skymon: {stored.cls} {stored.id} S/N {stored.snr:.1f} DM {stored.dm:.1f} "
                       f"RA {stored.ra:.2f} Dec {stored.dec:.2f} tier {tier.level} "
@@ -416,7 +461,8 @@ class Monitor:
             nside=self.grid.nside, ra=ra, dec=dec, el=float(el), az=float(az),
             image_x=float(xy[0]), image_y=float(xy[1]), tier=b["tier"], tier_dt=b["tier_dt"],
             n_pix=1, extent_deg=0.0, f_lo_mhz=self.band.f_lo, f_hi_mhz=self.band.f_hi,
-            host=self.cfg.host, detected_unix=time.time(), event_id=w["event_id"])
+            host=self.cfg.host, detected_unix=time.time(), event_id=w["event_id"],
+            quality=dict(conditions=self.cond.around(b["t_bottom"])))
         win = w.pop("_win")
         plan = fdmt_plan(self.band.edges_mhz(), self.searcher.D)
         products = dict(dynspec=win.astype(np.float32), dynspec_t=w.pop("_t_win"),
@@ -428,7 +474,7 @@ class Monitor:
         stored = self.store.add(c, products, self.radius, dedupe=False)
         w.update(state="measured", result=dict(cand_id=c.id, snr=c.snr, dm=c.dm,
                                                t_inf=c.t_inf, t_bottom=c.t_bottom, ra=ra, dec=dec,
-                                               el=c.el))
+                                               el=c.el, conditions=c.quality["conditions"]))
         print(f"skymon: followup {c.id} for {w['event_id']} S/N {c.snr:.1f} DM {c.dm:.1f}",
               flush=True)
         return stored
@@ -461,7 +507,8 @@ class Monitor:
             el=float(el), az=float(az), image_x=float("nan"), image_y=float("nan"), tier=-1,
             tier_dt=self.accum.interval, n_pix=1, extent_deg=0.0, f_lo_mhz=self.band.f_lo,
             f_hi_mhz=self.band.f_hi, host=self.cfg.host, detected_unix=time.time(),
-            event_id=w["event_id"], quality=dict(note=w.get("reason") or "not measured"))
+            event_id=w["event_id"], quality=dict(note=w.get("reason") or "not measured",
+                                                 conditions=self.cond.around(tb)))
         self.store.add(c, dict(accum=d[keep], accum_t=t[keep], freqs_mhz=self.band.centres_mhz(),
                                watch=np.array([w["ra"], w["dec"], w["dm"], w["t_inf"],
                                                w["dm_err"], w["t_tol"]])),
@@ -494,7 +541,8 @@ class Monitor:
         """
         Exchange the mailbox with the node's database: take new watches and
         injection requests, write back watch results, replay the spool, and
-        record the status. Runs in its own thread (start_db_sync).
+        record the status and the queued conditions samples. Runs in its own
+        thread (start_db_sync), never in the processing thread.
         """
         db = self.db
         if db is None:
@@ -520,6 +568,7 @@ class Monitor:
                 db.set_injection(spec["id"], "rejected")
         if db.spooled():
             db.replay()
+        self.cond.write(db)
         st = self.status()
         st.pop("injections", None)
         db.put_status("monitor", st)
@@ -559,7 +608,8 @@ class Monitor:
                   database=None if self.db is None else dict(
                       ready=self.db.ready, errors=self.db.errors, last_error=self.db.last_error,
                       spooled=self.db.spooled()),
-                  write_queue=self.store.q.qsize())
+                  write_queue=self.store.q.qsize(),
+                  conditions=self.cond.status())
         if self.band:
             st.update(band=dict(f_lo=self.band.f_lo, f_hi=self.band.f_hi,
                                 nchan=self.band.nchan, chan0=self.band.chan0,
@@ -604,6 +654,12 @@ class Monitor:
             el, az = altaz(out["ra"], out["dec"], self.last_image_unix or time.time())
             out.update(el=float(el), az=float(az))
             return out
+
+    def conditions(self, since=None):
+        """The conditions series (oldest first) with the thresholds and the latest summary"""
+        st = self.cond.status()
+        return dict(host=self.cfg.host, thresholds=st["thresholds"], summary=st["summary"],
+                    samples=self.cond.samples(since))
 
     def sky(self):
         with self.grid_lock:

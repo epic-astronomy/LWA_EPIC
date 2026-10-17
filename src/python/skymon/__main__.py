@@ -46,6 +46,8 @@ def add_monitor_args(p):
     p.add_argument("--inject-snr", type=float, nargs=2, default=d.inject_snr)
     p.add_argument("--inject-dm", type=float, nargs=2, default=d.inject_dm)
     p.add_argument("--no-rfi-records", action="store_true", help="do not store RFI candidates")
+    p.add_argument("--disturbed-rfi-rate", type=float, default=d.cond_rfi_rate,
+                   help="RFI candidates per minute above which a period is marked disturbed")
     p.add_argument("--seed", type=int, default=None)
 
 
@@ -54,7 +56,8 @@ def make_config(a) -> Config:
                   threshold=a.threshold, nthreads=a.threads, block0=a.block,
                   accum_interval_s=a.accum_interval, accum_hours=a.accum_hours,
                   inject_interval_s=a.inject_every * 60, inject_snr=tuple(a.inject_snr),
-                  inject_dm=tuple(a.inject_dm), store_rfi=not a.no_rfi_records, seed=a.seed)
+                  inject_dm=tuple(a.inject_dm), store_rfi=not a.no_rfi_records, seed=a.seed,
+                  cond_rfi_rate=a.disturbed_rfi_rate)
 
 
 def run_ring(monitor: Monitor, ring: str, stop: threading.Event, max_queue: int = 512,
