@@ -388,3 +388,33 @@ def stefcal_sky(R, M_fixed, sources, W, r, f, g0=None, niter=4, n_outer=20, solv
         if outer > 2 and np.linalg.norm(g - g_old) / np.linalg.norm(g) < tol:
             break
     return g, scale, off, dict(iterations=it_total, passes=outer + 1, frozen=np.flatnonzero(frozen).tolist())
+
+
+def anchor_offsets(off, w):
+    """Remove the weighted mean position offset of the bright sources: off [K, 2] (radians or
+    degrees), w [K] >= 0 (for example the solved fluxes).
+
+    A phase gradient across the stands shifts the whole image, and a common offset of all
+    source positions does the same, so the two are degenerate in the solve. Anchoring the mean
+    offset to zero ties the image frame to the catalogue positions and leaves only the
+    differential (direction-dependent) refraction to the sources; the gains then carry any
+    common shift. With fewer than two sources the offsets are zeroed."""
+    off = np.asarray(off, float)
+    w = np.nan_to_num(np.clip(np.asarray(w, float), 0, None))
+    if off.shape[0] < 2 or w.sum() <= 0:
+        return np.zeros_like(off)
+    return off - (w[:, None] * off).sum(0) / w.sum()
+
+
+def sky_fraction(g, ac, m_ac):
+    """Fraction of each stand's power that is sky signal: |g_a|^2 M_aa / R_aa.
+
+    g [n] solved gains, ac [n] measured autocorrelations R_aa, m_ac the model autocorrelation
+    (sky power through the beam, the same for every stand). For a sky-noise-dominated stand it
+    is about the same for all stands; a stand with excess receiver noise or a fault has a lower
+    value. The matched-filter imaging weight is w_a = conj(g_a) / R_aa, which is
+    (1 / g_a) x sky_fraction_a up to a constant: 1/g for healthy stands, down-weighted noisy ones
+    (unlike plain 1/g, which up-weights weak stands and raises the image noise)."""
+    ac = np.asarray(ac, float)
+    return np.where(ac > 0, np.abs(g) ** 2 * float(m_ac) / np.where(ac > 0, ac, 1), 0.0)
+

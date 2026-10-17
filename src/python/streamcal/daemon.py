@@ -175,6 +175,11 @@ class StreamCal:
                 law[j, c] = np.sum(w * x[None, :] * offs[:, :, j, c]) / den if den > 0 else 0.0
         if a.no_positions:
             law[:] = 0
+        elif not getattr(a, "free_frame", False):
+            # anchor the frame: no common shift of all sources (it is degenerate with a phase
+            # gradient in the gains); only differential refraction stays with the sources
+            law = C.anchor_offsets(law, np.nanmedian(np.nan_to_num(scale), axis=(0, 1)) *
+                                   np.array([np.nanmedian(np.abs(s_[1])) for s_ in self.models[0][1][0]]))
         # pass 2: gains and fluxes with the positions fixed to the law, warm-started from pass 1
         jobs2 = []
         for (p, k), j1, r_ in zip(prep, jobs, res1):
@@ -186,15 +191,31 @@ class StreamCal:
         # RFI shows as channels far above the band's median chi^2/dof; the median itself exceeds 1
         # once the noise falls below the sky-model error (long integrations, full-rate GPU tap)
         self.chi_cut = a.max_chi2 * max(1.0, float(np.nanmedian(chi)) if np.isfinite(chi).any() else 1.0)
+        skyfrac = np.full((2, n, nk), np.nan)
         for (p, k), r_ in zip(prep, res2):
             if not np.isfinite(chi[p, k]) or chi[p, k] > self.chi_cut:
                 continue  # RFI or a model failure: leave this channel out of the update
             good = r_["good"]
             g[p, good, k] = r_["g"][good]
             var[p, good, k] = r_["var"][good]
+            # sky fraction of each stand's power (for the noise-optimal weights in table())
+            Md, srcs = self.models[p][0][k], self.models[p][1][k]
+            m_ac = float(np.real(np.diag(Md)).mean()) + sum(float(sc_) * s_[1] for sc_, s_ in zip(r_["scale"], srcs))
+            skyfrac[p, good, k] = C.sky_fraction(r_["g"], prep[(p, k)][1], m_ac)[good]
+        self.update_skyfrac(skyfrac)
         sky = dict(names=names, scale=np.nanmedian(scale, axis=(0, 1)) if K else np.zeros(0),
                    offset_deg=np.degrees(law))  # offsets at the band centre
         return g, var, chi, sky, powered
+
+    def update_skyfrac(self, skyfrac):
+        """Per-stand sky fraction (median over the solved channels), smoothed over tables."""
+        with np.errstate(all="ignore"):
+            cur = np.nanmedian(skyfrac, axis=2)  # [pol, stand]
+        prev = getattr(self, "skyfrac", None)
+        if prev is None or prev.shape != cur.shape:
+            self.skyfrac = cur
+        else:
+            self.skyfrac = np.where(np.isfinite(cur), np.where(np.isfinite(prev), 0.7 * prev + 0.3 * cur, cur), prev)
 
     def table(self):
         """Relative corrections: per channel and polarisation the median |c| is 1.
@@ -211,6 +232,14 @@ class StreamCal:
             flag = self.power_flag[p] | ~np.isfinite(amp)
             flag |= amp < self.a.flag_amp * np.median(amp[~flag])
             c = np.where(flag[:, None], 0, 1.0 / np.where(np.abs(gt) > 0, gt, 1))
+            # noise-optimal weighting: matched filter w = conj(g) / R_aa = (1/g) x sky fraction.
+            # Relative to the median stand and capped at 1, so healthy (sky-noise-dominated)
+            # stands keep 1/g and stands with excess receiver noise are down-weighted instead of
+            # amplified (plain 1/g raised the image noise by 8-25% on the TBF captures)
+            sf = getattr(self, "skyfrac", None)
+            if sf is not None and not getattr(self.a, "plain_weights", False):
+                rel = sf[p] / np.nanmedian(sf[p][~flag]) if np.isfinite(sf[p][~flag]).any() else np.ones(len(self.ant))
+                c = c * np.clip(np.nan_to_num(rel, nan=1.0), 0, 1)[:, None]
             norm = np.median(np.abs(c[~flag]), axis=0)  # per channel
             self.flux_scale[p] = 1.0 / np.maximum(norm, 1e-30)
             c = c / np.maximum(norm, 1e-30)[None, :]
@@ -283,6 +312,10 @@ def main(argv=None):
     ap.add_argument("--passes-warm", type=int, default=4, help="passes once the tracker predicts the gains")
     ap.add_argument("--workers", type=int, default=8, help="processes solving channels in parallel")
     ap.add_argument("--no-positions", action="store_true", help="solve source fluxes only (no refraction offsets)")
+    ap.add_argument("--free-frame", action="store_true",
+                    help="do not anchor the mean source offset to zero (default: anchored to the catalogue)")
+    ap.add_argument("--plain-weights", action="store_true",
+                    help="publish 1/g (default: 1/g x relative sky fraction, the noise-optimal weights)")
     ap.add_argument("--fixed-time", default="", help="evaluate the sky model at this time (tests on static data)")
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
