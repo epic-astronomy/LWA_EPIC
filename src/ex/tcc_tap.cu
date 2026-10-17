@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <complex>
 #include <condition_variable>
+#include <cstdio>
 #include <cstring>
 #include <mutex>
 #include <thread>
@@ -252,6 +253,29 @@ struct TccTap::Impl {
       });
       VLOG(1) << "TccTap: published version " << v << " (" << h.ngulps << " gulps, " << h.nsamp
               << " samples, chan0 " << h.chan0 << ")";
+      if (!opts.record_dir.empty() && v > 0) {
+        // copy of the published table (header + R), read back from the shared-memory file
+        const size_t bytes = sizeof(VisTableHeader) + size_t(nchan) * kPols * kStands * kStands * sizeof(std::complex<float>);
+        char fn[1024];
+        std::snprintf(fn, sizeof(fn), "%s/vis_%06llu.bin", opts.record_dir.c_str(), (unsigned long long)v);
+        FILE* in = std::fopen(opts.path.c_str(), "rb");
+        FILE* out = std::fopen(fn, "wb");
+        if (in && out) {
+          std::vector<char> buf(1 << 24);
+          size_t left = bytes;
+          while (left > 0) {
+            const size_t k = std::fread(buf.data(), 1, std::min(left, buf.size()), in);
+            if (k == 0) break;
+            std::fwrite(buf.data(), 1, k, out);
+            left -= k;
+          }
+        } else {
+          LOG(ERROR) << "TccTap: cannot record table to " << fn;
+        }
+        if (in) std::fclose(in);
+        if (out) std::fclose(out);
+        LOG(INFO) << "TccTap: table " << v << " (" << h.ngulps << " gulps, nskipped " << h.nskipped << ") -> " << fn;
+      }
       std::lock_guard<std::mutex> lk(mtx);
       busy = false;
     }

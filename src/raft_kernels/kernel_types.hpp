@@ -166,6 +166,8 @@ struct Kernel<_CORRELATOR> : KernelTypeDefs {
     correlator_options.gain_table_path = with_gpu(options["gain_table"].as<std::string>());
     correlator_options.caltap_nseq = options["caltap_nseq"].as<int>();
     correlator_options.caltap_gpu = options["caltap_gpu"].as<bool>();
+    correlator_options.caltap_min_quality = options["caltap_min_quality"].as<float>();
+    correlator_options.caltap_record_dir = options["caltap_record_dir"].as<std::string>();
     LOG_IF(FATAL, correlator_options.caltap_gpu && correlator_options.caltap_nseq > 0)
         << "--caltap_gpu and --caltap_nseq are alternatives";
     correlator_options.caltap_path = correlator_options.caltap_nseq > 0 || correlator_options.caltap_gpu

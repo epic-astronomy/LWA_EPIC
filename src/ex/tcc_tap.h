@@ -33,6 +33,7 @@ struct TccTapOptions {
   std::string path;          // output table, e.g. /dev/shm/epic_vis_gpu0
   float interval_s{10.f};    // integration per published table
   float min_quality{0.98f};  // skip gulps with less valid data than this
+  std::string record_dir;    // also write every table to <record_dir>/vis_<version>.bin ("" = off)
 };
 
 class TccTap {

@@ -29,6 +29,7 @@
 #include "../ex/metrics.hpp"
 #include "../ex/station_desc.hpp"
 #include "./bench_kernels.hpp"
+#include "./vistap_kernels.hpp"
 #include "./kernel_types.hpp"
 #include "../ex/option_parser.hpp"
 
@@ -185,6 +186,36 @@ void RunEpicBench(const KernelTypeDefs::opt_t& p_options) {
   m.exe();
 }
 
+// Receiver + GPU calibration tap only (see vistap_kernels.hpp)
+void RunEpicVisTap(const KernelTypeDefs::opt_t& p_options) {
+  int dev = 0;
+  if (p_options["gpu_ids"].count() > 0 && !p_options["gpu_ids"].as<std::vector<int>>().empty()) {
+    dev = p_options["gpu_ids"].as<std::vector<int>>()[0];
+  }
+  auto with_gpu = [&](std::string p) {
+    auto pos = p.find("{gpu}");
+    if (pos != std::string::npos) p.replace(pos, 5, std::to_string(dev));
+    return p;
+  };
+  TccTapOptions tap;
+  tap.path = with_gpu(p_options["caltap_out"].as<std::string>());
+  tap.interval_s = p_options["caltap_interval"].as<float>();
+  tap.min_quality = p_options["caltap_min_quality"].as<float>();
+  tap.record_dir = p_options["caltap_record_dir"].as<std::string>();
+  const int nchan = p_options["channels"].as<int>();
+  const int nseq = p_options["nts"].as<int>();
+  LOG(INFO) << "vistap: receiver + tensor-core tap only, GPU " << dev << ", " << nchan << " channels x " << nseq
+            << " sequences per gulp, " << tap.interval_s << " s tables to " << tap.path
+            << (tap.record_dir.empty() ? "" : " and " + tap.record_dir) << ", runtime "
+            << p_options["runtime"].as<int>() << " s";
+  auto gen = get_pkt_gen_k<0>(p_options);
+  VisTapSink<KernelTypeDefs::payload_u8_t> sink(tap, dev, nchan, nseq);
+  raft::map m;
+  m += *(gen.get()) >> sink;
+  m.exe();
+  LOG(INFO) << "vistap: done";
+}
+
 void RunEpic(int argc, char** argv) {
   using std::string_literals::operator""s;
   auto option_list = GetEpicOptions();
@@ -217,6 +248,11 @@ void RunEpic(int argc, char** argv) {
 
   if (options["bench"].as<bool>()) {
     RunEpicBench(options);
+    return;
+  }
+
+  if (options["vistap"].as<bool>()) {
+    RunEpicVisTap(options);
     return;
   }
   

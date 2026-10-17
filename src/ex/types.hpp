@@ -105,6 +105,8 @@ struct MOFFCorrelatorDesc {
   /// Correlate every gulp on the GPU with the tensor-core correlator instead
   /// of a slice on the CPU
   bool caltap_gpu{false};
+  float caltap_min_quality{0.98f};
+  std::string caltap_record_dir;
 };
 
 struct OutImgDesc {

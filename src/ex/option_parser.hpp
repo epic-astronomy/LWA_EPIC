@@ -147,6 +147,18 @@ cxxopts::Options GetEpicOptions() {
       "correlator (all samples, ~0.5 ms per gulp beside the imaging kernels) "
       "instead of --caltap_nseq sequences on the CPU. Needs epic++ built with "
       "-DEPIC_TCC_ROOT.",
+      cxxopts::value<bool>()->default_value("false"))(
+      "caltap_min_quality",
+      "GPU calibration tap: skip gulps with less valid data than this fraction.",
+      cxxopts::value<float>()->default_value("0.98"))(
+      "caltap_record_dir",
+      "GPU calibration tap: also write every published table to this directory "
+      "(vis_<version>.bin, 128-byte header + R). Empty: off.",
+      cxxopts::value<std::string>()->default_value(""))(
+      "vistap",
+      "Run only the F-Engine receiver and the GPU calibration tap (no imaging, "
+      "database or video) for --runtime seconds; tables go to --caltap_out "
+      "and --caltap_record_dir. For calibration data takes.",
       cxxopts::value<bool>()->default_value("false"))
       ("out_dir","Output directory to store the long accumulation files. Defaults to the current directory.",cxxopts::value<std::string>()->default_value("./"));
 

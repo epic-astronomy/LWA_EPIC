@@ -290,6 +290,8 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc) {
     TccTapOptions tap;
     tap.path = p_desc.caltap_path;
     tap.interval_s = p_desc.caltap_interval_s;
+    tap.min_quality = p_desc.caltap_min_quality;
+    tap.record_dir = p_desc.caltap_record_dir;
     this->EnableTccTap(tap, m_nchan_out, int(m_nseq_per_gulp));
   }
   VLOG(3) << "Done";
