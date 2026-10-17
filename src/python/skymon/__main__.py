@@ -160,6 +160,7 @@ def main(argv=None):
     p.add_argument("--shm", default="skysim")
     p.add_argument("--duration", type=float, default=3600)
     p.add_argument("--fast", action="store_true", help="do not pace at the image rate")
+    p.add_argument("--slots", type=int, default=64, help="ring slots (128 for 41.8 ms images)")
     add_sim_args(p)
 
     p = sub.add_parser("simtest", help="simulator and monitor together, then evaluate")
@@ -266,7 +267,7 @@ def main(argv=None):
     if a.cmd == "simulate":
         from .simulate import run_shm
         sim = make_sim(a)
-        print(json.dumps(run_shm(sim, a.shm, a.duration, realtime=not a.fast)))
+        print(json.dumps(run_shm(sim, a.shm, a.duration, nslots=a.slots, realtime=not a.fast)))
         return 0
     if a.cmd == "run":
         return cmd_run(a)
@@ -278,6 +279,8 @@ def add_sim_args(p):
     p.add_argument("--chan0", type=int, default=2400 - 64,
                    help="first NDP channel (2336: 55.87-58.94 MHz)")
     p.add_argument("--nchan", type=int, default=128)
+    p.add_argument("--nseqs", type=int, default=2000,
+                   help="sequences per image: 2000 for 83.6 ms images, 1000 for 41.8 ms")
     p.add_argument("--frb-per-hour", type=float, default=30)
     p.add_argument("--frb-snr", type=float, nargs=2, default=(8, 30))
     p.add_argument("--frb-dm", type=float, nargs=2, default=(20, 3000))
@@ -295,8 +298,9 @@ def make_sim(a, truth=None):
     from .geometry import Band
     from .simulate import SkySimulator, tier_dt_function
     band = Band(a.chan0, a.nchan)
-    dt = 2000 * 8192 / 196e6
-    return SkySimulator(chan0=a.chan0, nchan=a.nchan, start_unix=a.start,
+    nseqs = getattr(a, "nseqs", 2000)
+    dt = nseqs * 8192 / 196e6
+    return SkySimulator(chan0=a.chan0, nchan=a.nchan, nseqs=nseqs, start_unix=a.start,
                         frb_per_hour=a.frb_per_hour, snr=tuple(a.frb_snr), dm=tuple(a.frb_dm),
                         rfi_per_hour=a.rfi_per_hour, truth_path=truth or a.truth,
                         seed=a.sim_seed, calinfo_path=getattr(a, "sim_calinfo", None),
@@ -344,6 +348,8 @@ def cmd_simtest(a):
         start = a.start or time.time()
         cmd = [sys.executable, "-m", "skymon", "simulate", "--shm", ring,
                "--duration", str(a.duration), "--chan0", str(a.chan0), "--nchan", str(a.nchan),
+               "--nseqs", str(getattr(a, "nseqs", 2000)),
+               "--slots", str(128 if getattr(a, "nseqs", 2000) < 2000 else 64),
                "--frb-per-hour", str(a.frb_per_hour), "--frb-snr", *map(str, a.frb_snr),
                "--frb-dm", *map(str, a.frb_dm), "--rfi-per-hour", str(a.rfi_per_hour),
                "--start", str(start), "--sim-seed", str(a.sim_seed), "--truth", truth,
