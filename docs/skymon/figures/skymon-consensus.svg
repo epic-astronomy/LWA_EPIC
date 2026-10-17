@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 1280 568" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="skymon-consensus-title skymon-consensus-desc" id="skymon-consensus-root">
+      <title id="skymon-consensus-title">Consensus across bands</title>
+      <desc id="skymon-consensus-desc">A new candidate is first tested for an undispersed coincidence with another band, which makes a terrestrial event; otherwise it opens or joins an event, watches are sent to the other bands, the DM and spectrum are refitted, and the event receives a status of confirmed, band_limited, implausible or unconfirmable before human review.</desc>
+      <defs>
+      <style>#skymon-consensus-root { font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif; color: #111827; }
+      #skymon-consensus-root .diagram-container { width: 100%; overflow-x: auto; }
+      #skymon-consensus-root .diagram-container { overflow-x: visible; }
+      #skymon-consensus-root .nm { font: 600 12px 'DM Sans', ui-sans-serif, system-ui, sans-serif; fill: #111827; }
+      #skymon-consensus-root .sb { font: 400 9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #4b5563; }
+      #skymon-consensus-root .tg { font: 500 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.08em; fill: #6b7280; }
+      #skymon-consensus-root .tgf { font: 500 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.08em; fill: #15803d; }
+      #skymon-consensus-root .lb { font: 400 8px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.06em; fill: #6b7280; }
+      #skymon-consensus-root .ey { font: 500 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.14em; fill: #6b7280; }
+      #skymon-consensus-root .co { font: italic 14px 'Instrument Serif', Georgia, serif; fill: #4b5563; }</style>
+        <marker id="skymon-consensus-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4b5563"/></marker>
+      </defs>
+      <rect width="100%" height="100%" fill="#ffffff"/>
+<line x1="216" y1="136" x2="264" y2="136" stroke="#4b5563" stroke-width="1.2" marker-end="url(#skymon-consensus-arrow)"/>
+<line x1="408" y1="136" x2="488" y2="136" stroke="#4b5563" stroke-width="1.2" marker-end="url(#skymon-consensus-arrow)"/>
+<rect x="438.0" y="116" width="20" height="12" rx="2" fill="#ffffff"/>
+<text x="448" y="125" class="lb" text-anchor="middle">NO</text>
+<line x1="688" y1="136" x2="768" y2="136" stroke="#4b5563" stroke-width="1.2" marker-end="url(#skymon-consensus-arrow)"/>
+<rect x="706.0" y="116" width="44" height="12" rx="2" fill="#ffffff"/>
+<text x="728" y="125" class="lb" text-anchor="middle">REQUEST</text>
+<line x1="976" y1="136" x2="1048" y2="136" stroke="#4b5563" stroke-width="1.2" marker-end="url(#skymon-consensus-arrow)"/>
+<rect x="984.0" y="116" width="56" height="12" rx="2" fill="#ffffff"/>
+<text x="1012" y="125" class="lb" text-anchor="middle">FOLLOWUPS</text>
+<line x1="336" y1="180" x2="336" y2="320" stroke="#4b5563" stroke-width="1.2" marker-end="url(#skymon-consensus-arrow)"/>
+<rect x="344.0" y="244" width="24" height="12" rx="2" fill="#ffffff"/>
+<text x="356" y="253" class="lb" text-anchor="middle">YES</text>
+<line x1="588" y1="168" x2="588" y2="320" stroke="#4b5563" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#skymon-consensus-arrow)"/>
+<rect x="596.0" y="238" width="68" height="12" rx="2" fill="#ffffff"/>
+<text x="630" y="247" class="lb" text-anchor="middle">DIFFERENT DM</text>
+<line x1="1144" y1="168" x2="1144" y2="304" stroke="#4b5563" stroke-width="1.2" marker-end="url(#skymon-consensus-arrow)"/>
+<rect x="1152.0" y="230" width="68" height="12" rx="2" fill="#ffffff"/>
+<text x="1186" y="239" class="lb" text-anchor="middle">ALL RESOLVED</text>
+<line x1="1016" y1="368" x2="928" y2="368" stroke="#4b5563" stroke-width="1.2" marker-end="url(#skymon-consensus-arrow)"/>
+<rect x="946.0" y="348" width="52" height="12" rx="2" fill="#ffffff"/>
+<text x="972" y="357" class="lb" text-anchor="middle">CONTEXT</text>
+<rect x="40" y="104" width="176" height="64" rx="6" fill="#ffffff"/>
+<rect x="40" y="104" width="176" height="64" rx="6" fill="#4b5563" stroke="#6b7280" stroke-width="1" fill-opacity="0.10"/>
+<rect x="48" y="110" width="24" height="12" rx="2" fill="none" stroke="#6b7280" stroke-width="0.8" stroke-opacity="0.40"/>
+<text x="60.0" y="119" class="tg" text-anchor="middle">IN</text>
+<text x="128.0" y="142" class="nm" text-anchor="middle">New candidate</text>
+<text x="128.0" y="158" class="sb" text-anchor="middle">class candidate · any band</text>
+<polygon points="264,136 336,92 408,136 336,180" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+<text x="336" y="133" class="nm" text-anchor="middle" style="font-size:11px">Undispersed</text>
+<text x="336" y="147" class="nm" text-anchor="middle" style="font-size:11px">coincidence?</text>
+<rect x="488" y="104" width="200" height="64" rx="6" fill="#ffffff"/>
+<rect x="488" y="104" width="200" height="64" rx="6" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+<rect x="496" y="110" width="40" height="12" rx="2" fill="none" stroke="#111827" stroke-width="0.8" stroke-opacity="0.40"/>
+<text x="516.0" y="119" class="tg" text-anchor="middle">EVENT</text>
+<text x="588.0" y="142" class="nm" text-anchor="middle">Open or join event</text>
+<text x="588.0" y="158" class="sb" text-anchor="middle">match position · DM · time</text>
+<rect x="768" y="104" width="208" height="64" rx="6" fill="#ffffff"/>
+<rect x="768" y="104" width="208" height="64" rx="6" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+<rect x="776" y="110" width="32" height="12" rx="2" fill="none" stroke="#111827" stroke-width="0.8" stroke-opacity="0.40"/>
+<text x="792.0" y="119" class="tg" text-anchor="middle">POST</text>
+<text x="872.0" y="142" class="nm" text-anchor="middle">Watches in other bands</text>
+<text x="872.0" y="158" class="sb" text-anchor="middle">predicted t_bottom · el limit</text>
+<rect x="1048" y="104" width="192" height="64" rx="6" fill="#ffffff"/>
+<rect x="1048" y="104" width="192" height="64" rx="6" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+<rect x="1056" y="110" width="28" height="12" rx="2" fill="none" stroke="#111827" stroke-width="0.8" stroke-opacity="0.40"/>
+<text x="1070.0" y="119" class="tg" text-anchor="middle">FIT</text>
+<text x="1144.0" y="142" class="nm" text-anchor="middle">Refit and spectrum</text>
+<text x="1144.0" y="158" class="sb" text-anchor="middle">DM, t_inf · spectrum.py</text>
+<rect x="248" y="320" width="176" height="64" rx="6" fill="#ffffff"/>
+<rect x="248" y="320" width="176" height="64" rx="6" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+<rect x="256" y="326" width="32" height="12" rx="2" fill="none" stroke="#111827" stroke-width="0.8" stroke-opacity="0.40"/>
+<text x="272.0" y="335" class="tg" text-anchor="middle">VETO</text>
+<text x="336.0" y="358" class="nm" text-anchor="middle">Terrestrial event</text>
+<text x="336.0" y="374" class="sb" text-anchor="middle">review not needed</text>
+<rect x="488" y="320" width="200" height="64" rx="6" fill="#ffffff"/>
+<rect x="488" y="320" width="200" height="64" rx="6" fill="#111827" stroke="#111827" stroke-width="1" stroke-dasharray="4,3" fill-opacity="0.02" stroke-opacity="0.30"/>
+<rect x="496" y="326" width="32" height="12" rx="2" fill="none" stroke="#111827" stroke-width="0.8" stroke-opacity="0.30"/>
+<text x="512.0" y="335" class="tg" text-anchor="middle">NOTE</text>
+<text x="588.0" y="358" class="nm" text-anchor="middle">other_dm entry</text>
+<text x="588.0" y="374" class="sb" text-anchor="middle">same place, linked data</text>
+<rect x="704" y="336" width="224" height="64" rx="6" fill="#ffffff"/>
+<rect x="704" y="336" width="224" height="64" rx="6" fill="#22c55e" stroke="#15803d" stroke-width="1.2" fill-opacity="0.08"/>
+<rect x="712" y="342" width="44" height="12" rx="2" fill="none" stroke="#15803d" stroke-width="0.8" stroke-opacity="0.50"/>
+<text x="734.0" y="351" class="tgf" text-anchor="middle">REVIEW</text>
+<text x="816.0" y="374" class="nm" text-anchor="middle">Human review</text>
+<text x="816.0" y="390" class="sb" text-anchor="middle">verdict frb · rfi · unclear</text>
+<rect x="1016" y="304" width="224" height="128" rx="6" fill="#ffffff"/>
+<rect x="1016" y="304" width="224" height="128" rx="6" fill="#22c55e" stroke="#15803d" stroke-width="1.2" fill-opacity="0.08"/>
+<rect x="1024" y="310" width="44" height="12" rx="2" fill="none" stroke="#15803d" stroke-width="0.8" stroke-opacity="0.50"/>
+<text x="1046.0" y="319" class="tgf" text-anchor="middle">STATUS</text>
+<text x="1128" y="334" class="nm" text-anchor="middle">Event status</text>
+<text x="1032" y="358" class="sb" style="fill:#111827">confirmed</text><text x="1124" y="358" class="sb">≥ 2 bands, S/N ≥ 6</text>
+<text x="1032" y="376" class="sb" style="fill:#111827">band_limited</text><text x="1124" y="376" class="sb">plausible spectrum</text>
+<text x="1032" y="394" class="sb" style="fill:#111827">implausible</text><text x="1124" y="394" class="sb">no spectrum fits</text>
+<text x="1032" y="412" class="sb" style="fill:#111827">unconfirmable</text><text x="1124" y="412" class="sb">no other band</text>
+<text x="248" y="412" class="co">Simultaneous in two bands, although the</text>
+<text x="248" y="430" class="co">dispersion law predicts a gap of more than 3 s.</text>
+<text x="704" y="456" class="co">No status discards data: every band keeps its</text>
+<text x="704" y="474" class="co">detection, followup or context record.</text>
+<line x1="32" y1="508" x2="1248" y2="508" stroke="#111827" stroke-width="0.8" stroke-opacity="0.10"/>
+<text x="32" y="536" class="ey">LEGEND</text>
+<rect x="96" y="526" width="20" height="12" rx="2" fill="#4b5563" stroke="#6b7280" stroke-width="1" fill-opacity="0.10"/>
+<text x="124" y="535" class="lb">INPUT</text>
+<rect x="193" y="526" width="20" height="12" rx="2" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+<text x="221" y="535" class="lb">STEP</text>
+<polygon points="285,532 295,525 305,532 295,539" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+<text x="313" y="535" class="lb">DECISION</text>
+<rect x="397" y="526" width="20" height="12" rx="2" fill="#111827" stroke="#111827" stroke-width="1" stroke-dasharray="4,3" fill-opacity="0.02" stroke-opacity="0.30"/>
+<text x="425" y="535" class="lb">LINKED RECORD</text>
+<rect x="534" y="526" width="20" height="12" rx="2" fill="#22c55e" stroke="#15803d" stroke-width="1" fill-opacity="0.08"/>
+<text x="562" y="535" class="lb">OUTCOME FOR REVIEW</text>
+    </svg>

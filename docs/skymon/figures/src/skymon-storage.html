@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>skymon storage</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif; background: #ffffff; color: #111827; padding: 3rem 2rem; }
+    .frame { max-width: 1320px; margin: 0 auto; }
+    .eyebrow { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: #4b5563; margin-bottom: 0.5rem; }
+    h1 { font-family: 'Instrument Serif', serif; font-size: 2rem; font-weight: 400; letter-spacing: -0.02em; margin-bottom: 1.5rem; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    svg { width: 100%; min-width: 1280px; display: block; }
+    @media print { .diagram-container { overflow-x: visible; } svg { min-width: 0; } }
+    .nm { font: 600 12px 'DM Sans', ui-sans-serif, system-ui, sans-serif; fill: #111827; }
+    .sb { font: 400 9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #4b5563; }
+    .tg { font: 500 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.08em; fill: #6b7280; }
+    .tgf { font: 500 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.08em; fill: #15803d; }
+    .lb { font: 400 8px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.06em; fill: #6b7280; }
+    .ey { font: 500 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.14em; fill: #6b7280; }
+    .co { font: italic 14px 'Instrument Serif', Georgia, serif; fill: #4b5563; }
+  </style>
+</head>
+<body>
+<div class="frame">
+  <p class="eyebrow">Architecture · skymon</p>
+  <h1>Storage, mailbox and failure handling</h1>
+  <div class="diagram-container">
+    <svg viewBox="0 0 1280 640" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="skymon-storage-title skymon-storage-desc">
+      <title id="skymon-storage-title">Storage, mailbox and failure handling</title>
+      <desc id="skymon-storage-desc">Each imaging node keeps its records in a local PostgreSQL database that serves as the mailbox between monitor and combiner, spools records on local disk while the database is down, receives versioned event copies from the combiner, and archives kept events to the shared file system through a separate archiver that waits when the archive is absent.</desc>
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4b5563"/></marker>
+        <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#15803d"/></marker>
+        <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#1d4ed8"/></marker>
+      </defs>
+      <rect width="100%" height="100%" fill="#ffffff"/>
+<rect x="32" y="80" width="608" height="432" rx="8" fill="rgba(17,24,39,0.02)" stroke="rgba(17,24,39,0.10)" stroke-width="0.8"/>
+<rect x="44" y="84" width="224" height="12" rx="2" fill="#ffffff"/>
+<text x="156.0" y="93" class="ey" text-anchor="middle">EACH IMAGING NODE · LOCAL DISK ONLY</text>
+<rect x="1000" y="80" width="264" height="160" rx="8" fill="rgba(17,24,39,0.02)" stroke="rgba(17,24,39,0.10)" stroke-width="0.8"/>
+<rect x="1012" y="84" width="128" height="12" rx="2" fill="#ffffff"/>
+<text x="1076.0" y="93" class="ey" text-anchor="middle">OTHER IMAGING NODES</text>
+<rect x="1000" y="344" width="264" height="160" rx="8" fill="rgba(17,24,39,0.02)" stroke="rgba(17,24,39,0.10)" stroke-width="0.8"/>
+<rect x="1012" y="348" width="140" height="12" rx="2" fill="#ffffff"/>
+<text x="1082.0" y="357" class="ey" text-anchor="middle">SHARED · ARCHIVE ONLY</text>
+<line x1="296" y1="152" x2="376" y2="152" stroke="#4b5563" stroke-width="1.2" marker-end="url(#arrow)"/>
+<rect x="314.0" y="132" width="44" height="12" rx="2" fill="#ffffff"/>
+<text x="336" y="141" class="lb" text-anchor="middle">RECORDS</text>
+<line x1="376" y1="176" x2="296" y2="176" stroke="#4b5563" stroke-width="1.2" marker-end="url(#arrow)"/>
+<rect x="312.0" y="184" width="48" height="12" rx="2" fill="#ffffff"/>
+<text x="336" y="193" class="lb" text-anchor="middle">REQUESTS</text>
+<line x1="152" y1="192" x2="152" y2="392" stroke="#4b5563" stroke-width="1.2" marker-end="url(#arrow)"/>
+<rect x="96.0" y="286" width="48" height="12" rx="2" fill="#ffffff"/>
+<text x="120" y="295" class="lb" text-anchor="middle">PRODUCTS</text>
+<line x1="216" y1="192" x2="216" y2="392" stroke="#4b5563" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+<rect x="224.0" y="232" width="76" height="12" rx="2" fill="#ffffff"/>
+<text x="262" y="241" class="lb" text-anchor="middle">DB DOWN: SPOOL</text>
+<path d="M 264,392 V 296 Q 264,288 272,288 H 392 Q 400,288 400,280 V 192" fill="none" stroke="#4b5563" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+<rect x="312.0" y="268" width="40" height="12" rx="2" fill="#ffffff"/>
+<text x="332" y="277" class="lb" text-anchor="middle">REPLAY</text>
+<line x1="480" y1="192" x2="480" y2="392" stroke="#4b5563" stroke-width="1.2" marker-end="url(#arrow)"/>
+<rect x="488.0" y="286" width="72" height="12" rx="2" fill="#ffffff"/>
+<text x="524" y="295" class="lb" text-anchor="middle">SELECT EVENTS</text>
+<line x1="296" y1="424" x2="376" y2="424" stroke="#4b5563" stroke-width="1.2" marker-end="url(#arrow)"/>
+<rect x="318.0" y="404" width="36" height="12" rx="2" fill="#ffffff"/>
+<text x="336" y="413" class="lb" text-anchor="middle">FILES</text>
+<line x1="600" y1="424" x2="1024" y2="424" stroke="#1d4ed8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+<rect x="766.0" y="404" width="68" height="12" rx="2" fill="#ffffff"/>
+<text x="800" y="413" class="lb" text-anchor="middle">SHA-256 COPY</text>
+<line x1="600" y1="144" x2="720" y2="144" stroke="#4b5563" stroke-width="1.2" marker-end="url(#arrow)"/>
+<rect x="630.0" y="124" width="60" height="12" rx="2" fill="#ffffff"/>
+<text x="660" y="133" class="lb" text-anchor="middle">CANDIDATES</text>
+<line x1="720" y1="168" x2="600" y2="168" stroke="#4b5563" stroke-width="1.2" marker-end="url(#arrow)"/>
+<rect x="624.0" y="176" width="72" height="12" rx="2" fill="#ffffff"/>
+<text x="660" y="185" class="lb" text-anchor="middle">WATCH · EVENT</text>
+<line x1="944" y1="152" x2="1024" y2="152" stroke="#15803d" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow-accent)"/>
+<rect x="960.0" y="132" width="48" height="12" rx="2" fill="#ffffff"/>
+<text x="984" y="141" class="lb" text-anchor="middle">EVENT vN</text>
+<line x1="1024" y1="176" x2="944" y2="176" stroke="#4b5563" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+<rect x="962.0" y="184" width="44" height="12" rx="2" fill="#ffffff"/>
+<text x="984" y="193" class="lb" text-anchor="middle">REBUILD</text>
+<rect x="72" y="128" width="224" height="64" rx="6" fill="#ffffff"/>
+<rect x="72" y="128" width="224" height="64" rx="6" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+<rect x="80" y="134" width="24" height="12" rx="2" fill="none" stroke="rgba(17,24,39,0.40)" stroke-width="0.8"/>
+<text x="92.0" y="143" class="tg" text-anchor="middle">PY</text>
+<text x="184.0" y="166" class="nm" text-anchor="middle">skymon monitor</text>
+<text x="184.0" y="182" class="sb" text-anchor="middle">search never waits on DB</text>
+<rect x="376" y="128" width="224" height="64" rx="6" fill="#ffffff"/>
+<rect x="376" y="128" width="224" height="64" rx="6" fill="rgba(34,197,94,0.08)" stroke="#15803d" stroke-width="1.2"/>
+<rect x="384" y="134" width="24" height="12" rx="2" fill="none" stroke="rgba(21,128,61,0.50)" stroke-width="0.8"/>
+<text x="396.0" y="143" class="tgf" text-anchor="middle">DB</text>
+<text x="488.0" y="166" class="nm" text-anchor="middle">Local PostgreSQL</text>
+<text x="488.0" y="182" class="sb" text-anchor="middle">:5433 · mailbox · copies</text>
+<rect x="72" y="392" width="224" height="64" rx="6" fill="#ffffff"/>
+<rect x="72" y="392" width="224" height="64" rx="6" fill="rgba(17,24,39,0.05)" stroke="#4b5563" stroke-width="1"/>
+<rect x="80" y="398" width="32" height="12" rx="2" fill="none" stroke="rgba(75,85,99,0.40)" stroke-width="0.8"/>
+<text x="96.0" y="407" class="tg" text-anchor="middle">DISK</text>
+<text x="184.0" y="430" class="nm" text-anchor="middle">Local disk</text>
+<text x="184.0" y="446" class="sb" text-anchor="middle">data/ · spool/</text>
+<rect x="376" y="392" width="224" height="64" rx="6" fill="#ffffff"/>
+<rect x="376" y="392" width="224" height="64" rx="6" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+<rect x="384" y="398" width="24" height="12" rx="2" fill="none" stroke="rgba(17,24,39,0.40)" stroke-width="0.8"/>
+<text x="396.0" y="407" class="tg" text-anchor="middle">PY</text>
+<text x="488.0" y="430" class="nm" text-anchor="middle">archiver</text>
+<text x="488.0" y="446" class="sb" text-anchor="middle">fixed retention rules</text>
+<rect x="720" y="128" width="224" height="64" rx="6" fill="#ffffff"/>
+<rect x="720" y="128" width="224" height="64" rx="6" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+<rect x="728" y="134" width="24" height="12" rx="2" fill="none" stroke="rgba(17,24,39,0.40)" stroke-width="0.8"/>
+<text x="740.0" y="143" class="tg" text-anchor="middle">PY</text>
+<text x="832.0" y="166" class="nm" text-anchor="middle">combiner</text>
+<text x="832.0" y="182" class="sb" text-anchor="middle">Nomad service · one node</text>
+<rect x="1024" y="128" width="216" height="64" rx="6" fill="#ffffff"/>
+<rect x="1024" y="128" width="216" height="64" rx="6" fill="rgba(17,24,39,0.05)" stroke="#4b5563" stroke-width="1"/>
+<rect x="1032" y="134" width="24" height="12" rx="2" fill="none" stroke="rgba(75,85,99,0.40)" stroke-width="0.8"/>
+<text x="1044.0" y="143" class="tg" text-anchor="middle">DB</text>
+<text x="1132.0" y="166" class="nm" text-anchor="middle">Their PostgreSQL</text>
+<text x="1132.0" y="182" class="sb" text-anchor="middle">:5433 · event copies</text>
+<rect x="1024" y="392" width="216" height="64" rx="6" fill="#ffffff"/>
+<rect x="1024" y="392" width="216" height="64" rx="6" fill="rgba(17,24,39,0.03)" stroke="rgba(17,24,39,0.30)" stroke-width="1"/>
+<rect x="1032" y="398" width="28" height="12" rx="2" fill="none" stroke="rgba(17,24,39,0.30)" stroke-width="0.8"/>
+<text x="1046.0" y="407" class="tg" text-anchor="middle">NFS</text>
+<text x="1132.0" y="430" class="nm" text-anchor="middle">Shared archive (NFS)</text>
+<text x="1132.0" y="446" class="sb" text-anchor="middle">verified copies only</text>
+<text x="720" y="232" class="co">A combiner started on another node</text>
+<text x="720" y="250" class="co">rebuilds its state from the newest copies.</text>
+<text x="976" y="532" class="co">If the shared file system is absent, the</text>
+<text x="976" y="550" class="co">archiver waits; the data stay on local disk.</text>
+<line x1="32" y1="580" x2="1248" y2="580" stroke="rgba(17,24,39,0.10)" stroke-width="0.8"/>
+<text x="32" y="608" class="ey">LEGEND</text>
+<rect x="96" y="598" width="20" height="12" rx="2" fill="rgba(34,197,94,0.08)" stroke="#15803d" stroke-width="1"/>
+<text x="124" y="607" class="lb">MAILBOX</text>
+<rect x="187" y="598" width="20" height="12" rx="2" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+<text x="215" y="607" class="lb">PROCESS</text>
+<rect x="278" y="598" width="20" height="12" rx="2" fill="rgba(17,24,39,0.05)" stroke="#4b5563" stroke-width="1"/>
+<text x="306" y="607" class="lb">LOCAL STORE</text>
+<rect x="389" y="598" width="20" height="12" rx="2" fill="rgba(17,24,39,0.03)" stroke="rgba(17,24,39,0.30)" stroke-width="1"/>
+<text x="417" y="607" class="lb">ARCHIVE</text>
+<line x1="480" y1="604" x2="512" y2="604" stroke="#4b5563" stroke-width="1.2" marker-end="url(#arrow)"/>
+<text x="520" y="607" class="lb">NORMAL PATH</text>
+<line x1="603" y1="604" x2="635" y2="604" stroke="#4b5563" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+<text x="643" y="607" class="lb">FALLBACK</text>
+<line x1="711" y1="604" x2="743" y2="604" stroke="#15803d" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow-accent)"/>
+<text x="751" y="607" class="lb">VERSIONED COPY</text>
+<line x1="849" y1="604" x2="881" y2="604" stroke="#1d4ed8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+<text x="889" y="607" class="lb">NFS COPY</text>
+    </svg>
+  </div>
+</div>
+</body>
+</html>

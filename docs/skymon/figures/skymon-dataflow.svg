@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 1280 672" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="skymon-dataflow-title skymon-dataflow-desc" id="skymon-dataflow-root">
+      <title id="skymon-dataflow-title">Data flow of the all-sky monitor</title>
+      <desc id="skymon-dataflow-desc">On each imaging node epic++ publishes Stokes I images to a shared-memory ring read by the skymon monitor, which stores records in a local PostgreSQL database and data products on local disk; one combiner reads every node's database, an archiver per node copies kept events to the archive on the shared file system, and the website queries monitors and combiner over HTTP.</desc>
+      <defs>
+      <style>#skymon-dataflow-root { font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif; color: #111827; }
+      #skymon-dataflow-root .diagram-container { width: 100%; overflow-x: auto; }
+      #skymon-dataflow-root .diagram-container { overflow-x: visible; }
+      #skymon-dataflow-root .nm { font: 600 12px 'DM Sans', ui-sans-serif, system-ui, sans-serif; fill: #111827; }
+      #skymon-dataflow-root .sb { font: 400 9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #4b5563; }
+      #skymon-dataflow-root .tg { font: 500 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.08em; fill: #6b7280; }
+      #skymon-dataflow-root .tgf { font: 500 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.08em; fill: #15803d; }
+      #skymon-dataflow-root .lb { font: 400 8px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.06em; fill: #6b7280; }
+      #skymon-dataflow-root .ey { font: 500 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.14em; fill: #6b7280; }
+      #skymon-dataflow-root .co { font: italic 14px 'Instrument Serif', Georgia, serif; fill: #4b5563; }</style>
+        <marker id="skymon-dataflow-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4b5563"/></marker>
+        <marker id="skymon-dataflow-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#15803d"/></marker>
+        <marker id="skymon-dataflow-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#1d4ed8"/></marker>
+      </defs>
+      <rect width="100%" height="100%" fill="#ffffff"/>
+
+      <!-- Zone: one imaging node, the real-time path -->
+      <rect x="32" y="80" width="888" height="480" rx="8" fill="#111827" stroke="#111827" stroke-width="0.8" fill-opacity="0.02" stroke-opacity="0.10"/>
+      <rect x="44" y="84" width="252" height="12" rx="2" fill="#ffffff"/>
+      <text x="170" y="93" class="ey" text-anchor="middle">IMAGING NODE · ONE OF EPIC1–6 · REAL TIME</text>
+
+      <!-- Arrows (before nodes) -->
+      <line x1="272" y1="168" x2="352" y2="168" stroke="#4b5563" stroke-width="1.2" marker-end="url(#skymon-dataflow-arrow)"/>
+      <rect x="288" y="148" width="48" height="12" rx="2" fill="#ffffff"/>
+      <text x="312" y="157" class="lb" text-anchor="middle">STOKES I</text>
+
+      <line x1="576" y1="168" x2="656" y2="168" stroke="#4b5563" stroke-width="1.2" marker-end="url(#skymon-dataflow-arrow)"/>
+      <rect x="582" y="148" width="68" height="12" rx="2" fill="#ffffff"/>
+      <text x="616" y="157" class="lb" text-anchor="middle">SEQLOCK READ</text>
+
+      <line x1="880" y1="168" x2="1000" y2="168" stroke="#1d4ed8" stroke-width="1.2" marker-end="url(#skymon-dataflow-arrow-link)"/>
+      <rect x="912" y="148" width="56" height="12" rx="2" fill="#ffffff"/>
+      <text x="940" y="157" class="lb" text-anchor="middle">HTTP :8095</text>
+
+      <line x1="800" y1="200" x2="800" y2="320" stroke="#4b5563" stroke-width="1.2" marker-end="url(#skymon-dataflow-arrow)"/>
+      <rect x="808" y="254" width="48" height="12" rx="2" fill="#ffffff"/>
+      <text x="832" y="263" class="lb" text-anchor="middle">RECORDS</text>
+
+      <path d="M 712,200 V 252 Q 712,260 704,260 H 472 Q 464,260 464,268 V 320" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#skymon-dataflow-arrow)"/>
+      <rect x="554" y="240" width="68" height="12" rx="2" fill="#ffffff"/>
+      <text x="588" y="249" class="lb" text-anchor="middle">NPZ PRODUCTS</text>
+
+      <line x1="464" y1="384" x2="464" y2="472" stroke="#4b5563" stroke-width="1.2" marker-end="url(#skymon-dataflow-arrow)"/>
+      <rect x="472" y="422" width="36" height="12" rx="2" fill="#ffffff"/>
+      <text x="490" y="431" class="lb" text-anchor="middle">FILES</text>
+
+      <path d="M 760,384 V 488 Q 760,496 752,496 H 576" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#skymon-dataflow-arrow)"/>
+      <rect x="634" y="476" width="68" height="12" rx="2" fill="#ffffff"/>
+      <text x="668" y="485" class="lb" text-anchor="middle">EVENT COPIES</text>
+
+      <line x1="576" y1="520" x2="1000" y2="520" stroke="#1d4ed8" stroke-width="1.2" marker-end="url(#skymon-dataflow-arrow-link)"/>
+      <rect x="832" y="500" width="72" height="12" rx="2" fill="#ffffff"/>
+      <text x="868" y="509" class="lb" text-anchor="middle">VERIFIED COPY</text>
+
+      <line x1="880" y1="340" x2="1000" y2="340" stroke="#4b5563" stroke-width="1.2" marker-end="url(#skymon-dataflow-arrow)"/>
+      <rect x="912" y="320" width="56" height="12" rx="2" fill="#ffffff"/>
+      <text x="940" y="329" class="lb" text-anchor="middle">CANDIDATES</text>
+
+      <line x1="1000" y1="364" x2="880" y2="364" stroke="#4b5563" stroke-width="1.2" marker-end="url(#skymon-dataflow-arrow)"/>
+      <rect x="904" y="372" width="72" height="12" rx="2" fill="#ffffff"/>
+      <text x="940" y="381" class="lb" text-anchor="middle">WATCH · EVENT</text>
+
+      <line x1="1120" y1="320" x2="1120" y2="200" stroke="#1d4ed8" stroke-width="1.2" marker-end="url(#skymon-dataflow-arrow-link)"/>
+      <rect x="1128" y="254" width="56" height="12" rx="2" fill="#ffffff"/>
+      <text x="1156" y="263" class="lb" text-anchor="middle">HTTP :8096</text>
+
+      <!-- Nodes -->
+      <!-- epic++ -->
+      <rect x="64" y="136" width="208" height="64" rx="6" fill="#ffffff"/>
+      <rect x="64" y="136" width="208" height="64" rx="6" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+      <rect x="72" y="142" width="24" height="12" rx="2" fill="none" stroke="#111827" stroke-width="0.8" stroke-opacity="0.40"/>
+      <text x="84" y="151" class="tg" text-anchor="middle">C++</text>
+      <text x="168" y="174" class="nm" text-anchor="middle">epic++ imager</text>
+      <text x="168" y="190" class="sb" text-anchor="middle">ChanReducer → SkyPublisher</text>
+
+      <!-- ring -->
+      <rect x="352" y="136" width="224" height="64" rx="6" fill="#ffffff"/>
+      <rect x="352" y="136" width="224" height="64" rx="6" fill="#111827" stroke="#4b5563" stroke-width="1" fill-opacity="0.05"/>
+      <rect x="360" y="142" width="24" height="12" rx="2" fill="none" stroke="#4b5563" stroke-width="0.8" stroke-opacity="0.40"/>
+      <text x="372" y="151" class="tg" text-anchor="middle">SHM</text>
+      <text x="464" y="174" class="nm" text-anchor="middle">Shared-memory ring</text>
+      <text x="464" y="190" class="sb" text-anchor="middle">epic_sky0 · EPICSKY1 · 64 slots</text>
+
+      <!-- monitor (focal) -->
+      <rect x="656" y="136" width="224" height="64" rx="6" fill="#ffffff"/>
+      <rect x="656" y="136" width="224" height="64" rx="6" fill="#22c55e" stroke="#15803d" stroke-width="1.2" fill-opacity="0.08"/>
+      <rect x="664" y="142" width="20" height="12" rx="2" fill="none" stroke="#15803d" stroke-width="0.8" stroke-opacity="0.50"/>
+      <text x="674" y="151" class="tgf" text-anchor="middle">PY</text>
+      <text x="768" y="174" class="nm" text-anchor="middle">skymon monitor</text>
+      <text x="768" y="190" class="sb" text-anchor="middle">regrid · search · classify</text>
+
+      <!-- local disk -->
+      <rect x="352" y="320" width="224" height="64" rx="6" fill="#ffffff"/>
+      <rect x="352" y="320" width="224" height="64" rx="6" fill="#111827" stroke="#4b5563" stroke-width="1" fill-opacity="0.05"/>
+      <rect x="360" y="326" width="28" height="12" rx="2" fill="none" stroke="#4b5563" stroke-width="0.8" stroke-opacity="0.40"/>
+      <text x="374" y="335" class="tg" text-anchor="middle">DISK</text>
+      <text x="464" y="358" class="nm" text-anchor="middle">Local disk</text>
+      <text x="464" y="374" class="sb" text-anchor="middle">skymon_root/data · spool</text>
+
+      <!-- local PostgreSQL -->
+      <rect x="656" y="320" width="224" height="64" rx="6" fill="#ffffff"/>
+      <rect x="656" y="320" width="224" height="64" rx="6" fill="#111827" stroke="#4b5563" stroke-width="1" fill-opacity="0.05"/>
+      <rect x="664" y="326" width="20" height="12" rx="2" fill="none" stroke="#4b5563" stroke-width="0.8" stroke-opacity="0.40"/>
+      <text x="674" y="335" class="tg" text-anchor="middle">DB</text>
+      <text x="768" y="358" class="nm" text-anchor="middle">Local PostgreSQL</text>
+      <text x="768" y="374" class="sb" text-anchor="middle">:5433 · records · mailbox</text>
+
+      <!-- archiver -->
+      <rect x="352" y="472" width="224" height="64" rx="6" fill="#ffffff"/>
+      <rect x="352" y="472" width="224" height="64" rx="6" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+      <rect x="360" y="478" width="20" height="12" rx="2" fill="none" stroke="#111827" stroke-width="0.8" stroke-opacity="0.40"/>
+      <text x="370" y="487" class="tg" text-anchor="middle">PY</text>
+      <text x="464" y="510" class="nm" text-anchor="middle">archiver</text>
+      <text x="464" y="526" class="sb" text-anchor="middle">kept events · every 60 s</text>
+
+      <!-- website -->
+      <rect x="1000" y="136" width="240" height="64" rx="6" fill="#ffffff"/>
+      <rect x="1000" y="136" width="240" height="64" rx="6" fill="#111827" stroke="#111827" stroke-width="1" fill-opacity="0.03" stroke-opacity="0.30"/>
+      <rect x="1008" y="142" width="24" height="12" rx="2" fill="none" stroke="#111827" stroke-width="0.8" stroke-opacity="0.30"/>
+      <text x="1020" y="151" class="tg" text-anchor="middle">WEB</text>
+      <text x="1120" y="174" class="nm" text-anchor="middle">Waterfalls website</text>
+      <text x="1120" y="190" class="sb" text-anchor="middle">skymon page · review verdicts</text>
+
+      <!-- combiner -->
+      <rect x="1000" y="320" width="240" height="64" rx="6" fill="#ffffff"/>
+      <rect x="1000" y="320" width="240" height="64" rx="6" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+      <rect x="1008" y="326" width="20" height="12" rx="2" fill="none" stroke="#111827" stroke-width="0.8" stroke-opacity="0.40"/>
+      <text x="1018" y="335" class="tg" text-anchor="middle">PY</text>
+      <text x="1120" y="358" class="nm" text-anchor="middle">combiner</text>
+      <text x="1120" y="374" class="sb" text-anchor="middle">one per array · all six DBs</text>
+
+      <!-- archive -->
+      <rect x="1000" y="472" width="240" height="64" rx="6" fill="#ffffff"/>
+      <rect x="1000" y="472" width="240" height="64" rx="6" fill="#111827" stroke="#111827" stroke-width="1" fill-opacity="0.03" stroke-opacity="0.30"/>
+      <rect x="1008" y="478" width="24" height="12" rx="2" fill="none" stroke="#111827" stroke-width="0.8" stroke-opacity="0.30"/>
+      <text x="1020" y="487" class="tg" text-anchor="middle">NFS</text>
+      <text x="1120" y="510" class="nm" text-anchor="middle">Shared archive (NFS)</text>
+      <text x="1120" y="526" class="sb" text-anchor="middle">archive/&lt;node&gt;/</text>
+
+      <!-- Callout -->
+      <text x="944" y="580" class="co">The real-time path never reads the shared</text>
+      <text x="944" y="598" class="co">file system; it receives verified copies only.</text>
+
+      <!-- Legend -->
+      <line x1="32" y1="620" x2="1248" y2="620" stroke="#111827" stroke-width="0.8" stroke-opacity="0.10"/>
+      <text x="32" y="648" class="ey">LEGEND</text>
+      <rect x="96" y="638" width="20" height="12" rx="2" fill="#22c55e" stroke="#15803d" stroke-width="1" fill-opacity="0.08"/>
+      <text x="124" y="647" class="lb">FOCAL PROCESS</text>
+      <rect x="232" y="638" width="20" height="12" rx="2" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+      <text x="260" y="647" class="lb">PROCESS</text>
+      <rect x="336" y="638" width="20" height="12" rx="2" fill="#111827" stroke="#4b5563" stroke-width="1" fill-opacity="0.05"/>
+      <text x="364" y="647" class="lb">LOCAL STORE</text>
+      <rect x="464" y="638" width="20" height="12" rx="2" fill="#111827" stroke="#111827" stroke-width="1" fill-opacity="0.03" stroke-opacity="0.30"/>
+      <text x="492" y="647" class="lb">SHARED SERVICE</text>
+      <line x1="600" y1="644" x2="632" y2="644" stroke="#4b5563" stroke-width="1.2" marker-end="url(#skymon-dataflow-arrow)"/>
+      <text x="640" y="647" class="lb">DATA ON THE NODE</text>
+      <line x1="760" y1="644" x2="792" y2="644" stroke="#1d4ed8" stroke-width="1.2" marker-end="url(#skymon-dataflow-arrow-link)"/>
+      <text x="800" y="647" class="lb">HTTP OR NFS</text>
+    </svg>

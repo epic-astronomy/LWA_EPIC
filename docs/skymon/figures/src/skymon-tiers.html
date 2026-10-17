@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>skymon dedispersion tiers</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif; background: #ffffff; color: #111827; padding: 3rem 2rem; }
+    .frame { max-width: 1320px; margin: 0 auto; }
+    .eyebrow { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: #4b5563; margin-bottom: 0.5rem; }
+    h1 { font-family: 'Instrument Serif', serif; font-size: 2rem; font-weight: 400; letter-spacing: -0.02em; margin-bottom: 1.5rem; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    svg { width: 100%; min-width: 960px; display: block; }
+    @media print { .diagram-container { overflow-x: visible; } svg { min-width: 0; } }
+    .nm { font: 600 12px 'DM Sans', ui-sans-serif, system-ui, sans-serif; fill: #111827; }
+    .sb { font: 400 9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #4b5563; }
+    .tg { font: 500 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.08em; fill: #6b7280; }
+    .tgf { font: 500 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.08em; fill: #15803d; }
+    .lb { font: 400 8px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.06em; fill: #6b7280; }
+    .ey { font: 500 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.14em; fill: #6b7280; }
+    .co { font: italic 14px 'Instrument Serif', Georgia, serif; fill: #4b5563; }
+      .ink { fill: #111827; }
+  </style>
+</head>
+<body>
+<div class="frame">
+  <p class="eyebrow">Bar chart · skymon</p>
+  <h1>Octave tiers of the dedispersion search</h1>
+  <div class="diagram-container">
+    <svg viewBox="0 0 960 480" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="skymon-tiers-title skymon-tiers-desc">
+      <title id="skymon-tiers-title">Octave tiers of the dedispersion search</title>
+      <desc id="skymon-tiers-desc">Seven search tiers, each averaging twice as many images as the one before, cover DM 0 to 5092 pc cm-3 at 57.4 MHz in octaves, with the configured limit at DM 3000 and reporting latencies from 21 s to 171 s.</desc>
+      <rect width="100%" height="100%" fill="#ffffff"/>
+      <text x="32" y="72" class="ey">TIER · SAMPLE Δt · DM STEP</text>
+      <text x="248" y="72" class="ey">DM COVERED AT 57.4 MHZ (PC CM⁻³, LOG SCALE)</text>
+      <text x="928" y="72" class="ey" text-anchor="end">LATENCY</text>
+      <line x1="806.6" y1="84" x2="806.6" y2="372" stroke="#15803d" stroke-width="1.2" stroke-dasharray="5,4"/>
+      <rect x="770" y="58" width="72" height="12" rx="2" fill="#ffffff"/>
+      <text x="806.6" y="67" class="lb" text-anchor="middle" style="fill:#15803d">DM MAX 3000</text>
+<rect x="248" y="98" width="224.0" height="20" rx="3" fill="#ffffff"/>
+<rect x="248" y="98" width="224.0" height="20" rx="3" fill="rgba(75,85,99,0.15)" stroke="#4b5563" stroke-width="1"/>
+<text x="360.0" y="111" class="lb ink" text-anchor="middle">0–80</text>
+<text x="32" y="105" class="nm">Tier 0 · 1 image</text>
+<text x="32" y="118" class="sb">Δt 0.084 s · DM step 0.62</text>
+<text x="928" y="111" class="sb" text-anchor="end">21 s</text>
+<rect x="473.1" y="138" width="62.3" height="20" rx="3" fill="#ffffff"/>
+<rect x="473.1" y="138" width="62.3" height="20" rx="3" fill="rgba(75,85,99,0.15)" stroke="#4b5563" stroke-width="1"/>
+<text x="504.2" y="151" class="lb ink" text-anchor="middle">81–159</text>
+<text x="32" y="145" class="nm">Tier 1 · 2 images</text>
+<text x="32" y="158" class="sb">Δt 0.167 s · DM step 1.24</text>
+<text x="928" y="151" class="sb" text-anchor="end">21 s</text>
+<rect x="537.1" y="178" width="62.3" height="20" rx="3" fill="#ffffff"/>
+<rect x="537.1" y="178" width="62.3" height="20" rx="3" fill="rgba(75,85,99,0.15)" stroke="#4b5563" stroke-width="1"/>
+<text x="568.2" y="191" class="lb ink" text-anchor="middle">162–318</text>
+<text x="32" y="185" class="nm">Tier 2 · 4 images</text>
+<text x="32" y="198" class="sb">Δt 0.334 s · DM step 2.49</text>
+<text x="928" y="191" class="sb" text-anchor="end">21 s</text>
+<rect x="600.9" y="218" width="62.7" height="20" rx="3" fill="#ffffff"/>
+<rect x="600.9" y="218" width="62.7" height="20" rx="3" fill="rgba(75,85,99,0.15)" stroke="#4b5563" stroke-width="1"/>
+<text x="632.2" y="231" class="lb ink" text-anchor="middle">323–637</text>
+<text x="32" y="225" class="nm">Tier 3 · 8 images</text>
+<text x="32" y="238" class="sb">Δt 0.669 s · DM step 4.97</text>
+<text x="928" y="231" class="sb" text-anchor="end">21 s</text>
+<rect x="664.9" y="258" width="62.6" height="20" rx="3" fill="#ffffff"/>
+<rect x="664.9" y="258" width="62.6" height="20" rx="3" fill="rgba(75,85,99,0.15)" stroke="#4b5563" stroke-width="1"/>
+<text x="696.2" y="271" class="lb ink" text-anchor="middle">646–1273</text>
+<text x="32" y="265" class="nm">Tier 4 · 16 images</text>
+<text x="32" y="278" class="sb">Δt 1.337 s · DM step 9.94</text>
+<text x="928" y="271" class="sb" text-anchor="end">43 s</text>
+<rect x="728.9" y="298" width="62.6" height="20" rx="3" fill="#ffffff"/>
+<rect x="728.9" y="298" width="62.6" height="20" rx="3" fill="rgba(75,85,99,0.15)" stroke="#4b5563" stroke-width="1"/>
+<text x="760.2" y="311" class="lb ink" text-anchor="middle">1293–2546</text>
+<text x="32" y="305" class="nm">Tier 5 · 32 images</text>
+<text x="32" y="318" class="sb">Δt 2.675 s · DM step 19.9</text>
+<text x="928" y="311" class="sb" text-anchor="end">86 s</text>
+<rect x="792.9" y="338" width="62.6" height="20" rx="3" fill="#ffffff"/>
+<rect x="792.9" y="338" width="62.6" height="20" rx="3" fill="rgba(75,85,99,0.15)" stroke="#4b5563" stroke-width="1"/>
+<text x="824.2" y="351" class="lb ink" text-anchor="middle">2586–5092</text>
+<text x="32" y="345" class="nm">Tier 6 · 64 images</text>
+<text x="32" y="358" class="sb">Δt 5.350 s · DM step 39.8</text>
+<text x="928" y="351" class="sb" text-anchor="end">171 s</text>
+<line x1="280" y1="376" x2="280" y2="380" stroke="#4b5563" stroke-width="0.8"/>
+<text x="280" y="392" class="lb" text-anchor="middle">10</text>
+<line x1="344" y1="376" x2="344" y2="380" stroke="#4b5563" stroke-width="0.8"/>
+<text x="344" y="392" class="lb" text-anchor="middle">20</text>
+<line x1="408" y1="376" x2="408" y2="380" stroke="#4b5563" stroke-width="0.8"/>
+<text x="408" y="392" class="lb" text-anchor="middle">40</text>
+<line x1="472" y1="376" x2="472" y2="380" stroke="#4b5563" stroke-width="0.8"/>
+<text x="472" y="392" class="lb" text-anchor="middle">80</text>
+<line x1="536" y1="376" x2="536" y2="380" stroke="#4b5563" stroke-width="0.8"/>
+<text x="536" y="392" class="lb" text-anchor="middle">160</text>
+<line x1="600" y1="376" x2="600" y2="380" stroke="#4b5563" stroke-width="0.8"/>
+<text x="600" y="392" class="lb" text-anchor="middle">320</text>
+<line x1="664" y1="376" x2="664" y2="380" stroke="#4b5563" stroke-width="0.8"/>
+<text x="664" y="392" class="lb" text-anchor="middle">640</text>
+<line x1="728" y1="376" x2="728" y2="380" stroke="#4b5563" stroke-width="0.8"/>
+<text x="728" y="392" class="lb" text-anchor="middle">1280</text>
+<line x1="792" y1="376" x2="792" y2="380" stroke="#4b5563" stroke-width="0.8"/>
+<text x="792" y="392" class="lb" text-anchor="middle">2560</text>
+<line x1="856" y1="376" x2="856" y2="380" stroke="#4b5563" stroke-width="0.8"/>
+<text x="856" y="392" class="lb" text-anchor="middle">5120</text>
+      <line x1="248" y1="376" x2="260" y2="376" stroke="#4b5563" stroke-width="0.8"/>
+      <line x1="268" y1="376" x2="856" y2="376" stroke="#4b5563" stroke-width="0.8"/>
+      <line x1="258" y1="380" x2="262" y2="372" stroke="#4b5563" stroke-width="0.8"/>
+      <line x1="266" y1="380" x2="270" y2="372" stroke="#4b5563" stroke-width="0.8"/>
+      <line x1="248" y1="376" x2="248" y2="380" stroke="#4b5563" stroke-width="0.8"/>
+      <text x="248" y="392" class="lb" text-anchor="middle">0</text>
+      <text x="32" y="436" class="co">Every tier runs the same FDMT over D = 128 delays. Averaging 2ʲ images doubles the DM per delay,</text>
+      <text x="32" y="454" class="co">so tier j covers DMs 2ʲ times those of tier 0; tiers above 0 report only delays D/2 to D.</text>
+    </svg>
+  </div>
+</div>
+</body>
+</html>
