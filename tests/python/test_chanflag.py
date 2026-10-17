@@ -54,12 +54,12 @@ class _State:
             setattr(s, k, v.copy() if isinstance(v, np.ndarray) else v)
         return s
 
-    def push(self, raw, mask=None):
+    def push(self, raw, mask=None, nbr=None):
         dt = 0.0836
         kernels.normalise(raw, self.mu, self.var, self.prev, self.age, self.live, None, self.sub,
                           self.warmup, dt / 120.0, dt / 300.0, self.clip, self.med, 2,
                           chan_flag_sigma=1.6, chan_mask=mask, flags=self.flags,
-                          spread=self.spread, held=self.held, max_hold=self.max_hold)
+                          spread=self.spread, held=self.held, max_hold=self.max_hold, nbr=nbr)
         return raw
 
 
@@ -133,6 +133,28 @@ class TestKernelFlagging(unittest.TestCase):
         self.assertEqual(self.st.mu[3, 17], mu)
         self.assertEqual(int(self.st.held[3, 17]), 1)
         self.assertEqual(int(np.count_nonzero(self.st.flags)), 0)
+
+    def test_sky_shaped_cell_is_kept_but_withheld(self):
+        """
+        A cell beyond the clip whose sky neighbours deviate with it (a bright
+        burst seen through the beam) is kept, and still withheld from the
+        statistics; a lone cell beyond the clip is set to zero as before.
+        """
+        nbr = np.full((self.P, 8), -1, np.int32)
+        nbr[17, :8] = [18, 19, 20, 21, 22, 23, 24, 25]
+        nbr[40, :8] = [41, 42, 43, 44, 45, 46, 47, 48]
+        raw = _sky(self.rng, self.C, self.P, self.level)
+        raw[3, 17] += 30.0
+        raw[3, 18:22] += 15.0  # four neighbours at half the peak
+        raw[3, 40] += 30.0  # a lone cell: its neighbours are noise
+        mu17, mu40 = self.st.mu[3, 17], self.st.mu[3, 40]
+        out = self.st.push(raw, nbr=nbr)
+        self.assertGreater(out[3, 17], 20.0)
+        self.assertEqual(out[3, 40], 0.0)
+        self.assertEqual(self.st.mu[3, 17], mu17)
+        self.assertEqual(self.st.mu[3, 40], mu40)
+        self.assertEqual(int(self.st.held[3, 17]), 1)
+        self.assertEqual(int(self.st.held[3, 40]), 1)
 
     def test_lasting_change_is_followed_after_the_hold(self):
         """A cell that stays far off is updated again after max_hold images"""

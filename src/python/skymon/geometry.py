@@ -213,6 +213,9 @@ class SkyGrid:
         self.ever = ever
         self.slot_of = np.full(self.npix, -1, np.int64)
         self.hpix_of = np.full(self.capacity, -1, np.int64)
+        # the slots of each slot's 8 HEALPix neighbours (-1: none or not tracked),
+        # for the normaliser's test of a sky-shaped cell (skymon_normalise)
+        self.nbr = np.full((self.capacity, 8), -1, np.int32)
         self.idx = np.zeros((self.capacity, 16), np.int32)
         self.w = np.zeros((self.capacity, 16), np.float32)
         self.xy = np.full((self.capacity, 2), np.nan)
@@ -271,8 +274,20 @@ class SkyGrid:
         self.xy_b[slots[keep]] = np.stack([xb[keep], yb[keep]], 1)
         self.t_a, self.t_b = unix, unix + interval
         self.updated_unix = unix
+        self._update_neighbours()
         self.taps(unix)
         return np.asarray(added, np.int64), np.asarray(removed, np.int64)
+
+    def _update_neighbours(self):
+        import healpy as hp
+
+        self.nbr[:] = -1
+        act = np.nonzero(self.hpix_of >= 0)[0]
+        if len(act) == 0:
+            return
+        nb = hp.get_all_neighbours(self.nside, self.hpix_of[act])  # [8, n]
+        sl = np.where(nb >= 0, self.slot_of[np.maximum(nb, 0)], -1)
+        self.nbr[act] = sl.T.astype(np.int32)
 
     def taps(self, unix: float):
         """Bilinear taps of every tracked pixel for an image starting at unix"""

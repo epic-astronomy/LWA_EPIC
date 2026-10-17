@@ -62,10 +62,15 @@ class Config:
     norm_tau_s: float = 120.0
     var_tau_s: float = 300.0
     hp_tau: float = 32.0
-    # a normalised cell beyond clip is set to zero: a burst of S/N s adds about
-    # s / sqrt(nchan * samples per channel) to a cell, under 12 for s < 100
-    # with 128 channels (search.Searcher)
+    # a normalised cell beyond clip is set to zero unless at least
+    # clip_sky_neighbours of its sky neighbours deviate the same way by
+    # clip_sky_fraction of it (a source seen through the beam). A burst whose
+    # channel signal falls into one image adds S/N sqrt(n_eff / nchan) to that
+    # cell (n_eff about 1.7): 12 at S/N 73 for 64 channels, 104 for 128
+    # (search.Searcher)
     clip: float = 12.0
+    clip_sky_neighbours: int = 3
+    clip_sky_fraction: float = 0.3
     chan_flag_sigma: float = 1.6  # spread over the sky above which a channel is flagged
     flag_tau_s: float = 30.0  # time constant of the flag rate of each channel
     mask_on: float = 0.5  # a channel flagged at this rate is masked ...
@@ -166,7 +171,9 @@ class Monitor:
                                  var_tau_s=cfg.var_tau_s, hp_tau=cfg.hp_tau, clip=cfg.clip,
                                  unix0=self.unix0, rng=self.rng,
                                  chan_flag_sigma=cfg.chan_flag_sigma, flag_tau_s=cfg.flag_tau_s,
-                                 mask_on=cfg.mask_on, mask_off=cfg.mask_off)
+                                 mask_on=cfg.mask_on, mask_off=cfg.mask_off,
+                                 clip_nbr_min=cfg.clip_sky_neighbours,
+                                 clip_nbr_frac=cfg.clip_sky_fraction)
         self.accum = Accumulator(self.band.nchan, self.grid.capacity, self.dt,
                                  cfg.accum_interval_s, cfg.accum_hours)
         self.raw = np.zeros((self.band.nchan, self.grid.capacity), np.float32)
@@ -205,6 +212,7 @@ class Monitor:
             self.accum.reset_slots(removed)
             self.cond.reset_slots(removed)
         self.searcher.set_live(self.grid.active())
+        self.searcher.set_neighbours(self.grid.nbr)
         self.wcs = self.grid.wcs
         self.wcs_unix = unix
         self.grid_next = unix + self.cfg.regrid_interval_s

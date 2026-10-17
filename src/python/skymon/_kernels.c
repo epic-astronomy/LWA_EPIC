@@ -358,7 +358,17 @@ static float select_kth(float* a, int n, int k) {
  * acc [C][P] += raw (for the spectrogram accumulation) when acc != NULL.
  * sub [nsub]: slots used for the common-mode median of each channel.
  * a_mu, a_var: exponential weights per image after warm-up.
- * clip: a cell (pixel and channel) with |x| above this is set to zero.
+ * clip: a cell (pixel and channel) with |x| above this is set to zero, unless
+ *   it is sky-shaped (nbr below).
+ * nbr [P][nnbr] (may be NULL): the slots of each pixel's sky neighbours (-1:
+ *   none). A cell beyond the clip is kept when at least nbr_min of its
+ *   neighbours, in the same channel and image, deviate with the same sign by
+ *   at least nbr_frac of its own deviation. Anything from the sky reaches the
+ *   image through the synthesised beam, which is wider than a sky pixel
+ *   (pixels of at most half the beam: a neighbour sees 0.5-0.8 of a point
+ *   source's peak), so a bright burst lights its neighbours, while a glitch of
+ *   a single cell does not. A kept cell is still withheld from the
+ *   statistics, like a clipped one.
  * med_out [C]: the common-mode median of each channel (may be NULL).
  *
  * Interference flagging per channel. After the common mode is removed, the
@@ -398,7 +408,8 @@ int skymon_normalise(float* raw, int C, int P, float* mu, float* var, float* pre
                      const uint8_t* live, float* acc, const int32_t* sub, int nsub,
                      int warmup, float a_mu, float a_var, float clip, float* med_out,
                      float chan_flag_sigma, const uint8_t* chan_mask, uint8_t* flags_out,
-                     float* spread_out, uint16_t* held, int max_hold, int nthreads) {
+                     float* spread_out, uint16_t* held, int max_hold,
+                     const int32_t* nbr, int nnbr, int nbr_min, float nbr_frac, int nthreads) {
   int nlive = 0;
   for (int p = 0; p < P; ++p) {
     if (live[p]) { age[p] += 1; ++nlive; } else age[p] = 0;
@@ -409,6 +420,7 @@ int skymon_normalise(float* raw, int C, int P, float* mu, float* var, float* pre
   int* nsubs = malloc(sizeof(int) * (C > 0 ? C : 1));
   /* the raw values of every cell, kept from the first pass to the second */
   float* rvall = malloc(sizeof(float) * ((size_t)C * P > 0 ? (size_t)C * P : 1));
+  uint8_t* ovall = malloc((size_t)C * P > 0 ? (size_t)C * P : 1);
   float band_spread = 1.f;
 #pragma omp parallel num_threads(nthreads)
   {
@@ -480,18 +492,38 @@ int skymon_normalise(float* raw, int C, int P, float* mu, float* var, float* pre
       float* pv = prev + (size_t)c * P;
       uint16_t* hd = held ? held + (size_t)c * P : NULL;
       const float* rv = rvall + (size_t)c * P;
+      uint8_t* ov = ovall + (size_t)c * P;
       const float med = meds[c];
       const int flag = nsubs[c] >= 64 && spreads[c] > chan_flag_sigma * band_spread;
       const int zero = flag || (chan_mask && chan_mask[c]);
       if (med_out) med_out[c] = med;
       if (spread_out) spread_out[c] = spreads[c];
       if (flags_out) flags_out[c] = (uint8_t)flag;
+      /* the clip, decided on the values before any is set to zero: 1 = clipped,
+         2 = beyond the clip but sky-shaped (kept, withheld from the statistics) */
+      for (int p = 0; p < P; ++p) {
+        ov[p] = 0;
+        if (!live[p] || age[p] <= warmup) continue;
+        const float y = x[p] - med;
+        if (!(fabsf(y) > clip)) continue;
+        ov[p] = 1;
+        if (!nbr) continue;
+        const float lim = nbr_frac * fabsf(y);
+        int k = 0;
+        for (int j = 0; j < nnbr; ++j) {
+          const int q = nbr[(size_t)p * nnbr + j];
+          if (q < 0 || q >= P || !live[q] || age[q] <= warmup) continue;
+          const float yq = x[q] - med;
+          if ((y > 0 ? yq : -yq) >= lim) ++k;
+        }
+        if (k >= nbr_min) ov[p] = 2;
+      }
       /* pass 2: output, then the statistics of the cells that are kept */
       for (int p = 0; p < P; ++p) {
         if (!live[p] || age[p] <= warmup) continue;
         float y = x[p] - med;
-        const int over = fabsf(y) > clip;
-        x[p] = (zero || over) ? 0.f : y;
+        const int over = ov[p] != 0;
+        x[p] = (zero || ov[p] == 1) ? 0.f : y;
         if (hd) {
           if (!(flag || over)) hd[p] = 0;
           else if (hd[p] < max_hold) { hd[p] += 1; continue; }
@@ -519,6 +551,7 @@ int skymon_normalise(float* raw, int C, int P, float* mu, float* var, float* pre
   free(spreads);
   free(nsubs);
   free(rvall);
+  free(ovall);
   return nlive;
 }
 

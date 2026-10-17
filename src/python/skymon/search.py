@@ -17,8 +17,10 @@ Per image (83.6 ms at LWA-SV) the regridded sky values [chan, pixel] are
    is set to zero for every pixel. A channel flagged in more than half of the
    images (exponential rate, time constant flag_tau_s) is masked, set to zero
    in every image, until its rate falls below a fifth. Single cells (pixel
-   and channel) with |x| > clip are set to zero as well. Neither a flagged
-   channel nor a clipped cell updates the running statistics,
+   and channel) with |x| > clip are set to zero as well, unless their sky
+   neighbours deviate with them (a source seen through the beam, such as a
+   bright burst). Neither a flagged channel nor a cell beyond the clip
+   updates the running statistics,
 4. pushed into tier 0. Each tier high-passes its input with a time constant
    of hp_tau of its own samples and passes the sum of every two inputs to the
    next tier.
@@ -74,14 +76,18 @@ class Searcher:
                  nthreads=8, warmup_images=64, norm_tau_s=120.0, var_tau_s=300.0,
                  hp_tau=32.0, clip=12.0, median_npix=2048, unix0=0.0, rng=None,
                  chan_flag_sigma=1.6, flag_tau_s=30.0, mask_on=0.5, mask_off=0.2,
-                 hold_s=30.0):
+                 hold_s=30.0, clip_nbr_min=3, clip_nbr_frac=0.3):
         """
         clip: a normalised cell (one pixel, channel and image) beyond this is
-        set to zero and kept out of the statistics. A burst of S/N s spread
-        over C channels and n samples per channel adds about
-        s / sqrt(C * n) to each cell it covers, below 9 for s = 100 with
-        C = 128 and n = 1, so 12 removes only what no burst can produce in a
-        single cell (in a band of 64 channels, up to S/N 96).
+        set to zero and kept out of the statistics, unless it is sky-shaped:
+        at least clip_nbr_min of its HEALPix neighbours (set_neighbours)
+        deviate the same way by clip_nbr_frac of its deviation in the same
+        channel and image. A burst of S/N s whose channel signal falls into
+        one image adds s sqrt(n_eff / C) to that cell, n_eff (about 1.7 at the
+        top of a tier) being the samples per channel of the S/N definition:
+        12 is reached at S/N 73 for C = 64 and 104 for C = 128. Such a burst
+        lights its neighbours through the beam and is kept (withheld from the
+        statistics only); a glitch of a single cell is still set to zero.
         chan_flag_sigma: spread over the sky (robust standard deviation of the
         normalised values, about 1 for noise), relative to the median spread
         of the channels (at least 1), above which a channel is flagged in one
@@ -106,6 +112,8 @@ class Searcher:
         self.a_var = dt_img / var_tau_s
         self.a_hp = 1.0 / hp_tau
         self.clip = clip
+        self.clip_nbr_min, self.clip_nbr_frac = clip_nbr_min, clip_nbr_frac
+        self.nbr = None  # [P, 8] slots of the sky neighbours (set_neighbours)
         self.unix0 = unix0
         self.rng = rng or np.random.default_rng(0)
         self.median_npix = median_npix
@@ -162,6 +170,10 @@ class Searcher:
         self.sub = np.sort(self.rng.choice(idx, n, replace=False)).astype(np.int32) if n else \
             np.zeros(0, np.int32)
 
+    def set_neighbours(self, nbr: np.ndarray | None):
+        """The slots of each slot's sky neighbours [P, 8] (-1: none), for the clip"""
+        self.nbr = None if nbr is None else np.ascontiguousarray(nbr, np.int32)
+
     def reset_slots(self, slots):
         slots = np.asarray(slots, np.int64)
         if len(slots) == 0:
@@ -197,7 +209,8 @@ class Searcher:
                               self.warmup, self.a_mu, self.a_var, self.clip, self.median,
                               self.nthreads, chan_flag_sigma=self.chan_flag_sigma,
                               chan_mask=self.chan_mask, flags=self.flags, spread=self.spread,
-                              held=self.held, max_hold=self.max_hold)
+                              held=self.held, max_hold=self.max_hold, nbr=self.nbr,
+                              nbr_min=self.clip_nbr_min, nbr_frac=self.clip_nbr_frac)
             self.zeroed_hist[k] = np.count_nonzero(self.flags | self.chan_mask)
             self._update_mask()
             x = raw

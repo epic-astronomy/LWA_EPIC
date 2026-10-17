@@ -69,7 +69,8 @@ def lib():
                                        ctypes.c_float, ctypes.c_float, ctypes.c_float,
                                        ctypes.c_void_p, ctypes.c_float, ctypes.c_void_p,
                                        ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
-                                       ctypes.c_int, ctypes.c_int]
+                                       ctypes.c_int, ctypes.c_void_p, ctypes.c_int, ctypes.c_int,
+                                       ctypes.c_float, ctypes.c_int]
         L.skymon_normalise.restype = ctypes.c_int
         L.skymon_tier_push.argtypes = [f32p, ctypes.c_int, ctypes.c_int, f32p, ctypes.c_void_p,
                                        ctypes.c_int, ctypes.c_int, ctypes.c_float,
@@ -131,23 +132,30 @@ def _ptr(a):
 
 def normalise(raw, mu, var, prev, age, live, acc, sub, warmup, a_mu, a_var, clip, med=None,
               nthreads=1, chan_flag_sigma=math.inf, chan_mask=None, flags=None, spread=None,
-              held=None, max_hold=0):
+              held=None, max_hold=0, nbr=None, nbr_min=3, nbr_frac=0.3):
     """
     In-place normalisation of raw [C, P] with interference flagging; see
     skymon_normalise in _kernels.c. Optional arrays: med, spread [C] float32
     and flags [C] uint8 (outputs), chan_mask [C] uint8 (channels to set to
-    zero), held [C, P] uint16 (state of the withheld statistics updates).
+    zero), held [C, P] uint16 (state of the withheld statistics updates),
+    nbr [P, 8] int32 (the slots of each pixel's sky neighbours, -1 for none):
+    a cell beyond the clip with at least nbr_min neighbours deviating the
+    same way by nbr_frac of its deviation is kept (sky-shaped), though
+    withheld from the statistics.
     """
     C, P = raw.shape
     for a, dt, shape in ((med, np.float32, (C,)), (spread, np.float32, (C,)),
                          (flags, np.uint8, (C,)), (chan_mask, np.uint8, (C,)),
-                         (held, np.uint16, (C, P))):
+                         (held, np.uint16, (C, P))) + (((nbr, np.int32, (P, nbr.shape[1])),)
+                                                       if nbr is not None else ()):
         if a is not None:
             assert a.dtype == dt and a.shape == shape and a.flags.c_contiguous, (a.dtype, a.shape)
     return lib().skymon_normalise(raw, C, P, mu, var, prev, age, live, _ptr(acc), sub, len(sub),
                                   warmup, a_mu, a_var, clip, _ptr(med),
                                   float(min(chan_flag_sigma, 3e38)), _ptr(chan_mask), _ptr(flags),
-                                  _ptr(spread), _ptr(held), int(max_hold), nthreads)
+                                  _ptr(spread), _ptr(held), int(max_hold), _ptr(nbr),
+                                  0 if nbr is None else int(nbr.shape[1]), int(nbr_min),
+                                  float(nbr_frac), nthreads)
 
 
 def tier_push(x, base, hist, pos, a_hp, dec=None, nthreads=1):
