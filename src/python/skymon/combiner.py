@@ -80,8 +80,9 @@ configured. These are fetched in the background and never hold up or fail the
 combiner.
 
 The combiner needs the monitors, but the monitors never need the combiner.
-Its state is in its output directory (/FileStore), so it can be restarted on
-any node.
+Its events are copied, with a version, into the local database of every node
+it can reach (and written to its output directory on local disk), so it can be
+restarted on any node and rebuild its state from the newest copies.
 """
 from __future__ import annotations
 

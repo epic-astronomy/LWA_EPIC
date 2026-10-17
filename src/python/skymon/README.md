@@ -133,7 +133,7 @@ Each provider is polled in its own thread every `--context-every` minutes (15). 
 **Independence.** The monitors never depend on the combiner. The combiner keeps its state on disk, so it can be restarted on any node.
 
 ```bash
-python -m skymon combine --nodes epic1=http://epic1:8095,...,epic6=http://epic6:8095 --out /FileStore/epic_skymon/combiner --port 8096 --inject-every 6
+python -m skymon combine --nodes epic1=http://epic1:8095,...,epic6=http://epic6:8095 --db-port 5433 --out /var/lib/skymon/combiner --port 8096 --inject-every 6
 python -m skymon frblist --out frbs.json --start $(date +%s) --duration 3600   # the same FRBs for every band's simulator
 python -m skymon simtest --realtime --frb-file frbs.json --chan0 1378 ...     # one per band, on its own worker
 ```
