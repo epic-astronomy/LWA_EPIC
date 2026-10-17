@@ -79,6 +79,10 @@ class SkyPublisher {
   SkyPublisher(const std::string& p_name, int p_nslots, int p_max_nchan, int p_grid,
                int p_nbin = 1)
       : m_nslots(p_nslots), m_grid(p_grid), m_nbin(p_nbin < 1 ? 1 : p_nbin) {
+    // Publish() indexes the ring modulo the slot count: none would divide by zero
+    if (m_nslots < 1 || m_grid < 1 || p_max_nchan < 1) {
+      throw std::invalid_argument("sky publisher: slots, grid and channels must be positive");
+    }
     if (p_max_nchan % m_nbin != 0) {
       throw std::invalid_argument("sky publisher: channels not divisible by the binning");
     }
