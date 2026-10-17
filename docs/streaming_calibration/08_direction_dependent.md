@@ -203,4 +203,32 @@ The ASTRON Tensor-Core Correlator (Romein 2021, https://git.astron.nl/RD/tensor-
 
 `tests/streamcal/tcc/tcc_correlate.cc` is a file-driven correlator that accumulates on the GPU. `src/python/streamcal/tcc.py` wraps it; `tests/streamcal/test_tcc.py` checks it against numpy, exactly, for all four polarisation products. The TCC convention is $`v[b,p_Y,p_X]=\sum_t x_{Y,p_Y}\,\overline{x_{X,p_X}}`$ with $`b = X(X+1)/2+Y`$, $`Y\le X`$. TCC packs the real part in the low nibble and epic++ (`CNib`) the imaginary part, so raw F-engine bytes fed as i4 give the conjugate visibilities.
 
-**Use in the calibration tap.** Correlating every sample of every gulp on the imaging GPU would cost about 0.23 ms for the correlation itself. A reorder from epic++'s `[chan][seq][stand][pol]` layout to TCC's `[chan][seq/32][stand][pol][32]` blocks, and on-GPU accumulation (`launchAsync(..., add = true)`), add a few tenths of a millisecond. That is well inside the 5 ms headroom of section 7.2, and it would replace the 5% CPU tap with the full data and the cross-polarisation products. This has not been integrated or benchmarked inside epic++.
+**Use in the calibration tap.** Correlating every sample of every gulp on the imaging GPU would cost about 0.23 ms for the correlation itself. A reorder from epic++'s `[chan][seq][stand][pol]` layout to TCC's `[chan][seq/32][stand][pol][32]` blocks, and on-GPU accumulation (`launchAsync(..., add = true)`), add a few tenths of a millisecond. That is well inside the 5 ms headroom of section 7.2, and it would replace the 5% CPU tap with the full data and the cross-polarisation products. This has not been integrated inside epic++.
+
+### 8.9.1 Does the correlator get scheduled beside the imager?
+
+The imaging kernel launches one 1,024-thread block per channel, 128 blocks on the 128 SMs, at the 64-register limit. While an imaging block is resident, its SM has no registers left for another block.
+
+The test ran on epic1 (2026-10-17, RTX 4090 at default clocks) with two processes on the same GPU, time-sliced by the driver with no MPS (`research/bench_share.sh`):
+
+- `epic++ --bench`: production imaging options, simulated 4+4-bit gulps, either paced at the F-engine rate or unpaced.
+- `tests/streamcal/tcc/tcc_load`: the tensor-core correlator on a gulp-sized block (128 channels × 1,024 samples × 256 stands × 2 polarisations, 4-bit). It ran either once per gulp (41.8 ms) or back-to-back, and optionally copied the 65.5 MB block from pinned host memory before every correlation.
+
+| Imager | Correlator | Imager per gulp, mean / p99 | Correlations completed | Correlator latency p50 / p99 / max |
+|---|---|---|---|---|
+| real time | none | 41.796 / 41.80 ms, no buffer waits | | |
+| real time | one per gulp | 41.796 / 41.80–42.8 ms, no buffer waits | 958 of 958 | 1.6 / 2.7 / 3.2 ms |
+| real time | back to back | 41.796 / 41.80 ms, no buffer waits | 401 per s (17× one per gulp) | 2.7 / 2.7 / 3.2 ms |
+| real time | one per gulp, with copy | 41.796 / 41.80 ms, no buffer waits | 958 of 958 | 4.5 / 5.7 / 5.9 ms |
+| unpaced | none | 35.89 / 36.8 ms | | |
+| unpaced | one per gulp | 35.80 / 36.8 ms (36.4 in the first block) | 958 of 958 | 1.7 / 2.9 / 3.0 ms |
+| unpaced | back to back | 35.82 / 36.7 ms (37.0 in the first block) | 401 per s | 2.7 / 2.7 / 3.4 ms |
+| unpaced | one per gulp, with copy | 36.69 / 38.4 ms while correlating, 35.7 after | 958 of 958 | 4.6 / 7.1 / 7.5 ms |
+
+**The correlator does get scheduled.** The imaging pipeline leaves the GPU partly idle within every gulp: host-to-device copies, the gaps between the 100-sequence chunk launches, and the CPU work between gulps. Time slicing fills those gaps.
+
+- **Real time:** a full-rate correlation of every gulp, including copying the data, completed every time and never put the imager behind.
+- **Unpaced (the worst case):** imaging slowed by about 0.8 ms per gulp (2%), and the p99 rose to 38.4 ms, still 3.4 ms inside the 41.8 ms of data.
+- **Isolated spikes:** a few single gulps reached 46–48 ms. The 20 gulp buffers (0.8 s) absorbed them.
+
+A production version as a separate process would read the voltages the imager already holds: either a pinned host copy of the gulp (the tap's staging), as in the "with copy" rows, or the imager's device buffer through CUDA IPC, which saves the copy. In-process integration would schedule differently (concurrent streams instead of time slicing) and would need its own test.

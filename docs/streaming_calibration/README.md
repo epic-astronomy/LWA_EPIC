@@ -77,7 +77,9 @@ The benchmark also found and fixed six defects, among them a buffer-release race
 - **Real:** LWA-SV stands show per-stand direction-dependent phases of 15–24° rms between Cyg A and Cas A near 40 MHz. They are stable for at least 20 minutes, shared by the two dipoles of a stand, and neither ionospheric nor geometric; two datasets 2.5 years apart agree.
 - **Not correctable through kernels:** per-antenna gridding kernels can represent them but cannot apply them in a dirty-image correlator. A kernel acts per image pixel, not per source direction, so only main lobes improve; even perfect screens made the whole-sky error worse (151 → 307 Jy).
 - **Useful in the image domain:** kernel-StEFCal estimates the whole-sky screens to 1–2° in simulation. Using them to predict the static image halves the residual (211 → 117 Jy), which is the route for difference imaging and A-team subtraction.
-- **Tensor-core correlator:** built on the workers. It correlates a full gulp in 0.23 ms (4-bit), so the calibration tap can move to 100% of the data on the GPU.
+- **Tensor-core correlator:** built on the workers. It correlates a full gulp in 0.23 ms (4-bit). Run beside the imager on the same GPU, it correlated every gulp, including the 65.5 MB host-to-device copy, with the imager staying exactly real time; in the unpaced worst case imaging slowed by 2% (p99 38.4 ms of the 41.8 ms budget). The calibration tap can therefore move to 100% of the data on the GPU.
+
+**Primary beam** (section 9): epic++ applies no primary-beam correction. The dipole beam changes the apparent brightness of the watched sources by ×3–8 over a day and differs between X and Y by up to 1.7×. Correction is not needed for detection, which works in S/N, but is needed for fluxes, fluences, light curves and spectra. It belongs downstream of the GPU (pixel extractor, FITS), with the beam model refined from the A-team flux scales the calibration already solves.
 - **Real-data fixes to the forward model:** the A-team removed from the LFSM map (it was counted twice); guard rails on the free source fluxes and positions.
 
 **Tests:** epic++ with the tap, the gain table and the benchmark mode builds on epic1. The C++ shared-memory I/O tests (13/13), the Python–C++ round trip, the end-to-end daemon test (1.1° and 2.2% after 60 s) and the imager integration test (section 7) pass. The production imager was not deployed, started or restarted; the benchmark ran the branch build on an idle GPU.
@@ -93,6 +95,7 @@ The benchmark also found and fixed six defects, among them a buffer-release race
 | [05_literature.md](05_literature.md) | Survey of real-time and direct-imaging calibration, with references |
 | [06_ionosphere.md](06_ionosphere.md) | Scintillation, refraction, absorption and solar bursts; sky parameters solved with the gains; storm simulations; direction dependence |
 | [07_benchmark.md](07_benchmark.md) | epic++ benchmark mode, timing with and without calibration, end-to-end calibration of simulated F-engine data through the imager, defects found |
+| [09_primary_beam.md](09_primary_beam.md) | Primary-beam correction: what EPIC images contain, beam variation for the watched sources (×3–8 over a day), when it is needed (flux, fluence, light curves; not detection), how to apply it, beam-model accuracy |
 | [08_direction_dependent.md](08_direction_dependent.md) | Per-antenna direction-dependent gains: kernel formalism, representability, cost of uncorrected errors, measurement method, LWA-SV measurements (TBF 2023, TBN 2021), why kernels cannot apply them in a dirty imager, kernel-StEFCal, image-domain prediction, tensor-core correlator |
 
 ## Code
