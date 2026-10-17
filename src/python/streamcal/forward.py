@@ -83,13 +83,15 @@ class SkySnapshot:
 
 def build_snapshot(t: Time, chans, pol="XX", nside=32, extra_sources=None, flux_scale=None,
                    offsets_deg=None, sun_flux_factor=1.0, beam_model="empirical", fluct_rms=0.0,
-                   diffuse_model="lfsm"):
+                   diffuse_model="lfsm", beam_corr=None):
     """Sky snapshot for the given time.
 
     extra_sources: list of (name, enu, flux_at_74MHz, spectral_index) not in the model sky
     flux_scale: dict name -> multiplicative error applied to that point source
     offsets_deg: dict name -> (d_east, d_north) apparent shift in degrees (ionospheric refraction)
     diffuse_model: sky.DIFFUSE_MODELS entry for the diffuse component (default LFSM)
+    beam_corr: optional callable (enu [k, 3], freq_hz, pol) -> factor [k] multiplying the dipole
+               beam (e.g. beamcorr.Table, the correction fitted to the TBF captures)
     """
     chans = np.asarray(chans)
     nu = chans * E.CHAN_BW
@@ -127,6 +129,8 @@ def build_snapshot(t: Time, chans, pol="XX", nside=32, extra_sources=None, flux_
         return snap
     allenu = np.concatenate([p[1] for p in parts])
     b = np.stack([dipole_beam(allenu, f, pol, beam_model) for f in nu], axis=1)  # [k, nchan]
+    if beam_corr is not None:
+        b = b * np.stack([beam_corr(allenu, f, pol) for f in nu], axis=1)
     i0 = 0
     for n, e, fl in parts:
         snap.comps.append(Component(n, e, fl * b[i0:i0 + len(e)]))
