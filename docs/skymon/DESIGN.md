@@ -71,7 +71,11 @@ The lock word is a sequence lock. The reader accepts slot n only if the lock rea
 `monitor.py` processes the images in time order. A missing image is searched as zeros, so the time axis stays regular; a gap longer than 60 s (`max_gap_s`) restarts the search state.
 
 1. **Sky-fixed pixels** (`geometry.py`). The monitor tracks HEALPix pixels (J2000, RING order) rather than image pixels, so that each time series looks at one patch of sky for the hours a sweep can last. Every 10 s the tracked set is recomputed: a pixel that rises above the elevation limit (10°) receives a slot in the state arrays, a pixel that sets releases it. Between updates the image position of each pixel is interpolated linearly in time.
-2. **Regridding.** Each image is interpolated onto the tracked pixels by bicubic convolution (Keys 1981, 16 taps). With about three image pixels across the beam, bilinear interpolation misses the peak of a source by up to 6% and the error ripples in all channels at once as the sky turns; bicubic interpolation reduces it to about 2%.
+2. **Regridding.** Each image is interpolated onto the tracked pixels by bicubic convolution (Keys 1981, 16 taps, a = −0.75).
+   - The beam spans about three image pixels across its FWHM. At that sampling, bilinear interpolation loses 10% of a source's peak on average (up to 15%), and the error ripples in all channels at once as the sky turns.
+   - Keys' usual a = −0.5 loses 2.5% on average (up to 4.8%).
+   - a = −0.75 reproduces the peak to between 0.0% and +0.8% (+0.4% on average), with no additional taps. In exchange, a plane is no longer reproduced exactly: a gradient of g per image pixel is offset by at most 0.048 g. This is a slow ripple of smooth emission as the sky turns, which the running mean, high-pass and detrend remove.
+   - These figures come from a Gaussian beam at 1500 random positions.
 3. **Resolution.** `nside` is the coarsest at which a pixel is no larger than half the synthesised beam λ/D (D ≈ 100 m), and never finer than an image pixel: 64 (0.92°) above 40 MHz, 32 near 35 MHz, 16 at 16–21 MHz.
 4. **Normalisation, flagging, tiers, search and classification** (§3).
 5. **Products** (`candidates.py`, `accumulate.py`). Each candidate is a JSON record and, unless it is certain RFI, an `.npz` file under `<out>/candidates/YYYYMMDD/` holding the pixel's dynamic spectrum at the tier's resolution, its DM–time plane, 30 min of accumulated spectrum before the burst, the noise table, and the calibration data of §6. The raw spectrum of every tracked pixel, averaged over 10 s, is kept for 6 h in float16 (12 GB at `nside` 64) and serves the spectrograms of the website.
@@ -102,9 +106,18 @@ For each image the regridded values `[chan, pixel]` are processed by `skymon_nor
 | Common mode | The median over the tracked sky of each channel is subtracted. Sidelobe RFI and gain changes affect the whole image; a burst occupies one beam and leaves the median unchanged. | |
 | Channel flagging | After the median, the spread of each channel over the sky, 1.4826 × MAD over a subset of up to 2048 pixels, is about 1 for noise. A channel whose spread exceeds `chan_flag_sigma` times that of the band (the median spread over channels, or 1 if smaller) is zeroed for every pixel of that image. A carrier scattered over much of the sky (aircraft, meteor trail) widens one channel; a burst does not. A rise of noise over the whole band widens every channel alike and is not flagged, but is recorded in the conditions. | `chan_flag_sigma` 1.6 |
 | Persistent mask | A channel whose flag rate (exponential, 30 s) exceeds 0.5 is zeroed in every image until the rate falls below 0.2. | `flag_tau_s` 30, `mask_on` 0.5, `mask_off` 0.2 |
-| Cell clip | A single cell (pixel, channel) beyond 12σ is zeroed. A burst of S/N s adds about s/√(N_c n) to one cell (n samples per channel in its sweep), under 9 for s = 100 and 128 channels, so the clip removes only what no burst produces. | `clip` 12 |
+| Cell clip | A single cell (pixel, channel) beyond 12σ is zeroed unless it is sky-shaped, that is, at least 3 of its 8 HEALPix neighbours deviate the same way by at least 0.3 of its deviation, in the same channel and image. | `clip` 12, `clip_sky_neighbours` 3, `clip_sky_fraction` 0.3 |
 
-Flagged channels and clipped cells do not update the running statistics, except that a cell withheld for 30 s in succession updates them again with its deviation limited to 5σ, so that a lasting change of level is followed. `/api/status` reports `rfi_flagging` (fraction zeroed over the last minute, masked channels, flags per channel); each candidate carries `quality.flagged_fraction` along its sweep.
+**Why the clip has a sky-shape exemption.** A burst of S/N s whose signal in a channel falls into one image adds s √(n_eff / N_c) to that cell. Here n_eff, about 1.7 at the top of a tier, is the number of samples per channel in the definition of the S/N, so the clip is reached at S/N 73 for 64 channels and at 104 for 128.
+- **Without the exemption,** a burst of S/N 120 in 64 channels lost the cells of its core pixels. It was found 1.5° away, at S/N 54, with 0.45 of its fluence.
+- **Raising the clip with the number of channels** only moves the limit: any fixed threshold removes the brightest bursts.
+- **The exemption keeps the clip's protection.** Anything from the sky reaches the image through the synthesised beam, which is wider than a sky pixel (pixels of at most half the beam), so a neighbour sees 0.5–0.8 of a point source's peak. A cell beyond the clip whose neighbours do not follow is not of sky origin and is still zeroed.
+- **Kept cells do not update the statistics.** A cell beyond the clip, kept or not, is withheld from the running statistics.
+- **Narrowband interference that passes.** A point-like carrier in a few channels can pass the exemption. It is then classified as narrowband interference by its effective number of channels (§3.4), with its data kept.
+
+With the exemption, bursts of S/N 120 are found at their position (fitted 0.04° from the truth), at 0.87 of the target S/N, with their full fluence.
+
+Flagged channels and cells beyond the clip do not update the running statistics, except that a cell withheld for 30 s in succession updates them again with its deviation limited to 5σ, so that a lasting change of level is followed. `/api/status` reports `rfi_flagging` (fraction zeroed over the last minute, masked channels, flags per channel); each candidate carries `quality.flagged_fraction` along its sweep.
 
 ### 3.2 Hierarchical dedispersion in octave tiers
 
@@ -357,27 +370,66 @@ $$
 I(s) = k\,S\,B_\mathrm{eff}(s), \qquad B_\mathrm{eff}(s) = \tfrac{1}{2}\left(F_X^2 B_X(s) + F_Y^2 B_Y(s)\right),
 $$
 
-where k (image units per counts²) collects gridding, transform, accumulation and quantisation. Every minute the monitor measures each calibrator above 20° in its own 10 s accumulation: the excess of the brightest of the calibrator's HEALPix pixel and its neighbours over the median of a ring 2–4 beams around it, averaged over 60 s. Per channel,
+where k (image units per counts²) collects gridding, transform, accumulation and quantisation. Every minute the monitor measures each calibrator above 20° in its own 10 s accumulation, averaged over 60 s:
+
+- **Pixel.** Of the calibrator's HEALPix pixel and its neighbours, the monitor takes the one with the largest modelled response R to the calibrator. R is the Gaussian beam (FWHM λ / D) at the calibrator's known position, sampled through that pixel's interpolation taps.
+- **Background.** A quadratic surface is fitted to the pixels of a ring 2–4 beams around the calibrator, with one pass of rejection beyond 4 robust deviations, and evaluated at the chosen pixel. On the simulated sky, the median of the ring used before was biased by +5.3% of Cyg A, which lies on the curved background of the Galactic ridge; a plane fit gives +5.6% and the quadratic fit +0.5%. With fewer than 12 ring pixels, the median is used.
+
+Per channel,
 
 $$
-k = \frac{\text{excess}}{S\,B_\mathrm{eff}},
+k = rac{	ext{pixel} - 	ext{background}}{R\,S\,B_\mathrm{eff}},
 $$
 
-with S the model spectrum times the solved scale and B_eff from the beam table. k is the median over calibrators with excess S/N ≥ 5. Nothing about the imager's internal normalisation is assumed.
+with S the model spectrum times the solved scale and B_eff from the beam table. k is the median over calibrators with excess S/N ≥ 5. Each calibrator's entry records its pixel, R and the background method.
+
+Without R, k carried the calibrator's own pixel loss (Cyg A: 0.379° from the pixel centre, 0.932 of its flux with a = −0.5 interpolation). Candidates are corrected for their offset (§6.4); without the same correction on the calibrator, their fluences would come out high by the calibrator's loss. Nothing about the imager's internal normalisation is assumed.
 
 ### 6.4 Fluence
 
 For a candidate in tier j, the fluence in channel c is
 
 $$
-F_c = \frac{\sum_\mathrm{track} x_c \;\sigma_c\; \sqrt{2^j}\; \Delta t}{k_c\, B_{\mathrm{eff},c}(\text{position})},
+F_c = \frac{\sum_\mathrm{track} w_t\, x_{c,t} \;\sigma_c\; \sqrt{2^j}\; \Delta t\; P_c}{k_c\, B_{\mathrm{eff},c}(\text{position})},
 $$
 
-where x_c is the normalised signal along the dispersion track (`quality.channel_contributions`), σ_c the pixel's noise per image in image units (square root of the running variance), and Δt the image length. The candidate's `flux` record holds `fluence_jy_ms` (the mean over channels of F_c), `fluence_err_jy_ms` (fluence / S/N), `flux_density_jy` (fluence over the boxcar width), `fluence_per_channel_jy_ms`, `beam_relative` (response at the position relative to zenith), the beam's source, model and version, and `gain_version`. The `.npz` adds `raw_sigma`, `raw_mean`, `tier_images`, `image_s`, the calibration record and the calibrator measurement, so the fluence can be recomputed.
+where:
+- x_c is the normalised signal along the dispersion track (`quality.channel_contributions`). Its span in each channel covers the sweep across the channel, the boxcar width and one sample of slack on each side.
+- σ_c is the pixel's noise per image in image units (square root of the running variance), and Δt the image length.
+- w_t and P_c are the two corrections below.
 
-Stated limits (`flux.py`): the pixel nearest a calibrator can miss its peak by up to half a pixel (a few per cent); the ring background contains diffuse emission and sidelobes; the calibrator models are corrected only by the solved scale; the dipole response is a model.
+**High-pass undone (w_t).** Each tier subtracts a running baseline (weight a_hp = 1 / `hp_tau`) from its samples. After a pulse of amplitude A, every later sample carries about −a_hp A, and the 2–3 samples of a span that follow the pulse removed 7–9% of a burst's fluence (8.1% on average, the same in all tiers). Within each channel's span, sample t is weighted by w_t = 1 + a_hp × (samples of the span after t), which inverts the recursion of `skymon_tier_push` exactly. The S/N is not affected, because the high-pass costs the search 0.1–0.8%. The narrowband measures keep w_t = 1.
 
----
+**Peak correction (P_c).** A burst between HEALPix pixel centres loses the beam's response at its offset. At `nside` 64, the means are 3.6% over random positions, 5.9% at edge midpoints and 8.6% at vertices, and up to 17% at worst.
+- **Fit.** A Gaussian of the beam's width, in the image's direction cosines where the beam is round, is fitted to the band-summed contributions (with w_t) of the candidate's pixel and its 8 neighbours. The free parameters are the amplitude and position.
+- **Correction.** P is the fitted peak over the pixel's value, scaled per channel as ln P_c = ln P (f_c / f_mid)² because the beam narrows with frequency.
+- **When it is not applied.** P is 1 when a neighbour is not tracked, when the fit fails, when the fitted peak lies more than 1.5 image pixels from the pixel, or when P falls outside 0.8–1.3.
+- **Products.** The fit gives a position, converted to RA and Dec, to about 0.05° on simulated bursts of S/N 35–120, against 0.45° for the pixel centre.
+- **Followups and cost.** Followups get the same correction. The cost is about 5 ms per candidate (9 × 0.5 ms of contributions for 128 channels, plus a fit of 0.3 ms), and nothing per pixel per image.
+
+**Alternatives that were measured and not taken:**
+- `nside` 128 gains 3.3% of S/N for four times the memory and processing time: about 104 GB per node for 128 channels, and 120–185% of real time.
+- Smoothing the images before interpolation flattens the pixel loss but loses S/N (−1% to −25%).
+- Measuring on the raw images of the shared-memory ring is not possible: the ring holds 5.3 s, while the tier-0 latency is 21 s and sweeps last minutes in high tiers.
+
+**Error.** The error of the fluence follows from the noise of each channel's contribution (`quality.contribution_noise`). For each channel, it is the square root of the sum of the squared weights of its span, times the channel's noise per sample, measured as a robust deviation in the window before the sweep. The errors are combined over the channels. On 172 simulated bursts, the deviations of the contributions from their noise-free values had an rms of 1.10 in units of this error. Without the window, the error is 1.7 × fluence / S/N: the contribution spans more samples than the boxcar of the S/N, and 1.66 / S/N was measured on simulated bursts. The former fluence / S/N was 1.7 times too small.
+
+**The `flux` record.** A candidate's `flux` record holds:
+- `fluence_jy_ms` (the mean over channels of F_c);
+- `fluence_err_jy_ms`, and `fluence_err_method`;
+- `flux_density_jy` (fluence over the boxcar width);
+- `fluence_per_channel_jy_ms`;
+- `peak_correction` (factor, fitted image position, `ra_deg`, `dec_deg`, `applied`, `reason`; also in `quality.peak`);
+- `beam_relative` (response at the position relative to zenith);
+- the beam's source, model and version, and `gain_version`.
+
+The `.npz` adds `raw_sigma`, `raw_mean`, `tier_images`, `image_s`, the calibration record and the calibrator measurement, so the fluence can be recomputed.
+
+Stated limits (`flux.py`):
+- the peak correction and R assume a Gaussian synthesised beam of FWHM λ / D; the real beam's shape and sidelobes, and direction-dependent calibration, change both;
+- a quadratic ring background describes diffuse emission and sidelobes only in part;
+- the calibrator models are corrected only by the solved scale;
+- the dipole response is a model.
 
 ## 7. Operations
 
@@ -508,11 +560,41 @@ In the three-band run the low-DM interference of one band (DM 3–8) remained a 
 
 ### 10.3 Fluence
 
-On a simulated sky with its own calibration record (written by `simtest`), the measurement of Cyg A gave k = 0.98 of the true value. A burst of known fluence was measured at 0.82 of its fluence, close to the loss in its S/N (34 found for 40 injected): the burst lies off the centre of its HEALPix pixel, and the search filters remove part of its signal.
+Bursts of known fluence were injected into a simulated sky that carries its own calibration record (written by `simtest`): 57 MHz, 64 channels, `nside` 64, DM 50 unless stated. The corrected monitor measured:
+
+| Case | Fluence measured / true | Other |
+|---|---|---|
+| Cyg A (calibrator) | k = 1.00 | R = 0.97 |
+| Test burst, S/N 40, 0.30° from its pixel centre | 0.94 ± 0.05 | S/N 34.7 |
+| Bright burst, S/N 120 | 1.03 ± 0.02 | S/N 104; fitted position 0.03° from the truth |
+| 32 bursts of S/N 40 at pixel centres, edge midpoints, vertices and random positions | 1.013 ± 0.009 | S/N 0.87 of target (0.86 before); fitted position 0.07° median, pixel centre 0.46° |
+| 16 bursts of S/N 120 | 1.008 ± 0.005 | S/N 0.87 of target; fitted position 0.04° median |
+| 15 bursts at DM 120 (tier 1) | 1.013 ± 0.012 | |
+
+The errors are the reported `fluence_err_jy_ms` for single bursts and standard errors of the mean for the sets. The deviations from the truth, in units of the reported errors, had an rms of 1.0–1.2.
+
+**The uncorrected monitor.** The test burst was measured at 0.82 of its fluence:
+
+| Cause | Effect on the fluence |
+|---|---|
+| Tier high-pass inside the span | −9.2% |
+| Pixel offset | −2.6% |
+| Interpolation | −2.8% |
+| k = 0.985 | +1.5% |
+| Noise realisation | −6% |
+
+- **k.** The calibrator measurement itself was k = 0.98, the product of the calibrator's pixel loss (0.932) and a background bias (+0.053) that cancelled by chance.
+- **32-burst set.** Over the set, the measured fluence was 0.873 ± 0.012 of the truth.
+- **S/N against fluence.** The S/N lost a similar amount (34 for 40), but mostly to other causes, and the pixel loss is the only cause the two share:
+  - the dedispersion's discretisation against the simulator's S/N model, −6.2%;
+  - the pixel, −5.3%;
+  - the filters and noise estimate, −1.7%;
+  - noise, −2.5%.
+- **Remaining systematic.** It is estimated at about 1%: the fit and interpolation overshoot by +0.4–0.9%, the burst inflates the running variance by 0.2–0.4%, and the running mean absorbs 0.1–0.7%.
 
 ### 10.4 Unit tests
 
-The suite covers the FDMT against numpy and brute force; tier coverage; the ring, including overruns and writer restarts; the C++ publisher's pixel order; the geometry; detection; channel flagging (single channel and image, noise without flags, the persistent mask and its release, a moving carrier that leaves no candidate while a burst is found); an end-to-end simulated sky with stored candidates and HTTP; live injections; known-source labels and the narrowband class; a monitor that waits for a missing imager and survives a restart and a gap; the combiner's consensus and coincidence veto; external context (saved SWPC samples, lightning, unreachable sources); conditions during threefold noise, over HTTP, in events and in the database through an outage; the local database; and flux.
+The suite covers the FDMT against numpy and brute force; tier coverage; the ring, including overruns and writer restarts; the C++ publisher's pixel order; the geometry; detection; channel flagging (single channel and image, noise without flags, the persistent mask and its release, a moving carrier that leaves no candidate while a burst is found); an end-to-end simulated sky with stored candidates and HTTP; live injections; known-source labels and the narrowband class; a monitor that waits for a missing imager and survives a restart and a gap; the combiner's consensus and coincidence veto; external context (saved SWPC samples, lightning, unreachable sources); conditions during threefold noise, over HTTP, in events and in the database through an outage; the local database; and flux (the fluence arithmetic and its error, the peak fit, the exact undoing of the high-pass, k = 1 for Cyg A, the fluence of a burst of S/N 40 within 3 errors and 3%, and a burst of S/N 120 kept by the clip's sky-shape exemption).
 
 ---
 
@@ -521,13 +603,13 @@ The suite covers the FDMT against numpy and brute force; tier coverage; the ring
 **Verification scope**
 
 1. All detection, consensus and fluence results come from simulated skies. No on-sky run, on-sky false-alarm rate or real-RFI statistics are documented in the sources.
-2. The fluence check rests on one calibrator measurement and one burst; the systematic error of fluences (pixel offset, filter loss, beam model) is not characterised. The 0.82 ratio indicates fluences biased low by about the S/N loss.
+2. The fluence is verified on simulated bursts (§10.3), with a remaining systematic of about 1%. The peak correction and the calibrator's response assume the simulator's Gaussian beam. The real synthesised beam (shape, sidelobes, direction-dependent calibration) and real backgrounds around the calibrators are not characterised.
 3. Real-time load is verified for one band at `nside` 64 on one node. The load with the imager running on the same node, and for `nside` 32 and 16 bands, is not reported.
 
 **Calibration interface**
 
 4. The calibration record is assumed to come from `streamcal` (branch `streaming-calibration`, in development, including direction-dependent calibration). The field list of §6.2 is inferred from `flux.py` and may change. The file name `epic_calinfo_gpu0.json` implies one record per GPU; how nodes with several imaging pipelines would select their record is not specified.
-5. `fluence_jy_ms` is the mean of the per-channel fluences over the band, and `fluence_err_jy_ms` is fluence / S/N; neither includes calibration uncertainty.
+5. `fluence_jy_ms` is the mean of the per-channel fluences over the band, and `fluence_err_jy_ms` is its noise from the window (§6.4); neither includes calibration uncertainty.
 6. With direction-dependent calibration, a single k per channel measured from compact calibrators may no longer describe the whole sky; the design does not yet address this.
 
 **Operations**
@@ -540,5 +622,6 @@ The suite covers the FDMT against numpy and brute force; tier coverage; the ring
 **Search limits**
 
 11. At 16–21 MHz, positions near the western horizon set before high-DM sweeps complete, limiting the DM reach to a few hundred there.
-12. The zero-DM filter, linear detrend and the 12σ cell clip each remove a small, documented fraction of a burst; very wide or very bright bursts beyond the 8-sample boxcar or the clip assumption are not separately characterised.
+12. The zero-DM filter (1.1–1.3% of S/N above tier 0) and the linear detrend (0.6%) each remove a small, measured fraction of a burst's S/N, and neither enters the fluence. Bursts beyond the clip are kept by the sky-shape exemption (§3.1) and verified up to S/N 120. Bursts wider than the 8-sample boxcar are not separately characterised.
 13. The `implausible` status is in practice reachable only between bands that nearly overlap in frequency; with bands several MHz apart, almost any single-band detection fits a band-limited spectrum.
+14. The candidate store merged two distinct simulated bursts at the same DM, about 5° and 28 s apart: the brighter replaced the other as a duplicate. Its duplicate window (position and time) is not characterised for repeated bursts from nearby positions.

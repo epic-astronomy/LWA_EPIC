@@ -19,14 +19,17 @@ epic++ (ChanReducer) ──Stokes I──▶ /dev/shm/<ring> ──▶ skymon ru
 2. **Sky-fixed pixels.** The monitor tracks HEALPix pixels (J2000, RING order) rather than image pixels, so a pixel's time series always looks at the same patch of sky.
    - Every 10 s it recomputes which pixels are above the elevation limit. Pixels that rise get a slot; pixels that set give theirs up.
    - Each tracked pixel's position on the image is recomputed with the imager's own WCS (`epic_geometry.apply_wcs`).
-   - Each image is interpolated onto the tracked pixels by bicubic convolution (16 taps), which keeps the ripple of a bright source between image pixels to about 2%.
+   - Each image is interpolated onto the tracked pixels by bicubic convolution (16 taps, Keys a = −0.75). On the beam of the images, about three image pixels per FWHM, it reproduces a peak to between 0.0% and +0.8% (+0.4% on average). Keys' usual a = −0.5 lost 2.5% on average (up to 4.8%), and bilinear interpolation 10%.
    - The default `nside` gives pixels of at most half the beam (λ/D): nside 64 above 40 MHz, 32 near 35 MHz, 16 at 16–21 MHz.
 3. **Normalisation.** The values of every pixel and channel are normalised by a running mean (2 min) and variance (5 min). The variance comes from successive differences, so a source rising through the primary beam does not inflate it. Outliers are clipped out of these statistics.
    - The median over the sky of each channel is subtracted, which removes RFI and gain changes common to the whole image.
    - **Interference flagging** (`skymon_normalise` in `_kernels.c`). After the median, the spread of each channel over the sky (1.4826 × the median absolute deviation over a subset of up to 2048 pixels) is about 1 for noise. A narrowband carrier seen over much of the sky (aircraft or meteor scatter of a distant transmitter) widens it, while a burst, confined to a beam, does not. A channel whose spread exceeds `chan_flag_sigma` (1.6) times that of the band (the median spread over the channels, or 1 if smaller) is set to zero for every pixel in that image. A rise of noise over the whole band (a thunderstorm, a solar burst, a change of gain) widens every channel alike; it is not flagged, but searched and recorded in the conditions (step 8).
    - A channel flagged persistently is masked: its flag rate (exponential, 30 s) above 0.5 sets it to zero in every image until the rate falls below 0.2.
-   - A single cell (pixel and channel) beyond `clip` (12) is set to zero. A burst of S/N s adds about s / sqrt(nchan × samples per channel) to a cell, under 9 for s = 100 with 128 channels, so the clip removes only what no burst produces.
-   - Flagged channels and clipped cells do not update the running statistics. A cell withheld for 30 s in a row is updated again (deviations limited to 5σ), so a lasting change of level is followed in the end.
+   - A single cell (pixel and channel) beyond `clip` (12) is set to zero, unless it is sky-shaped: at least 3 of its 8 HEALPix neighbours deviate the same way, in the same channel and image, by at least 0.3 of its deviation (`clip_sky_neighbours`, `clip_sky_fraction`).
+     - A burst whose signal in a channel falls into one image adds S/N × sqrt(n_eff / nchan) to that cell. Here n_eff, about 1.7 at the top of a tier, is the number of samples per channel in the S/N's definition. The clip is therefore reached at S/N 73 for 64 channels and 104 for 128.
+     - Anything from the sky reaches the image through the synthesised beam, wider than a sky pixel, so a neighbour sees 0.5–0.8 of a point source's peak. A bright burst therefore keeps its cells, while a glitch in a single cell is still removed.
+     - Before this exemption, a burst of S/N 120 in 64 channels lost its core pixels: it was found 1.5° away at S/N 54 with 0.45 of its fluence.
+   - Flagged channels and cells beyond the clip, kept or not, do not update the running statistics. A cell withheld for 30 s in a row is updated again (deviations limited to 5σ), so a lasting change of level is followed in the end.
    - `/api/status` reports `rfi_flagging`: the fraction of channels zeroed over the last minute, the masked channels and the flags per channel. Each candidate's `quality.flagged_fraction` is the fraction zeroed along its sweep.
 4. **Dedispersion in tiers** (`search.py`, `dedisp.py`).
    - Tier j averages 2^j images and runs the fast dispersion measure transform (FDMT) over delays 0..D samples, with D equal to the number of channels.
@@ -70,11 +73,21 @@ epic++ (ChanReducer) ──Stokes I──▶ /dev/shm/<ring> ──▶ skymon ru
 
     Until the record carries a beam, the monitor computes the LWA dipole response itself with lsl (`--beam-model`, default `empirical`). A beam table in the record takes precedence.
 
-    Every minute the monitor measures each calibrator above 20° in its own accumulation, as the excess of its pixel over a ring 2–4 beams around it. It divides the excess by S (F_X² B_X + F_Y² B_Y) / 2 to get k, in image units per Jy, per channel. A candidate's fluence per channel is
+    Every minute the monitor measures each calibrator above 20° in its own accumulation, in image units:
+    - **Pixel.** Of the calibrator's HEALPix pixel and its neighbours, the monitor takes the one that sees most of it. From the calibrator's known position, it computes that pixel's response R to the calibrator: the beam at the offset, through the pixel's interpolation taps.
+    - **Background.** A quadratic surface is fitted to a ring 2–4 beams around the calibrator, with outliers rejected, and evaluated at the pixel. A median of the ring was biased by +5% of Cyg A on the curved background of the Galactic ridge in the simulated sky; the quadratic fit leaves +0.5%.
+    - **k.** It is (pixel − background) / (R × S × (F_X² B_X + F_Y² B_Y) / 2), in image units per Jy, per channel.
 
-    sum along the track (normalised) × σ_raw × sqrt(2^tier) × t_image / (k Beff(position)),
+    A candidate's fluence per channel is
 
-    and `flux` gives it in Jy ms over the band and per channel, with:
+    sum along the track (normalised, high-pass undone) × σ_raw × sqrt(2^tier) × t_image × P / (k Beff(position)).
+
+    - **High-pass undone.** Each tier's high-pass leaves about −A / hp_tau on every sample after a pulse of amplitude A. Within each channel's span along the track, sample t is weighted by 1 + (samples of the span after t) / hp_tau, which inverts the high-pass exactly. Without it, a burst lost 7–9% of its fluence.
+    - **P, the peak correction.** A Gaussian of the beam's width (λ / D) is fitted, in image coordinates, to the band-summed contributions of the candidate's pixel and its 8 neighbours. P is the fitted peak over the pixel's value, scaled per channel as the beam narrows with frequency. It is bounded to 0.8–1.3 and is 1 when a neighbour is not tracked. It also gives a fitted position. Followups get the same correction.
+
+    `flux` gives the fluence in Jy ms over the band and per channel, with:
+    - `fluence_err_jy_ms`, from the noise of each channel's contribution: its squared weights times the channel's robust noise per sample, measured in the window before the sweep. `fluence_err_method` says which method was used. Without the window, the error is 1.7 × fluence / S/N: the contributions span more samples than the boxcar of the S/N, and 1.66 / S/N was measured on simulated bursts;
+    - `peak_correction`: the factor, the fitted position (`ra_deg`, `dec_deg`), and whether it was applied and why not. The same is in `quality.peak`;
     - the mean flux density over the boxcar;
     - the beam relative to the zenith, and the beam's source, model and version;
     - the calibrators used.
@@ -84,7 +97,14 @@ epic++ (ChanReducer) ──Stokes I──▶ /dev/shm/<ring> ──▶ skymon ru
     - `tier_images` and `image_s`;
     - the calibration record and the calibrator measurement.
 
-    Records and measurements go to the table `calibration` of the node's database. On a simulated sky with its own record (`simtest` writes one), Cyg A gave k = 0.98 of the true value. A burst of known fluence was measured at 0.82 of it, about the same loss as its S/N (34 found for 40 injected).
+    Records and measurements go to the table `calibration` of the node's database.
+
+    **Simulated sky.** The test used a simulated sky with its own record (`simtest` writes one), at 57 MHz with 64 channels and nside 64.
+    - Cyg A gives k = 1.00, with R = 0.97.
+    - A burst of S/N 40 at DM 50, 0.30° from its pixel's centre, is measured at 0.94 ± 0.05 of its fluence. Its S/N is 34.7.
+    - A burst of S/N 120 is measured at 1.03 ± 0.02, with S/N 104 and a fitted position 0.03° from the truth.
+    - Over 32 bursts at pixel centres, edges, vertices and random positions, the measured fluence is 1.013 ± 0.009 of the truth, against 0.873 ± 0.012 before the corrections. Sixteen bursts of S/N 120 give 1.008 ± 0.005. The remaining systematic error is estimated at about 1%.
+    - Before these corrections, the test burst was measured at 0.82 of its fluence. The tier high-pass took 9%, the pixel offset and interpolation 5%, and the noise 6%. Two calibrator errors, −6.8% for the pixel and +5.3% for the background, made k = 0.98 by chance.
 
 ## Consensus across bands (combiner.py)
 
@@ -205,4 +225,5 @@ The tests cover:
 - known-source labels (Sun, pulsars, bright sources) and the narrowband classification (`test_known`);
 - a monitor that waits for a missing imager and survives a restart and a gap;
 - the combiner's consensus, and the external context (parsing of saved SWPC samples in `tests/python/data/`, matching, lightning, unreachable sources);
-- conditions during a minute of threefold noise, over HTTP, in the combiner's events, and in the database through an outage.
+- conditions during a minute of threefold noise, over HTTP, in the combiner's events, and in the database through an outage;
+- flux (`test_flux`): the beam tables, the fluence arithmetic and its error, the calibration records, the peak fit, the exact undoing of the tiers' high-pass, and a simulated sky in which Cyg A gives k = 1, a burst of S/N 40 has its fluence within 3 errors and 3%, and a burst of S/N 120 is found at its position with its fluence despite the clip.
