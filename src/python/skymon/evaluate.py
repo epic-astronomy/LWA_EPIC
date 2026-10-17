@@ -17,6 +17,11 @@ import numpy as np
 
 from .candidates import separation_deg
 
+# event results, in the order reported; terrestrial: moved out by the
+# combiner's cross-band coincidence veto (undispersed in several bands)
+STATUSES = ("confirmed", "band_limited", "implausible", "unconfirmable", "terrestrial",
+            "pending")
+
 
 def load_candidates(out_dir):
     out = []
@@ -173,7 +178,7 @@ def report_combiner(frb_file, combiner_dir, radius_deg=6.0):
     inj = [e for e in events if e["kind"] == "injection"]
     lines = [f"FRBs given to the simulators: {len(frbs)}; with an event: "
              f"{sum(e is not None for _, e in rows)}"]
-    for st in ("confirmed", "band_limited", "implausible", "unconfirmable", "pending"):
+    for st in STATUSES:
         n = sum(1 for _, e in rows if e is not None and e["status"] == st)
         if n:
             lines.append(f"  {st}: {n}")
@@ -184,12 +189,14 @@ def report_combiner(frb_file, combiner_dir, radius_deg=6.0):
                      f"max {100 * np.max(errs):.2f}%")
     lines.append(f"events matching no FRB: {len(unexplained)} ("
                  + ", ".join(f"{st} {sum(e['status'] == st for e in unexplained)}"
-                             for st in ("confirmed", "band_limited", "implausible", "unconfirmable",
-                                        "pending"))
+                             for st in STATUSES)
                  + ")")
+    terr = [e for e in events if e["kind"] == "terrestrial"]
+    lines.append(f"terrestrial coincidences (undispersed in several bands): {len(terr)} events, "
+                 f"{sum(len(e.get('candidates', [])) for e in terr)} candidates")
     lines.append("coordinated injections: " + (", ".join(
         f"{st} {sum(e['status'] == st for e in inj)}"
-        for st in ("confirmed", "band_limited", "implausible", "unconfirmable", "pending"))
+        for st in STATUSES)
         if inj else "none"))
     return dict(text="\n".join(lines), rows=rows, unexplained=unexplained, injections=inj,
                 events=events)

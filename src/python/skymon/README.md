@@ -78,6 +78,15 @@ No result discards data:
 
 Monitors keep the data of RFI candidates too, unless the RFI is certain (DM < 2, or much of the sky at once). Each candidate also carries in-band quality measures (`quality.py`). Only class `candidate` (and coordinated injections) opens events; candidates at known sources (`known`) do not. On the node, the archiver (`archiver.py`) removes `known` candidates that are not archived after `--review-days` (14).
 
+**Cross-band coincidence veto.** Terrestrial impulsive interference (lightning sferics, meteor afterglows, sparks) is undispersed: it reaches every band at the same moment, whereas a burst from the sky reaches the bands seconds to hours apart.
+- The combiner keeps the new candidates and RFI of every node for 15 min (`coinc_history_s`).
+- Two candidates from different nodes are simultaneous when |t_bottom_a − t_bottom_b| ≤ 1.5 s + tier_dt_a + tier_dt_b + width_a + width_b.
+- A simultaneous pair is undispersed when the dispersion law at either candidate's DM predicts a gap between the two bands larger than 3 s plus the same tolerances. A burst at that DM could not reach both bands at once.
+- Positions are not compared, because interference in the near field is imaged at different places in different bands.
+- Bands close in frequency, or a low DM, predict a gap too small to separate the two cases. Such pairs are left to the consensus.
+
+The candidates of all bands involved form one event of kind and status `terrestrial` (`review: not needed`), with their node, id, t_bottom, DM and S/N, and the reason. A coincident candidate opens no sky event. A pending sky event whose detections are all coincident is given status `terrestrial` with a note; the record is kept. `/api/status` counts these events under `events.terrestrial` and `terrestrial`.
+
 Events go to `<out>/events/YYYYMMDD/*.json` and are served on :8096 (`/api/status`, `/api/events`).
 
 **Coordinated injections.** The combiner sends `POST /api/inject` with the same burst to every monitor, which checks the consensus end to end.
