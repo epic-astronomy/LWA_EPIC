@@ -54,7 +54,14 @@ class Config:
     norm_tau_s: float = 120.0
     var_tau_s: float = 300.0
     hp_tau: float = 32.0
-    clip: float = 20.0
+    # a normalised cell beyond clip is set to zero: a burst of S/N s adds about
+    # s / sqrt(nchan * samples per channel) to a cell, under 12 for s < 100
+    # with 128 channels (search.Searcher)
+    clip: float = 12.0
+    chan_flag_sigma: float = 1.6  # spread over the sky above which a channel is flagged
+    flag_tau_s: float = 30.0  # time constant of the flag rate of each channel
+    mask_on: float = 0.5  # a channel flagged at this rate is masked ...
+    mask_off: float = 0.2  # ... until its rate falls below this
     accum_interval_s: float = 10.0
     accum_hours: float = 6.0
     rfi_max_beams: float = 6.0  # a cluster wider than this many beam areas is RFI
@@ -118,7 +125,9 @@ class Monitor:
                                  threshold=cfg.threshold, nthreads=cfg.nthreads,
                                  warmup_images=cfg.warmup_images, norm_tau_s=cfg.norm_tau_s,
                                  var_tau_s=cfg.var_tau_s, hp_tau=cfg.hp_tau, clip=cfg.clip,
-                                 unix0=self.unix0, rng=self.rng)
+                                 unix0=self.unix0, rng=self.rng,
+                                 chan_flag_sigma=cfg.chan_flag_sigma, flag_tau_s=cfg.flag_tau_s,
+                                 mask_on=cfg.mask_on, mask_off=cfg.mask_off)
         self.accum = Accumulator(self.band.nchan, self.grid.capacity, self.dt,
                                  cfg.accum_interval_s, cfg.accum_hours)
         self.raw = np.zeros((self.band.nchan, self.grid.capacity), np.float32)
@@ -372,6 +381,10 @@ class Monitor:
                                                  hit.width, list(self.searcher.widths))
             except Exception as e:  # a measure for review must never stop the search
                 cand.quality = dict(error=repr(e))
+            # channels set to zero for interference along the burst's sweep
+            fz = self.searcher.tier_zeroed_fraction(tier, hit.t_end - hit.row - hit.width + 1,
+                                                    hit.t_end)
+            cand.quality["flagged_fraction"] = None if fz is None else round(fz, 4)
         t_win = self.searcher.tier_time(tier, res.first_sample + np.arange(win.shape[1]))
         ta, acc = self.accum.pixel(s, since=hit.t_inf - 1800)
         return dict(dynspec=win.astype(np.float32), dynspec_t=t_win, dmt=dmt.astype(np.float32),
@@ -615,6 +628,10 @@ class Monitor:
                       threshold=self.cfg.threshold,
                       memory_gib=(self.searcher.memory_bytes() +
                                   self.accum.memory_bytes()) / 2 ** 30)
+            rfi = self.searcher.rfi_status()
+            rfi["masked_mhz"] = [round(float(f), 4) for f in
+                                 self.band.centres_mhz()[rfi["masked_channels"]]]
+            st["rfi_flagging"] = rfi
         return st
 
     def pixel(self, ra=None, dec=None, hpix=None, x=None, y=None, since=None, fine=False):

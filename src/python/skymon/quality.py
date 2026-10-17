@@ -24,6 +24,9 @@ tier searched:
   top2_fraction   the share of the positive sum in the two strongest channels:
                   near 1 for narrowband interference, about 2 / nchan for a
                   burst of flat spectrum
+
+The monitor adds flagged_fraction: the fraction of channels set to zero for
+interference (search.Searcher) over the images of the candidate's sweep.
 """
 from __future__ import annotations
 
