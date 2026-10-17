@@ -82,12 +82,14 @@ class SkySnapshot:
 
 
 def build_snapshot(t: Time, chans, pol="XX", nside=32, extra_sources=None, flux_scale=None,
-                   offsets_deg=None, sun_flux_factor=1.0, beam_model="empirical", fluct_rms=0.0):
+                   offsets_deg=None, sun_flux_factor=1.0, beam_model="empirical", fluct_rms=0.0,
+                   diffuse_model="lfsm"):
     """Sky snapshot for the given time.
 
     extra_sources: list of (name, enu, flux_at_74MHz, spectral_index) not in the model sky
     flux_scale: dict name -> multiplicative error applied to that point source
     offsets_deg: dict name -> (d_east, d_north) apparent shift in degrees (ionospheric refraction)
+    diffuse_model: sky.DIFFUSE_MODELS entry for the diffuse component (default LFSM)
     """
     chans = np.asarray(chans)
     nu = chans * E.CHAN_BW
@@ -117,7 +119,7 @@ def build_snapshot(t: Time, chans, pol="XX", nside=32, extra_sources=None, flux_
         if up.any():
             parts.append(("extra", es[up], (s74[:, None] * (nu_mhz[None, :] / 74.0) ** alpha[:, None])[up]))
     if nside:
-        denu, djy = sm.diffuse(t, nu_mhz, nside=nside, fluct_rms=fluct_rms)
+        denu, djy = sm.diffuse(t, nu_mhz, nside=nside, fluct_rms=fluct_rms, model=diffuse_model)
         # fixed catalogue sources (STREAMCAL_CATALOG) join the fixed "diffuse" component
         cenu, cjy = sm.catalog_fixed(t, nu_mhz)
         parts.append(("diffuse", np.concatenate([denu, cenu]), np.concatenate([djy, cjy])))

@@ -189,14 +189,87 @@ def point_sources(t: Time, nu_mhz: np.ndarray, min_alt_deg=5.0, include_sun=True
 
 
 @functools.lru_cache(maxsize=4)
-def _lfsm_galactic(nside: int, nu_mhz_key: tuple):
-    import healpy as hp
+def _lfsm_native(nu_mhz_key: tuple):
+    """LFSM at its native nside (256), K, Galactic RING, with the A-team inpainted."""
     from pygdsm import LowFrequencySkyModel
 
     lf = LowFrequencySkyModel(freq_unit="MHz")
     maps = np.atleast_2d(lf.generate(np.array(nu_mhz_key)))  # K, Galactic, RING
-    maps = np.array([remove_compact(m) for m in maps])
-    return np.array([hp.ud_grade(m, nside) for m in maps])
+    return np.array([remove_compact(m) for m in maps])
+
+
+@functools.lru_cache(maxsize=4)
+def _lfsm_galactic(nside: int, nu_mhz_key: tuple):
+    import healpy as hp
+
+    return np.array([hp.ud_grade(m, nside) for m in _lfsm_native(nu_mhz_key)])
+
+
+# Diffuse models selectable in diffuse(): "lfsm" (default; Dowell et al. 2017, a few
+# degrees resolution) and "ovrolwa" (the OVRO-LWA m-mode maps of Eastwood et al. 2018,
+# 15-26 arcmin, 36.5-73 MHz, hybrid with LFSM for the modes they lack; built by
+# research/prep_ovrolwa.py), and "gsm16" (Zheng et al. 2017 via pygdsm, about 5 deg
+# below 10 GHz; a control). The hybrid file is found through $STREAMCAL_OVROLWA_MAP.
+DIFFUSE_MODELS = ("lfsm", "ovrolwa", "gsm16")
+OVROLWA_MAP = "/data/streamcal/diffuse_maps/ovrolwa_hybrid_n256.npz"
+
+
+@functools.lru_cache(maxsize=1)
+def _ovrolwa_nodes():
+    import os
+
+    z = np.load(os.environ.get("STREAMCAL_OVROLWA_MAP", OVROLWA_MAP))
+    return np.array(z["nu_mhz"], float), np.array(z["maps_k"], float)
+
+
+@functools.lru_cache(maxsize=4)
+def _ovrolwa_galactic(nside: int, nu_mhz_key: tuple):
+    """OVRO-LWA hybrid map in K at the requested frequencies (Galactic, RING).
+
+    Between the OVRO-LWA frequencies (36.528-52.224 MHz) each pixel is interpolated
+    in log T - log nu. Outside that range (the lower EPIC band, 28-36.5 MHz) the
+    nearest OVRO-LWA map is scaled per pixel by the LFSM spectrum,
+    T(nu) = T_ovro(nu_0) LFSM(nu) / LFSM(nu_0): the small-scale structure is
+    carried at the large-scale spectral index.
+    """
+    import healpy as hp
+
+    nodes, maps = _ovrolwa_nodes()
+    lt = np.log(np.maximum(maps, 1.0))
+    ln = np.log(nodes)
+    out = []
+    for f in nu_mhz_key:
+        if nodes[0] <= f <= nodes[-1]:
+            k = int(np.clip(np.searchsorted(ln, np.log(f)) - 1, 0, len(ln) - 2))
+            w = (np.log(f) - ln[k]) / (ln[k + 1] - ln[k])
+            m = np.exp((1 - w) * lt[k] + w * lt[k + 1])
+        else:
+            k = 0 if f < nodes[0] else len(nodes) - 1
+            lf = _lfsm_native((float(nodes[k]), float(f)))
+            m = maps[k] * np.maximum(lf[1], 1.0) / np.maximum(lf[0], 1.0)
+        out.append(hp.ud_grade(m, nside))
+    return np.array(out)
+
+
+@functools.lru_cache(maxsize=4)
+def _gsm16_galactic(nside: int, nu_mhz_key: tuple):
+    import healpy as hp
+    from pygdsm import GlobalSkyModel16
+
+    gsm = GlobalSkyModel16(freq_unit="MHz", data_unit="TRJ", resolution="low")
+    maps = np.atleast_2d(gsm.generate(np.array(nu_mhz_key)))  # K (Rayleigh-Jeans), Galactic, RING
+    return np.array([hp.ud_grade(remove_compact(m), nside) for m in maps])
+
+
+def galactic_map(model: str, nside: int, nu_mhz_key: tuple):
+    """Diffuse brightness temperature [nodes, npix] in K, Galactic RING, A-team removed."""
+    if model == "lfsm":
+        return _lfsm_galactic(nside, nu_mhz_key)
+    if model == "ovrolwa":
+        return _ovrolwa_galactic(nside, nu_mhz_key)
+    if model == "gsm16":
+        return _gsm16_galactic(nside, nu_mhz_key)
+    raise ValueError(f"unknown diffuse model {model!r}; choose from {DIFFUSE_MODELS}")
 
 
 def remove_compact(m, r_in_deg=6.0, r_out_deg=9.0):
@@ -237,8 +310,9 @@ def _fluct(nside: int, rms: float, seed: int):
     return 1.0 + rms * m / m.std()
 
 
-def diffuse(t: Time, nu_mhz: np.ndarray, nside=64, min_alt_deg=0.0, nu_nodes=None, fluct_rms=0.0, fluct_seed=1):
-    """LFSM diffuse sky above the horizon.
+def diffuse(t: Time, nu_mhz: np.ndarray, nside=64, min_alt_deg=0.0, nu_nodes=None, fluct_rms=0.0, fluct_seed=1,
+            model="lfsm"):
+    """Diffuse sky above the horizon (model: one of DIFFUSE_MODELS; LFSM by default).
 
     Returns (enu[p,3], jy_per_pix[p,nchan]). The map is evaluated at a few
     frequency nodes and interpolated in log-log, since one EPIC band is only
@@ -249,7 +323,7 @@ def diffuse(t: Time, nu_mhz: np.ndarray, nside=64, min_alt_deg=0.0, nu_nodes=Non
     nu_mhz = np.atleast_1d(nu_mhz)
     if nu_nodes is None:
         nu_nodes = np.unique(np.round([nu_mhz.min(), nu_mhz.mean(), nu_mhz.max()], 3))
-    tk = _lfsm_galactic(nside, tuple(float(x) for x in nu_nodes))  # [nodes, npix] K
+    tk = galactic_map(model, nside, tuple(float(x) for x in nu_nodes))  # [nodes, npix] K
     if fluct_rms > 0:
         tk = tk * _fluct(nside, fluct_rms, fluct_seed)[None, :]
     npix = hp.nside2npix(nside)
