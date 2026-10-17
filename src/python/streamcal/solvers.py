@@ -328,7 +328,8 @@ def stefcal_sky(R, M_fixed, sources, W, r, f, g0=None, niter=4, n_outer=20, solv
     position and frozen for the rest of the solve. info["frozen"] lists them.
     prior_off_deg: optional Gaussian refraction prior (1-sigma per axis, degrees, at this
     frequency): a Tikhonov row per offset component pulls the total offset toward zero, weighted
-    by the data residual rms / prior width. A poorly constrained offset (or one that would absorb
+    by the total data residual norm / prior width (the misfit is treated as one systematic error,
+    not as independent noise per visibility). A poorly constrained offset (or one that would absorb
     direction-dependent phase errors or sky-model error) then stays near the catalogue position;
     a well-measured refraction shift still comes through.
     Returns (g, scale[k], offset[k, 2], info).
@@ -378,7 +379,11 @@ def stefcal_sky(R, M_fixed, sources, W, r, f, g0=None, niter=4, n_outer=20, solv
                     th0 = np.zeros(A.shape[1])
                     th0[0::step] = scale
                     res0 = yr - np.vstack([A.real, A.imag]) @ th0
-                    alpha = np.sqrt(np.mean(res0 ** 2)) / np.radians(prior_off_deg)
+                    # the misfit is mostly systematic (sky model, direction-dependent phases),
+                    # correlated over all baselines, not independent noise: weight the prior by
+                    # the total residual norm, so prior_off_deg acts at its stated width (with the
+                    # per-visibility rms the ~1e5 visibilities per offset swamp any prior)
+                    alpha = np.sqrt(np.sum(res0 ** 2)) / np.radians(prior_off_deg)
                     rows, rhs = [], []
                     idx_live = np.flatnonzero(live)
                     for k in np.flatnonzero(~frozen):
