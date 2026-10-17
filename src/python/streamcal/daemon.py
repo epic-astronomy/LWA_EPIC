@@ -112,7 +112,7 @@ class StreamCal:
         chans = self.freq / E.CHAN_BW
         self.models = []
         for pol in ("XX", "YY"):
-            snap = F.build_snapshot(t, chans, pol=pol, nside=self.a.nside, diffuse_model=self.a.diffuse_model)
+            snap = F.build_snapshot(t, chans, pol=pol, nside=self.a.nside, diffuse_model=getattr(self.a, "diffuse_model", "auto"))
             Md = [snap.matrix(self.ant, i, names=["diffuse"]) for i in range(len(chans))]
             srcs = [[(c.enu[0], float(c.flux[0, i]), c.name) for c in snap.comps if c.name != "diffuse"]
                     for i in range(len(chans))]
