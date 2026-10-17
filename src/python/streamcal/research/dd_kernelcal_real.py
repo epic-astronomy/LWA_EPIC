@@ -4,7 +4,9 @@
     env: KC_CHANS (ADP channel numbers, comma separated; default 1236,1428,1620,1812)
          KC_POLS (default 0,1), KC_NSIDE (diffuse model, default 32), KC_UMIN (wavelengths,
          default 1), KC_NITER (default 15), KC_LAM (Tikhonov weight toward 0, default 1e-2),
-         KC_HOLD (every Nth snapshot held out, default 4), KC_TMIN (earliest UTC hour, default 1.5)
+         KC_HOLD (every Nth snapshot held out, default 4), KC_TMIN (earliest UTC hour, default 1.5),
+         KC_DIFFUSE (diffuse sky model, a sky.DIFFUSE_MODELS entry; default lfsm),
+         KC_SCALEMAX (upper bound on the bright-source flux scales in stefcal_sky, default 4)
 
 Pilot of step 2 in section 8.10 on the Memo 12 TBF captures, correlated in full by
 tbf_tcc.py (R_even, R_odd per capture). Model, per channel and polarisation:
@@ -59,6 +61,8 @@ niter = int(env("KC_NITER", "15"))
 lam = float(env("KC_LAM", "1e-2"))
 hold = int(env("KC_HOLD", "4"))
 tmin = float(env("KC_TMIN", "1.5"))
+diffuse_model = env("KC_DIFFUSE", "lfsm")
+scalemax = float(env("KC_SCALEMAX", "4"))
 
 
 def basis(enu):
@@ -82,10 +86,11 @@ class Snap:
         W = (bl / (SOL / f) >= umin).astype(float)
         np.fill_diagonal(W, 0)
         self.W = W * np.outer(self.ok, self.ok)
-        snap = F.build_snapshot(t, [f / G.CHAN_BW], pol=("XX", "YY")[p], nside=nside)
+        snap = F.build_snapshot(t, [f / G.CHAN_BW], pol=("XX", "YY")[p], nside=nside, diffuse_model=diffuse_model)
         Md = snap.matrix(ant, 0, names=["diffuse"])
         srcs = [(c.enu[0], float(c.flux[0, 0]), c.name) for c in snap.comps if c.name != "diffuse"]
-        g, sc, off, _ = C.stefcal_sky(self.R["sum"], Md, [(s[0], s[1]) for s in srcs], self.W, r, f, n_outer=20)
+        g, sc, off, _ = C.stefcal_sky(self.R["sum"], Md, [(s[0], s[1]) for s in srcs], self.W, r, f, n_outer=20,
+                                      scale_bounds=[(0.25, scalemax)] * len(srcs))
         self.g_di = g
         # components with the fitted source fluxes and offsets: enu [P, 3], flux [P]
         dif = [c for c in snap.comps if c.name == "diffuse"][0]
@@ -158,6 +163,7 @@ def main():
         if t.datetime.hour + t.datetime.minute / 60 < tmin:
             continue  # the Sun is up
         zs.append((fn, z, t))
+    print(f"diffuse model {diffuse_model}, nside {nside}; ", end="")
     print(f"{len(zs)} captures from {zs[0][2].isot} to {zs[-1][2].isot}", flush=True)
     results = {}
     for c in want:

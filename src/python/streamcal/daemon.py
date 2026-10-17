@@ -112,7 +112,7 @@ class StreamCal:
         chans = self.freq / E.CHAN_BW
         self.models = []
         for pol in ("XX", "YY"):
-            snap = F.build_snapshot(t, chans, pol=pol, nside=self.a.nside)
+            snap = F.build_snapshot(t, chans, pol=pol, nside=self.a.nside, diffuse_model=self.a.diffuse_model)
             Md = [snap.matrix(self.ant, i, names=["diffuse"]) for i in range(len(chans))]
             srcs = [[(c.enu[0], float(c.flux[0, i]), c.name) for c in snap.comps if c.name != "diffuse"]
                     for i in range(len(chans))]
@@ -263,6 +263,8 @@ def main(argv=None):
     ap.add_argument("--gains", default="/dev/shm/epic_gains_gpu0")
     ap.add_argument("--dry-run", action="store_true", help="solve and log, do not publish gains")
     ap.add_argument("--nside", type=int, default=64, help="HEALPix nside of the diffuse model")
+    ap.add_argument("--diffuse-model", default="lfsm", choices=("lfsm", "ovrolwa", "gsm16"),
+                    help="diffuse sky map (ovrolwa reads the hybrid map named by $STREAMCAL_OVROLWA_MAP)")
     ap.add_argument("--model-refresh", type=float, default=60.0, help="seconds between sky model updates")
     ap.add_argument("--chan-stride", type=int, default=4, help="solve every Nth channel")
     ap.add_argument("--umin", type=float, default=1.0, help="shortest baseline used (wavelengths)")
