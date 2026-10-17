@@ -202,7 +202,9 @@ class Searcher:
         t0 = time.perf_counter()
         k = self.images % len(self.zeroed_hist)
         if raw is None:
-            x = np.zeros((self.C, self.P), np.float32)
+            if getattr(self, "_zeros", None) is None:
+                self._zeros = np.zeros((self.C, self.P), np.float32)
+            x = self._zeros
             self.zeroed_hist[k] = 0
         else:
             kernels.normalise(raw, self.mu, self.var, self.prev, self.age, self.live, acc, self.sub,
@@ -233,22 +235,30 @@ class Searcher:
         self.chan_mask[self.flag_rate < self.mask_off] = 0
 
     def _push_tier(self, j: int, x: np.ndarray):
-        tier = self.tiers[j]
-        nxt = j + 1 < len(self.tiers)
-        kernels.tier_push(x, tier.base, tier.history, tier.pos, self.a_hp,
-                          tier.acc if nxt else None, self.nthreads)
-        tier.pos += 1
-        tier.pushed += 1
+        """
+        Push x into tier j and, through the decimation sums, into the tiers
+        above it that complete a sample; search every tier whose window is
+        full. Tier j passes the sum of every two of its inputs, times
+        1/sqrt(2), to tier j + 1. One compiled call does all the pushes
+        (kernels.tier_cascade); the searches then run from the highest tier
+        down, and the results are returned from tier j up.
+        """
+        n = len(self.tiers)
+        k = j + 1  # tiers j .. k - 1 receive a sample
+        while k < n and self.tiers[k - 1].acc_n == 1:
+            k += 1
+        reached = self.tiers[j:k]
+        kernels.tier_cascade(x, reached, self.a_hp, float(np.float32(1 / math.sqrt(2))),
+                             last_dec=k < n, nthreads=self.nthreads)
+        for i, tier in enumerate(reached):
+            tier.pos += 1
+            tier.pushed += 1
+            if j + i + 1 < n:
+                tier.acc_n = 0 if i + 1 < len(reached) else tier.acc_n + 1
         out = []
-        if nxt:
-            tier.acc_n += 1
-            if tier.acc_n == 2:
-                y = tier.acc * np.float32(1 / math.sqrt(2))
-                tier.acc[:] = 0
-                tier.acc_n = 0
-                out += self._push_tier(j + 1, y)
-        if tier.pos == tier.history.shape[1]:
-            out.insert(0, self._search(tier))
+        for tier in reversed(reached):
+            if tier.pos == tier.history.shape[1]:
+                out.insert(0, self._search(tier))
         return out
 
     def _search(self, tier: Tier) -> BlockResult:
@@ -299,7 +309,7 @@ class Searcher:
         """Shift the searched windows; call after the BlockResults have been used"""
         for tier in getattr(self, "_pending_shift", []):
             D, B = self.D, tier.block
-            tier.history[:, :D] = tier.history[:, B:B + D]
+            kernels.shift(tier.history, 0, B, D, self.nthreads)
             tier.pos = D
         self._pending_shift = []
 

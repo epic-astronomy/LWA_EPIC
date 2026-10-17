@@ -206,18 +206,129 @@ int skymon_fdmt(const float* data, int C, int W, int P, const int* plan, float* 
  * sumsq/cnt [D + 1][nw], from which the caller updates sigma for the next block.
  * With detrend set, a linear fit over the window is first removed from each
  * channel of each pixel (detrend_tile).
+ *
+ * Memory traffic sets the speed, so the transform of a tile runs depth first
+ * (fdmt_sub): a subband is merged as soon as both its halves exist, and the
+ * small subbands of the lower levels stay in the core's cache instead of
+ * making a pass over the whole tile per level. The last merge is not stored:
+ * each delay row is formed in a buffer of one row and searched at once, and
+ * rows below row0 are not formed at all. The sums are the same as those of
+ * fdmt_tile, term by term. The work buffers of each thread are kept between
+ * calls (thread_buffer).
  */
+
+/* the plan's merge entries by level (1..nlev) and pair, for fdmt_sub */
+typedef struct {
+  int C, nlev;
+  const int* init_nd; /* [C] */
+  const int** pair;   /* pair[first[L] + k]: nd, d_lo[nd + 1], d_up[nd + 1] */
+  int first[32];
+  int maxrows[32];    /* most rows of a subband at each level */
+} fplan_t;
+
+static void fplan_init(fplan_t* fp, const int* plan, int C, const int** pairbuf) {
+  fp->C = C;
+  fp->init_nd = plan;
+  fp->pair = pairbuf;
+  int nlev = 0;
+  while ((1 << nlev) < C) ++nlev;
+  fp->nlev = nlev;
+  int m = 0;
+  for (int c = 0; c < C; ++c) if (plan[c] + 1 > m) m = plan[c] + 1;
+  fp->maxrows[0] = m;
+  const int* q = plan + C;
+  int idx = 0;
+  for (int L = 1; L <= nlev; ++L) {
+    fp->first[L] = idx;
+    m = 0;
+    for (int k = 0; k < (C >> L); ++k) {
+      pairbuf[idx++] = q;
+      if (q[0] + 1 > m) m = q[0] + 1;
+      q += 1 + 2 * (q[0] + 1);
+    }
+    fp->maxrows[L] = m;
+  }
+}
+
+/* inside channel c the track spans d + 1 samples (as in fdmt_tile) */
+static int fdmt_init_chan(const float* x, int nd, int W, int Pt, float* out) {
+  const size_t slab = (size_t)W * Pt;
+  memcpy(out, x, slab * sizeof(float));
+  for (int d = 1; d <= nd; ++d) {
+    float* r = out + (size_t)d * slab;
+    const float* rp = r - slab;
+    memcpy(r, rp, (size_t)d * Pt * sizeof(float));
+    const size_t n = (size_t)(W - d) * Pt;
+    float* rd = r + (size_t)d * Pt;
+    const float* rpd = rp + (size_t)d * Pt;
+    for (size_t i = 0; i < n; ++i) rd[i] = rpd[i] + x[i];
+  }
+  return nd;
+}
+
+/* one merged row: the lower half is reached last (as in fdmt_tile) */
+static inline void fdmt_merge_row(const float* l, const float* u, int lo, int W, int Pt,
+                                  float* o) {
+  const size_t slab = (size_t)W * Pt;
+  const size_t head = (size_t)lo * Pt;
+  memcpy(o, l, head * sizeof(float));
+  const size_t n = slab - head;
+  const float* lh = l + head;
+  float* oh = o + head;
+  for (size_t i = 0; i < n; ++i) oh[i] = lh[i] + u[i];
+}
+
+/* the rows of subband k of level L into out [nd + 1][W][Pt]; returns nd.
+   slots[2 L'], slots[2 L' + 1]: the halves at level L' < L */
+static int fdmt_sub(const fplan_t* fp, int L, int k, const float* tile, int W, int Pt,
+                    float* const* slots, float* out) {
+  const size_t slab = (size_t)W * Pt;
+  if (L == 0) return fdmt_init_chan(tile + (size_t)k * slab, fp->init_nd[k], W, Pt, out);
+  float* a = slots[2 * (L - 1)];
+  float* b = slots[2 * (L - 1) + 1];
+  fdmt_sub(fp, L - 1, 2 * k, tile, W, Pt, slots, a);
+  fdmt_sub(fp, L - 1, 2 * k + 1, tile, W, Pt, slots, b);
+  const int* q = fp->pair[fp->first[L] + k];
+  const int nd = q[0];
+  const int* d_lo = q + 1;
+  const int* d_up = q + 1 + (nd + 1);
+  for (int d = 0; d <= nd; ++d)
+    fdmt_merge_row(a + (size_t)d_lo[d] * slab, b + (size_t)d_up[d] * slab, d_lo[d], W, Pt,
+                   out + (size_t)d * slab);
+  return nd;
+}
+
+/* a buffer of at least n floats per thread, kept for the next call */
+static float* thread_buffer(size_t n) {
+  static __thread float* buf = NULL;
+  static __thread size_t size = 0;
+  if (n > size) {
+    free(buf);
+    buf = malloc(n * sizeof(float));
+    size = buf ? n : 0;
+  }
+  return buf;
+}
+
 int skymon_search(const float* data, int C, int W, int P, const int* plan, int row0, int nb,
                   const int* widths, int nw, const float* sigma, int seg, float clip,
                   float* best_snr, int* best_info, double* sumsq, int64_t* cnt,
                   int nthreads, int ptile, int detrend, int zerodm) {
   int final_rows = 0;
-  const int rows = max_rows(plan, C, &final_rows);
+  max_rows(plan, C, &final_rows);
   const int D = final_rows - 1;
   const int nseg = (nb + seg - 1) / seg;
   const int t_first = W - nb;
   if (ptile <= 0) ptile = 16;
   const int ntile = (P + ptile - 1) / ptile;
+  const int** pairbuf = malloc(sizeof(int*) * (C > 1 ? C : 1));
+  fplan_t fp;
+  fplan_init(&fp, plan, C, pairbuf);
+  const size_t slab = (size_t)W * ptile;
+  /* per thread: tile, the two halves of every level below the last, one row */
+  size_t need = (size_t)C * slab + slab + (size_t)(W + 1) * ptile;
+  for (int L = 0; L < fp.nlev; ++L) need += 2 * (size_t)fp.maxrows[L] * slab;
+  if (fp.nlev == 0) need += (size_t)fp.maxrows[0] * slab;
   for (int i = 0; i < P * nseg; ++i) {
     best_snr[i] = -INFINITY;
     best_info[3 * i] = best_info[3 * i + 1] = best_info[3 * i + 2] = -1;
@@ -226,80 +337,134 @@ int skymon_search(const float* data, int C, int W, int P, const int* plan, int r
   memset(cnt, 0, sizeof(int64_t) * (size_t)final_rows * nw);
 #pragma omp parallel num_threads(nthreads)
   {
-    float* tile = malloc((size_t)C * W * ptile * sizeof(float));
-    float* a = malloc((size_t)rows * W * ptile * sizeof(float));
-    float* b = malloc((size_t)rows * W * ptile * sizeof(float));
-    int* offs = malloc(sizeof(int) * C);
-    int* nds = malloc(sizeof(int) * C);
-    float* cs = malloc((size_t)(W + 1) * ptile * sizeof(float));
+    float* wsp = thread_buffer(need);
+    float* tile = wsp;
+    float* row = tile + (size_t)C * slab;
+    float* cs = row + slab;
+    float* slots[64];
+    float* s = cs + (size_t)(W + 1) * ptile;
+    for (int L = 0; L < fp.nlev; ++L) {
+      slots[2 * L] = s;
+      s += (size_t)fp.maxrows[L] * slab;
+      slots[2 * L + 1] = s;
+      s += (size_t)fp.maxrows[L] * slab;
+    }
+    float* single = s; /* C == 1: the rows of the only channel */
     double* ssq = calloc((size_t)final_rows * nw, sizeof(double));
     int64_t* nn = calloc((size_t)final_rows * nw, sizeof(int64_t));
-    float* lb = malloc((size_t)ptile * nseg * sizeof(float));
-    int* li = malloc((size_t)ptile * nseg * 3 * sizeof(int));
+    /* best per segment and pixel, [nseg][ptile] so the pixel loop is contiguous */
+    float* bb = malloc((size_t)ptile * nseg * sizeof(float));
+    int* bd = malloc((size_t)ptile * nseg * sizeof(int));
+    int* bt = malloc((size_t)ptile * nseg * sizeof(int));
+    int* bw = malloc((size_t)ptile * nseg * sizeof(int));
+    double* accp = malloc((size_t)ptile * sizeof(double));
+    int64_t* nap = malloc((size_t)ptile * sizeof(int64_t));
     double* dsx = malloc((size_t)ptile * sizeof(double));
     double* dstx = malloc((size_t)ptile * sizeof(double));
 #pragma omp for schedule(dynamic)
     for (int it = 0; it < ntile; ++it) {
       int p0 = it * ptile;
       int pt = P - p0 < ptile ? P - p0 : ptile;
+      const size_t sl = (size_t)W * pt;
       load_tile(data, C, W, P, p0, pt, tile);
       if (detrend) detrend_tile(tile, C, W, pt, dsx, dstx);
       if (zerodm) zerodm_tile(tile, C, W, pt);
-      float* r = fdmt_tile(tile, C, W, pt, plan, a, b, offs, nds);
       for (int i = 0; i < pt * nseg; ++i) {
-        lb[i] = -INFINITY;
-        li[3 * i] = li[3 * i + 1] = li[3 * i + 2] = -1;
+        bb[i] = -INFINITY;
+        bd[i] = bt[i] = bw[i] = -1;
+      }
+      const float* ra = NULL;
+      const float* rb = NULL;
+      const int* q = NULL;
+      if (fp.nlev == 0) {
+        fdmt_init_chan(tile, fp.init_nd[0], W, pt, single);
+      } else {
+        float* a = slots[2 * (fp.nlev - 1)];
+        float* b = slots[2 * (fp.nlev - 1) + 1];
+        fdmt_sub(&fp, fp.nlev - 1, 0, tile, W, pt, slots, a);
+        fdmt_sub(&fp, fp.nlev - 1, 1, tile, W, pt, slots, b);
+        ra = a;
+        rb = b;
+        q = fp.pair[fp.first[fp.nlev]];
       }
       for (int d = row0; d <= D; ++d) {
-        const float* row = r + (size_t)d * W * pt;
-        /* prefix sums over time, per pixel: cs[t + 1] = sum row[0..t] */
+        const float* r;
+        if (fp.nlev == 0) {
+          r = single + (size_t)d * sl;
+        } else {
+          const int lo = q[1 + d], up = q[1 + (D + 1) + d];
+          fdmt_merge_row(ra + (size_t)lo * sl, rb + (size_t)up * sl, lo, W, pt, row);
+          r = row;
+        }
+        /* prefix sums over time, per pixel: cs[t + 1] = sum r[0..t] */
         for (int p = 0; p < pt; ++p) cs[p] = 0.f;
         for (int t = 0; t < W; ++t)
           for (int p = 0; p < pt; ++p)
-            cs[(size_t)(t + 1) * pt + p] = cs[(size_t)t * pt + p] + row[(size_t)t * pt + p];
+            cs[(size_t)(t + 1) * pt + p] = cs[(size_t)t * pt + p] + r[(size_t)t * pt + p];
         for (int wi = 0; wi < nw; ++wi) {
           const int w = widths[wi];
-          const float s = sigma[d * nw + wi];
-          const float inv = s > 0 ? 1.f / s : 0.f;
-          const float lim = clip * s;
-          double acc = 0;
-          int64_t na = 0;
+          const float sg_ = sigma[d * nw + wi];
+          const float inv = sg_ > 0 ? 1.f / sg_ : 0.f;
+          const float lim = clip * sg_;
+          for (int p = 0; p < pt; ++p) { accp[p] = 0; nap[p] = 0; }
           for (int t = t_first; t < W; ++t) {
             const int sg = (t - t_first) / seg;
-            const float* hi = cs + (size_t)(t + 1) * pt;
-            const float* lo = cs + (size_t)(t + 1 - w) * pt;
+            const float* restrict hi = cs + (size_t)(t + 1) * pt;
+            const float* restrict lo = cs + (size_t)(t + 1 - w) * pt;
+            float* restrict b1 = bb + (size_t)sg * pt;
+            int* restrict b2 = bd + (size_t)sg * pt;
+            int* restrict b3 = bt + (size_t)sg * pt;
+            int* restrict b4 = bw + (size_t)sg * pt;
             for (int p = 0; p < pt; ++p) {
-              float v = hi[p] - lo[p];
-              if (fabsf(v) < lim) { acc += (double)v * v; ++na; }
-              float snr = v * inv;
-              int k = p * nseg + sg;
-              if (snr > lb[k]) {
-                lb[k] = snr;
-                li[3 * k] = d; li[3 * k + 1] = t; li[3 * k + 2] = wi;
-              }
+              const float v = hi[p] - lo[p];
+              const int in = fabsf(v) < lim;
+              accp[p] += in ? (double)v * v : 0.0;
+              nap[p] += in;
+              const float snr = v * inv;
+              const int better = snr > b1[p];
+              b1[p] = better ? snr : b1[p];
+              b2[p] = better ? d : b2[p];
+              b3[p] = better ? t : b3[p];
+              b4[p] = better ? wi : b4[p];
             }
           }
+          double acc = 0;
+          int64_t na = 0;
+          for (int p = 0; p < pt; ++p) { acc += accp[p]; na += nap[p]; }
           ssq[d * nw + wi] += acc;
           nn[d * nw + wi] += na;
         }
       }
       for (int p = 0; p < pt; ++p)
         for (int sgi = 0; sgi < nseg; ++sgi) {
-          int k = p * nseg + sgi, g = (p0 + p) * nseg + sgi;
-          best_snr[g] = lb[k];
-          best_info[3 * g] = li[3 * k];
-          best_info[3 * g + 1] = li[3 * k + 1];
-          best_info[3 * g + 2] = li[3 * k + 2];
+          int k = sgi * pt + p, g = (p0 + p) * nseg + sgi;
+          best_snr[g] = bb[k];
+          best_info[3 * g] = bd[k];
+          best_info[3 * g + 1] = bt[k];
+          best_info[3 * g + 2] = bw[k];
         }
     }
 #pragma omp critical
     {
       for (int i = 0; i < final_rows * nw; ++i) { sumsq[i] += ssq[i]; cnt[i] += nn[i]; }
     }
-    free(tile); free(a); free(b); free(offs); free(nds); free(cs); free(ssq); free(nn);
-    free(lb); free(li); free(dsx); free(dstx);
+    free(ssq); free(nn); free(bb); free(bd); free(bt); free(bw); free(accp); free(nap);
+    free(dsx); free(dstx);
   }
+  free(pairbuf);
   return D;
+}
+
+/*
+ * Copy rows src..src + n - 1 of a window [C][W][P] to rows dst..dst + n - 1,
+ * in parallel over channels: the shift of a searched window (Searcher.finish_block).
+ */
+void skymon_shift(float* hist, int C, int W, int P, int dst, int src, int n, int nthreads) {
+#pragma omp parallel for num_threads(nthreads) schedule(static)
+  for (int c = 0; c < C; ++c) {
+    float* h = hist + (size_t)c * W * P;
+    memmove(h + (size_t)dst * P, h + (size_t)src * P, (size_t)n * P * sizeof(float));
+  }
 }
 
 /*
@@ -323,6 +488,55 @@ void skymon_regrid(const float* img, int C, int NN, const int* idx, const float*
     }
   }
 }
+
+/*
+ * Bicubic taps of every slot for one image (geometry.SkyGrid.taps): the
+ * position xy = xy_a + f (xy_b - xy_a) (1-based FITS pixels, [P][2], NaN for
+ * a free slot), the flat indices idx [P][16] into a [grid][grid] image and the
+ * weights w [P][16] of Keys' cubic convolution (a = -0.75); a point within two
+ * pixels of the edge, or not finite, gets zero weights. The arithmetic is that
+ * of geometry.bicubic and geometry._keys in double precision, operation by
+ * operation, so this function is compiled without the fast-math options.
+ */
+#pragma GCC push_options
+#pragma GCC optimize("-fno-fast-math", "-ffp-contract=off", "-fno-unsafe-math-optimizations")
+static void keys4(double f, double* wt) {
+  const double a = -0.75;
+  const double t[4] = {1 + f, f, 1 - f, 2 - f};
+  for (int k = 0; k < 4; ++k) {
+    const double t2 = t[k] * t[k], t3 = pow(t[k], 3.0);
+    const double near = (a + 2) * t3 - (a + 3) * t2 + 1;
+    const double far = a * t3 - (5 * a) * t2 + (8 * a) * t[k] - 4 * a;
+    wt[k] = t[k] <= 1 ? near : far;
+  }
+}
+
+void skymon_taps(const double* xy_a, const double* xy_b, double f, int P, int grid,
+                 double* xy, int32_t* idx, float* w, int nthreads) {
+#pragma omp parallel for num_threads(nthreads) schedule(static)
+  for (int p = 0; p < P; ++p) {
+    const double xx = xy_a[2 * p] + f * (xy_b[2 * p] - xy_a[2 * p]);
+    const double yy = xy_a[2 * p + 1] + f * (xy_b[2 * p + 1] - xy_a[2 * p + 1]);
+    xy[2 * p] = xx;
+    xy[2 * p + 1] = yy;
+    const double x = xx - 1.0, y = yy - 1.0;
+    const double fx0 = floor(x), fy0 = floor(y);
+    const int ok = isfinite(fx0) && isfinite(fy0) && fx0 >= 1 && fy0 >= 1 &&
+                   fx0 < grid - 2 && fy0 < grid - 2;
+    const int64_t x0 = ok ? (int64_t)fx0 : 1, y0 = ok ? (int64_t)fy0 : 1;
+    double wx[4], wy[4];
+    keys4(ok ? x - (double)x0 : 0.0, wx);
+    keys4(ok ? y - (double)y0 : 0.0, wy);
+    int32_t* ix = idx + (size_t)16 * p;
+    float* wp = w + (size_t)16 * p;
+    for (int j = 0; j < 4; ++j)
+      for (int i = 0; i < 4; ++i) {
+        ix[4 * j + i] = (int32_t)((y0 + j - 1) * grid + (x0 + i - 1));
+        wp[4 * j + i] = ok ? (float)(wy[j] * wx[i]) : 0.f;
+      }
+  }
+}
+#pragma GCC pop_options
 
 /* ------------------------------------------------------------ ingest --- */
 
@@ -418,9 +632,12 @@ int skymon_normalise(float* raw, int C, int P, float* mu, float* var, float* pre
   float* meds = malloc(sizeof(float) * (C > 0 ? C : 1));
   float* spreads = malloc(sizeof(float) * (C > 0 ? C : 1));
   int* nsubs = malloc(sizeof(int) * (C > 0 ? C : 1));
-  /* the raw values of every cell, kept from the first pass to the second */
-  float* rvall = malloc(sizeof(float) * ((size_t)C * P > 0 ? (size_t)C * P : 1));
-  uint8_t* ovall = malloc((size_t)C * P > 0 ? (size_t)C * P : 1);
+  /* the raw values of every cell, kept from the first pass to the second, and
+     the clip state; kept for the next call (thread_buffer), since a fresh
+     buffer of this size costs page faults on every image */
+  const size_t ncell = (size_t)C * P > 0 ? (size_t)C * P : 1;
+  float* rvall = thread_buffer(ncell + (ncell + sizeof(float) - 1) / sizeof(float));
+  uint8_t* ovall = (uint8_t*)(rvall + ncell);
   float band_spread = 1.f;
 #pragma omp parallel num_threads(nthreads)
   {
@@ -550,8 +767,6 @@ int skymon_normalise(float* raw, int C, int P, float* mu, float* var, float* pre
   free(meds);
   free(spreads);
   free(nsubs);
-  free(rvall);
-  free(ovall);
   return nlive;
 }
 
@@ -574,6 +789,47 @@ void skymon_tier_push(const float* x, int C, int P, float* base, float* hist, in
       b[p] += a_hp * y;
       h[p] = y;
       if (dc) dc[p] += v;
+    }
+  }
+}
+
+/*
+ * One image into the tiers it reaches, in one call: x into tier 0 as
+ * skymon_tier_push does; for j < ntier - 1, tier j's decimation sum is then
+ * complete, and dec_j * scale (scale = 1/sqrt(2)) is pushed into tier j + 1
+ * while dec_j is set to zero. The last tier reached adds its input to its own
+ * sum when dec[ntier - 1] is not NULL. The same operations as successive
+ * calls of skymon_tier_push (Searcher._push_tier), one channel at a time.
+ * base, hist, dec: arrays of ntier pointers; W, pos: [ntier].
+ */
+void skymon_tier_cascade(const float* x, int C, int P, int ntier, float** base, float** hist,
+                         const int* W, const int* pos, float** dec, float a_hp, float scale,
+                         int nthreads) {
+#pragma omp parallel num_threads(nthreads)
+  {
+    float* tmp = thread_buffer((size_t)P > 0 ? (size_t)P : 1);
+#pragma omp for schedule(static)
+    for (int c = 0; c < C; ++c) {
+      const float* xc = x + (size_t)c * P;
+      for (int j = 0; j < ntier; ++j) {
+        float* b = base[j] + (size_t)c * P;
+        float* h = hist[j] + ((size_t)c * W[j] + pos[j]) * P;
+        float* dc = dec[j] ? dec[j] + (size_t)c * P : NULL;
+        for (int p = 0; p < P; ++p) {
+          float v = xc[p];
+          float y = v - b[p];
+          b[p] += a_hp * y;
+          h[p] = y;
+          if (dc) dc[p] += v;
+        }
+        if (j + 1 < ntier) {
+          for (int p = 0; p < P; ++p) {
+            tmp[p] = dc[p] * scale;
+            dc[p] = 0.f;
+          }
+          xc = tmp;
+        }
+      }
     }
   }
 }

@@ -267,7 +267,7 @@ class Monitor:
         if self.grid_next is None or unix >= self.grid_next:
             self._update_grid(unix)
         else:
-            self.grid.taps(unix)
+            self.grid.taps(unix, self.cfg.nthreads)
         self.last_index = n
         if item is None:
             results = self.searcher.push(None)

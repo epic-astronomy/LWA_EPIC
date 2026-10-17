@@ -52,6 +52,79 @@ class TestDedispersion(unittest.TestCase):
         got = kernels.fdmt(x, kernels.flatten_plan(plan), 64, nthreads=3, ptile=4)
         np.testing.assert_array_equal(ref, got)
 
+    def test_tier_cascade_matches_single_pushes(self):
+        """One cascade call does what successive tier_push calls and the decimation do"""
+        from types import SimpleNamespace as NS
+        rng = np.random.default_rng(6)
+        C, P, W, n = 4, 37, 9, 3
+        k = float(np.float32(1 / math.sqrt(2)))
+
+        def tiers():
+            return [NS(base=rng.standard_normal((C, P)).astype(np.float32),
+                       history=np.zeros((C, W, P), np.float32), pos=2 + j,
+                       acc=rng.standard_normal((C, P)).astype(np.float32)) for j in range(n)]
+        a = tiers()
+        b = [NS(base=t.base.copy(), history=t.history.copy(), pos=t.pos, acc=t.acc.copy())
+             for t in a]
+        x = rng.standard_normal((C, P)).astype(np.float32)
+        kernels.tier_cascade(x, a, 0.03, k, last_dec=True, nthreads=2)
+        y = x
+        for j, t in enumerate(b):
+            kernels.tier_push(y, t.base, t.history, t.pos, 0.03, t.acc)
+            if j + 1 < n:
+                y = t.acc * np.float32(k)
+                t.acc[:] = 0
+        for u, v in zip(a, b):
+            for f in ("base", "history", "acc"):
+                np.testing.assert_array_equal(getattr(u, f), getattr(v, f))
+
+    def test_search_matches_reference(self):
+        """kernels.search: the FDMT and boxcar search, against numpy on the same transform"""
+        rng = np.random.default_rng(8)
+        C, D, W, nb, P, seg = 64, 128, 200, 64, 45, 16
+        plan = fdmt_plan(self.edges, D)
+        flat = kernels.flatten_plan(plan)
+        x = rng.standard_normal((C, W, P)).astype(np.float32)
+        x[:, W - 20, 5] += 3.0
+        widths = np.array([1, 2, 4, 8], np.int32)
+        sigma = (8 + rng.random((D + 1, 4))).astype(np.float32)
+        for row0 in (0, D // 2 + 1):
+            best, info, sumsq, cnt = kernels.search(x, flat, D, row0, nb, widths, sigma, seg,
+                                                    clip=5.0, nthreads=3, ptile=8, detrend=False)
+            rows = fdmt(x, plan)  # [D + 1, W, P]
+            cs = np.concatenate([np.zeros((D + 1, 1, P), np.float32),
+                                 np.cumsum(rows, axis=1, dtype=np.float32)], 1)
+            nseg = nb // seg
+            ref = np.full((P, nseg), -np.inf, np.float32)
+            rinfo = np.full((P, nseg, 3), -1, np.int32)
+            ssq = np.zeros((D + 1, 4))
+            for d in range(row0, D + 1):
+                for wi, w in enumerate(widths):
+                    inv = np.float32(1) / sigma[d, wi]
+                    for t in range(W - nb, W):
+                        v = cs[d, t + 1] - cs[d, t + 1 - w]
+                        ssq[d, wi] += np.sum(v[np.abs(v) < 5 * sigma[d, wi]].astype(float) ** 2)
+                        snr = v * inv
+                        sg = (t - (W - nb)) // seg
+                        up = snr > ref[:, sg]
+                        ref[up, sg] = snr[up]
+                        rinfo[up, sg] = (d, t, wi)
+            np.testing.assert_array_equal(best, ref)
+            np.testing.assert_array_equal(info, rinfo)
+            np.testing.assert_allclose(sumsq, ssq, rtol=1e-9)
+
+    def test_window_shift(self):
+        h = np.random.default_rng(2).standard_normal((3, 10, 5)).astype(np.float32)
+        ref = h.copy()
+        ref[:, :4] = h[:, 6:10]
+        kernels.shift(h, 0, 6, 4, nthreads=2)
+        np.testing.assert_array_equal(h, ref)
+        h2 = ref.copy()
+        ref2 = ref.copy()
+        ref2[:, :7] = ref[:, 3:10].copy()
+        kernels.shift(h2, 0, 3, 7, nthreads=2)  # overlapping
+        np.testing.assert_array_equal(h2, ref2)
+
     def test_pulse_peaks_at_its_delay(self):
         D = 64
         plan = fdmt_plan(self.edges, D)
@@ -183,6 +256,28 @@ class TestGeometry(unittest.TestCase):
             idx, w = bicubic(np.array([x0]), np.array([y0]), 12)
             peak = float((beam.ravel()[idx[0]] * w[0]).sum())
             self.assertTrue(0.999 < peak < 1.009, (x0, y0, peak))
+
+    def test_compiled_taps_match_bicubic(self):
+        """kernels.taps reproduces bicubic bit for bit, edges and free slots included"""
+        from skymon.geometry import bicubic
+        rng = np.random.default_rng(4)
+        P, G = 5000, 128
+        xy_a = rng.uniform(-2, G + 2, (P, 2))
+        xy_b = xy_a + rng.normal(0, 0.3, (P, 2))
+        xy_a[::50] = np.nan
+        xy_b[::50] = np.nan
+        edge = np.array([1.0, 2.0, 3.0, G - 2.0, G - 1.0, G - 0.5])
+        xy_a[1::97, 0] = np.resize(edge, len(xy_a[1::97]))
+        xy_b[1::97] = xy_a[1::97]
+        xy, idx, w = np.zeros((P, 2)), np.zeros((P, 16), np.int32), np.zeros((P, 16), np.float32)
+        for f in (0.0, 0.37, 1.0, 1.5):
+            kernels.taps(xy_a, xy_b, f, G, xy, idx, w, nthreads=3)
+            ref = xy_a + f * (xy_b - xy_a)
+            ok = np.isfinite(ref[:, 0])
+            i2, w2 = bicubic(np.where(ok, ref[:, 0], np.nan), np.where(ok, ref[:, 1], np.nan), G)
+            np.testing.assert_array_equal(xy, ref)
+            np.testing.assert_array_equal(idx, i2)
+            np.testing.assert_array_equal(w, w2)
 
     def test_tracked_pixels_follow_the_sky(self):
         g = SkyGrid(8, el_min_deg=10.0)

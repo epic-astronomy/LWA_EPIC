@@ -300,16 +300,16 @@ class SkyGrid:
         sl = np.where(nb >= 0, self.slot_of[np.maximum(nb, 0)], -1)
         self.nbr[act] = sl.T.astype(np.int32)
 
-    def taps(self, unix: float):
-        """Bilinear taps of every tracked pixel for an image starting at unix"""
+    def taps(self, unix: float, nthreads: int = 1):
+        """
+        Bicubic taps of every tracked pixel for an image starting at unix
+        (kernels.taps: the arithmetic of bicubic, in compiled code, as it runs
+        for every image)
+        """
+        from . import kernels
+
         f = min(max((unix - self.t_a) / (self.t_b - self.t_a), 0.0), 1.5)
-        xy = self.xy_a + f * (self.xy_b - self.xy_a)
-        ok = np.isfinite(xy[:, 0])
-        idx, w = bicubic(np.where(ok, xy[:, 0], np.nan), np.where(ok, xy[:, 1], np.nan),
-                         self.grid_size)
-        self.idx[:] = idx
-        self.w[:] = w
-        self.xy[:] = xy
+        kernels.taps(self.xy_a, self.xy_b, f, self.grid_size, self.xy, self.idx, self.w, nthreads)
 
     def nearest_slot(self, ra: float, dec: float) -> int:
         import healpy as hp

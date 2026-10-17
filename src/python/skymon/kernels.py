@@ -76,6 +76,17 @@ def lib():
                                        ctypes.c_int, ctypes.c_int, ctypes.c_float,
                                        ctypes.c_void_p, ctypes.c_int]
         L.skymon_tier_push.restype = None
+        L.skymon_shift.argtypes = [f32p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                   ctypes.c_int, ctypes.c_int, ctypes.c_int]
+        L.skymon_shift.restype = None
+        L.skymon_taps.argtypes = [f64p, f64p, ctypes.c_double, ctypes.c_int, ctypes.c_int, f64p,
+                                  i32p, f32p, ctypes.c_int]
+        L.skymon_taps.restype = None
+        pp = ctypes.POINTER(ctypes.c_void_p)
+        L.skymon_tier_cascade.argtypes = [f32p, ctypes.c_int, ctypes.c_int, ctypes.c_int, pp, pp,
+                                          i32p, i32p, pp, ctypes.c_float, ctypes.c_float,
+                                          ctypes.c_int]
+        L.skymon_tier_cascade.restype = None
         _lib = L
     return _lib
 
@@ -162,3 +173,47 @@ def tier_push(x, base, hist, pos, a_hp, dec=None, nthreads=1):
     C, W, P = hist.shape
     assert hist.flags.c_contiguous and x.shape == (C, P)
     lib().skymon_tier_push(x, C, P, base, _ptr(hist), W, pos, a_hp, _ptr(dec), nthreads)
+
+
+def shift(hist, dst, src, n, nthreads=1):
+    """hist[:, dst:dst + n] = hist[:, src:src + n] for a window [C, W, P], in parallel"""
+    C, W, P = hist.shape
+    assert hist.flags.c_contiguous and hist.dtype == np.float32
+    assert 0 <= dst and 0 <= src and n >= 0 and dst + n <= W and src + n <= W
+    lib().skymon_shift(hist, C, W, P, dst, src, n, nthreads)
+
+
+def taps(xy_a, xy_b, f, grid, xy, idx, w, nthreads=1):
+    """Bicubic taps at xy_a + f (xy_b - xy_a) into xy [P, 2], idx and w [P, 16] (in place)"""
+    P = xy_a.shape[0]
+    for a, dt, shape in ((xy_a, np.float64, (P, 2)), (xy_b, np.float64, (P, 2)),
+                         (xy, np.float64, (P, 2)), (idx, np.int32, (P, 16)),
+                         (w, np.float32, (P, 16))):
+        assert a.dtype == dt and a.shape == shape and a.flags.c_contiguous, (a.dtype, a.shape)
+    lib().skymon_taps(xy_a, xy_b, float(f), P, int(grid), xy, idx, w, nthreads)
+
+
+def tier_cascade(x, tiers, a_hp, scale, last_dec=True, nthreads=1):
+    """
+    Push x [C, P] into tiers[0] and the decimated sums on into tiers[1:]
+    (skymon_tier_cascade). Each tier needs .base, .history, .pos and .acc;
+    the acc of every tier but the last is complete and is set to zero, the
+    last tier's acc accumulates when last_dec is set. The caller updates the
+    counters.
+    """
+    n = len(tiers)
+    C, P = x.shape
+    assert x.dtype == np.float32 and x.flags.c_contiguous
+    for t in tiers:
+        assert t.history.flags.c_contiguous and t.history.shape[0] == C and \
+            t.history.shape[2] == P and 0 <= t.pos < t.history.shape[1]
+    V = ctypes.c_void_p * n
+    base = V(*[t.base.ctypes.data for t in tiers])
+    hist = V(*[t.history.ctypes.data for t in tiers])
+    dec = V(*[t.acc.ctypes.data if (i + 1 < n or last_dec) else None
+              for i, t in enumerate(tiers)])
+    W = np.array([t.history.shape[1] for t in tiers], np.int32)
+    pos = np.array([t.pos for t in tiers], np.int32)
+    cast = ctypes.POINTER(ctypes.c_void_p)
+    lib().skymon_tier_cascade(x, C, P, n, ctypes.cast(base, cast), ctypes.cast(hist, cast), W, pos,
+                              ctypes.cast(dec, cast), a_hp, scale, nthreads)
