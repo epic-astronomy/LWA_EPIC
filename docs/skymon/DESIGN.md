@@ -319,6 +319,17 @@ and the events themselves. The selection reads the event copies in the node's ow
 
 A candidate that might be a burst and is not archived is never removed.
 
+**Archive retention.** The archive itself is curated by `archive_curator.py` (outside the skymon package, since it also curates the imager's FITS accumulations of `--out_dir`). The periodic job `epic-archive-curator` runs it once a day on one imaging node.
+
+| Archive data | Removed |
+|---|---|
+| Archived candidates and events, FITS accumulations | when older than 731 days (`--retention-days`), by the date of the day directory (skymon) or the Unix time in the file name (FITS), never by modification time |
+| File system at or above 85% (`--ceiling`) | down to 83% (`--target`): FITS accumulations first, then skymon data, oldest first in each; nothing younger than 30 days (`--protect-days`) |
+| Events awaiting review (`review: pending`, or as listed in `--keep-review`) and the data of their candidates | never |
+| Candidates whose event is not in the archive (review state unknown) | by age only, never to meet the ceiling |
+
+Every listing, read, removal and `statfs` runs in a child process with a time limit; a timed-out operation ends the run without assuming anything was removed. A dry run (`--dry-run`) reports what would be removed and changes nothing. A lock file in the state directory (`--state-dir`) serialises runs started on several nodes, and removing a file already removed is not an error. If the age rule would remove every item of every archive, as after a wrong system clock, the rule is not applied. Removals are logged in the state directory (`curator-YYYYMM.log`), and the rows of removed FITS files are deleted from `epic_files_metadata2`; when the database cannot be reached they are kept in `pending-db.txt` and deleted on a later run.
+
 ### 5.4 Failure modes
 
 | Failure | Effect | Data lost |
@@ -435,13 +446,14 @@ Stated limits (`flux.py`):
 
 ### 7.1 Nomad jobs and placement
 
-All three jobs are constrained to `epic1`–`epic6` and never run on the head node. The playbook `hashistack/ansible_playbooks/25_Skymon_local_storage.yml` installs the local PostgreSQL cluster, the local directories `data`, `combiner` and `cache` under `skymon_root`, the code and a copy of the `epic310` Python environment on local disk, and `db.env` (mode 600, database password from the Ansible vault), so that a monitor can start without NFS, Vault or the head node (`--tags code` refreshes only the code).
+All jobs are constrained to `epic1`–`epic6` and never run on the head node. The playbook `hashistack/ansible_playbooks/25_Skymon_local_storage.yml` installs the local PostgreSQL cluster, the local directories `data`, `combiner` and `cache` under `skymon_root`, the code and a copy of the `epic310` Python environment on local disk, and `db.env` (mode 600, database password from the Ansible vault), so that a monitor can start without NFS, Vault or the head node (`--tags code` refreshes only the code).
 
 | Job | Type | Command (abridged) | CPU placement | Resources |
 |---|---|---|---|---|
 | `epic-skymon` | system, one per node | `nice -n 10 taskset -c 12-23,36-47 … skymon run --shm epic_sky0 --out <skymon_root>/data --port 8095 --threads 8 --inject-every 60 --calinfo <shm>/epic_calinfo_gpu0.json` | cores 24–47, nice 10, 8 compute threads | 8000 MHz, 48 GB |
 | `epic-skymon-combiner` | service, count 1 | `nice -n 10 taskset -c 12-23,36-47 … skymon combine --nodes … --db-port 5433 --out <skymon_root>/combiner --port 8096 --inject-every 6` | cores 24–47, nice 10 | 500 MHz, 1 GB; unlimited rescheduling |
 | `epic-skymon-archiver` | system, one per node | `nice -n 15 ionice -c 3 … skymon archive --data <skymon_root>/data --archive <shared archive>` | nice 15, idle I/O class | 200 MHz, 512 MB |
+| `epic-archive-curator` | periodic batch, daily, one allocation on `epic2`–`epic6` | `nice -n 19 ionice -c 3 … archive_curator.py --fits <accumulations> --skymon <shared archive> --state-dir <state>` | nice 19, idle I/O class | 200 MHz, 1 GB |
 
 The imager has priority: the monitor reads the ring without blocking it and runs at reduced priority on cores separate from the imager. The imager publishes only when started with `--sky_shm epic_sky0`; until then the monitor waits for the ring.
 
@@ -470,7 +482,7 @@ The All-sky monitor page of the Waterfalls site (`/waterfalls/spectrograms/skymo
 export PYTHONPATH=<repository>/src/python
 python -m skymon simtest --realtime --duration 1800 --out <dir>      # simulated sky, then evaluation
 cd tests/python && python -m unittest -v test_known test_chanflag test_skymon test_combiner \
-    test_coincidence test_context test_conditions test_localdb test_flux
+    test_coincidence test_context test_conditions test_localdb test_flux test_archive_curator
 ```
 
 The compiled kernels (`_kernels.c`) are built on first use into a per-host cache directory (`SKYMON_CACHE`; the `cache` directory under `skymon_root` in the Nomad job). `tests/cpp/sky_publisher_writer.cpp` checks the C++ publisher's pixel order against `epic_utils.save_output`. Tests and simulations run on a worker node, never on the head node `epic-sv`.
@@ -594,7 +606,7 @@ The errors are the reported `fluence_err_jy_ms` for single bursts and standard e
 
 ### 10.4 Unit tests
 
-The suite covers the FDMT against numpy and brute force; tier coverage; the ring, including overruns and writer restarts; the C++ publisher's pixel order; the geometry; detection; channel flagging (single channel and image, noise without flags, the persistent mask and its release, a moving carrier that leaves no candidate while a burst is found); an end-to-end simulated sky with stored candidates and HTTP; live injections; known-source labels and the narrowband class; a monitor that waits for a missing imager and survives a restart and a gap; the combiner's consensus and coincidence veto; external context (saved SWPC samples, lightning, unreachable sources); conditions during threefold noise, over HTTP, in events and in the database through an outage; the local database; and flux (the fluence arithmetic and its error, the peak fit, the exact undoing of the high-pass, k = 1 for Cyg A, the fluence of a burst of S/N 40 within 3 errors and 3%, and a burst of S/N 120 kept by the clip's sky-shape exemption).
+The suite covers the FDMT against numpy and brute force; tier coverage; the ring, including overruns and writer restarts; the C++ publisher's pixel order; the geometry; detection; channel flagging (single channel and image, noise without flags, the persistent mask and its release, a moving carrier that leaves no candidate while a burst is found); an end-to-end simulated sky with stored candidates and HTTP; live injections; known-source labels and the narrowband class; a monitor that waits for a missing imager and survives a restart and a gap; the combiner's consensus and coincidence veto; external context (saved SWPC samples, lightning, unreachable sources); conditions during threefold noise, over HTTP, in events and in the database through an outage; the local database; and flux (the fluence arithmetic and its error, the peak fit, the exact undoing of the high-pass, k = 1 for Cyg A, the fluence of a burst of S/N 40 within 3 errors and 3%, and a burst of S/N 120 kept by the clip's sky-shape exemption)); and the archive curator (the age rule read from names, not modification times; review protection; the ceiling order and protected period; the dry run; the lock; a database outage journaled and replayed; the time limit of file operations; and the row deletions in `epic_files_metadata2`).
 
 ---
 

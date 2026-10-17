@@ -134,7 +134,7 @@ No result discards data:
 - every sky event is marked `review: pending`;
 - a verdict is recorded with `POST /api/events/<id>/review {verdict: frb|rfi|unclear, by, note}`.
 
-Monitors keep the data of RFI candidates too, unless the RFI is certain (DM < 2, or much of the sky at once). Each candidate also carries in-band quality measures (`quality.py`). Only class `candidate` (and coordinated injections) opens events; candidates at known sources (`known`) do not. On the node, the archiver (`archiver.py`) removes `known` candidates that are not archived after `--review-days` (14).
+Monitors keep the data of RFI candidates too, unless the RFI is certain (DM < 2, or much of the sky at once). Each candidate also carries in-band quality measures (`quality.py`). Only class `candidate` (and coordinated injections) opens events; candidates at known sources (`known`) do not. On the node, the archiver (`archiver.py`) removes `known` candidates that are not archived after `--review-days` (14). The archive on the shared file system is curated by `archive_curator.py` (job `epic-archive-curator`): archived candidates and events are removed after two years, never while their event awaits review (DESIGN.md §5.3).
 
 **Cross-band coincidence veto.** Terrestrial impulsive interference (lightning sferics, meteor afterglows, sparks) is undispersed: it reaches every band at the same moment, whereas a burst from the sky reaches the bands seconds to hours apart.
 - The combiner keeps the new candidates and RFI of every node for 15 min (`coinc_history_s`).
