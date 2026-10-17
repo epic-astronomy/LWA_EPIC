@@ -135,5 +135,24 @@ class TestSaveOutput(unittest.TestCase):
             dd.get_pixel_indices2, dd._get_engine = orig
 
 
+
+class TestDigestSpectra(unittest.TestCase):
+    def test_stokes_v_is_a_signed_spectrum_over_the_patch(self):
+        """V sums the patch's pixels in each channel (one value per channel), keeps its sign, and scales like I"""
+        from daily_digest import digest_spectra
+
+        rng = np.random.default_rng(3)
+        nchan, g = 6, 16
+        data = rng.normal(size=(4, nchan, g, g))
+        pix_y = np.array([3, 3, 4, 4, 5])
+        pix_x = np.array([7, 8, 7, 8, 9])
+        data[3, :, pix_y, pix_x] = -np.arange(1, nchan + 1)[None, :]  # negative V, rising with channel
+        i_spec, v_spec = digest_spectra(data, pix_y, pix_x, nimg=2)
+        self.assertEqual(v_spec.shape, (nchan,))
+        self.assertEqual(i_spec.shape, (nchan,))
+        np.testing.assert_allclose(v_spec, 2 * (-np.arange(1, nchan + 1) * len(pix_y)) / 2)
+        expect_i = (data[0][:, pix_y, pix_x] + data[1][:, pix_y, pix_x]).sum(axis=1) / 2
+        np.testing.assert_allclose(i_spec, expect_i)
+
 if __name__ == "__main__":
     unittest.main()

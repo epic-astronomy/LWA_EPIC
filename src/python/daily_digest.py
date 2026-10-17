@@ -51,17 +51,35 @@ def _get_engine():
     return _engine
 
 
+def digest_spectra(data, pix_y, pix_x, nimg=1):
+    """
+    Stokes I and V spectra of one source's patch, as means per image.
+
+    data [4][chan][y][x] holds X*X, Y*Y, Re(X*Y), Im(X*Y) summed over nimg
+    images; pix_y, pix_x are the patch's pixels (0-based). Each spectrum sums
+    the patch's pixels in every channel:
+      I = XX + YY,
+      V = 2 Im(XY*) (signed; the sign convention and the X-Y phase of the
+          array are not calibrated, so V is a relative measure).
+    """
+    scale = 1.0 / max(1, int(nimg))
+    patch = data[:, :, pix_y, pix_x]  # [4][chan][npix]
+    stokes_i = (patch[0] + patch[1]).sum(axis=1) * scale
+    stokes_v = 2.0 * patch[3].sum(axis=1) * scale
+    return stokes_i, stokes_v
+
+
 def ingest_daily_digest(ihdu, phdu, data, cfreq, nimg=1):
     """
     Extract pixel values for each source in the watch list,
-    create stokes I and V by adding all the values in the kernel,
+    create stokes I and V spectra by adding the kernel's pixels in each
+    channel (digest_spectra),
     and ingest it into the DB.
 
     data is the sum of nimg images; the spectra are divided by nimg (means per
     image), so that partial and full accumulations, and accumulations of any
     length, are on the same scale.
     """
-    scale = 1.0 / max(1, int(nimg))
     indices = get_pixel_indices2(ihdu, phdu, 0)
     if indices["nsrc"][0] <= 0:
         return
@@ -72,37 +90,15 @@ def ingest_daily_digest(ihdu, phdu, data, cfreq, nimg=1):
     rows = []
     # loop over each source and insert
     for i in range(nsrc):
-        # XYc_re = data[
-        #     2,  # Re(X*Y)
-        #     :,  # all channels
-        #     indices["pix_y"][i * ncoords : (i + 1) * ncoords].astype(int) - 1,
-        #     indices["pix_x"][i * ncoords : (i + 1) * ncoords].astype(int) - 1,
-        # ]/1e3
-        Xyc_im = data[
-            3,  # Im(X*Y)
-            :,  # all channels
-            indices["pix_y"][i * ncoords : (i + 1) * ncoords].astype(int) - 1,
-            indices["pix_x"][i * ncoords : (i + 1) * ncoords].astype(int) - 1,
-        ]
-
-        stokes_V = np.abs(Xyc_im).sum(axis=0) * scale
+        sl = slice(i * ncoords, (i + 1) * ncoords)
+        stokes_i, stokes_v = digest_spectra(
+            data, indices["pix_y"][sl].astype(int) - 1, indices["pix_x"][sl].astype(int) - 1, nimg)
         rows.append(
             dict(
                 source_name=indices["src_ids"][i * ncoords],
                 img_time=ihdu["DATETIME"],
-                stokes_i=(data[
-                    0:2,  # X*X, Y*Y
-                    :,  # all channels
-                    indices["pix_y"][i * ncoords : (i + 1) * ncoords].astype(
-                        int
-                    )
-                    - 1,
-                    indices["pix_x"][i * ncoords : (i + 1) * ncoords].astype(
-                        int
-                    )
-                    - 1,
-                ].sum(axis=(0, 2)) * scale).tolist(),
-                stokes_v=stokes_V.tolist(),
+                stokes_i=stokes_i.tolist(),
+                stokes_v=stokes_v.tolist(),
                 cfreq=cfreq
             )
         )
