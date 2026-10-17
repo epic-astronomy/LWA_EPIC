@@ -124,11 +124,16 @@ def save_output(output_arr, grid_size, nchan, outdir, metadata):
     for k, v in metadata.items():
         # print("py", k,v)
         phdu.header[k] = v
-    phdu.header["DATE-OBS"] = Time(
-        metadata["time_tag"] / FS + 1e-3 * metadata["img_len_ms"] / 2.0,
-        format="unix",
-        precision=6,
-    ).isot
+    # An accumulation of --nimg_accum images spans img_len_ms; the sky drifts by
+    # 0.25 deg per minute meanwhile. Times, the LST and the celestial WCS refer
+    # to the middle of the span, so that a source's pixel (and the daily digest
+    # read from it) is centred on its track through the accumulation.
+    t_beg = metadata["time_tag"] / FS
+    t_end = t_beg + 1e-3 * metadata["img_len_ms"]
+    t_mid = 0.5 * (t_beg + t_end)
+    phdu.header["DATE-OBS"] = Time(t_mid, format="unix", precision=6).isot
+    phdu.header["DATE-BEG"] = Time(t_beg, format="unix", precision=6).isot
+    phdu.header["DATE-END"] = Time(t_end, format="unix", precision=6).isot
 
     sll = (
         2 * metadata["grid_size"] * np.sin(np.pi * metadata["grid_res"] / 360)
@@ -154,7 +159,7 @@ def save_output(output_arr, grid_size, nchan, outdir, metadata):
     crit_pix_f = (metadata["nchan"] - 1) * 0.5 + 1  # +1 for FITS numbering
 
     t0 = Time(
-        metadata["time_tag"] / FS,
+        t_mid,
         format="unix",
         precision=6,
         location=(
@@ -190,8 +195,7 @@ def save_output(output_arr, grid_size, nchan, outdir, metadata):
     ihdu.header["CRVAL4"] = -5  # pol_nums[pol_order[0]]
 
     hdulist = fits.HDUList([phdu, ihdu])
-    unix_time = metadata["time_tag"] / FS +\
-     1e-3 * metadata["img_len_ms"] / 2.0
+    unix_time = t_mid
     filename = f"EPIC_{unix_time:.3f}_{cfreq/1e6:.3f}MHz"
     hdulist.writeto(f"{outdir}{filename}.fits", overwrite=True)
 
