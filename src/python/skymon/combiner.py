@@ -39,6 +39,11 @@ already passed, the accumulated spectrum around its arrival), and every event
 is marked for review, implausible ones last. A reviewer's verdict (frb, rfi,
 unclear) is recorded with the event (POST /api/events/<id>/review).
 
+A decided event also carries the data quality of each band that detected or
+measured it (conditions: the worst noise ratio, RFI rate and so on in the
+minute before, conditions.py) and `disturbed` when any of those bands was
+in a disturbed period.
+
 With two or more detections, the DM and t_inf are refitted to all of them,
 which pins the DM far more closely than one 3 MHz band can.
 
@@ -416,6 +421,8 @@ class Combiner:
         cand = {k: c.get(k) for k in ("id", "cls", "snr", "dm", "dm_step", "t_inf", "t_bottom",
                                       "ra", "dec", "el", "tier", "tier_dt", "width_s",
                                       "f_lo_mhz", "f_hi_mhz", "injection_id")}
+        # the band's data quality in the minute before the detection (conditions.py)
+        cand["conditions"] = (c.get("quality") or {}).get("conditions")
         if b.get("candidate") and b["candidate"]["snr"] >= c["snr"]:
             b.setdefault("others", []).append(c["id"])
         else:
@@ -586,6 +593,19 @@ class Combiner:
         could = [n for n, b in bands.items() if b.get("state") in ("detected", "followup",
                                                                     "searched")]
         spectrum = characterise(band_values(ev))
+        # data quality of the bands that measured the burst: a detection made
+        # while a band was disturbed (storm, solar activity, interference)
+        # calls for a closer look at that band's data
+        cond = {}
+        for name, b in bands.items():
+            if b.get("state") == "detected":
+                c = b["candidate"].get("conditions")
+            elif b.get("state") == "followup":
+                c = b["followup"].get("conditions")
+            else:
+                continue
+            if c is not None:
+                cond[name] = c
         if len(seen) >= self.cfg.min_bands:
             status = "confirmed"
         elif len(seen) >= 1 and len(could) >= 2:
@@ -596,7 +616,8 @@ class Combiner:
                   combined_snr=float(np.sum(measured) / math.sqrt(len(measured)))
                   if measured else None,
                   best_snr=float(max(measured)) if measured else None,
-                  spectrum=spectrum, decided=now,
+                  spectrum=spectrum, decided=now, conditions=cond,
+                  disturbed=any(bool(c.get("disturbed")) for c in cond.values()),
                   review=ev.get("review") or ("pending" if ev["kind"] == "sky" else "not needed"),
                   review_priority=dict(confirmed=1, band_limited=2, unconfirmable=3,
                                        implausible=4)[status])

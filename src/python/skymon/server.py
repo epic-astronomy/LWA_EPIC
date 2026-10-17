@@ -13,6 +13,8 @@ HTTP interface of a running monitor (standard library only).
   GET /api/sky                         tracked pixels with their age and noise
   GET /api/injections                  live injection summary
   GET /api/watches?event=              watches requested by the combiner, and their results
+  GET /api/conditions?since=<unix>     data-quality samples (conditions.py), every 10 s of
+                                       data over the last 6 h, with the latest summary
   POST /api/watch    {ra, dec, dm, t_inf, dm_err, t_tol, id, event_id}
                                        measure this position at the burst's predicted
                                        arrival in this band (watch.py)
@@ -121,6 +123,9 @@ def make_handler(monitor):
                     return self._json(monitor.injector.summary())
                 if parts[:2] == ["api", "watches"]:
                     return self._json(monitor.watch_list(q.get("event")))
+                if parts[:2] == ["api", "conditions"]:
+                    since = float(q["since"]) if "since" in q else None
+                    return self._json(monitor.conditions(since))
                 return self._json(dict(error="not found"), 404)
             except (ValueError, KeyError) as e:
                 return self._json(dict(error=str(e)), 400)

@@ -55,6 +55,8 @@ def add_monitor_args(p):
                    help="fewer effective channels than this is narrowband RFI")
     p.add_argument("--known-pulsars", default=None,
                    help="CSV name,ra_deg,dec_deg,dm,period_s of pulsars added to the built-in list")
+    p.add_argument("--disturbed-rfi-rate", type=float, default=d.cond_rfi_rate,
+                   help="RFI candidates per minute above which a period is marked disturbed")
     p.add_argument("--seed", type=int, default=None)
 
 
@@ -66,7 +68,8 @@ def make_config(a) -> Config:
                   inject_dm=tuple(a.inject_dm), store_rfi=not a.no_rfi_records, seed=a.seed,
                   narrowband_min_channels=a.narrowband_min_channels,
                   known_pulsars_csv=a.known_pulsars,
-                  clip=a.clip, chan_flag_sigma=a.chan_flag_sigma)
+                  clip=a.clip, chan_flag_sigma=a.chan_flag_sigma,
+                  cond_rfi_rate=a.disturbed_rfi_rate)
 
 
 def run_ring(monitor: Monitor, ring: str, stop: threading.Event, max_queue: int = 512,
