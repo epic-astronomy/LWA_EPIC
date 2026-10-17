@@ -83,13 +83,14 @@ class SkySnapshot:
 
 def build_snapshot(t: Time, chans, pol="XX", nside=32, extra_sources=None, flux_scale=None,
                    offsets_deg=None, sun_flux_factor=1.0, beam_model="empirical", fluct_rms=0.0,
-                   diffuse_model="lfsm"):
+                   diffuse_model="auto"):
     """Sky snapshot for the given time.
 
     extra_sources: list of (name, enu, flux_at_74MHz, spectral_index) not in the model sky
     flux_scale: dict name -> multiplicative error applied to that point source
     offsets_deg: dict name -> (d_east, d_north) apparent shift in degrees (ionospheric refraction)
-    diffuse_model: sky.DIFFUSE_MODELS entry for the diffuse component (default LFSM)
+    diffuse_model: sky.DIFFUSE_MODELS entry for the diffuse component (default "auto": OVRO-LWA
+                   at 30-80 MHz when its map is installed, LFSM otherwise)
     """
     chans = np.asarray(chans)
     nu = chans * E.CHAN_BW

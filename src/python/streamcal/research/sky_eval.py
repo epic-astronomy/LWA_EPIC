@@ -1,7 +1,7 @@
 """Score a calibration sky model on the fully correlated TBF captures (direction-independent fit).
 
     STREAMCAL_ATEAM=... STREAMCAL_CATALOG=... python sky_eval.py OUT.npy CAPTURE.npz [...]
-    env: EV_CHANS (default 1236,1428,1620,1812), EV_NSIDE (32), EV_DIFFUSE (lfsm | ovrolwa | gsm16), EV_UMIN (1.0), EV_TMIN (1.5 h UTC),
+    env: EV_CHANS (default 1236,1428,1620,1812), EV_NSIDE (32), EV_DIFFUSE (auto | lfsm | ovrolwa | gsm16), EV_UMIN (1.0), EV_TMIN (1.5 h UTC),
          EV_STRIDE (use every Nth capture, default 2)
 
 Per capture, channel and polarisation: stefcal_sky (gains, A-team fluxes and offsets) against the
@@ -30,7 +30,7 @@ nside = int(env("EV_NSIDE", "32"))
 umin = float(env("EV_UMIN", "1.0"))
 tmin = float(env("EV_TMIN", "1.5"))
 stride = int(env("EV_STRIDE", "2"))
-dmodel = env("EV_DIFFUSE", "lfsm")
+dmodel = env("EV_DIFFUSE", "auto")
 ant = np.flatnonzero(G.eg.used_stands())
 r = G.eg.stand_xyz()[ant]
 bl = np.linalg.norm(r[:, None, :2] - r[None, :, :2], axis=-1)

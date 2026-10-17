@@ -3,7 +3,8 @@
     python prep_ovrolwa.py MAPDIR [OUT.npz] [CONTRAST]
 
 MAPDIR holds the LAMBDA release of the OVRO-LWA m-mode maps (Eastwood et al. 2018,
-AJ 156, 32): ovro_lwa_sky_map_{36.528,41.760,46.992,52.224}MHz.fits, HEALPix nside 2048,
+AJ 156, 32): ovro_lwa_sky_map_{36.528,...,73.152}MHz.fits (8 maps, 5.232 MHz apart;
+https://lambda.gsfc.nasa.gov/data/foregrounds/ovro/), HEALPix nside 2048,
 RING, Galactic, brightness temperature in K, 15-26 arcmin resolution. They are read
 as FITS arrays only.
 
@@ -45,7 +46,8 @@ from astropy.coordinates import SkyCoord  # noqa: E402
 
 from streamcal import sky as S  # noqa: E402
 
-NODES = (36.528, 41.760, 46.992, 52.224)
+# the 8 maps of the release, 36.528-73.152 MHz in 5.232 MHz steps; those present in MAPDIR are used
+ALL_NODES = (36.528, 41.760, 46.992, 52.224, 57.456, 62.688, 67.920, 73.152)
 NS_WORK = 512
 NS_OUT = 256
 DEC_MIN = -30.0
@@ -53,6 +55,8 @@ BLEND = 4.0  # deg
 
 
 def main(mapdir, out, contrast=1.0):
+    NODES = tuple(nu for nu in ALL_NODES if os.path.exists(os.path.join(mapdir, f"ovro_lwa_sky_map_{nu:.3f}MHz.fits")))
+    print("OVRO-LWA maps:", NODES, flush=True)
     npix = hp.nside2npix(NS_WORK)
     th, ph = hp.pix2ang(NS_WORK, np.arange(npix))
     dec = SkyCoord(l=ph * u.rad, b=(np.pi / 2 - th) * u.rad, frame="galactic").icrs.dec.deg

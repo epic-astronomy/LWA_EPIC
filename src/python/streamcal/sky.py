@@ -98,12 +98,25 @@ def _dg2020(name, nu_mhz):
     y[lo] = ls[0] + s_lo * (x[lo] - ln[0])
     y[hi] = ls[-1] + s_hi * (x[hi] - ln[-1])
     out = np.exp(y)
+    # below 30 MHz the de Gasperin data end; use the curvature of the Baars fit (which
+    # includes the low-frequency flattening and Cas A's turnover towards ~20 MHz), scaled
+    # to match at 30 MHz, instead of extrapolating the 30-35 MHz slope
+    nu = np.exp(x)
+    low = nu < 30.0
+    if low.any() and name in _BAARS_SHAPE:
+        b = _BAARS_SHAPE[name]
+        out[low] = np.exp(np.interp(np.log(30.0), ln, ls)) * b(nu[low]) / b(30.0)
     if name == "CasA":
         out = out * (1 - 0.007) ** (_EPOCH_YEAR - 2015.65)
     return out if np.ndim(nu_mhz) else float(out[0])
 
 
 _EPOCH_YEAR = 2026.8  # year at which Cas A is evaluated (overridden by set_epoch)
+# spectral shapes used below 30 MHz (normalisation irrelevant; Cas A without secular fading)
+_BAARS_SHAPE = {"CasA": lambda nu: _baars(nu, 5.625, -0.634, -0.023),
+                "CygA": lambda nu: _baars(nu, 4.695, 0.085, -0.178),
+                "VirA": lambda nu: (nu / 74.0) ** -0.8,
+                "TauA": lambda nu: (nu / 74.0) ** -0.25}
 
 
 def set_epoch(year):
@@ -210,15 +223,49 @@ def _lfsm_galactic(nside: int, nu_mhz_key: tuple):
 # 15-26 arcmin, 36.5-73 MHz, hybrid with LFSM for the modes they lack; built by
 # research/prep_ovrolwa.py), and "gsm16" (Zheng et al. 2017 via pygdsm, about 5 deg
 # below 10 GHz; a control). The hybrid file is found through $STREAMCAL_OVROLWA_MAP.
-DIFFUSE_MODELS = ("lfsm", "ovrolwa", "gsm16")
-OVROLWA_MAP = "/data/streamcal/diffuse_maps/ovrolwa_hybrid_n256.npz"
+DIFFUSE_MODELS = ("lfsm", "ovrolwa", "gsm16", "auto")
+# "auto": OVRO-LWA inside AUTO_OVROLWA_MHZ (the maps span 36.5-73.2 MHz; the lower EPIC band
+# at ~31 MHz and the top one at ~76 MHz are short extrapolations that still fit better than
+# LFSM), LFSM outside (the 16 and 21 MHz bands) or when no hybrid file is installed.
+AUTO_OVROLWA_MHZ = (30.0, 80.0)
+# The hybrid file: $STREAMCAL_OVROLWA_MAP, else the first of these that exists (node-local
+# disks; built by research/prep_ovrolwa.py). ovrolwa8 has all 8 release maps (36.5-73.2 MHz),
+# ovrolwa_hybrid_n256 only the lower 4 (36.5-52.2 MHz).
+OVROLWA_MAPS = ("/data/streamcal/diffuse_maps/ovrolwa8_hybrid_n256.npz",
+                "/var/tmp/streamcal/diffuse_maps/ovrolwa8_hybrid_n256.npz",
+                "/data/streamcal/diffuse_maps/ovrolwa_hybrid_n256.npz")
+OVROLWA_MAP = OVROLWA_MAPS[0]
+
+
+def ovrolwa_map_path():
+    p = os.environ.get("STREAMCAL_OVROLWA_MAP")
+    if p:
+        return p
+    for p in OVROLWA_MAPS:
+        if os.path.exists(p):
+            return p
+    return None
+
+
+def resolve_diffuse_model(model, nu_mhz):
+    """'auto' -> 'ovrolwa' or 'lfsm' for these frequencies; other names pass through."""
+    if model != "auto":
+        return model
+    nu = np.atleast_1d(nu_mhz)
+    if ovrolwa_map_path() and AUTO_OVROLWA_MHZ[0] <= nu.min() and nu.max() <= AUTO_OVROLWA_MHZ[1]:
+        return "ovrolwa"
+    return "lfsm"
 
 
 @functools.lru_cache(maxsize=1)
 def _ovrolwa_nodes():
     import os
 
-    z = np.load(os.environ.get("STREAMCAL_OVROLWA_MAP", OVROLWA_MAP))
+    p = ovrolwa_map_path()
+    if p is None:
+        raise FileNotFoundError("no OVRO-LWA hybrid map: set $STREAMCAL_OVROLWA_MAP or build it with "
+                                "research/prep_ovrolwa.py into one of sky.OVROLWA_MAPS")
+    z = np.load(p)
     return np.array(z["nu_mhz"], float), np.array(z["maps_k"], float)
 
 
@@ -247,8 +294,29 @@ def _ovrolwa_galactic(nside: int, nu_mhz_key: tuple):
             k = 0 if f < nodes[0] else len(nodes) - 1
             lf = _lfsm_native((float(nodes[k]), float(f)))
             m = maps[k] * np.maximum(lf[1], 1.0) / np.maximum(lf[0], 1.0)
-        out.append(hp.ud_grade(m, nside))
+        out.append(hp.ud_grade(_remove_catalog_fine(m), nside))
     return np.array(out)
+
+
+def _remove_catalog_fine(m, r_in_deg=0.75, r_out_deg=1.25):
+    """Inpaint the fixed catalogue sources (STREAMCAL_CATALOG) out of a 15-26 arcmin map.
+
+    The OVRO-LWA release removed only the eight brightest sources; the rest are in the map
+    and would be counted twice if they are also model point sources."""
+    import healpy as hp
+
+    cat = catalog_sources()
+    if cat is None:
+        return m
+    m = np.array(m, float)
+    nside = hp.npix2nside(len(m))
+    for c in cat[0]:
+        g = c.galactic
+        v = hp.ang2vec(g.l.deg, g.b.deg, lonlat=True)
+        inner = hp.query_disc(nside, v, np.radians(r_in_deg))
+        ring = np.setdiff1d(hp.query_disc(nside, v, np.radians(r_out_deg)), inner)
+        m[inner] = np.median(m[ring])
+    return m
 
 
 @functools.lru_cache(maxsize=4)
@@ -311,8 +379,8 @@ def _fluct(nside: int, rms: float, seed: int):
 
 
 def diffuse(t: Time, nu_mhz: np.ndarray, nside=64, min_alt_deg=0.0, nu_nodes=None, fluct_rms=0.0, fluct_seed=1,
-            model="lfsm"):
-    """Diffuse sky above the horizon (model: one of DIFFUSE_MODELS; LFSM by default).
+            model="auto"):
+    """Diffuse sky above the horizon (model: one of DIFFUSE_MODELS; "auto" by default).
 
     Returns (enu[p,3], jy_per_pix[p,nchan]). The map is evaluated at a few
     frequency nodes and interpolated in log-log, since one EPIC band is only
@@ -321,6 +389,7 @@ def diffuse(t: Time, nu_mhz: np.ndarray, nside=64, min_alt_deg=0.0, nu_nodes=Non
     import healpy as hp
 
     nu_mhz = np.atleast_1d(nu_mhz)
+    model = resolve_diffuse_model(model, nu_mhz)
     if nu_nodes is None:
         nu_nodes = np.unique(np.round([nu_mhz.min(), nu_mhz.mean(), nu_mhz.max()], 3))
     tk = galactic_map(model, nside, tuple(float(x) for x in nu_nodes))  # [nodes, npix] K
