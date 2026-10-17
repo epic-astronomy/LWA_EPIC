@@ -357,6 +357,9 @@ MOFFCuHandler::ProcessGulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, 
         int chan_offset = i * m_nchan_per_stream;
 
 
+        if (m_tcc_tap) {
+            m_tcc_tap->BeforeCopy(stream_i);  // the tap has read the previous gulp
+        }
         cuda_check_err(
           cudaMemcpyAsync(
             (void*)(m_f_eng_cu + f_eng_dat_offset),
@@ -364,6 +367,9 @@ MOFFCuHandler::ProcessGulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, 
             m_nbytes_f_eng_per_stream,
             cudaMemcpyHostToDevice,
             stream_i));
+        if (m_tcc_tap) {
+            m_tcc_tap->AfterCopy(i, stream_i);
+        }
         VLOG(2)<<"Launching the kernel\n";
         if(m_imaging_kernel==nullptr){
             VLOG(2)<<"Null imaging kernel\n";
@@ -390,6 +396,10 @@ MOFFCuHandler::ProcessGulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, 
         }
     }
 
+    if (m_tcc_tap) {
+        m_tcc_tap->Launch(m_f_eng_cu);  // runs on its own stream beside the imaging kernels
+    }
+
     if (p_last) {
         VLOG(2)<<"Syncing the kernels\n";
         for (int i = 0; i < m_nstreams; ++i) {
@@ -410,6 +420,13 @@ MOFFCuHandler::ProcessGulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, 
 }
 
 void
+MOFFCuHandler::EnableTccTap(const TccTapOptions& p_opts, int p_nchan, int p_nseq)
+{
+    cuda_check_err(cudaSetDevice(m_device_id));
+    m_tcc_tap = std::make_unique<TccTap>(p_opts, m_device_id, p_nchan, p_nseq, m_nstreams);
+}
+
+void
 MOFFCuHandler::DestroyTextures(cudaArray_t& p_tex_arr, cudaTextureObject_t& p_tex_obj)
 {
     cuda_check_err(cudaSetDevice(m_device_id));
@@ -420,6 +437,7 @@ MOFFCuHandler::DestroyTextures(cudaArray_t& p_tex_arr, cudaTextureObject_t& p_te
 MOFFCuHandler::~MOFFCuHandler()
 {
     cuda_check_err(cudaSetDevice(m_device_id));
+    m_tcc_tap.reset();  // its streams may still read the gulp buffer
     // DestroyTextures(m_antpos_tex_arr, m_antpos_tex);
     // DestroyTextures(m_phases_tex_arr, m_phases_tex);
     if (is_antpos_set) {

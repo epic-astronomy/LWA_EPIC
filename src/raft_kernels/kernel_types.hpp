@@ -165,8 +165,12 @@ struct Kernel<_CORRELATOR> : KernelTypeDefs {
     };
     correlator_options.gain_table_path = with_gpu(options["gain_table"].as<std::string>());
     correlator_options.caltap_nseq = options["caltap_nseq"].as<int>();
-    correlator_options.caltap_path =
-        correlator_options.caltap_nseq > 0 ? with_gpu(options["caltap_out"].as<std::string>()) : "";
+    correlator_options.caltap_gpu = options["caltap_gpu"].as<bool>();
+    LOG_IF(FATAL, correlator_options.caltap_gpu && correlator_options.caltap_nseq > 0)
+        << "--caltap_gpu and --caltap_nseq are alternatives";
+    correlator_options.caltap_path = correlator_options.caltap_nseq > 0 || correlator_options.caltap_gpu
+                                         ? with_gpu(options["caltap_out"].as<std::string>())
+                                         : "";
     correlator_options.caltap_interval_s = options["caltap_interval"].as<float>();
     correlator_options.caltap_threads = options["caltap_threads"].as<int>();
     correlator_options.caltap_batch = options["caltap_batch"].as<int>();

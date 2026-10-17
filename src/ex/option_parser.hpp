@@ -141,7 +141,13 @@ cxxopts::Options GetEpicOptions() {
       cxxopts::value<int>()->default_value("2"))(
       "caltap_batch",
       "Calibration tap: gulps staged per X-engine call (amortises the accumulator updates).",
-      cxxopts::value<int>()->default_value("8"))
+      cxxopts::value<int>()->default_value("8"))(
+      "caltap_gpu",
+      "Calibration tap on the GPU: correlate every gulp with the tensor-core "
+      "correlator (all samples, ~0.5 ms per gulp beside the imaging kernels) "
+      "instead of --caltap_nseq sequences on the CPU. Needs epic++ built with "
+      "-DEPIC_TCC_ROOT.",
+      cxxopts::value<bool>()->default_value("false"))
       ("out_dir","Output directory to store the long accumulation files. Defaults to the current directory.",cxxopts::value<std::string>()->default_value("./"));
 
   options.add_options("Execution options")(
@@ -332,6 +338,7 @@ void InitInfoMetric(const cxxopts::ParseResult& result){
     {"gain_table",result["gain_table"].as<std::string>()},
     {"caltap_nseq",std::to_string(result["caltap_nseq"].as<int>())},
     {"caltap_interval",std::to_string(result["caltap_interval"].as<float>())},
+    {"caltap_gpu",std::to_string(result["caltap_gpu"].as<bool>())},
     {"nstreams",std::to_string(result["nstreams"].as<int>())},
     {"ngpus",std::to_string(result["ngpus"].as<int>())},
     {"gpu_ids",VJoin(result["gpu_ids"].as<iVec>())},

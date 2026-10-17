@@ -1,13 +1,15 @@
 #!/bin/bash
 # Imager + calibrator benchmark on one GPU node (no F-engine, database, disk or video).
 #   bench_run.sh NAME NGULPS [extra epic++ options...]
-# Environment: CAL=1 runs the calibration tap, streamcal and the watcher; DATA=path of simulated
-# gulps (empty: zero gulps); ORACLE=1 publishes the exact gain table instead of running streamcal.
+# Environment: CAL=1 runs the calibration tap, streamcal and the watcher; GPUTAP=1 makes that tap
+# the tensor-core correlator on the GPU (--caltap_gpu) instead of the CPU slice; DATA=path of
+# simulated gulps (empty: zero gulps); ORACLE=1 publishes the exact gain table instead of running
+# streamcal.
 set -u
 NAME=$1; NGULPS=$2; shift 2
 ROOT=/FileStore/epicT/epic/LWA_EPIC_streamcal
 BENCH=/FileStore/epicT/epic/streamcal_bench
-MODEL=$BENCH/model75
+MODEL=${MODEL:-$BENCH/model75}
 OUT=/dev/shm/streamcal_bench/$NAME
 mkdir -p $OUT
 rm -f /dev/shm/epic_vis_gpu0 /dev/shm/epic_gains_gpu0
@@ -20,7 +22,11 @@ if [ "${CAL:-0}" = 1 ] || [ "${ORACLE:-0}" = 1 ]; then
   CALOPT="--gain_table /dev/shm/epic_gains_gpu{gpu}"
 fi
 if [ "${CAL:-0}" = 1 ]; then
-  CALOPT="$CALOPT --caltap_nseq ${TAPNSEQ:-50} --caltap_interval 10 --caltap_threads 2"
+  if [ "${GPUTAP:-0}" = 1 ]; then
+    CALOPT="$CALOPT --caltap_gpu --caltap_interval 10"
+  else
+    CALOPT="$CALOPT --caltap_nseq ${TAPNSEQ:-50} --caltap_interval 10 --caltap_threads 2"
+  fi
 fi
 if [ "${ORACLE:-0}" = 1 ]; then
   $BENCH/venv/bin/python $ROOT/src/python/streamcal/research/bench_watch.py $MODEL /dev/shm/epic_gains_gpu0 --oracle
@@ -45,4 +51,4 @@ if [ "${CAL:-0}" = 1 ]; then
   sleep 3
   kill $WATCH 2>/dev/null; pkill -f "streamcal.daemon --vis /dev/shm/epic_vis_gpu0" 2>/dev/null
 fi
-grep -E "bench |bench gen|CalTap|Applied calibration|rror|FATAL" $OUT/epic.log | tail -40
+grep -E "bench |bench gen|CalTap|TccTap|Applied calibration|rror|FATAL" $OUT/epic.log | tail -40

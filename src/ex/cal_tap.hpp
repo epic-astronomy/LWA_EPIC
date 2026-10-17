@@ -16,19 +16,14 @@
 // other of two staging buffers. Correlating several gulps per call amortises
 // the read-modify-write of the 134 MB accumulator, which dominates at
 // nseq = 50: with one gulp per call the tap kept up with every second gulp.
-// After `interval_s` of F-engine time the X-engine thread writes
-//   VisTableHeader (128 bytes)
-//   std::complex<float> R[nchan][npol][nstand][nstand]   (R = sum / nsamp, Hermitian)
-// to a file in /dev/shm under a seqlock (seq odd while writing). The voltages
+// After `interval_s` of F-engine time the X-engine thread publishes the
+// visibility table (vis_table.hpp). The voltages
 // are the raw F-engine samples, before any phases or gains, so the solution
 // does not depend on the gains the imager applied.
 #ifndef SRC_EX_CAL_TAP_HPP_
 #define SRC_EX_CAL_TAP_HPP_
 
-#include <fcntl.h>
 #include <glog/logging.h>
-#include <sys/mman.h>
-#include <unistd.h>
 
 #include <algorithm>
 #include <atomic>
@@ -44,6 +39,7 @@
 #include <vector>
 
 #include "./constants.h"
+#include "./vis_table.hpp"
 #include "./xengine.hpp"
 
 struct CalTapOptions {
@@ -55,31 +51,9 @@ struct CalTapOptions {
   float min_quality{0.98f};  // skip gulps with less valid data than this
 };
 
-struct VisTableHeader {
-  char magic[8];          // "EPICVIS1"
-  uint32_t layout;        // 1
-  uint32_t header_bytes;  // sizeof(VisTableHeader)
-  uint64_t seq;           // seqlock counter, even when stable
-  uint64_t version;       // increases with every published table
-  int64_t chan0;          // F-engine channel number of the first channel
-  uint32_t nchan;
-  uint32_t nstand;
-  uint32_t npol;
-  uint32_t flags;         // reserved
-  uint64_t nsamp;         // samples integrated per channel
-  uint64_t seq_first;     // F-engine sequence of the first tapped gulp
-  uint64_t seq_last;      // F-engine sequence of the last tapped gulp (start)
-  uint32_t ngulps;        // gulps correlated
-  uint32_t nskipped;      // gulps offered but skipped (busy or low quality)
-  uint64_t gulp_nseq;     // sequences per gulp
-  float duty;             // nseq / gulp_nseq
-  char note[28];
-};
-static_assert(sizeof(VisTableHeader) == 128, "VisTableHeader must be 128 bytes");
-
 class CalTap {
  public:
-  explicit CalTap(CalTapOptions p_opts) : m_opts(std::move(p_opts)) {
+  explicit CalTap(CalTapOptions p_opts) : m_opts(std::move(p_opts)), m_writer(m_opts.path) {
     m_opts.batch = std::max(1, m_opts.batch);
     m_stager = std::thread([this] { StageLoop(); });
     m_xeng = std::thread([this] { XengLoop(); });
@@ -94,7 +68,6 @@ class CalTap {
     m_cv_batch.notify_all();
     if (m_stager.joinable()) m_stager.join();
     if (m_xeng.joinable()) m_xeng.join();
-    if (m_map) munmap(m_map, m_map_size);
   }
   CalTap(const CalTap&) = delete;
   CalTap& operator=(const CalTap&) = delete;
@@ -126,7 +99,7 @@ class CalTap {
     m_pending = false;
   }
 
-  uint64_t Version() const { return m_version; }
+  uint64_t Version() const { return m_writer.Version(); }
 
  private:
   struct Item {
@@ -261,79 +234,40 @@ class CalTap {
     m_seq_first = 0;
   }
 
-  bool EnsureMapped(size_t p_bytes) {
-    if (m_map && m_map_size == p_bytes) {
-      return true;
-    }
-    if (m_map) {
-      munmap(m_map, m_map_size);
-      m_map = nullptr;
-    }
-    int fd = ::open(m_opts.path.c_str(), O_RDWR | O_CREAT, 0644);
-    if (fd < 0 || ftruncate(fd, p_bytes) != 0) {
-      LOG(ERROR) << "CalTap: cannot create " << m_opts.path;
-      if (fd >= 0) ::close(fd);
-      return false;
-    }
-    void* p = mmap(nullptr, p_bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    ::close(fd);
-    if (p == MAP_FAILED) {
-      LOG(ERROR) << "CalTap: mmap failed for " << m_opts.path;
-      return false;
-    }
-    m_map = static_cast<uint8_t*>(p);
-    m_map_size = p_bytes;
-    auto* h = reinterpret_cast<VisTableHeader*>(m_map);
-    m_seq = h->seq + (h->seq & 1);  // continue an existing counter
-    return true;
-  }
-
   void Publish() {
-    constexpr size_t kN = LWA_SV_NSTANDS;
-    const size_t per = size_t(LWA_SV_NPOLS) * kN * kN;
-    const size_t bytes = sizeof(VisTableHeader) + size_t(m_nchan) * per * sizeof(std::complex<float>);
-    if (m_nsamp == 0 || !EnsureMapped(bytes)) {
+    if (m_nsamp == 0) {
       return;
     }
-    auto* h = reinterpret_cast<VisTableHeader*>(m_map);
-    auto* seq = reinterpret_cast<std::atomic<uint64_t>*>(&h->seq);
-    seq->store(++m_seq, std::memory_order_relaxed);  // odd: writing
-    std::atomic_thread_fence(std::memory_order_release);
-    auto* R = reinterpret_cast<std::complex<float>*>(m_map + sizeof(VisTableHeader));
+    constexpr size_t kN = LWA_SV_NSTANDS;
+    VisTableHeader h{};
+    h.chan0 = m_chan0;
+    h.nchan = m_nchan;
+    h.nstand = kN;
+    h.npol = LWA_SV_NPOLS;
+    h.nsamp = m_nsamp;
+    h.seq_first = m_seq_first;
+    h.seq_last = m_seq_last;
+    h.ngulps = m_ngulps;
+    h.nskipped = uint32_t(m_nskipped.exchange(0));
+    h.gulp_nseq = m_gulp_nseq;
+    h.duty = float(std::min(m_opts.nseq, m_gulp_nseq)) / float(m_gulp_nseq);
+    std::strncpy(h.note, "xengine-avx2 v1", sizeof(h.note) - 1);
     const float inv = 1.f / float(m_nsamp);
-    for (size_t cp = 0; cp < size_t(m_nchan) * LWA_SV_NPOLS; ++cp) {
-      const int64_t* re = m_re.data() + cp * kN * kN;
-      const int64_t* im = m_im.data() + cp * kN * kN;
-      std::complex<float>* out = R + cp * kN * kN;
-      for (size_t a = 0; a < kN; ++a) {
-        for (size_t b = a; b < kN; ++b) {
-          std::complex<float> v(float(re[a * kN + b]) * inv, float(im[a * kN + b]) * inv);
-          out[a * kN + b] = v;
-          out[b * kN + a] = std::conj(v);
+    const uint64_t v = m_writer.Publish(h, [&](std::complex<float>* R) {
+      for (size_t cp = 0; cp < size_t(m_nchan) * LWA_SV_NPOLS; ++cp) {
+        const int64_t* re = m_re.data() + cp * kN * kN;
+        const int64_t* im = m_im.data() + cp * kN * kN;
+        std::complex<float>* out = R + cp * kN * kN;
+        for (size_t a = 0; a < kN; ++a) {
+          for (size_t b = a; b < kN; ++b) {
+            std::complex<float> z{float(re[a * kN + b]) * inv, float(im[a * kN + b]) * inv};
+            out[a * kN + b] = z;
+            out[b * kN + a] = std::conj(z);
+          }
         }
       }
-    }
-    std::memcpy(h->magic, "EPICVIS1", 8);
-    h->layout = 1;
-    h->header_bytes = sizeof(VisTableHeader);
-    h->version = ++m_version;
-    h->chan0 = m_chan0;
-    h->nchan = m_nchan;
-    h->nstand = kN;
-    h->npol = LWA_SV_NPOLS;
-    h->flags = 0;
-    h->nsamp = m_nsamp;
-    h->seq_first = m_seq_first;
-    h->seq_last = m_seq_last;
-    h->ngulps = m_ngulps;
-    h->nskipped = uint32_t(m_nskipped.exchange(0));
-    h->gulp_nseq = m_gulp_nseq;
-    h->duty = float(std::min(m_opts.nseq, m_gulp_nseq)) / float(m_gulp_nseq);
-    std::memset(h->note, 0, sizeof(h->note));
-    std::strncpy(h->note, "xengine-avx2 v1", sizeof(h->note) - 1);
-    std::atomic_thread_fence(std::memory_order_release);
-    seq->store(++m_seq, std::memory_order_release);  // even: stable
-    VLOG(1) << "CalTap: published version " << m_version << " (" << m_ngulps << " gulps, " << m_nsamp
+    });
+    VLOG(1) << "CalTap: published version " << v << " (" << m_ngulps << " gulps, " << m_nsamp
             << " samples, chan0 " << m_chan0 << ")";
   }
 
@@ -365,10 +299,7 @@ class CalTap {
   uint32_t m_ngulps{0};
   uint64_t m_seq_first{0}, m_seq_last{0};
 
-  uint8_t* m_map{nullptr};
-  size_t m_map_size{0};
-  uint64_t m_seq{0};
-  std::atomic<uint64_t> m_version{0};
+  VisTableWriter m_writer;
 };
 
 #endif  // SRC_EX_CAL_TAP_HPP_

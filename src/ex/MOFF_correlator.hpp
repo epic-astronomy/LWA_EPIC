@@ -286,6 +286,12 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc) {
   this->use_bf16_accum = p_desc.use_bf16_accum;
   VLOG(3) << "Setting up GPU for imaging.";
   SetupGpu();
+  if (p_desc.caltap_gpu) {
+    TccTapOptions tap;
+    tap.path = p_desc.caltap_path;
+    tap.interval_s = p_desc.caltap_interval_s;
+    this->EnableTccTap(tap, m_nchan_out, int(m_nseq_per_gulp));
+  }
   VLOG(3) << "Done";
 }
 

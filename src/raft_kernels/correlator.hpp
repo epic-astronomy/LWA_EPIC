@@ -63,7 +63,8 @@ class CorrelatorRft : public raft::kernel {
   std::string m_session_id; //changes with frequency
   /// Calibration gains from streamcal (null: off)
   std::unique_ptr<GainTableReader> m_gain_reader{nullptr};
-  /// CPU X-engine on a slice of every gulp for streamcal (null: off)
+  /// CPU X-engine on a slice of every gulp for streamcal (null: off; the GPU
+  /// tap, --caltap_gpu, lives in the correlator)
   std::unique_ptr<CalTap> m_cal_tap{nullptr};
 
   template <typename T, typename Map>
@@ -109,6 +110,10 @@ class CorrelatorRft : public raft::kernel {
       m_cal_tap = std::make_unique<CalTap>(o);
       LOG(INFO) << "Calibration tap: " << o.nseq << " sequences per gulp, " << o.interval_s << " s tables to "
                 << o.path;
+    }
+    if (cal.caltap_gpu) {
+      LOG(INFO) << "Calibration tap on the GPU (tensor-core correlator), " << cal.caltap_interval_s
+                << " s tables to " << cal.caltap_path;
     }
 
     m_rt_gauge_id = PrometheusExporter::AddRuntimeSummaryLabel(
@@ -190,11 +195,14 @@ class CorrelatorRft : public raft::kernel {
     }
     // The tap stages its slice while ProcessGulp runs (WaitCopied below).
     bool tapped = false;
+    const float quality = float(MetaOr<double>(gulp_metadata, "data_quality", 1.0));
     if (m_cal_tap) {
       tapped = m_cal_tap->Offer(pld.get_mbuf()->GetDataPtr(), std::get<uint64_t>(gulp_metadata["seq_start"]), chan0,
-                                nchan, MetaOr<int>(gulp_metadata, "nseqs", 0),
-                                float(MetaOr<double>(gulp_metadata, "data_quality", 1.0)));
+                                nchan, MetaOr<int>(gulp_metadata, "nseqs", 0), quality);
     }
+    // The GPU tap correlates the gulp from the device copy ProcessGulp makes.
+    m_correlator.get()->ArmTccTap(std::get<uint64_t>(gulp_metadata["seq_start"]), chan0, nchan,
+                                  MetaOr<int>(gulp_metadata, "nseqs", 0), quality);
 
     if (m_is_last) {
       VLOG(3) << "Last gulp. Preparing metadata";

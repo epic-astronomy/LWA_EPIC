@@ -12,7 +12,7 @@ Loop:
      absorption and solar bursts change fluxes, refraction moves sources.
      The source offsets of all channels are fitted to d = d0 (f_c/f)^2 and the
      band is re-solved with positions fixed to the fit. Channels whose
-     chi^2/dof shows RFI are rejected
+     chi^2/dof shows RFI are rejected (relative to the band median)
   4. Kalman tracker per stand and polarisation (phase, delay) plus slow
      amplitude and per-channel bandpass; interpolate to all channels
   5. publish c = 1/g to the gain table (epic++ --gain_table), unless --dry-run
@@ -66,7 +66,9 @@ def _solve_job(job):
     chi = float(np.median(chi_ant[ok])) if ok.any() else float("nan")
     den = np.sum(np.abs(g[None, :] * Mfit) ** 2 * W, axis=1)
     sig2 = np.sum(np.abs(res * W) ** 2) / max(W.sum(), 1)
-    return dict(g=g, scale=sc, off=off, chi=chi, good=ok & (chi_ant < max_chi2 * 3),
+    # stands are judged against the channel's median: at full correlation rates the thermal
+    # noise falls below the sky-model error, and chi^2/dof rises above 1 in every channel
+    return dict(g=g, scale=sc, off=off, chi=chi, good=ok & (chi_ant < max_chi2 * 3 * max(chi, 1.0)),
                 var=sig2 / np.maximum(den, 1e-30), frozen=info["frozen"])
 
 
@@ -181,7 +183,11 @@ class StreamCal:
         for (p, k), r_ in zip(prep, res2):
             scale[p, k] = r_["scale"]
             chi[p, k] = r_["chi"]
-            if not np.isfinite(chi[p, k]) or chi[p, k] > a.max_chi2:
+        # RFI shows as channels far above the band's median chi^2/dof; the median itself exceeds 1
+        # once the noise falls below the sky-model error (long integrations, full-rate GPU tap)
+        self.chi_cut = a.max_chi2 * max(1.0, float(np.nanmedian(chi)) if np.isfinite(chi).any() else 1.0)
+        for (p, k), r_ in zip(prep, res2):
+            if not np.isfinite(chi[p, k]) or chi[p, k] > self.chi_cut:
                 continue  # RFI or a model failure: leave this channel out of the update
             good = r_["good"]
             g[p, good, k] = r_["g"][good]
@@ -233,7 +239,7 @@ class StreamCal:
         self.last_t = tab.t_mid_unix
         for p in range(2):
             self.trackers[p].update(g[p], var[p], dt)
-        nbad = int(np.sum(~np.isfinite(chi) | (chi > self.a.max_chi2)))
+        nbad = int(np.sum(~np.isfinite(chi) | (chi > self.chi_cut)))
         nflag = [int(x) for x in self.power_flag.sum(axis=1)]
         msg = (f"table v{tab.version} {t.isot} nsamp {tab.nsamp} (skipped {tab.nskipped}); chi2/dof median "
                f"{np.nanmedian(chi):.2f}, RFI channels {nbad}/{chi.size}; power-flagged X/Y {nflag[0]}/{nflag[1]}; "
@@ -261,7 +267,8 @@ def main(argv=None):
     ap.add_argument("--chan-stride", type=int, default=4, help="solve every Nth channel")
     ap.add_argument("--umin", type=float, default=1.0, help="shortest baseline used (wavelengths)")
     ap.add_argument("--niter", type=int, default=40)
-    ap.add_argument("--max-chi2", type=float, default=3.0, help="chi^2/dof above which a channel is rejected")
+    ap.add_argument("--max-chi2", type=float, default=3.0,
+                    help="chi^2/dof, relative to the band median when that exceeds 1, above which a channel is rejected")
     ap.add_argument("--min-power", type=float, default=0.3)
     ap.add_argument("--max-power", type=float, default=3.0)
     ap.add_argument("--flag-amp", type=float, default=0.15, help="flag stands below this fraction of median |g|")

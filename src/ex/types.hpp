@@ -102,6 +102,9 @@ struct MOFFCorrelatorDesc {
   float caltap_interval_s{10.f};
   int caltap_threads{2};
   int caltap_batch{8};
+  /// Correlate every gulp on the GPU with the tensor-core correlator instead
+  /// of a slice on the CPU
+  bool caltap_gpu{false};
 };
 
 struct OutImgDesc {

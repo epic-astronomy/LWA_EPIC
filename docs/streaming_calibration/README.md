@@ -96,7 +96,7 @@ The benchmark also found and fixed six defects, among them a buffer-release race
 | [06_ionosphere.md](06_ionosphere.md) | Scintillation, refraction, absorption and solar bursts; sky parameters solved with the gains; storm simulations; direction dependence |
 | [07_benchmark.md](07_benchmark.md) | epic++ benchmark mode, timing with and without calibration, end-to-end calibration of simulated F-engine data through the imager, defects found |
 | [09_primary_beam.md](09_primary_beam.md) | Primary-beam correction: what EPIC images contain, beam variation for the watched sources (×3–8 over a day), when it is needed (flux, fluence, light curves; not detection), how to apply it, beam-model accuracy |
-| [08_direction_dependent.md](08_direction_dependent.md) | Per-antenna direction-dependent gains: kernel formalism, representability, cost of uncorrected errors, measurement method, LWA-SV measurements (TBF 2023, TBN 2021), why kernels cannot apply them in a dirty imager, kernel-StEFCal, image-domain prediction, tensor-core correlator |
+| [08_direction_dependent.md](08_direction_dependent.md) | Per-antenna direction-dependent gains: kernel formalism, representability, cost of uncorrected errors, measurement method, LWA-SV measurements (TBF 2023, TBN 2021), why kernels cannot apply them in a dirty imager, kernel-StEFCal, image-domain prediction, tensor-core correlator and the GPU calibration tap (`--caltap_gpu`) |
 
 ## Code
 

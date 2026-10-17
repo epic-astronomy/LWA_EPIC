@@ -30,6 +30,7 @@
 #include "./channel_descriptor.h"
 #include "./constants.h"
 #include "./metrics.hpp"
+#include "./tcc_tap.h"
 #include "./types.hpp"
 
 /**
@@ -101,6 +102,9 @@ class MOFFCuHandler {
   /// ResetPhases), e.g. with calibration gains folded in. Synchronous; call
   /// only between gulps (ProcessGulp returns after all streams finish).
   void UpdatePhases(int p_nchan, const float* p_phases_ptr);
+
+  /// GPU calibration tap (null: off). Correlates the gulps from m_f_eng_cu.
+  std::unique_ptr<TccTap> m_tcc_tap{nullptr};
 
   /// Number of streams to split a gulp into
   int m_nstreams;
@@ -257,6 +261,16 @@ class MOFFCuHandler {
    * low. Each extra launch costs ~0.17 ms per gulp on an RTX 4090.
    */
   void SetSeqChunk(int p_seq_chunk);
+
+  /// Start the GPU calibration tap (tensor-core correlator, tcc_tap.h) on the
+  /// first p_nchan channels of gulps of p_nseq sequences.
+  void EnableTccTap(const TccTapOptions& p_opts, int p_nchan, int p_nseq);
+
+  /// Describe the next gulp to the GPU calibration tap; call before
+  /// ProcessGulp. Returns true if the gulp will be correlated.
+  bool ArmTccTap(uint64_t p_seq_start, int64_t p_chan0, int p_nchan, int p_nseq, float p_quality) {
+    return m_tcc_tap && m_tcc_tap->Arm(p_seq_start, p_chan0, p_nchan, p_nseq, p_quality);
+  }
 
   ~MOFFCuHandler();
 };

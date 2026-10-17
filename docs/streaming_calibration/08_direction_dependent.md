@@ -185,7 +185,7 @@ The remainder is sky-model error.
 
 **Recommended next steps.** None requires a change to the GPU imaging kernel.
 
-1. Move the calibration correlation to the tensor-core correlator on the imaging GPU (section 8.9). Every sample then becomes visible to the solver: 20× the data of the 5% tap, with cross-polarisation.
+1. Move the calibration correlation to the tensor-core correlator on the imaging GPU. **Done** (section 8.9.2, `--caltap_gpu`): every sample is visible to the solver, 20× the data of the 5% tap. Cross-polarisation products are computed but not yet published.
 2. Run kernel-StEFCal on hours of those correlations to measure the real per-stand screens. Check their stability from night to night and between X and Y, and whether their structure is smooth enough to model.
 3. Prototype the image-domain prediction and subtraction on the CPU. Its cost is one predicted image per channel per update, refreshed as the sky rotates, about once a minute. Measure the residual on real EPIC images.
 
@@ -203,7 +203,7 @@ The ASTRON Tensor-Core Correlator (Romein 2021, https://git.astron.nl/RD/tensor-
 
 `tests/streamcal/tcc/tcc_correlate.cc` is a file-driven correlator that accumulates on the GPU. `src/python/streamcal/tcc.py` wraps it; `tests/streamcal/test_tcc.py` checks it against numpy, exactly, for all four polarisation products. The TCC convention is $`v[b,p_Y,p_X]=\sum_t x_{Y,p_Y}\,\overline{x_{X,p_X}}`$ with $`b = X(X+1)/2+Y`$, $`Y\le X`$. TCC packs the real part in the low nibble and epic++ (`CNib`) the imaginary part, so raw F-engine bytes fed as i4 give the conjugate visibilities.
 
-**Use in the calibration tap.** Correlating every sample of every gulp on the imaging GPU would cost about 0.23 ms for the correlation itself. A reorder from epic++'s `[chan][seq][stand][pol]` layout to TCC's `[chan][seq/32][stand][pol][32]` blocks, and on-GPU accumulation (`launchAsync(..., add = true)`), add a few tenths of a millisecond. That is well inside the 5 ms headroom of section 7.2, and it would replace the 5% CPU tap with the full data and the cross-polarisation products. This has not been integrated inside epic++.
+**Use in the calibration tap.** Correlating every sample of every gulp on the imaging GPU would cost about 0.23 ms for the correlation itself. A reorder from epic++'s `[chan][seq][stand][pol]` layout to TCC's `[chan][seq/32][stand][pol][32]` blocks, and on-GPU accumulation (`launchAsync(..., add = true)`), add a few tenths of a millisecond. That is well inside the 5 ms headroom of section 7.2, and it replaces the 5% CPU tap with the full data. Section 8.9.2 describes the integration in epic++.
 
 ### 8.9.1 Does the correlator get scheduled beside the imager?
 
@@ -232,3 +232,39 @@ The test ran on epic1 (2026-10-17, RTX 4090 at default clocks) with two processe
 - **Isolated spikes:** a few single gulps reached 46–48 ms. The 20 gulp buffers (0.8 s) absorbed them.
 
 A production version as a separate process would read the voltages the imager already holds: either a pinned host copy of the gulp (the tap's staging), as in the "with copy" rows, or the imager's device buffer through CUDA IPC, which saves the copy. In-process integration would schedule differently (concurrent streams instead of time slicing) and would need its own test.
+
+### 8.9.2 The tensor-core correlator as the calibration tap in epic++
+
+`--caltap_gpu` replaces the 5% CPU slice with a correlation of every sample of every gulp on the imaging GPU (`src/ex/tcc_tap.h`, `tcc_tap.cu`). It is built when CMake is given `-DEPIC_TCC_ROOT` (a built TCC checkout) and `-DEPIC_CUDAWRAPPERS_INCLUDE`; otherwise the option stops epic++ with an error.
+
+Per gulp, inside `ProcessGulp` and in the same process (concurrent streams, not time slicing):
+
+1. The tap's own stream waits until every imaging stream has copied its channels to the device. The gulp is correlated from that copy, so the tap adds no host-to-device traffic.
+2. A reorder kernel converts the 4+4-bit gulp `[chan][seq][stand][pol]` into the TCC 8-bit layout `[chan][seq/16][stand][pol][16][re, im]`, zero-padded from 1,000 to 1,008 sequences. The 8-bit format avoids the nibble-order difference of section 8.9.
+3. TCC correlates and accumulates into an int32 buffer on the GPU. 4-bit samples give at most 128 per product, so integrations of up to 600 s cannot overflow.
+4. Before the next gulp is copied over the device buffer, each imaging stream waits for the previous reorder, about 0.2 ms after its copy.
+5. After `--caltap_interval` (10 s) the accumulator is copied to the host on a second stream. The next integration starts in the other buffer, and a publisher thread writes the XX and YY matrices to the same `EPICVIS1` table as the CPU tap (`src/ex/vis_table.hpp`, now shared by both taps). streamcal reads it unchanged; the header note is `tcc-i8 v1` and `duty` is 1.
+
+The tap uses 383 MiB of GPU memory for 128 channels.
+
+**Verification.** `tests/streamcal/test_tcc_tap.cu` (built by `tests/streamcal/tcc/build.sh`) feeds random gulps through the tap the way `ProcessGulp` does, reusing a single device buffer, and compares the table with the CPU X-engine: maximum difference 2.4 × 10⁻⁶ against |R| up to 44.5, which is float rounding. In the benchmark, the full-rate table equals numpy correlations of the stored gulps.
+
+**Benchmark** (epic1, RTX 4090, production imaging options, simulated data regenerated with the current sky model as `model76`; `GPUTAP=1` in `bench_run.sh`):
+
+| | CPU tap, 50 of 1,000 sequences | GPU tap, all sequences |
+|---|---|---|
+| Unpaced, per gulp | 35.8 ms | 36.2 ms |
+| Real time, per gulp, mean / p99 | 41.796 / 41.80 ms, no buffer waits | 41.796 / 41.80 ms, no buffer waits |
+| Samples per 10 s table and channel | 12,000 | 240,000 |
+| Gain phase error, X / Y | 0.73° / 0.82° | 0.54° / 0.59° |
+| Gain amplitude error, X / Y | 3.1% / 4.3% | 3.1% / 4.3% |
+| A-team flux scales, Cyg A / Cas A / Tau A | 1.01 / 1.01 / 1.07 | 1.00 / 1.00 / 1.04 |
+| χ²/dof, median | 1.01 | 3.02 |
+| Image residual against exact gains | 0.024 | 0.024 |
+
+The amplitude error is the same for both taps, so the Kalman tracker's bandpass model, not the data, sets it. The image residual is set by the same error.
+
+**Sky-model errors set the floor at full rate.** The simulated sky contains 25 faint sources and 10% small-scale diffuse structure that the calibration model lacks. With the CPU tap these sit below the noise (χ² = 1.0). With 20× the samples they do not: χ² = 3.0. Part of that is an artefact, since the 96 stored gulps are replayed, so a 10 s table sums each sample about 2.5 times and the noise estimate is too low by that factor. Two consequences:
+
+- The daemon's RFI rejection was absolute (`--max-chi2 3`) and rejected every channel at full rate. Channels and stands are now judged against the band and channel median χ², which leaves the CPU-tap behaviour unchanged.
+- A first benchmark on the earlier dataset gave A-team fluxes of ×1.4–1.8 and 7–9% amplitude errors. That dataset was generated before the A-team was inpainted out of the LFSM map (section 8.5), so its true sky counted the A-team twice. At the CPU tap's noise level this was invisible. A full-rate tap will expose sky-model deficiencies in real data the same way, which matters for the direction-dependent screens (section 8.8). Bright compact sources beyond the A-team should be added to the model.
