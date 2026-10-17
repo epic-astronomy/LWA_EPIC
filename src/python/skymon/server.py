@@ -12,15 +12,26 @@ HTTP interface of a running monitor (standard library only).
   GET /api/candidates/<id>/npz         its data products
   GET /api/sky                         tracked pixels with their age and noise
   GET /api/injections                  live injection summary
+  GET /api/watches?event=              watches requested by the combiner, and their results
+  POST /api/watch    {ra, dec, dm, t_inf, dm_err, t_tol, id, event_id}
+                                       measure this position at the burst's predicted
+                                       arrival in this band (watch.py)
+  POST /api/inject   {id, ra, dec, dm, t_inf, snr, width_s}
+                                       inject this burst (coordinated across bands)
+
+POST requests need the header X-Skymon-Token when the environment variable
+SKYMON_TOKEN is set.
 
 Each monitor serves only its own band. The website queries every worker's
 monitor and shows whichever answer; one being down does not affect the others.
 """
 from __future__ import annotations
 
+import hmac
 import io
 import json
 import math
+import os
 import threading
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -108,10 +119,37 @@ def make_handler(monitor):
                     return self._json(monitor.sky())
                 if parts[:2] == ["api", "injections"]:
                     return self._json(monitor.injector.summary())
+                if parts[:2] == ["api", "watches"]:
+                    return self._json(monitor.watch_list(q.get("event")))
                 return self._json(dict(error="not found"), 404)
             except (ValueError, KeyError) as e:
                 return self._json(dict(error=str(e)), 400)
             except Exception as e:  # report, keep serving
+                return self._json(dict(error=repr(e)), 500)
+
+        def do_POST(self):
+            token = os.environ.get("SKYMON_TOKEN")
+            if token and not hmac.compare_digest(self.headers.get("X-Skymon-Token", ""), token):
+                return self._json(dict(error="forbidden"), 403)
+            u = urllib.parse.urlparse(self.path)
+            parts = [p for p in u.path.split("/") if p]
+            try:
+                n = int(self.headers.get("Content-Length", 0))
+                if n > 65536:
+                    return self._json(dict(error="request too large"), 413)
+                body = json.loads(self.rfile.read(n) or b"{}")
+                if not isinstance(body, dict):
+                    raise ValueError("a JSON object is expected")
+                if parts[:2] == ["api", "watch"]:
+                    w = monitor.watches.add(body)
+                    return self._json({k: v for k, v in w.items() if not k.startswith("_")})
+                if parts[:2] == ["api", "inject"]:
+                    b = monitor.injector.add_external(body)
+                    return self._json(dict(id=b.id, accepted=True))
+                return self._json(dict(error="not found"), 404)
+            except (ValueError, KeyError, TypeError) as e:
+                return self._json(dict(error=str(e)), 400)
+            except Exception as e:
                 return self._json(dict(error=repr(e)), 500)
 
     return Handler

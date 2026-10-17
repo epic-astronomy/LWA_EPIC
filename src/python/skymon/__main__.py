@@ -6,6 +6,8 @@ EPIC all-sky monitor.
   python -m skymon simtest --duration 1800 --realtime --out DIR     (simulator + monitor)
   python -m skymon evaluate --truth DIR/truth.jsonl --out DIR
   python -m skymon build                                           (compile the kernels)
+  python -m skymon combine --nodes epic1=http://epic1:8095,... --out DIR   (consensus across bands)
+  python -m skymon frblist --out frbs.json --start T --duration S    (FRBs shared by several bands)
 
 Run with src/python on PYTHONPATH (the imager's geometry module lives there).
 """
@@ -25,7 +27,11 @@ from .monitor import Config, Monitor
 
 def add_monitor_args(p):
     d = Config()
-    p.add_argument("--out", default=d.out_dir, help="output directory (candidates, injections)")
+    p.add_argument("--out", default=d.out_dir,
+                   help="output directory on local disk (candidates, spool, injections)")
+    p.add_argument("--db", default=os.environ.get("SKYMON_DB"),
+                   help="the node's local PostgreSQL, e.g. 'host=/var/run/skymon port=5433 "
+                        "dbname=skymon' (default $SKYMON_DB; none: files only)")
     p.add_argument("--port", type=int, default=8095, help="HTTP port, 0 to disable")
     p.add_argument("--nside", type=int, default=0, help="HEALPix nside (0: from the beam)")
     p.add_argument("--el-min", type=float, default=d.el_min)
@@ -44,7 +50,7 @@ def add_monitor_args(p):
 
 
 def make_config(a) -> Config:
-    return Config(out_dir=a.out, nside=a.nside, el_min=a.el_min, dm_max=a.dm_max,
+    return Config(out_dir=a.out, db_dsn=a.db, nside=a.nside, el_min=a.el_min, dm_max=a.dm_max,
                   threshold=a.threshold, nthreads=a.threads, block0=a.block,
                   accum_interval_s=a.accum_interval, accum_hours=a.accum_hours,
                   inject_interval_s=a.inject_every * 60, inject_snr=tuple(a.inject_snr),
@@ -136,20 +142,92 @@ def main(argv=None):
     add_monitor_args(p)
     add_sim_args(p)
 
-    p = sub.add_parser("evaluate", help="match candidates with a truth file")
-    p.add_argument("--truth", required=True)
-    p.add_argument("--out", required=True)
+    p = sub.add_parser("evaluate", help="match candidates (or combiner events) with the truth")
+    p.add_argument("--truth", help="a simulator's truth file (with --out)")
+    p.add_argument("--out", help="a monitor's output directory")
+    p.add_argument("--combiner", help="a combiner's output directory (with --frb-file)")
+    p.add_argument("--frb-file", help="the FRB list given to the simulators")
+    p.add_argument("--monitors", help="name=dir,... of the bands' simtest outputs (truth files), "
+                                      "to check that no detectable FRB was lost")
 
     sub.add_parser("build", help="compile the kernels")
+
+    p = sub.add_parser("combine", help="consensus of the monitors of all bands")
+    p.add_argument("--nodes", required=True, help="name=url,name=url,... of the monitors")
+    p.add_argument("--db-port", type=int, default=5433,
+                   help="port of the nodes' local databases, on each monitor's host (0: HTTP only)")
+    p.add_argument("--db-name", default="skymon")
+    p.add_argument("--db-user", default="skymon", help="password from $SKYMON_DB_PASSWORD")
+    p.add_argument("--out", default="skymon_combiner",
+                   help="local directory for a copy of the events (the state is in the nodes' databases)")
+    p.add_argument("--port", type=int, default=8096)
+    p.add_argument("--poll", type=float, default=10.0)
+    p.add_argument("--confirm-snr", type=float, default=6.0)
+    p.add_argument("--inject-every", type=float, default=0.0,
+                   help="mean hours between coordinated injections (0 = off)")
+    p.add_argument("--inject-dm", type=float, nargs=2, default=(50.0, 1000.0))
+    p.add_argument("--seed", type=int, default=None)
+
+    p = sub.add_parser("archive", help="copy what is worth keeping to the archive; free local disk")
+    p.add_argument("--db", default=os.environ.get("SKYMON_DB"), required=False)
+    p.add_argument("--data", required=True, help="the monitor's local output directory")
+    p.add_argument("--archive", required=True, help="the archive root (on /FileStore)")
+    p.add_argument("--node", default=None, help="this node's name in the combiner's events")
+    p.add_argument("--rfi-days", type=float, default=3.0)
+    p.add_argument("--review-days", type=float, default=14.0)
+    p.add_argument("--keep-days", type=float, default=30.0)
+    p.add_argument("--max-disk", type=float, default=0.8)
+    p.add_argument("--every", type=float, default=60.0)
+
+    p = sub.add_parser("frblist", help="FRBs for the simulators of several bands")
+    p.add_argument("--out", required=True)
+    p.add_argument("--start", type=float, default=None)
+    p.add_argument("--duration", type=float, default=3600)
+    p.add_argument("--rate", type=float, default=20, help="per hour")
+    p.add_argument("--dm", type=float, nargs=2, default=(50, 600))
+    p.add_argument("--snr", type=float, nargs=2, default=(10, 30))
+    p.add_argument("--f-low", type=float, default=33.0)
+    p.add_argument("--f-high", type=float, default=77.3)
+    p.add_argument("--seed", type=int, default=None)
+    p.add_argument("--spectra", action="store_true",
+                   help="give each FRB a spectrum (power law or band-limited) and scattering")
     a = ap.parse_args(argv)
+
+    if a.cmd == "combine":
+        return cmd_combine(a)
+    if a.cmd == "archive":
+        from .archiver import Archiver
+        arc = Archiver(a.db, a.data, a.archive, a.node, a.rfi_days, a.review_days, a.keep_days,
+                       a.max_disk)
+        stop = threading.Event()
+        for sg in (signal.SIGINT, signal.SIGTERM):
+            signal.signal(sg, lambda *_: stop.set())
+        print(f"archiver: {a.data} -> {a.archive} as {arc.node}", flush=True)
+        arc.run(stop, a.every)
+        return 0
+    if a.cmd == "frblist":
+        from .simulate import make_frb_list
+        frbs = make_frb_list(a.start or time.time(), a.duration, a.rate, tuple(a.dm),
+                             tuple(a.snr), a.f_low, a.f_high, seed=a.seed, spectra=a.spectra)
+        with open(a.out, "w") as f:
+            json.dump(frbs, f, indent=1)
+        print(f"{len(frbs)} FRBs written to {a.out}")
+        return 0
 
     if a.cmd == "build":
         from . import kernels
         print(kernels.build(force=True))
         return 0
     if a.cmd == "evaluate":
-        from .evaluate import report
-        print(report(a.truth, a.out)["text"])
+        from .evaluate import report, report_combiner
+        if a.combiner and a.monitors:
+            from .evaluate import report_no_loss
+            dirs = dict(item.split("=", 1) for item in a.monitors.split(","))
+            print(report_no_loss(a.frb_file, a.combiner, dirs)["text"])
+        elif a.combiner:
+            print(report_combiner(a.frb_file, a.combiner)["text"])
+        else:
+            print(report(a.truth, a.out)["text"])
         return 0
     if a.cmd == "simulate":
         from .simulate import run_shm
@@ -173,6 +251,8 @@ def add_sim_args(p):
     p.add_argument("--start", type=float, default=None, help="simulated start (unix)")
     p.add_argument("--sim-seed", type=int, default=1)
     p.add_argument("--truth", default=None)
+    p.add_argument("--frb-file", default=None,
+                   help="FRBs from this list (skymon frblist) instead of at random")
 
 
 def make_sim(a, truth=None):
@@ -184,7 +264,8 @@ def make_sim(a, truth=None):
                         frb_per_hour=a.frb_per_hour, snr=tuple(a.frb_snr), dm=tuple(a.frb_dm),
                         rfi_per_hour=a.rfi_per_hour, truth_path=truth or a.truth,
                         seed=a.sim_seed,
-                        tier_dt=tier_dt_function(band.edges_mhz(), dt, a.nchan))
+                        tier_dt=tier_dt_function(band.edges_mhz(), dt, a.nchan),
+                        frb_list=json.load(open(a.frb_file)) if a.frb_file else None)
 
 
 def _serve(monitor, port):
@@ -200,6 +281,7 @@ def cmd_run(a):
     stop = threading.Event()
     for s in (signal.SIGINT, signal.SIGTERM):
         signal.signal(s, lambda *_: stop.set())
+    monitor.start_db_sync(stop)
     print(f"skymon: following /dev/shm/{a.shm}", flush=True)
     run_ring(monitor, a.shm, stop)
     monitor.store.flush()
@@ -213,6 +295,8 @@ def cmd_simtest(a):
     truth = os.path.join(a.out, "truth.jsonl")
     monitor = Monitor(make_config(a))
     _serve(monitor, a.port)
+    sync_stop = threading.Event()
+    monitor.start_db_sync(sync_stop)
     t_start = time.time()
     if a.realtime:
         ring = f"skysim_{os.getpid()}"
@@ -221,7 +305,8 @@ def cmd_simtest(a):
                "--duration", str(a.duration), "--chan0", str(a.chan0), "--nchan", str(a.nchan),
                "--frb-per-hour", str(a.frb_per_hour), "--frb-snr", *map(str, a.frb_snr),
                "--frb-dm", *map(str, a.frb_dm), "--rfi-per-hour", str(a.rfi_per_hour),
-               "--start", str(start), "--sim-seed", str(a.sim_seed), "--truth", truth]
+               "--start", str(start), "--sim-seed", str(a.sim_seed), "--truth", truth] + \
+            (["--frb-file", a.frb_file] if a.frb_file else [])
         env = dict(os.environ)
         sim = subprocess.Popen(cmd, env=env)
         stop = threading.Event()
@@ -268,6 +353,33 @@ def cmd_simtest(a):
     print(rep["text"])
     with open(os.path.join(a.out, "simtest_summary.json"), "w") as f:
         json.dump(dict(summary=summary, report=rep["text"]), f, indent=1)
+    return 0
+
+
+def cmd_combine(a):
+    from .combiner import Combiner, CombinerConfig, serve as serve_combiner
+    nodes = dict(item.split("=", 1) for item in a.nodes.split(",") if "=" in item)
+    dsns = {}
+    if a.db_port:
+        import urllib.parse as up
+        pw = os.environ.get("SKYMON_DB_PASSWORD", "")
+        for n, u in nodes.items():
+            host = up.urlparse(u).hostname
+            dsns[n] = f"host={host} port={a.db_port} dbname={a.db_name} user={a.db_user}" + \
+                (f" password={pw}" if pw else "")
+    comb = Combiner(CombinerConfig(nodes=nodes, dsns=dsns, out_dir=a.out, poll_s=a.poll,
+                                   token=os.environ.get("SKYMON_TOKEN"),
+                                   confirm_snr=a.confirm_snr,
+                                   inject_interval_s=a.inject_every * 3600,
+                                   inject_dm=tuple(a.inject_dm), seed=a.seed))
+    if a.port:
+        serve_combiner(comb, port=a.port)
+        print(f"combiner: HTTP on port {a.port}", flush=True)
+    stop = threading.Event()
+    for s in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(s, lambda *_: stop.set())
+    print(f"combiner: following {', '.join(nodes)}", flush=True)
+    comb.run(stop)
     return 0
 
 

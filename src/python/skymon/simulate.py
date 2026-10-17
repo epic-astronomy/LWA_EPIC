@@ -44,7 +44,7 @@ class SkySimulator:
                  start_unix=None, phase_mode="plane", noise_factor=3.0, frb_per_hour=30.0,
                  snr=(8.0, 30.0), dm=(20.0, 3000.0), width_s=(0.001, 0.05), el_min=15.0,
                  rfi_per_hour=6.0, rfi_channel=True, truth_path=None, seed=None,
-                 tier_dt=None, model_interval_s=10.0, fft_workers=4):
+                 tier_dt=None, model_interval_s=10.0, fft_workers=4, frb_list=None):
         self.band = Band(chan0, nchan, 1)
         self.grid, self.grid_res, self.nseqs = grid, grid_res, nseqs
         self.dt = nseqs * SEQ_MULT_S / FS
@@ -61,6 +61,14 @@ class SkySimulator:
         self.truth_path = truth_path
         self.model_interval = model_interval_s
         self.fft_workers = fft_workers
+        # FRBs from a list shared by the simulators of several bands (make_frb_list)
+        # instead of drawn at random: the same bursts reach every band
+        # in order of arrival at the top of this band, which is not the order of
+        # t_inf: a burst of high DM reaches a low band long after one of low DM
+        f_top = float(self.band.edges_mhz()[-1])
+        self.frb_list = sorted(frb_list or [], key=lambda f: f["t_inf"] + K_DM * f["dm"] / f_top ** 2)
+        if self.frb_list:
+            self.frb_rate = 0.0
         self.tier_dt = tier_dt  # function dm -> (tier dt, decim) used to set amplitudes
         self.n = 0
         self.model_t = None
@@ -207,6 +215,47 @@ class SkySimulator:
                 f.write(json.dumps(rec) + "\n")
         return b
 
+    def _listed_frb(self, spec, unix):
+        """
+        Start a burst from the shared list; its amplitude comes from this band's
+        noise. With a spectrum in the list, the S/N in this band is the listed
+        one times the spectrum at the band centre; scattering then spreads the
+        same fluence over tau(nu) more, which lowers the S/N found.
+        """
+        nu = float(np.mean(self.centres))
+        factor = spectral_factor(spec.get("spectrum"), nu)
+        snr = float(spec["snr"]) * factor
+        if snr < 0.2:
+            return None  # no emission in this band
+        tau = float(spec.get("tau_1ghz", 0.0)) * (nu / 1000.0) ** -4
+        b = Burst(id=spec["id"], ra=float(spec["ra"]), dec=float(spec["dec"]), dm=float(spec["dm"]),
+                  t_inf=float(spec["t_inf"]), width_s=float(spec.get("width_s", 0.005)),
+                  snr=snr, kind="simulated")
+        x, y = self.wcs.all_world2pix(b.ra, b.dec, 1, ra_dec_order=True)
+        G = self.grid
+        if not (np.isfinite(x) and np.isfinite(y)) or altaz(b.ra, b.dec, unix)[0] <= 0:
+            return None
+        tdt, decim = self.tier_dt(b.dm) if self.tier_dt else (self.dt, 1)
+        n_eff = effective_samples(b, self.edges, tdt)
+        b.amp_sigma = amplitude_for_snr(b.snr, len(self.centres), n_eff)
+        ix = int(np.clip(round(float(x)) - 1, 0, G - 1))
+        iy = int(np.clip(round(float(y)) - 1, 0, G - 1))
+        b._amp = b.amp_sigma * self.sigma[:, iy, ix].astype(np.float64) * decim ** 0.5
+        # scattering: the same fluence over a longer time (after the amplitude is set)
+        b.width_s += tau
+        n_scat = effective_samples(b, self.edges, tdt)
+        b.meta = dict(span=list(b.span(self.edges)), tier_dt=tdt, n_eff=n_eff,
+                      el=float(altaz(b.ra, b.dec, unix)[0]), spectral_factor=factor,
+                      tau_s=tau, snr_expected=snr * math.sqrt(n_eff / n_scat))
+        self.active.append(b)
+        rec = b.to_dict()
+        rec["t_bottom"] = float(b.arrival(self.edges[0]))
+        self.truth.append(rec)
+        if self.truth_path:
+            with open(self.truth_path, "a") as f:
+                f.write(json.dumps(rec) + "\n")
+        return b
+
     # ------------------------------------------------------------ images
     def next_image(self):
         n = self.n
@@ -230,6 +279,10 @@ class SkySimulator:
         while t0 >= self.next_frb:
             self.next_frb += self.rng.exponential(1 / self.frb_rate)
             self._new_frb(t0)
+        while self.frb_list and \
+                self.frb_list[0]["t_inf"] + K_DM * self.frb_list[0]["dm"] / self.edges[-1] ** 2 \
+                < t0 + self.dt + 1.0:
+            self._listed_frb(self.frb_list.pop(0), t0)
         keep = []
         for b in self.active:
             span = b.meta["span"]
@@ -292,3 +345,70 @@ def run_shm(sim: SkySimulator, ring_name: str, duration_s: float, nslots: int = 
     finally:
         w.close()
     return dict(images=n_total, frbs=len(sim.truth), max_late_s=late)
+
+
+def make_frb_list(start, duration, rate_per_hour, dm=(50.0, 600.0), snr=(10.0, 30.0),
+                  f_low=33.0, f_high=77.3, el_min=20.0, margin_s=400.0, seed=None,
+                  spectra=False):
+    """
+    FRBs for several bands at once: every burst reaches the top of the highest
+    band after start + 120 s and the bottom of the lowest band before
+    start + duration - margin_s, at a position above el_min for the whole
+    sweep. Returns a list of dicts (id, ra, dec, dm, t_inf, snr, width_s).
+    """
+    rng = np.random.default_rng(seed)
+    n = rng.poisson(rate_per_hour * duration / 3600.0)
+    out = []
+    for _ in range(50 * max(n, 1)):
+        if len(out) >= n:
+            break
+        d = float(math.exp(rng.uniform(math.log(dm[0]), math.log(dm[1]))))
+        lo = start + 120.0 - K_DM * d / f_high ** 2
+        hi = start + duration - margin_s - K_DM * d / f_low ** 2
+        if hi <= lo:
+            continue
+        t_inf = float(rng.uniform(lo, hi))
+        t_top, t_bot = t_inf + K_DM * d / f_high ** 2, t_inf + K_DM * d / f_low ** 2
+        ra = float(rng.uniform(0, 360))
+        dec = float(np.degrees(np.arcsin(rng.uniform(-0.7, 1.0))))
+        if altaz(ra, dec, t_top)[0] < el_min or altaz(ra, dec, t_bot)[0] < el_min:
+            continue
+        frb = dict(id="sim-" + uuid.uuid4().hex[:10], ra=ra, dec=dec, dm=d, t_inf=t_inf,
+                   snr=float(rng.uniform(*snr)),
+                   width_s=float(math.exp(rng.uniform(math.log(0.001), math.log(0.05)))))
+        if spectra:
+            frb.update(random_spectrum(rng, f_low, f_high))
+        out.append(frb)
+    return sorted(out, key=lambda f: f["t_inf"])
+
+
+def random_spectrum(rng, f_low, f_high):
+    """
+    A spectrum and scattering for a simulated burst:
+      40% a power law, index -3..+1 (typical of FRBs);
+      20% a steep power law, index -8..+8;
+      40% emission confined to a Gaussian 5-30% wide, centred within or just
+          outside the observed range (as repeaters often show).
+    Scattering at 1 GHz is log-uniform between 10 ns and 3 us, which is 0.007-2 s
+    at 34 MHz and 0.3-90 ms at 76 MHz.
+    """
+    u = rng.random()
+    if u < 0.4:
+        sp = dict(kind="power_law", alpha=float(rng.uniform(-3, 1)), nu_ref=60.0)
+    elif u < 0.6:
+        sp = dict(kind="power_law", alpha=float(rng.uniform(-8, 8)), nu_ref=60.0)
+    else:
+        sp = dict(kind="gaussian", nu0=float(rng.uniform(0.8 * f_low, 1.1 * f_high)),
+                  frac=float(rng.uniform(0.05, 0.3)))
+    return dict(spectrum=sp, tau_1ghz=float(math.exp(rng.uniform(math.log(1e-8), math.log(3e-6)))))
+
+
+def spectral_factor(sp, nu):
+    """S/N at frequency nu relative to the listed S/N (1 without a spectrum)"""
+    if not sp:
+        return 1.0
+    if sp["kind"] == "power_law":
+        return float((nu / sp.get("nu_ref", 60.0)) ** sp["alpha"])
+    if sp["kind"] == "gaussian":
+        return float(math.exp(-0.5 * ((nu - sp["nu0"]) / (sp["frac"] * sp["nu0"])) ** 2))
+    raise ValueError(sp["kind"])

@@ -41,6 +41,46 @@ epic++ (ChanReducer) ──Stokes I──▶ /dev/shm/<ring> ──▶ skymon ru
    - the noise table.
 7. **Accumulation.** The raw spectrum of every tracked pixel, averaged over 10 s, is kept for 6 h in float16. This serves the spectrograms on the website.
 
+## Consensus across bands (combiner.py)
+
+One combiner, on any imaging node, reads the candidates of every monitor every 10 s. A real burst shows the same position and DM in every band that can see it, at times t_bottom = t_inf + K DM / f_lo^2, up to hours apart between the bands.
+
+For each new candidate the combiner opens an event, or joins the candidate to an open event that it matches. For every other band, it then:
+1. predicts the arrival and its time tolerance (the DM uncertainty extrapolated across the bands);
+2. checks the position is above that monitor's elevation limit for the whole sweep;
+3. sends `POST /api/watch`.
+
+The monitor measures the watch when the tier for that DM reaches the predicted time (`watch.py`). It takes the S/N whatever its value, over the position's pixel and neighbours, within the DM and time tolerances. The result is stored with the pixel's data as a `followup` candidate.
+
+With detections in two or more bands, DM and t_inf are refitted to all arrival times.
+
+Each band then gives a value for the event: the S/N of a detection or followup, or an upper limit where only that band's own search covered the arrival. `spectrum.py` fits these values with power laws, band-limited (Gaussian) spectra, and scattering. Once every band is resolved, the event is classified:
+- `confirmed`: two or more bands detect it, or measure it at S/N ≥ 6;
+- `band_limited`: one band sees it, and the other bands fit a spectrum a burst can have;
+- `implausible`: one band sees it, and no such spectrum fits (in practice, a contradiction between nearly overlapping bands);
+- `unconfirmable`: no other band could see it (not visible, monitor down, or DM beyond its search).
+
+No result discards data:
+- every band keeps its detection, followup, or context record (the accumulated spectrum around the arrival);
+- every sky event is marked `review: pending`;
+- a verdict is recorded with `POST /api/events/<id>/review {verdict: frb|rfi|unclear, by, note}`.
+
+Monitors keep the data of RFI candidates too, unless the RFI is certain (DM < 2, or much of the sky at once). Each candidate also carries in-band quality measures (`quality.py`).
+
+Events go to `<out>/events/YYYYMMDD/*.json` and are served on :8096 (`/api/status`, `/api/events`).
+
+**Coordinated injections.** The combiner sends `POST /api/inject` with the same burst to every monitor, which checks the consensus end to end.
+
+**Independence.** The monitors never depend on the combiner. The combiner keeps its state on disk, so it can be restarted on any node.
+
+```bash
+python -m skymon combine --nodes epic1=http://epic1:8095,...,epic6=http://epic6:8095 --out /FileStore/epic_skymon/combiner --port 8096 --inject-every 6
+python -m skymon frblist --out frbs.json --start $(date +%s) --duration 3600   # the same FRBs for every band's simulator
+python -m skymon simtest --realtime --frb-file frbs.json --chan0 1378 ...     # one per band, on its own worker
+```
+
+`POST` requests need the header `X-Skymon-Token` when `SKYMON_TOKEN` is set.
+
 ## Live test injections
 
 Every `--inject-every` minutes on average (Poisson), the monitor adds a simulated dispersed burst to the incoming image, before regridding.
@@ -74,6 +114,9 @@ python -m skymon evaluate --truth /tmp/simtest/truth.jsonl --out /tmp/simtest
 | `GET /api/candidates/<id>`, `/api/candidates/<id>/npz` | one candidate and its data products |
 | `GET /api/sky` | tracked pixels with their age and noise |
 | `GET /api/injections` | injection summary |
+| `GET /api/watches?event=` | watches requested by the combiner, and their results |
+| `POST /api/watch` | measure a position, DM and arrival time (from the combiner) |
+| `POST /api/inject` | inject a burst (the combiner's coordinated injections) |
 
 ## Tests
 

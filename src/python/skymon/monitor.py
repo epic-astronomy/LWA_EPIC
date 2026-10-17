@@ -32,11 +32,14 @@ from .dedisp import K_DM, fdmt, fdmt_plan
 from .geometry import Band, SkyGrid, altaz, auto_nside, beam_fwhm_deg, image_wcs
 from .inject import LiveInjector
 from .search import Searcher
+from .quality import candidate_quality
+from .watch import Watches, measure, predicted_bottom
 
 
 @dataclass
 class Config:
-    out_dir: str = "skymon_out"
+    out_dir: str = "skymon_out"  # on local disk: candidates, spool, logs (never the archive)
+    db_dsn: str | None = None  # the node's local PostgreSQL (localdb.py); None: files only
     nside: int = 0  # 0: from the beam at the band centre
     el_min: float = 10.0
     dm_max: float = 3000.0
@@ -75,9 +78,12 @@ class Monitor:
         self.grid_lock = threading.Lock()
         self.rng = np.random.default_rng(cfg.seed)
         os.makedirs(cfg.out_dir, exist_ok=True)
-        self.store = CandidateStore(cfg.out_dir)
+        from .localdb import LocalDB
+        self.db = LocalDB(cfg.db_dsn, os.path.join(cfg.out_dir, "spool")) if cfg.db_dsn else None
+        self.store = CandidateStore(cfg.out_dir, db=self.db)
         self.injector = LiveInjector(cfg.out_dir, cfg.inject_interval_s, cfg.inject_snr,
                                      cfg.inject_dm, rng=self.rng)
+        self.watches = Watches()
         self.band = None
         self.searcher = None
         self.grid = None
@@ -189,6 +195,7 @@ class Monitor:
             meta, image = item
             self.injector.schedule(unix, self.grid, self.searcher,
                                    self.cfg.warmup_images + 4 * self.cfg.block0)
+            self.injector.prepare(unix, self.grid, self.searcher)
             if self.injector.active:
                 self.injector.apply(image, unix, self.dt, self.band.edges_mhz(),
                                     self.band.centres_mhz(), self.wcs, self.cfg_pix_deg(meta))
@@ -199,6 +206,8 @@ class Monitor:
         found = []
         for res in results:
             found += self._candidates(res)
+            found += self._measure_watches(res)
+        self._expire_watches(unix)
         self.searcher.finish_block()
         self.injector.expire(unix)
         self.metrics["images"] += 1
@@ -258,11 +267,19 @@ class Monitor:
             hpix = int(hp[g[0]])
             pix = sorted({int(hp[i]) for i in g})
             ext = float(np.max(separation_deg(ra[g[0]], dec[g[0]], ra[g], dec[g])))
-            cls = "candidate"
+            reasons = []
             if len(pix) > self.rfi_max_pix / np.clip(np.sin(np.radians(el_hits[g[0]])), 0.25, 1) \
-                    or ext > 4 * radius[g[0]] or \
-                    flash or b.dm < self.cfg.dm_min:
-                cls = "rfi"
+                    or ext > 4 * radius[g[0]]:
+                reasons.append("wider than a few beams")
+            if busy[g[0]]:
+                reasons.append("much of the sky at once")
+            if sites[gi] >= self.cfg.rfi_min_sites:
+                reasons.append("several separate positions at once")
+            if b.dm < self.cfg.dm_min:
+                reasons.append("DM near zero")
+            # certain: terrestrial (no dispersion) or seen over much of the sky
+            certain = "DM near zero" in reasons or "much of the sky at once" in reasons
+            cls = "rfi" if reasons else "candidate"
             el, az = altaz(ra[g[0]], dec[g[0]], b.t_bottom)
             xy = self.grid.xy[b.slot]
             cid = f"{time.strftime('%Y%m%dT%H%M%S', time.gmtime(b.t_inf))}_" \
@@ -275,7 +292,8 @@ class Monitor:
                 az=float(az), image_x=float(xy[0]), image_y=float(xy[1]), tier=tier.level,
                 tier_dt=tier.dt, n_pix=len(pix), extent_deg=ext, f_lo_mhz=self.band.f_lo,
                 f_hi_mhz=self.band.f_hi, host=self.cfg.host, detected_unix=time.time(),
-                members=[[int(hp[i]), round(hits[i].snr, 2)] for i in g[:64]])
+                members=[[int(hp[i]), round(hits[i].snr, 2)] for i in g[:64]],
+                rfi_reasons=reasons, rfi_certain=certain)
             if cls != "rfi":
                 inj = self.injector.match(c, float(elevation_radius(self.radius, c.el)))
                 if inj is not None:
@@ -284,7 +302,8 @@ class Monitor:
                     self.injector.record(inj, c)
             elif not self.cfg.store_rfi:
                 continue
-            products = self._products(res, b) if cls != "rfi" else None
+            # keep the data of everything that is not certainly RFI
+            products = None if (cls == "rfi" and certain) else self._products(res, b, c)
             stored = self.store.add(c, products, self.radius)
             if stored is not None:
                 found.append(stored)
@@ -293,19 +312,235 @@ class Monitor:
                       f"({len(pix)} px, {n_all} hits)", flush=True)
         return found
 
-    def _products(self, res, hit):
+    def _products(self, res, hit, cand=None):
         """Data around a candidate: its pixel's window, DM-time plane, and accumulation"""
         tier = res.tier
         s = hit.slot
         win = np.ascontiguousarray(res.window[:, :, s])  # [C, W]
         plan = fdmt_plan(self.band.edges_mhz(), self.searcher.D)
         dmt = fdmt(win[:, :, None], plan)[:, :, 0]
+        if cand is not None:
+            try:
+                cand.quality = candidate_quality(win, dmt, res.sigma, self.band.edges_mhz(),
+                                                 hit.row, hit.t_end - res.first_sample,
+                                                 hit.width, list(self.searcher.widths))
+            except Exception as e:  # a measure for review must never stop the search
+                cand.quality = dict(error=repr(e))
         t_win = self.searcher.tier_time(tier, res.first_sample + np.arange(win.shape[1]))
         ta, acc = self.accum.pixel(s, since=hit.t_inf - 1800)
         return dict(dynspec=win.astype(np.float32), dynspec_t=t_win, dmt=dmt.astype(np.float32),
                     dmt_dm=np.arange(self.searcher.D + 1) * tier.dm_per_delay,
                     freqs_mhz=self.band.centres_mhz(), accum=acc, accum_t=ta,
                     sigma=res.sigma)
+
+    # ------------------------------------------------------------ watches
+    def _measure_watches(self, res):
+        """Measure the pending watches whose arrival falls in this block of this tier"""
+        tier = res.tier
+        pend = self.watches.pending()
+        if not pend:
+            return []
+        W = res.window.shape[1]
+        first = res.first_sample
+        new_lo, new_hi = first + W - tier.block, first + W - 1
+        widths = self.searcher.widths
+        done = []
+        for w in pend:
+            if self.searcher.tier_for_dm(w["dm"]) is not tier:
+                continue
+            tb = predicted_bottom(w, self.band.f_lo)
+            s = (tb - self.unix0) / tier.dt - 0.5
+            tol = w["t_tol"] / tier.dt + 2 + int(widths.max())
+            lo_s, hi_s = int(np.floor(s - tol)), int(np.ceil(s + tol))
+            if lo_s > new_hi:
+                continue  # still to come
+            if hi_s < new_lo and w["best"] is None:
+                w.update(state="expired", reason="arrived before the watch could be measured")
+                continue
+            if res.calibrating:
+                w["reason"] = "the tier for this DM was starting"
+                if hi_s <= new_hi:
+                    w["state"] = "expired"
+                continue
+            with self.grid_lock:
+                h = self.grid.nearest_slot(w["ra"], w["dec"])
+                hp_c = int(self.grid.hpix_of[h]) if h >= 0 else -1
+                nb = [int(self.grid.slot_of[n]) for n in self.grid.neighbours(hp_c)] \
+                    if hp_c >= 0 else []
+            slots = [x for x in [h] + nb if x >= 0]
+            if not slots:
+                w.update(state="expired", reason="position not tracked (below the elevation limit)")
+                continue
+            dpd = tier.dm_per_delay
+            r0 = int(np.floor((w["dm"] - w["dm_err"]) / dpd)) - 1
+            r1 = int(np.ceil((w["dm"] + w["dm_err"]) / dpd)) + 1
+            t0 = max(lo_s, new_lo) - first
+            t1 = min(hi_s, new_hi) - first
+            win = res.window[:, :, slots]
+            m = measure(win, self.searcher.plan, self.searcher.D, tier, res.sigma, widths,
+                        (r0, r1), (t0, t1), zerodm=tier.level > 0)
+            if m is not None and (w["best"] is None or m[0] > w["best"]["snr"]):
+                snr, row, t, wi, k = m
+                wd = int(widths[wi])
+                t_end = first + t
+                t_bottom = self.searcher.tier_time(tier, t_end - (wd - 1) / 2.0 + 0.5)
+                dm = row * dpd
+                w["best"] = dict(snr=snr, dm=dm, row=row, t_bottom=t_bottom, width_s=wd * tier.dt,
+                                 slot=slots[k], tier=tier.level, tier_dt=tier.dt, dm_step=dpd,
+                                 t_inf=t_bottom - K_DM * dm / self.band.f_lo ** 2)
+                w["_win"] = np.ascontiguousarray(res.window[:, :, slots[k]])
+                w["_t_win"] = self.searcher.tier_time(tier, first + np.arange(W))
+                w["_sigma"] = res.sigma
+            if hi_s <= new_hi:
+                done.append(self._finish_watch(w))
+        return [c for c in done if c is not None]
+
+    def _finish_watch(self, w):
+        """Store a measured watch as a followup candidate"""
+        b = w["best"]
+        if b is None:
+            w.update(state="expired", reason=w.get("reason") or "not measured")
+            return None
+        with self.grid_lock:
+            hpix = int(self.grid.hpix_of[b["slot"]])
+            xy = self.grid.xy[b["slot"]].copy()
+        ra, dec = (float(self.grid.ra[hpix]), float(self.grid.dec[hpix])) if hpix >= 0 \
+            else (w["ra"], w["dec"])
+        el, az = altaz(ra, dec, b["t_bottom"])
+        cid = f"{time.strftime('%Y%m%dT%H%M%S', time.gmtime(b['t_inf']))}_" \
+              f"{self.band.f_centre:.0f}MHz_fu_{uuid.uuid4().hex[:6]}"
+        c = Candidate(
+            id=cid, cls="followup", snr=float(b["snr"]), dm=float(b["dm"]), dm_step=b["dm_step"],
+            width_s=b["width_s"], t_inf=b["t_inf"], t_bottom=b["t_bottom"],
+            t_top=b["t_bottom"] - b["row"] * b["tier_dt"], utc_inf=utc(b["t_inf"]), hpix=hpix,
+            nside=self.grid.nside, ra=ra, dec=dec, el=float(el), az=float(az),
+            image_x=float(xy[0]), image_y=float(xy[1]), tier=b["tier"], tier_dt=b["tier_dt"],
+            n_pix=1, extent_deg=0.0, f_lo_mhz=self.band.f_lo, f_hi_mhz=self.band.f_hi,
+            host=self.cfg.host, detected_unix=time.time(), event_id=w["event_id"])
+        win = w.pop("_win")
+        plan = fdmt_plan(self.band.edges_mhz(), self.searcher.D)
+        products = dict(dynspec=win.astype(np.float32), dynspec_t=w.pop("_t_win"),
+                        dmt=fdmt(win[:, :, None], plan)[:, :, 0].astype(np.float32),
+                        dmt_dm=np.arange(self.searcher.D + 1) * b["dm_step"],
+                        freqs_mhz=self.band.centres_mhz(), sigma=w.pop("_sigma"),
+                        watch=np.array([w["ra"], w["dec"], w["dm"], w["t_inf"], w["dm_err"],
+                                        w["t_tol"]]))
+        stored = self.store.add(c, products, self.radius, dedupe=False)
+        w.update(state="measured", result=dict(cand_id=c.id, snr=c.snr, dm=c.dm,
+                                               t_inf=c.t_inf, t_bottom=c.t_bottom, ra=ra, dec=dec,
+                                               el=c.el))
+        print(f"skymon: followup {c.id} for {w['event_id']} S/N {c.snr:.1f} DM {c.dm:.1f}",
+              flush=True)
+        return stored
+
+    def _save_context(self, w):
+        """
+        For a watch that could not be measured, keep what this band still has:
+        the accumulated spectrum of the position around the predicted arrival.
+        """
+        if w.get("context_done"):
+            return
+        w["context_done"] = True
+        tb = predicted_bottom(w, self.band.f_lo)
+        with self.grid_lock:
+            s = self.grid.nearest_slot(w["ra"], w["dec"])
+            hpix = int(self.grid.hpix_of[s]) if s >= 0 else -1
+        if s < 0:
+            return
+        t, d = self.accum.pixel(s, since=tb - 1800)
+        keep = t <= tb + 1800
+        if not keep.any():
+            return
+        el, az = altaz(w["ra"], w["dec"], tb)
+        cid = f"{time.strftime('%Y%m%dT%H%M%S', time.gmtime(w['t_inf']))}_" \
+              f"{self.band.f_centre:.0f}MHz_ctx_{uuid.uuid4().hex[:6]}"
+        c = Candidate(
+            id=cid, cls="context", snr=0.0, dm=w["dm"], dm_step=w["dm_err"], width_s=0.0,
+            t_inf=w["t_inf"], t_bottom=tb, t_top=tb, utc_inf=utc(w["t_inf"]), hpix=hpix,
+            nside=self.grid.nside, ra=float(self.grid.ra[hpix]), dec=float(self.grid.dec[hpix]),
+            el=float(el), az=float(az), image_x=float("nan"), image_y=float("nan"), tier=-1,
+            tier_dt=self.accum.interval, n_pix=1, extent_deg=0.0, f_lo_mhz=self.band.f_lo,
+            f_hi_mhz=self.band.f_hi, host=self.cfg.host, detected_unix=time.time(),
+            event_id=w["event_id"], quality=dict(note=w.get("reason") or "not measured"))
+        self.store.add(c, dict(accum=d[keep], accum_t=t[keep], freqs_mhz=self.band.centres_mhz(),
+                               watch=np.array([w["ra"], w["dec"], w["dm"], w["t_inf"],
+                                               w["dm_err"], w["t_tol"]])),
+                       self.radius, dedupe=False)
+        w["context_id"] = cid
+
+    def _expire_watches(self, unix):
+        """Give up on watches whose time has long passed, or that no tier can search"""
+        for w in self.watches.list_live():
+            if w["state"] == "expired" and not w.get("context_done") and \
+                    unix > predicted_bottom(w, self.band.f_lo) + 30:
+                self._save_context(w)
+        for w in self.watches.pending():
+            if w["dm"] > self.searcher.tiers[-1].dm_max:
+                w.update(state="expired", reason="DM beyond the search range")
+                continue
+            tier = self.searcher.tier_for_dm(w["dm"])
+            tb = predicted_bottom(w, self.band.f_lo)
+            if unix > tb + w["t_tol"] + 3 * tier.block * tier.dt + 120:
+                if w["best"] is not None:
+                    self._finish_watch(w)
+                elif w["created"] > tb + w["t_tol"]:
+                    w.update(state="expired", reason="the burst passed this band before the "
+                                                     "watch arrived; covered by the blind search")
+                else:
+                    w.update(state="expired", reason=w.get("reason") or "not measured")
+
+    # ------------------------------------------------------------ the local database
+    def sync_db(self):
+        """
+        Exchange the mailbox with the node's database: take new watches and
+        injection requests, write back watch results, replay the spool, and
+        record the status. Runs in its own thread (start_db_sync).
+        """
+        db = self.db
+        if db is None:
+            return
+        news = db.new_watches({w["id"] for w in self.watches.list()})
+        for req in news or []:
+            try:
+                self.watches.add(req)
+            except ValueError as e:
+                db.update_watch(dict(id=req["id"], state="expired", reason=f"bad request: {e}"))
+        for w in self.watches.list_live():
+            sig = (w["state"], w.get("context_id"))
+            if w.get("_synced") != sig and (w["state"] != "pending" or w.get("context_id")):
+                out = {k: v for k, v in w.items() if not k.startswith("_")}
+                if db.update_watch(out):
+                    w["_synced"] = sig
+        injs = db.new_injections({b.id for b in self.injector.active + self.injector.waiting})
+        for spec in injs or []:
+            try:
+                self.injector.add_external(spec)
+                db.set_injection(spec["id"], "accepted")
+            except ValueError:
+                db.set_injection(spec["id"], "rejected")
+        if db.spooled():
+            db.replay()
+        st = self.status()
+        st.pop("injections", None)
+        db.put_status("monitor", st)
+
+    def start_db_sync(self, stop: threading.Event, every_s: float = 2.0):
+        def loop():
+            while not stop.is_set():
+                try:
+                    self.sync_db()
+                except Exception as e:  # never let the mailbox stop the search
+                    print(f"skymon: database sync failed: {e!r}", flush=True)
+                stop.wait(every_s)
+        th = threading.Thread(target=loop, daemon=True)
+        th.start()
+        return th
+
+    def watch_list(self, event_id=None):
+        out = []
+        for w in self.watches.list(event_id):
+            out.append({k: v for k, v in w.items() if not k.startswith("_")})
+        return out
 
     # ------------------------------------------------------------ queries
     def status(self):
@@ -320,7 +555,11 @@ class Monitor:
                   lag_s=(time.time() - self.last_image_unix) if self.last_image_unix else None,
                   cpu_fraction=(m.get("process_s", 0) / (m.get("images", 1) * self.dt))
                   if self.band else None,
-                  candidates=self.store.counts, injections=self.injector.summary())
+                  candidates=self.store.counts, injections=self.injector.summary(),
+                  database=None if self.db is None else dict(
+                      ready=self.db.ready, errors=self.db.errors, last_error=self.db.last_error,
+                      spooled=self.db.spooled()),
+                  write_queue=self.store.q.qsize())
         if self.band:
             st.update(band=dict(f_lo=self.band.f_lo, f_hi=self.band.f_hi,
                                 nchan=self.band.nchan, chan0=self.band.chan0,

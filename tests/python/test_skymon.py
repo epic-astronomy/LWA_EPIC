@@ -264,6 +264,31 @@ class TestTrends(unittest.TestCase):
         self.assertLessEqual(len(hits), 1, [(h.slot, h.tier, round(h.snr, 1)) for h in hits])
 
 
+class TestSharedFrbList(unittest.TestCase):
+    def test_bursts_start_when_they_reach_the_band(self):
+        """A high-DM burst listed first must not hold back one of low DM in a low band"""
+        from skymon.simulate import SkySimulator
+        chan0 = 1442 - 64  # 33.0-36.0 MHz
+        f_top = Band(chan0, 128).f_hi
+        start = T0
+        ra, dec = 0.0, 0.0
+        for r in range(0, 360, 5):
+            from skymon.geometry import altaz
+            if altaz(r, 34.0, start)[0] > 70:
+                ra, dec = float(r), 34.0
+                break
+        high = dict(id="sim-high", ra=ra, dec=dec, dm=500.0, snr=20.0,
+                    t_inf=start - K_DM * 500.0 / f_top ** 2 + 400.0)  # reaches the band at +400 s
+        low = dict(id="sim-low", ra=ra, dec=dec, dm=50.0, snr=20.0,
+                   t_inf=start - K_DM * 50.0 / f_top ** 2 + 5.0)  # reaches it at +5 s
+        self.assertLess(high["t_inf"], low["t_inf"])  # listed first by t_inf
+        sim = SkySimulator(chan0=chan0, nchan=128, start_unix=start, frb_per_hour=0,
+                           rfi_per_hour=0, seed=3, frb_list=[high, low])
+        for _ in range(int(10 / sim.dt)):
+            sim.next_image()
+        self.assertEqual([t["id"] for t in sim.truth], ["sim-low"])
+
+
 def _sim_and_monitor(out, duration, frb_per_hour, inject_every_s, snr=(25, 40), dm=(10, 120),
                      seed=5):
     from skymon.monitor import Config, Monitor
@@ -299,11 +324,18 @@ class TestEndToEnd(unittest.TestCase):
             found = sum(c is not None for _, c in rep["rows"])
             self.assertGreaterEqual(found, max(1, int(0.7 * len(rep["truth"]))), rep["text"])
             self.assertLessEqual(len(rep["false"]), 2, rep["text"])
+            # nothing that might be a burst is stored without its data
+            for c in rep["cands"]:
+                if not c.get("rfi_certain"):
+                    self.assertIn("npz", c["files"], (c["cls"], c.get("rfi_reasons")))
             # products on disk
             stored = [c for _, c in rep["rows"] if c is not None]
             self.assertTrue(os.path.exists(stored[0]["files"]["npz"]))
             with np.load(stored[0]["files"]["npz"]) as z:
                 self.assertEqual(z["dynspec"].shape[0], 64)
+            q = stored[0]["quality"]
+            self.assertLess(q["snr_dm0_ratio"], 0.8)  # dispersed, not broadband
+            self.assertEqual(len(q["subband_snr"]), 4)
             # the HTTP interface
             httpd = serve(mon, host="127.0.0.1", port=0)
             port = httpd.server_address[1]

@@ -7,8 +7,10 @@ at its brightest hit. A cluster spread over much more of the sky than a beam
 is classified as RFI. A candidate that repeats one already stored (the same
 burst found by two tiers or blocks) is not stored twice.
 
-Every stored candidate is a JSON record plus, unless it is RFI, an .npz with
-the data around it, under <out_dir>/candidates/YYYYMMDD/.
+Every stored candidate is a JSON record plus an .npz with the data around
+it, under <out_dir>/candidates/YYYYMMDD/. Only RFI that is certain (a DM near
+zero, or much of the sky at once) is stored without its data: anything that
+might be a burst is kept for a person to judge.
 """
 from __future__ import annotations
 
@@ -41,7 +43,7 @@ def utc(unix: float) -> str:
 @dataclass
 class Candidate:
     id: str
-    cls: str  # candidate | injection | rfi
+    cls: str  # candidate | injection | rfi | followup | context
     snr: float
     dm: float
     dm_step: float
@@ -67,6 +69,10 @@ class Candidate:
     host: str
     detected_unix: float
     injection_id: str | None = None
+    event_id: str | None = None  # the combiner's event, for followup measurements
+    rfi_reasons: list = field(default_factory=list)  # why it was classified as RFI
+    rfi_certain: bool = False  # only certain RFI is stored without its data
+    quality: dict = field(default_factory=dict)  # in-band measures (quality.py)
     duplicates: int = 0
     members: list = field(default_factory=list)  # [hpix, snr] of the cluster's pixels
     files: dict = field(default_factory=dict)
@@ -122,8 +128,9 @@ def cluster_hits(hits, ra, dec, radius_deg, d_rows):
 class CandidateStore:
     """Writes candidates to disk in a background thread and keeps recent ones in memory"""
 
-    def __init__(self, out_dir: str, keep_hours: float = 24.0):
+    def __init__(self, out_dir: str, keep_hours: float = 24.0, db=None):
         self.out_dir = out_dir
+        self.db = db  # localdb.LocalDB: every record also goes to the node's database
         self.keep_s = keep_hours * 3600
         self.recent: list[Candidate] = []
         self.lock = threading.Lock()
@@ -131,7 +138,7 @@ class CandidateStore:
         self.thread = threading.Thread(target=self._writer, daemon=True)
         self.thread.start()
         os.makedirs(os.path.join(out_dir, "candidates"), exist_ok=True)
-        self.counts = dict(stored=0, duplicates=0, rfi=0, injection=0)
+        self.counts = dict(stored=0, duplicates=0, rfi=0, injection=0, followup=0, context=0)
 
     def _dir(self, unix: float) -> str:
         d = os.path.join(self.out_dir, "candidates",
@@ -142,6 +149,8 @@ class CandidateStore:
     def find_duplicate(self, c: Candidate, radius_deg: float):
         with self.lock:
             for o in reversed(self.recent):
+                if o.cls == "followup":
+                    continue
                 if abs(o.t_bottom - c.t_bottom) > max(30.0, 4 * (o.width_s + c.width_s)) + \
                         2 * max(o.tier_dt, c.tier_dt):
                     continue
@@ -154,9 +163,9 @@ class CandidateStore:
                 return o
         return None
 
-    def add(self, c: Candidate, products: dict | None, radius_deg: float):
+    def add(self, c: Candidate, products: dict | None, radius_deg: float, dedupe: bool = True):
         """Store c unless it repeats a brighter stored candidate. Returns the stored one or None"""
-        dup = self.find_duplicate(c, radius_deg)
+        dup = self.find_duplicate(c, radius_deg) if dedupe else None
         if dup is not None:
             if dup.snr >= c.snr:
                 dup.duplicates += 1
@@ -198,7 +207,7 @@ class CandidateStore:
         while True:
             kind, c, extra = self.q.get()
             try:
-                if kind == "new" and extra is not None and c.cls != "rfi":
+                if kind == "new" and extra is not None:
                     p = self.path(c, "npz")
                     np.savez_compressed(p, **extra)
                     c.files["npz"] = p
@@ -210,6 +219,8 @@ class CandidateStore:
                 with open(tmp, "w") as f:
                     json.dump(c.to_dict(), f, indent=1)
                 os.replace(tmp, p)
+                if self.db is not None:  # spooled locally if the database is away
+                    self.db.put_candidate(c.to_dict(), c.files.get("npz"))
             except Exception as e:  # never let disk trouble stop the search
                 print(f"skymon: could not write candidate {c.id}: {e}", flush=True)
             finally:

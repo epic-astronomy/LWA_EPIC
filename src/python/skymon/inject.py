@@ -42,9 +42,10 @@ class LiveInjector:
         self.width = width_s
         self.lead = lead_s
         self.rng = rng or np.random.default_rng()
-        self.enabled = enabled and interval_s > 0
+        self.enabled = enabled  # random injections need interval_s > 0 as well
         self.next_at = None
         self.active: list[Burst] = []
+        self.waiting: list[Burst] = []  # requested from outside, not yet started
         self.done: list[dict] = []
         self.lock = threading.Lock()
         self.stats = dict(injected=0, recovered=0, missed=0)
@@ -56,6 +57,8 @@ class LiveInjector:
     def schedule(self, now: float, grid, searcher, min_age_images: int):
         """Possibly start a new injection at image time now"""
         if not self.enabled:
+            return None
+        if self.interval <= 0:
             return None
         if self.next_at is None:
             self.next_at = now + self.rng.exponential(self.interval)
@@ -85,22 +88,71 @@ class LiveInjector:
         snr = float(self.rng.uniform(*self.snr))
         b = Burst(id="inj-" + uuid.uuid4().hex[:10], ra=ra, dec=dec, dm=dm, t_inf=t_inf,
                   width_s=width, snr=snr, kind="injection")
-        tier = searcher.tier_for_dm(dm)
-        n_eff = effective_samples(b, edges, tier.dt)
-        b.amp_sigma = amplitude_for_snr(snr, searcher.C, n_eff)
-        # per-channel amplitude in image units: a per-image noise sigma of this pixel
-        sig = np.sqrt(np.maximum(searcher.var[:, s], 0)).astype(np.float64)
-        b.meta = dict(slot=s, hpix=h, tier=tier.level, n_eff=n_eff,
-                      sigma=float(np.median(sig)), scheduled_unix=now)
-        b._amp = b.amp_sigma * sig * tier.decim ** 0.5  # noise of a tier sample is decim x
-        span = b.span(edges)
-        b.meta["span"] = list(span)
-        b.meta["expire"] = span[1] + 3 * tier.block * tier.dt + 120.0
+        b.meta = dict(scheduled_unix=now)
+        self._amplitude(b, s, searcher)
         with self.lock:
             self.active.append(b)
         self.stats["injected"] += 1
         self._log(dict(event="scheduled", **b.to_dict()))
         return b
+
+    def _amplitude(self, b: Burst, slot: int, searcher):
+        """Set b's per-channel amplitude from the noise of the tracked pixel slot"""
+        edges = searcher.edges
+        tier = searcher.tier_for_dm(b.dm)
+        n_eff = effective_samples(b, edges, tier.dt)
+        b.amp_sigma = amplitude_for_snr(b.snr, searcher.C, n_eff)
+        # per-channel amplitude in image units: a per-image noise sigma of this pixel
+        sig = np.sqrt(np.maximum(searcher.var[:, slot], 0)).astype(np.float64)
+        b._amp = b.amp_sigma * sig * tier.decim ** 0.5  # noise of a tier sample is decim x
+        span = b.span(edges)
+        b.meta.update(slot=int(slot), tier=tier.level, n_eff=n_eff,
+                      sigma=float(np.median(sig)), span=list(span),
+                      expire=span[1] + 3 * tier.block * tier.dt + 120.0)
+
+    def add_external(self, spec: dict) -> Burst:
+        """
+        A burst requested from outside (the combiner's coordinated injections):
+        the same position, DM and time in every band, each band setting the
+        amplitude for the requested S/N from its own noise once the position is
+        tracked. Fields: id, ra, dec, dm, t_inf, and optional snr, width_s.
+        """
+        for k in ("id", "ra", "dec", "dm", "t_inf"):
+            if k not in spec:
+                raise ValueError(f"injection needs {k}")
+        b = Burst(id=str(spec["id"]), ra=float(spec["ra"]) % 360.0, dec=float(spec["dec"]),
+                  dm=float(spec["dm"]), t_inf=float(spec["t_inf"]),
+                  width_s=float(spec.get("width_s", 0.005)), snr=float(spec.get("snr", 20.0)),
+                  kind="injection")
+        b.meta = dict(external=True, received_unix=time.time())
+        with self.lock:
+            if any(o.id == b.id for o in self.active + self.waiting):
+                return b
+            self.waiting.append(b)
+        self._log(dict(event="requested", **b.to_dict()))
+        return b
+
+    def prepare(self, now: float, grid, searcher):
+        """Start requested injections whose position is tracked; drop those that passed"""
+        if not self.waiting:
+            return
+        edges = searcher.edges
+        with self.lock:
+            waiting, self.waiting = self.waiting, []
+        for b in waiting:
+            if b.arrival(edges[-1]) < now:  # it should already have started here
+                self._log(dict(event="not injected", id=b.id, reason="arrived before it could start"))
+                continue
+            s = grid.nearest_slot(b.ra, b.dec)
+            if s < 0 or searcher.age[s] <= searcher.warmup:
+                with self.lock:
+                    self.waiting.append(b)  # not tracked (yet)
+                continue
+            self._amplitude(b, s, searcher)
+            with self.lock:
+                self.active.append(b)
+            self.stats["injected"] += 1
+            self._log(dict(event="scheduled", **b.to_dict()))
 
     def apply(self, image: np.ndarray, t0: float, dt: float, edges, centres, wcs, pix_deg):
         """Add the active injections to image [C][y][x] for the image [t0, t0 + dt)"""
