@@ -8,6 +8,8 @@ from astropy.coordinates import SkyCoord, FK5
 from scipy.signal import correlate2d
 
 import datetime
+import os
+import sys
 import time
 from MCS2 import Communicator
 import uuid
@@ -103,16 +105,45 @@ def gen_phases_lwasv(nchan, chan0):
     return phases.ravel().copy()
 
 
+_log_last = {}
+
+
+def _log_limited(key, msg, every_s=300.0):
+    """Print msg at most once per every_s for each key, with the number held back"""
+    now = time.time()
+    last, held = _log_last.get(key, (0.0, 0))
+    if now - last >= every_s:
+        extra = f" ({held} more since the last report)" if held else ""
+        print(f"save_output: {msg}{extra}", file=sys.stderr, flush=True)
+        _log_last[key] = (now, 0)
+    else:
+        _log_last[key] = (last, held + 1)
+
+
 def save_output(output_arr, grid_size, nchan, outdir, metadata):
     """
-    Save image to disk
+    Save an accumulated image to <outdir>/YYYYMMDD/ (UTC day of its middle)
+    and return the path of the FITS file, or "" when it could not be written.
 
-    output_arr: Output image array
+    output_arr: Output image array, the sum of metadata["nimg"] images
     grid_size: X or Y Size of the grid in pixels
     nchan: Number of output channlels in the image
-    outdir: Name of the file to save
+    outdir: Output directory (--out_dir)
     metadata: Dict with the metatadata to be written to the fits file
+
+    It never raises: a missing or read-only directory, a full disk or a stale
+    NFS handle is logged (rate-limited) and that accumulation is dropped. The
+    caller runs it off the imaging pipeline, so a hung mount only stalls the
+    writer.
     """
+    try:
+        return _save_output(output_arr, grid_size, nchan, outdir, metadata)
+    except Exception as e:  # noqa: BLE001 - the imager must never stop here
+        _log_limited("write", f"accumulation not written to {outdir}: {e!r}")
+        return ""
+
+
+def _save_output(output_arr, grid_size, nchan, outdir, metadata):
     # start = time.time()
     output_arr = output_arr.reshape((nchan, grid_size, grid_size, 4))
     # output_arr_sft = np.fft.fftshift(output_arr, axes=(2, 3))
@@ -128,12 +159,16 @@ def save_output(output_arr, grid_size, nchan, outdir, metadata):
     # 0.25 deg per minute meanwhile. Times, the LST and the celestial WCS refer
     # to the middle of the span, so that a source's pixel (and the daily digest
     # read from it) is centred on its track through the accumulation.
+    # img_len_ms is the span actually summed: nimg images, fewer than
+    # --nimg_accum for a partial sum written at a gap in the images
     t_beg = metadata["time_tag"] / FS
     t_end = t_beg + 1e-3 * metadata["img_len_ms"]
     t_mid = 0.5 * (t_beg + t_end)
+    nimg = max(1, int(metadata.get("nimg", 1)))
     phdu.header["DATE-OBS"] = Time(t_mid, format="unix", precision=6).isot
     phdu.header["DATE-BEG"] = Time(t_beg, format="unix", precision=6).isot
     phdu.header["DATE-END"] = Time(t_end, format="unix", precision=6).isot
+    phdu.header["NIMGACC"] = (nimg, "images summed in this accumulation")
 
     sll = (
         2 * metadata["grid_size"] * np.sin(np.pi * metadata["grid_res"] / 360)
@@ -195,16 +230,35 @@ def save_output(output_arr, grid_size, nchan, outdir, metadata):
     ihdu.header["CRVAL4"] = -5  # pol_nums[pol_order[0]]
 
     hdulist = fits.HDUList([phdu, ihdu])
-    unix_time = t_mid
-    filename = f"EPIC_{unix_time:.3f}_{cfreq/1e6:.3f}MHz"
-    hdulist.writeto(f"{outdir}{filename}.fits", overwrite=True)
+    filename = f"EPIC_{t_mid:.3f}_{cfreq/1e6:.3f}MHz"
+    daydir = os.path.join(outdir, time.strftime("%Y%m%d", time.gmtime(t_mid)))
+    os.makedirs(daydir, exist_ok=True)
+    path = os.path.join(daydir, filename + ".fits")
+    # written under a temporary name, so that a failed write leaves no partial file
+    try:
+        hdulist.writeto(path + ".part", overwrite=True)
+        os.replace(path + ".part", path)
+    except BaseException:
+        try:
+            os.remove(path + ".part")
+        except OSError:
+            pass
+        raise
 
-    matplotlib.image.imsave(f"{outdir}{filename}_QL.png", img_data[0, 0, :, :], origin="lower")
+    try:
+        matplotlib.image.imsave(os.path.join(daydir, filename + "_QL.png"),
+                                img_data[0, 0, :, :], origin="lower")
+    except Exception as e:  # noqa: BLE001 - the quick look is optional
+        _log_limited("png", f"quick look not written: {e!r}")
 
-    # extract and ingest the pixels to DB
-    ingest_daily_digest(ihdu.header, phdu.header, img_data, cfreq)
+    # the digest: per-image means over each watched source's patch, so that
+    # a partial accumulation is on the same scale as a full one
+    try:
+        ingest_daily_digest(ihdu.header, phdu.header, img_data, cfreq, nimg=nimg)
+    except Exception as e:  # noqa: BLE001 - database or watch list unavailable
+        _log_limited("digest", f"daily digest not written: {e!r}")
 
-    return f"{outdir}{filename}.fits"
+    return path
 
 
 def get_ADP_time_from_unix_epoch():

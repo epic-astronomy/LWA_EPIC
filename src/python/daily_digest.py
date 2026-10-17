@@ -36,12 +36,32 @@ class EpicDailyDigestTable(Base):
     stokes_v = Column(ARRAY(Float), nullable=False)
     cfreq = Column(Float, nullable=False, primary_key=True)
 
-def ingest_daily_digest(ihdu, phdu, data, cfreq):
+_engine = None
+
+
+def _get_engine():
+    """One engine per process, with time limits so a dead database cannot hang the writer"""
+    global _engine
+    if _engine is None:
+        _engine = create_engine(
+            "postgresql:///", pool_pre_ping=True,
+            connect_args=dict(connect_timeout=10, keepalives=1, keepalives_idle=30,
+                              keepalives_interval=10, keepalives_count=3,
+                              options="-c statement_timeout=30000"))
+    return _engine
+
+
+def ingest_daily_digest(ihdu, phdu, data, cfreq, nimg=1):
     """
-    Extract pixel values for each source in the watch list, 
+    Extract pixel values for each source in the watch list,
     create stokes I and V by adding all the values in the kernel,
-    and ingest it into the DB
+    and ingest it into the DB.
+
+    data is the sum of nimg images; the spectra are divided by nimg (means per
+    image), so that partial and full accumulations, and accumulations of any
+    length, are on the same scale.
     """
+    scale = 1.0 / max(1, int(nimg))
     indices = get_pixel_indices2(ihdu, phdu, 0)
     if indices["nsrc"][0] <= 0:
         return
@@ -65,12 +85,12 @@ def ingest_daily_digest(ihdu, phdu, data, cfreq):
             indices["pix_x"][i * ncoords : (i + 1) * ncoords].astype(int) - 1,
         ]
 
-        stokes_V = np.abs(Xyc_im).sum(axis=0)
+        stokes_V = np.abs(Xyc_im).sum(axis=0) * scale
         rows.append(
             dict(
                 source_name=indices["src_ids"][i * ncoords],
                 img_time=ihdu["DATETIME"],
-                stokes_i=data[
+                stokes_i=(data[
                     0:2,  # X*X, Y*Y
                     :,  # all channels
                     indices["pix_y"][i * ncoords : (i + 1) * ncoords].astype(
@@ -81,15 +101,14 @@ def ingest_daily_digest(ihdu, phdu, data, cfreq):
                         int
                     )
                     - 1,
-                ].sum(axis=(0, 2)).tolist(),
+                ].sum(axis=(0, 2)) * scale).tolist(),
                 stokes_v=stokes_V.tolist(),
                 cfreq=cfreq
             )
         )
 
-    engine = create_engine("postgresql:///")
     insert_stmnt = insert(EpicDailyDigestTable).values(rows)
-    with engine.connect() as conn:
+    with _get_engine().connect() as conn:
         conn.execute(insert_stmnt)
         conn.commit()
 
