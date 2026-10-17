@@ -36,6 +36,7 @@ epic++ (ChanReducer) ──Stokes I──▶ /dev/shm/<ring> ──▶ skymon ru
    - The dispersion delay is linear in DM, so tier j covers DMs 2^j times those of tier 0. The tiers together cover 0–`--dm-max` in octaves.
    - At the top of each tier, a pulse is smeared by about one sample per channel, so averaging further would lose signal.
    - Every tier keeps only D + block samples of history, whatever its DM. All tiers together take about 0.7 MB per pixel for 128 channels (14 GB at nside 64), and the accumulation (step 7) another 12 GB.
+   - The FDMT and the boxcar search are compiled (`skymon_search` in `_kernels.c`). Each thread transforms a tile of 16 pixels depth first, so that the small subbands stay in the core's cache, and searches each final delay row as soon as it is formed.
 5. **Search.**
    - A straight line fitted over the window is removed from every channel of every pixel before the FDMT. Above tier 0 the mean over channels at each time is removed too (zero-DM filter), which takes out broadband variations at a cost of 1–2 parts in nchan of a burst.
    - Each tier searches boxcars of 1, 2, 4 and 8 samples. The noise of every delay row and width is measured from the data (clipped RMS of the previous blocks).
@@ -187,6 +188,8 @@ python -m skymon simtest --duration 1800 --realtime --out simtest     # simulate
 python -m skymon simulate --shm skysim --duration 3600                    # images only, at the real rate
 python -m skymon evaluate --truth simtest/truth.jsonl --out simtest
 ```
+
+With 8 threads the monitor takes 0.57 of real time at 41.8 ms images with `--max-delay-factor 2 --block 512` (0.32 at 83.6 ms) on a Threadripper PRO 5965WX; 12 threads take 0.52, and more threads add nothing, since they then compete for memory bandwidth. The default OpenMP wait policy is faster than `OMP_WAIT_POLICY=passive` by about 15% (docs/skymon/DESIGN.md, §10.1b).
 
 `epic++` needs `--sky_shm epic_sky0` to publish. The ring holds 64 images by default (5.3 s, 537 MB for 128 channels).
 

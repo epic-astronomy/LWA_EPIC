@@ -135,6 +135,8 @@ The smearing within a channel is the sweep across the band divided by the number
 
 Each tier holds only D + block samples of history (block 256 tier-0 samples by default), independent of DM. For 128 channels the search state takes about 0.7 MB per pixel, 14 GB for the sky at `nside` 64. Storing the full-resolution series instead would take 222 000 samples per channel at 16 MHz and DM 3000, about 1 TB for the sky.
 
+The search kernel (`skymon_search` in `_kernels.c`) is limited by memory traffic rather than by arithmetic. Each thread transforms a tile of 16 pixels depth first: a subband is merged as soon as both its halves exist, so that the subbands of the lower merge levels stay in the core's cache, and the final merge forms one delay row at a time in a buffer that the boxcar search reads at once. Rows below the tier's first reported delay are not formed. The per-image steps (bicubic taps, normalisation and the pushes into the tiers) are compiled as well, and a searched window is moved forward in parallel over channels. Beyond about 12 threads the threads compete for memory bandwidth and the search gains no further speed (§10.1b).
+
 | Tier | Sample (s) | DM range at 57.4 MHz | DM step | Latency (s) |
 |---|---|---|---|---|
 | 0 | 0.084 | 0–80 | 0.62 | 21 |
@@ -561,6 +563,22 @@ epic++ built from `phoenix-skymon` (full CUDA build) was run in its benchmark mo
 | Node memory | 16 GB | 16 GB | 43 GB (monitor 28 GB) |
 
 Publishing costs about 9 ms per image on the ChanReducer thread, within its 83.6 ms per image, and adds no measurable time to the correlator. The cores 24–47 used in this run are the hyperthread siblings of cores 0–23, which hold the imager's threads; the monitor's effect on the imager's worst block (+0.3 ms) is attributed to this sharing, and the jobs pin the monitor to cores 12–23 and 36–47 instead. Contention with packet capture (no F-engine in the benchmark) is not measured.
+
+### 10.1b Processing cost at 41.8 ms images
+
+The monitor alone, fed by the simulator through the shared-memory ring at the real image rate (74–77 MHz, 128 channels, `nside` 64, 20 300 pixels, DM ≤ 3000), pinned to cores 12–23 and 36–47 at nice 10, with the simulator on the other cores. Each case ran for 15 min; the processing time is taken over the images after the first 450 s, once every tier searches. Before: the kernels of commit 4fd13bc. After: the depth-first search kernel and compiled per-image steps (§3.2).
+
+| Images, delay rows, tier-0 block | Threads | Processing time, before | After |
+|---|---|---|---|
+| 41.8 ms, D = 2C, 512 | 8 | 1.19 of real time; 91% of the images dropped | 0.56–0.57, nothing lost |
+| 41.8 ms, D = 2C, 512 | 12 | 1.21; 92% dropped | 0.51–0.52, nothing lost |
+| 41.8 ms, D = 2C, 512 | 16 | 1.20; 91% dropped | 0.52, nothing lost |
+| 83.6 ms, D = 2C, 512 | 8 | 0.60 | 0.32 |
+| 41.8 ms, D = C, 256 | 8 | 0.79 | 0.38 |
+
+Before, the monitor fell behind at 41.8 ms with D = 2C and dropped the oldest images; the drops are counted as cheap missing images, so its figure understates the cost of a real image. Per 21.4 s of data (one tier-0 block) at 8 threads, the search took 0.69 of real time before and 0.32 after (tier 0: 6.4 s against 2.9 s), the shifts of the searched windows 0.12 and 0.02, and the per-image steps 0.36 and 0.17 (bicubic taps 6.7 ms against 0.35 ms per image). The OpenMP threads use about 60% of a core each: 5.0 cores in all at 8 threads, 7.0 at 12 and 9.4 at 16.
+
+`OMP_WAIT_POLICY=passive` raised the processing time to 0.66 (8 threads), 0.60 (12) and 0.59 (16), and `GOMP_SPINCOUNT=10000` to 0.65 (8), since a sleeping thread takes longer to wake for the next parallel region. The default policy is therefore kept. Eight threads leave the most cores and memory bandwidth to the imager; 12 threads save another 0.05 of real time for two more cores.
 
 ### 10.2 Multi-band consensus and fault test
 
