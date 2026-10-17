@@ -11,7 +11,8 @@ Per image (83.6 ms at LWA-SV) the regridded sky values [chan, pixel] are
    while a burst, confined to a beam, leaves the median unchanged,
 3. flagged for interference: a channel whose spread over the sky (1.4826
    times the median absolute deviation, about 1 for noise) exceeds
-   chan_flag_sigma carries interference seen over much of the sky in this
+   chan_flag_sigma times that of the band (the median over the channels, at
+   least 1) carries interference seen over much of the sky in this
    image, such as a carrier scattered by an aircraft or a meteor trail, and
    is set to zero for every pixel. A channel flagged in more than half of the
    images (exponential rate, time constant flag_tau_s) is masked, set to zero
@@ -82,8 +83,10 @@ class Searcher:
         C = 128 and n = 1, so 12 removes only what no burst can produce in a
         single cell (in a band of 64 channels, up to S/N 96).
         chan_flag_sigma: spread over the sky (robust standard deviation of the
-        normalised values, about 1 for noise) above which a channel is flagged
-        in one image.
+        normalised values, about 1 for noise), relative to the median spread
+        of the channels (at least 1), above which a channel is flagged in one
+        image. A rise of noise over the whole band is not flagged; it is
+        searched and recorded in the conditions.
         flag_tau_s, mask_on, mask_off: time constant of the flag rate of each
         channel, and the rates at which a channel is masked and released.
         hold_s: longest time for which the statistics of a flagged or clipped

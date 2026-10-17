@@ -76,6 +76,7 @@ class Candidate:
     rfi_certain: bool = False  # only certain RFI is stored without its data
     quality: dict = field(default_factory=dict)  # in-band measures (quality.py)
     known_source: dict | None = None  # a known source at the position (known.py)
+    flux: dict | None = None  # fluence and flux density from the calibration (flux.py)
     duplicates: int = 0
     members: list = field(default_factory=list)  # [hpix, snr] of the cluster's pixels
     files: dict = field(default_factory=dict)

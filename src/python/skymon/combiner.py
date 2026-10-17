@@ -410,11 +410,31 @@ class Combiner:
         tol = 3 * c["tier_dt"] + 2 * c["width_s"] + 2.0 + lever * max(ev["dm_err"], c["dm_step"])
         dm_tol = max(0.1 * ev["dm"], 3 * max(ev["dm_err"], c["dm_step"]))
         if abs(c["dm"] - ev["dm"]) <= dm_tol and abs(c["t_bottom"] - tb) <= tol:
-            return True
-        # the same burst at a wrong trial DM: a bright burst also triggers
-        # neighbouring trial DMs, at times within its sweep through this band
+            return "dm"
+        # at the same position during the burst's sweep through this band, but
+        # at another DM: either the burst triggering a neighbouring trial DM,
+        # or a second burst. Which one is not decided here (_add_other_dm).
         tt = ev["t_inf"] + K_DM * ev["dm"] / c["f_hi_mhz"] ** 2
-        return tt - tol <= c["t_bottom"] <= tb + tol
+        return "sweep" if tt - tol <= c["t_bottom"] <= tb + tol else False
+
+    def _add_other_dm(self, ev, node, c):
+        """
+        A candidate at the event's position, within its sweep, at another DM.
+        It is kept with the event and listed for the reviewer as another DM at
+        this position (a second burst, such as from a repeating source, looks
+        the same as a sidelobe of a bright one at a wrong trial DM). Its data
+        stay linked to the event, so they are archived with it; it does not
+        replace the band's detection or change the fitted DM.
+        """
+        b = ev["bands"].setdefault(node, {})
+        b.setdefault("others", []).append(c["id"])
+        ev.setdefault("other_dm", []).append(dict(
+            node=node, id=c["id"], dm=c["dm"], snr=c["snr"], t_bottom=c["t_bottom"],
+            ra=c["ra"], dec=c["dec"], dm_step=c["dm_step"], tier_dt=c["tier_dt"],
+            width_s=c["width_s"], f_lo_mhz=c["f_lo_mhz"]))
+        note = (f"{utc(time.time())} {node} also found S/N {c['snr']:.1f} at DM {c['dm']:.1f} "
+                f"at this position during the sweep (a wrong trial DM or a second burst)")
+        ev["notes"].append(note)
 
     def _add_detection(self, ev, node, c):
         b = ev["bands"].setdefault(node, {})
@@ -423,6 +443,10 @@ class Combiner:
                                       "f_lo_mhz", "f_hi_mhz", "injection_id")}
         # the band's data quality in the minute before the detection (conditions.py)
         cand["conditions"] = (c.get("quality") or {}).get("conditions")
+        # fluence from the band's calibration (flux.py), when the monitor has one
+        fl = c.get("flux") or {}
+        cand["fluence_jy_ms"] = fl.get("fluence_jy_ms")
+        cand["fluence_err_jy_ms"] = fl.get("fluence_err_jy_ms")
         if b.get("candidate") and b["candidate"]["snr"] >= c["snr"]:
             b.setdefault("others", []).append(c["id"])
         else:
@@ -807,13 +831,25 @@ class Combiner:
             for name, c in sorted(new, key=lambda x: -x[1]["snr"]):
                 if (name, c["id"]) in self.terrestrial:
                     continue  # recorded with its terrestrial event
-                ev = next((e for e in self.events.values()
-                           if e["kind"] != "terrestrial" and e["status"] != "terrestrial"
-                           if e["status"] in ("pending",) or now - e.get("decided", now) < 3600
-                           if self._matches(e, c)), None)
+                ev, how = None, None
+                for e in self.events.values():
+                    if e["kind"] == "terrestrial" or e["status"] == "terrestrial":
+                        continue
+                    if not (e["status"] == "pending" or now - e.get("decided", now) < 3600):
+                        continue
+                    m = self._matches(e, c)
+                    if m == "dm" or m is True:
+                        ev, how = e, "dm"
+                        break
+                    if m == "sweep" and ev is None:
+                        ev, how = e, "sweep"
                 if ev is None:
                     ev = self._new_event(name, c)
-                self._add_detection(ev, name, c)
+                    self._add_detection(ev, name, c)
+                elif how == "sweep":
+                    self._add_other_dm(ev, name, c)
+                else:
+                    self._add_detection(ev, name, c)
                 changed.add(ev["id"])
             for ev in list(self.events.values()):
                 if ev["status"] != "pending":

@@ -57,6 +57,9 @@ def add_monitor_args(p):
                    help="CSV name,ra_deg,dec_deg,dm,period_s of pulsars added to the built-in list")
     p.add_argument("--disturbed-rfi-rate", type=float, default=d.cond_rfi_rate,
                    help="RFI candidates per minute above which a period is marked disturbed")
+    p.add_argument("--calinfo", default=None,
+                   help="streamcal's calibration record, e.g. /dev/shm/epic_calinfo_gpu0.json: "
+                        "fluence and flux density of candidates (none: no flux)")
     p.add_argument("--seed", type=int, default=None)
 
 
@@ -69,7 +72,7 @@ def make_config(a) -> Config:
                   narrowband_min_channels=a.narrowband_min_channels,
                   known_pulsars_csv=a.known_pulsars,
                   clip=a.clip, chan_flag_sigma=a.chan_flag_sigma,
-                  cond_rfi_rate=a.disturbed_rfi_rate)
+                  cond_rfi_rate=a.disturbed_rfi_rate, calinfo_path=a.calinfo)
 
 
 def run_ring(monitor: Monitor, ring: str, stop: threading.Event, max_queue: int = 512,
@@ -274,6 +277,8 @@ def add_sim_args(p):
     p.add_argument("--truth", default=None)
     p.add_argument("--frb-file", default=None,
                    help="FRBs from this list (skymon frblist) instead of at random")
+    p.add_argument("--sim-calinfo", default=None,
+                   help="write a calibration record of the simulated sky here (flux.py)")
 
 
 def make_sim(a, truth=None):
@@ -284,7 +289,7 @@ def make_sim(a, truth=None):
     return SkySimulator(chan0=a.chan0, nchan=a.nchan, start_unix=a.start,
                         frb_per_hour=a.frb_per_hour, snr=tuple(a.frb_snr), dm=tuple(a.frb_dm),
                         rfi_per_hour=a.rfi_per_hour, truth_path=truth or a.truth,
-                        seed=a.sim_seed,
+                        seed=a.sim_seed, calinfo_path=getattr(a, "sim_calinfo", None),
                         tier_dt=tier_dt_function(band.edges_mhz(), dt, a.nchan),
                         frb_list=json.load(open(a.frb_file)) if a.frb_file else None)
 
@@ -314,6 +319,10 @@ def cmd_simtest(a):
 
     os.makedirs(a.out, exist_ok=True)
     truth = os.path.join(a.out, "truth.jsonl")
+    # the simulator's calibration record, so that candidates get fluences in its units
+    if not a.calinfo:
+        a.calinfo = os.path.join(os.path.abspath(a.out), "calinfo.json")
+    a.sim_calinfo = a.calinfo
     monitor = Monitor(make_config(a))
     _serve(monitor, a.port)
     sync_stop = threading.Event()
@@ -326,7 +335,8 @@ def cmd_simtest(a):
                "--duration", str(a.duration), "--chan0", str(a.chan0), "--nchan", str(a.nchan),
                "--frb-per-hour", str(a.frb_per_hour), "--frb-snr", *map(str, a.frb_snr),
                "--frb-dm", *map(str, a.frb_dm), "--rfi-per-hour", str(a.rfi_per_hour),
-               "--start", str(start), "--sim-seed", str(a.sim_seed), "--truth", truth] + \
+               "--start", str(start), "--sim-seed", str(a.sim_seed), "--truth", truth,
+               "--sim-calinfo", a.sim_calinfo] + \
             (["--frb-file", a.frb_file] if a.frb_file else [])
         env = dict(os.environ)
         sim = subprocess.Popen(cmd, env=env)

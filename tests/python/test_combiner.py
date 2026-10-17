@@ -171,7 +171,37 @@ class TestConsensus(unittest.TestCase):
             (ev,) = comb.events.values()
             self.assertEqual(ev["bands"]["hi"]["candidate"]["id"], "true")
             self.assertEqual(ev["bands"]["hi"]["others"], ["side"])
+            self.assertEqual([o["id"] for o in ev["other_dm"]], ["side"])
             self.assertLess(abs(ev["dm"] - dm), 1.0)
+        finally:
+            shutil.rmtree(out, ignore_errors=True)
+
+    def test_second_burst_at_another_dm_is_listed_not_replaced(self):
+        """
+        A weaker burst at another DM in the same place, during the first
+        one's sweep: it is listed on the event as another DM, keeps its data
+        linked, and neither replaces the band's detection nor moves the DM.
+        (Candidates are taken brightest first, so a brighter second burst
+        opens its own event, and the first is listed there or opens another.)
+        """
+        dm = 120.0
+        nodes = {n: FakeMonitor(n, b, followup_snr=9.0) for n, b in BANDS.items()}
+        nodes["hi"].candidate("first", 30.0, dm, T0, self.ra, self.dec)
+        f_lo, f_hi = BANDS["hi"]
+        t_mid = T0 + K_DM * dm * 0.5 * (f_lo ** -2 + f_hi ** -2)
+        nodes["hi"].candidate("second", 12.0, 80.0, t_mid - K_DM * 80.0 / f_lo ** 2,
+                              self.ra, self.dec)
+        comb, out = make(nodes)
+        try:
+            self.run_until_decided(comb, T0 + 400)
+            self.assertEqual(len(comb.events), 1)
+            (ev,) = comb.events.values()
+            self.assertEqual(ev["bands"]["hi"]["candidate"]["id"], "first")
+            self.assertIn("second", ev["bands"]["hi"]["others"])
+            (o,) = ev["other_dm"]
+            self.assertEqual((o["id"], o["dm"], o["node"]), ("second", 80.0, "hi"))
+            self.assertLess(abs(ev["dm"] - dm), 1.0)
+            self.assertTrue(any("DM 80.0" in n for n in ev["notes"]))
         finally:
             shutil.rmtree(out, ignore_errors=True)
 

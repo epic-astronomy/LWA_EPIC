@@ -366,10 +366,15 @@ static float select_kth(float* a, int n, int k) {
  * absolute deviation) is close to 1 for noise, whatever the sky. A carrier
  * that reaches much of the sky in one channel (aircraft or meteor scatter of
  * a distant transmitter, seen directly and through the sidelobes) widens it,
- * while a burst, confined to a beam, leaves it unchanged. A channel whose
- * spread exceeds chan_flag_sigma is set to zero for every pixel in this
- * image and reported in flags_out [C] (1 = flagged). The spread needs at
- * least 64 warm pixels in the subset; with fewer no channel is flagged.
+ * while a burst, confined to a beam, leaves it unchanged. The spread is
+ * compared with that of the band: the median spread over the channels, or 1
+ * if that is smaller. A rise of noise over the whole band (a thunderstorm, a
+ * solar burst, a change of gain) widens every channel alike, and is left to
+ * the search and to the conditions of the band instead of blanking the band.
+ * A channel whose spread exceeds chan_flag_sigma times that of the band is
+ * set to zero for every pixel in this image and reported in flags_out [C]
+ * (1 = flagged). The spread needs at least 64 warm pixels in the subset;
+ * with fewer no channel is flagged.
  * chan_mask [C] (may be NULL): channels set to zero regardless (the
  * persistent mask kept by the caller). They are still measured and flagged,
  * so the caller can tell when the interference has stopped.
@@ -399,10 +404,15 @@ int skymon_normalise(float* raw, int C, int P, float* mu, float* var, float* pre
     if (live[p]) { age[p] += 1; ++nlive; } else age[p] = 0;
   }
   if (max_hold > 65535) max_hold = 65535;
+  float* meds = malloc(sizeof(float) * (C > 0 ? C : 1));
+  float* spreads = malloc(sizeof(float) * (C > 0 ? C : 1));
+  int* nsubs = malloc(sizeof(int) * (C > 0 ? C : 1));
+  /* the raw values of every cell, kept from the first pass to the second */
+  float* rvall = malloc(sizeof(float) * ((size_t)C * P > 0 ? (size_t)C * P : 1));
+  float band_spread = 1.f;
 #pragma omp parallel num_threads(nthreads)
   {
     float* tmp = malloc(sizeof(float) * (nsub > 0 ? nsub : 1));
-    float* rv = malloc(sizeof(float) * (P > 0 ? P : 1));
 #pragma omp for schedule(static)
     for (int c = 0; c < C; ++c) {
       float* x = raw + (size_t)c * P;
@@ -411,6 +421,7 @@ int skymon_normalise(float* raw, int C, int P, float* mu, float* var, float* pre
       float* pv = prev + (size_t)c * P;
       uint16_t* hd = held ? held + (size_t)c * P : NULL;
       float* ac = acc ? acc + (size_t)c * P : NULL;
+      float* rv = rvall + (size_t)c * P;
       /* pass 1: deviations from the statistics of the previous images; the
          statistics of pixels still warming up are updated here */
       for (int p = 0; p < P; ++p) {
@@ -444,10 +455,36 @@ int skymon_normalise(float* raw, int C, int P, float* mu, float* var, float* pre
         for (int i = 0; i < n; ++i) tmp[i] = fabsf(tmp[i] - med);
         spread = 1.4826f * select_kth(tmp, n, n / 2);
       }
-      const int flag = n >= 64 && spread > chan_flag_sigma;
+      meds[c] = med;
+      spreads[c] = spread;
+      nsubs[c] = n;
+    }
+    /* the spread of the band: the median over the channels measured */
+#pragma omp single
+    {
+      int k = 0;
+      float* t = malloc(sizeof(float) * (C > 0 ? C : 1));
+      for (int c = 0; c < C; ++c)
+        if (nsubs[c] >= 64) t[k++] = spreads[c];
+      if (k > 0) {
+        float b = select_kth(t, k, k / 2);
+        if (b > band_spread) band_spread = b;
+      }
+      free(t);
+    }
+#pragma omp for schedule(static)
+    for (int c = 0; c < C; ++c) {
+      float* x = raw + (size_t)c * P;
+      float* m = mu + (size_t)c * P;
+      float* v = var + (size_t)c * P;
+      float* pv = prev + (size_t)c * P;
+      uint16_t* hd = held ? held + (size_t)c * P : NULL;
+      const float* rv = rvall + (size_t)c * P;
+      const float med = meds[c];
+      const int flag = nsubs[c] >= 64 && spreads[c] > chan_flag_sigma * band_spread;
       const int zero = flag || (chan_mask && chan_mask[c]);
       if (med_out) med_out[c] = med;
-      if (spread_out) spread_out[c] = spread;
+      if (spread_out) spread_out[c] = spreads[c];
       if (flags_out) flags_out[c] = (uint8_t)flag;
       /* pass 2: output, then the statistics of the cells that are kept */
       for (int p = 0; p < P; ++p) {
@@ -477,8 +514,11 @@ int skymon_normalise(float* raw, int C, int P, float* mu, float* var, float* pre
       }
     }
     free(tmp);
-    free(rv);
   }
+  free(meds);
+  free(spreads);
+  free(nsubs);
+  free(rvall);
   return nlive;
 }
 

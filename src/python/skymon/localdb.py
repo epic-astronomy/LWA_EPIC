@@ -18,6 +18,9 @@ The database is also the node's mailbox:
   conditions  the monitor's data-quality samples (conditions.py), one row
               per 10 s of data; samples wait in memory while the database
               is away
+  calibration streamcal's calibration records (kind "record", one per
+              solution) and the calibrators measured in the images (kind
+              "measurement", one per minute), for flux and fluence (flux.py)
 
 If the database cannot be reached, the monitor keeps searching: records go
 to a spool directory on local disk and are inserted when the database is
@@ -82,6 +85,13 @@ CREATE TABLE IF NOT EXISTS status (
 CREATE TABLE IF NOT EXISTS conditions (
     t           double precision PRIMARY KEY,
     value       jsonb NOT NULL
+);
+CREATE TABLE IF NOT EXISTS calibration (
+    kind         text NOT NULL,
+    t            double precision NOT NULL,
+    gain_version bigint,
+    value        jsonb NOT NULL,
+    PRIMARY KEY (kind, t)
 );
 """
 
@@ -252,6 +262,16 @@ class LocalDB:
         for s in samples:
             args += [s["t"], json.dumps(_finite(s))]
         return bool(self.execute(sql, args))
+
+
+    def put_calibration(self, kind: str, t: float, gain_version, value: dict) -> bool:
+        """One calibration record or measurement; False if the database is away"""
+        return bool(self.execute(
+            "INSERT INTO calibration (kind, t, gain_version, value) VALUES (%s, %s, %s, %s) "
+            "ON CONFLICT (kind, t) DO UPDATE SET value = EXCLUDED.value, "
+            "gain_version = EXCLUDED.gain_version",
+            (kind, float(t), None if gain_version is None else int(gain_version),
+             json.dumps(_finite(value)))))
 
 
 def _finite(o):

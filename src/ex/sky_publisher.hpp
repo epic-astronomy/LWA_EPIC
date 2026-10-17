@@ -65,6 +65,8 @@ class SkyPublisher {
     uint32_t chan0{0};  // absolute NDP channel of input channel 0
     double grid_res{1.0};
     double img_len_ms{0};
+    /// calibration gain table the image was made with (0: nominal phases)
+    uint64_t gain_version{0};
   };
 
   /**
@@ -139,6 +141,7 @@ class SkyPublisher {
     put_at<uint32_t>(slot, 36, m_phase_mode);
     put_at<double>(slot, 40, p_info.grid_res);
     put_at<double>(slot, 48, p_info.img_len_ms);
+    put_at<uint64_t>(slot, 56, p_info.gain_version);
     float* out = reinterpret_cast<float*>(slot + kSlotHeader);
     StokesIFitsOrder(p_img, p_nchan, m_grid, m_nbin, out);
     std::atomic_thread_fence(std::memory_order_release);

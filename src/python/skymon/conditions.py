@@ -81,6 +81,7 @@ class Conditions:
         self.n_rfi = 0
         self.n_cand = 0
         self.hit_slots = set()
+        self.n_gain_changes = 0
 
     def reset_slots(self, slots):
         """Pixels that set give up their baseline; a pixel rising into the slot starts anew"""
@@ -103,6 +104,9 @@ class Conditions:
         if not res.calibrating and res.hits:
             self.hit_slots.update(h.slot for h in res.hits)
 
+    def note_gain_change(self):
+        self.n_gain_changes += 1
+
     def note_candidate(self, cls):
         if cls in BLIND_CLASSES:
             self.n_cand += 1
@@ -118,7 +122,8 @@ class Conditions:
         rec = dict(t=t, interval_s=self.interval, images=n_all, missing=self.n_missing,
                    missing_fraction=self.n_missing / n_all if n_all else None,
                    noise_ratio=noise_ratio, rfi=self.n_rfi, candidates=self.n_cand,
-                   sky_fraction_triggered=frac_trig, tracked=int(tracked))
+                   sky_fraction_triggered=frac_trig, tracked=int(tracked),
+                   gain_changes=self.n_gain_changes)
         # rates over the last minute of data, this interval included
         with self.lock:
             recent = [s for s in self.series if s["t"] > t - self.rate_window]

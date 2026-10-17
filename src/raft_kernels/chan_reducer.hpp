@@ -109,6 +109,7 @@ class ChanReducerRft : public raft::kernel {
       info.chan0 = static_cast<uint32_t>(MetaU64(meta, "chan0"));
       info.grid_res = MetaNum(meta, "grid_res");
       info.img_len_ms = MetaNum(meta, "img_len_ms");
+      info.gain_version = MetaU64(meta, "gain_version");  // set by the correlator with --gain_table
       m_sky->Publish(p_pld.get_mbuf()->GetDataPtr(), static_cast<int>(m_in_nchan), info);
     } catch (const std::exception& e) {
       LOG(ERROR) << "Sky publisher disabled: " << e.what();

@@ -23,7 +23,7 @@ epic++ (ChanReducer) ──Stokes I──▶ /dev/shm/<ring> ──▶ skymon ru
    - The default `nside` gives pixels of at most half the beam (λ/D): nside 64 above 40 MHz, 32 near 35 MHz, 16 at 16–21 MHz.
 3. **Normalisation.** The values of every pixel and channel are normalised by a running mean (2 min) and variance (5 min). The variance comes from successive differences, so a source rising through the primary beam does not inflate it. Outliers are clipped out of these statistics.
    - The median over the sky of each channel is subtracted, which removes RFI and gain changes common to the whole image.
-   - **Interference flagging** (`skymon_normalise` in `_kernels.c`). After the median, the spread of each channel over the sky (1.4826 × the median absolute deviation over a subset of up to 2048 pixels) is about 1 for noise. A narrowband carrier seen over much of the sky (aircraft or meteor scatter of a distant transmitter) widens it, while a burst, confined to a beam, does not. A channel whose spread exceeds `chan_flag_sigma` (1.6) is set to zero for every pixel in that image.
+   - **Interference flagging** (`skymon_normalise` in `_kernels.c`). After the median, the spread of each channel over the sky (1.4826 × the median absolute deviation over a subset of up to 2048 pixels) is about 1 for noise. A narrowband carrier seen over much of the sky (aircraft or meteor scatter of a distant transmitter) widens it, while a burst, confined to a beam, does not. A channel whose spread exceeds `chan_flag_sigma` (1.6) times that of the band (the median spread over the channels, or 1 if smaller) is set to zero for every pixel in that image. A rise of noise over the whole band (a thunderstorm, a solar burst, a change of gain) widens every channel alike; it is not flagged, but searched and recorded in the conditions (step 8).
    - A channel flagged persistently is masked: its flag rate (exponential, 30 s) above 0.5 sets it to zero in every image until the rate falls below 0.2.
    - A single cell (pixel and channel) beyond `clip` (12) is set to zero. A burst of S/N s adds about s / sqrt(nchan × samples per channel) to a cell, under 9 for s = 100 with 128 channels, so the clip removes only what no burst produces.
    - Flagged channels and clipped cells do not update the running statistics. A cell withheld for 30 s in a row is updated again (deviations limited to 5σ), so a lasting change of level is followed in the end.
@@ -60,11 +60,34 @@ epic++ (ChanReducer) ──Stokes I──▶ /dev/shm/<ring> ──▶ skymon ru
 
    The last 6 h are kept in memory (`/api/status`, `/api/conditions`) and written to the table `conditions` of the node's database by the database thread; samples wait in memory while the database is away. Each candidate carries in `quality.conditions` the summary of the minute before its arrival, and each decided event of the combiner carries the conditions of the bands that detected or measured it, with `disturbed` set when any of them was disturbed.
 
+9. **Calibration.** With `epic++ --gain_table` the images are calibrated by streamcal (branch streaming-calibration). Each image carries the version of the gain table it was made with (slot header offset 56 of the ring; 0: nominal phases).
+   - The monitor counts the changes of version in the conditions (`gain_changes`). It logs when calibration is first applied, and when it reverts to the nominal phases.
+   - Each candidate records in `quality.calibration` the table version and the changes within its sweep. `applied_or_reverted_in_sweep` marks the larger change of the images when calibration starts or stops. No image is held back.
+10. **Flux and fluence** (`flux.py`). The gain tables are relative (median |c| = 1 per channel) and epic++ applies no primary beam, so the images have no absolute scale. With `--calinfo /dev/shm/epic_calinfo_gpu0.json`, the monitor reads the calibration record streamcal writes with every solution. The record holds:
+    - the absolute scale F_X, F_Y per channel;
+    - the calibrators, with their model spectra, solved scales, positions and dipole responses;
+    - a table of the dipole response.
+
+    Every minute the monitor measures each calibrator above 20° in its own accumulation, as the excess of its pixel over a ring 2–4 beams around it. It divides the excess by S (F_X² B_X + F_Y² B_Y) / 2 to get k, in image units per Jy, per channel. A candidate's fluence per channel is
+
+    sum along the track (normalised) × σ_raw × sqrt(2^tier) × t_image / (k Beff(position)),
+
+    and `flux` gives it in Jy ms over the band and per channel, with the mean flux density over the boxcar, the beam relative to the zenith and the calibrators used. The `.npz` adds:
+    - `raw_sigma` and `raw_mean`, the pixel's noise and mean per image in image units;
+    - `tier_images` and `image_s`;
+    - the calibration record and the calibrator measurement as JSON.
+
+    Records and measurements go to the table `calibration` of the node's database. On a simulated sky with its own record (`simtest` writes one), Cyg A gave k = 0.98 of the true value. A burst of known fluence was measured at 0.82 of it, about the same loss as its S/N (34 found for 40 injected): the burst lies off the centre of its HEALPix pixel, and the search filters remove part of it.
+
 ## Consensus across bands (combiner.py)
 
 One combiner, on any imaging node, reads the candidates of every monitor every 10 s. A real burst shows the same position and DM in every band that can see it, at times t_bottom = t_inf + K DM / f_lo^2, up to hours apart between the bands.
 
-For each new candidate the combiner opens an event, or joins the candidate to an open event that it matches. For every other band, it then:
+For each new candidate the combiner opens an event, or joins the candidate to an open event that it matches in position, DM and arrival time.
+
+A candidate at the event's position whose arrival falls within the event's sweep through its band, but at a clearly different DM, is listed in the event's `other_dm`, with a note. It may be the same burst found at a wrong trial DM, or a second burst from the same place (a repeater). Its data stay linked to the event and are archived with it. It does not replace the band's detection or change the fitted DM. The reviewer decides which it is.
+
+For every other band, the combiner then:
 1. predicts the arrival and its time tolerance (the DM uncertainty extrapolated across the bands);
 2. checks the position is above that monitor's elevation limit for the whole sweep;
 3. sends `POST /api/watch`.
@@ -152,13 +175,14 @@ python -m skymon evaluate --truth /tmp/simtest/truth.jsonl --out /tmp/simtest
 | `GET /api/injections` | injection summary |
 | `GET /api/watches?event=` | watches requested by the combiner, and their results |
 | `GET /api/conditions?since=` | data-quality samples (10 s, last 6 h), thresholds and summary |
+| `GET /api/status` → `calibration` | gain table version, changes in the last hour, the latest calibration record and calibrator measurement |
 | `POST /api/watch` | measure a position, DM and arrival time (from the combiner) |
 | `POST /api/inject` | inject a burst (the combiner's coordinated injections) |
 
 ## Tests
 
 ```bash
-cd tests/python && python -m unittest -v test_known test_chanflag test_skymon test_combiner test_coincidence test_context test_conditions test_localdb
+cd tests/python && python -m unittest -v test_known test_chanflag test_skymon test_combiner test_coincidence test_context test_conditions test_localdb test_flux
 ```
 
 The tests cover:

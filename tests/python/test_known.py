@@ -121,15 +121,18 @@ class TestNarrowband(unittest.TestCase):
 
 class CarrierSimulator:
     """
-    A SkySimulator whose images also carry a steady carrier in one channel at
-    one position (an aircraft or meteor-scatter signal) for a few seconds.
-    amp_sigma is in units of the simulator's image noise; after regridding and
-    normalisation 30 gives about 17 sigma, below the normaliser's clip of 20
-    (a stronger sample is set to zero). The carrier is therefore found
-    only once the averaging tiers (2 and up) have started, about 90 s in.
+    A SkySimulator whose images also carry a steady carrier in a few channels
+    at one position (an aircraft or meteor-scatter signal, spread over
+    neighbouring channels by its Doppler shift) for a few seconds. amp_sigma
+    is in units of the simulator's image noise; after regridding and
+    normalisation 19 gives about 11 sigma, below the normaliser's clip of 12
+    (a stronger sample is set to zero; a carrier in a single channel between
+    the clip and the threshold is barely detectable). The carrier is
+    therefore found only once the averaging tiers (2 and up) have started,
+    about 90 s in.
     """
 
-    def __init__(self, sim, ra, dec, chan, t_start, duration_s, amp_sigma=30.0):
+    def __init__(self, sim, ra, dec, chan, t_start, duration_s, amp_sigma=19.0):
         self.sim, self.ra, self.dec, self.chan = sim, ra, dec, chan
         self.t0, self.t1, self.amp = t_start, t_start + duration_s, amp_sigma
 
@@ -145,7 +148,7 @@ class CarrierSimulator:
             ix = int(np.clip(round(float(x)) - 1, 0, G - 1))
             iy = int(np.clip(round(float(y)) - 1, 0, G - 1))
             frac = np.zeros(len(sim.centres))
-            frac[self.chan] = 1.0
+            frac[np.atleast_1d(self.chan)] = 1.0
             amp = self.amp * sim.sigma[:, iy, ix].astype(np.float64)
             stamp(img, None, float(x), float(y), amp, frac, sim.centres, sim.grid_res)
         return meta, img
@@ -185,8 +188,7 @@ class TestEndToEnd(unittest.TestCase):
                                                     (83.633, 22.014), (187.706, 12.391),
                                                     (252.784, 4.993), (139.524, -12.096)]
         cls.carrier = _high_position(T0, avoid)
-        src = CarrierSimulator(sim, *cls.carrier, chan=40, t_start=T0 + 100.0, duration_s=8.0,
-                               amp_sigma=30.0)
+        src = CarrierSimulator(sim, *cls.carrier, chan=[40, 41, 42], t_start=T0 + 100.0, duration_s=8.0)
         cls.mon = Monitor(Config(out_dir=cls.out, nside=32, dm_max=300.0, block0=64, nthreads=4,
                                  warmup_images=32, inject_interval_s=0, seed=7, accum_hours=0.5))
         for _ in range(int(170 / sim.dt)):

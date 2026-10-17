@@ -30,6 +30,8 @@ Slot i at data_offset + i * slot_bytes, 256-byte header then data
  36  u32      phase centre mode (0 plane, 1 zenith)
  40  f64      grid_res (deg)
  48  f64      img_len_ms
+ 56  u64      gain_version: version of the calibration gain table the image
+              was made with (epic++ --gain_table; 0: nominal phases, no table)
 256  f32      data[nchan][grid][grid], FITS order ([y][x], as the saved images)
 """
 from __future__ import annotations
@@ -70,6 +72,7 @@ class ImageMeta:
     phase_mode: str
     grid_res: float
     img_len_ms: float
+    gain_version: int = 0
 
     @property
     def unix(self) -> float:
@@ -97,15 +100,17 @@ class RingWriter:
         self.max_nchan, self.max_grid = max_nchan, max_grid
 
     def write(self, data: np.ndarray, seq_start: int, nseqs: int, chan0: int, nbin: int = 1,
-              grid_res: float = 1.056, img_len_ms: float = 83.592, phase_mode: str = "plane"):
+              grid_res: float = 1.056, img_len_ms: float = 83.592, phase_mode: str = "plane",
+              gain_version: int = 0):
         nchan, gy, gx = data.shape
         assert gy == gx and nchan <= self.max_nchan and gx <= self.max_grid
         n = self.count
         off = HEADER_BYTES + (n % self.nslots) * self.slot_bytes
         self.mm[off: off + 8] = struct.pack("<Q", 2 * n + 1)
         mode = 1 if phase_mode == "zenith" else 0
-        self.mm[off + 8: off + 56] = struct.pack("<QIIIIIIdd", seq_start, nseqs, chan0, nchan,
-                                                 nbin, gx, mode, grid_res, img_len_ms)
+        self.mm[off + 8: off + 64] = struct.pack("<QIIIIIIddQ", seq_start, nseqs, chan0, nchan,
+                                                 nbin, gx, mode, grid_res, img_len_ms,
+                                                 gain_version)
         dst = np.frombuffer(self.mm, np.float32, nchan * gy * gx, off + SLOT_HEADER)
         dst[:] = data.reshape(-1)
         self.mm[off: off + 8] = struct.pack("<Q", 2 * n + 2)
@@ -189,7 +194,7 @@ class RingReader:
                 self.next += 1
             return None
         (seq_start, nseqs, chan0, nchan, nbin, grid, mode, grid_res,
-         img_len_ms) = struct.unpack_from("<QIIIIIIdd", self.mm, off + 8)
+         img_len_ms, gain_version) = struct.unpack_from("<QIIIIIIddQ", self.mm, off + 8)
         data = np.frombuffer(self.mm, np.float32, nchan * grid * grid,
                              off + SLOT_HEADER).copy().reshape(nchan, grid, grid)
         lock2, = struct.unpack_from("<Q", self.mm, off)
@@ -198,7 +203,7 @@ class RingReader:
             self.dropped += 1
             return None
         meta = ImageMeta(n, seq_start, nseqs, chan0, nchan, nbin, grid,
-                         PHASE_MODES.get(mode, "plane"), grid_res, img_len_ms)
+                         PHASE_MODES.get(mode, "plane"), grid_res, img_len_ms, gain_version)
         return meta, data
 
     def close(self):

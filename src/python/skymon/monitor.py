@@ -19,6 +19,7 @@ than max_gap_s restarts the search state.
 from __future__ import annotations
 
 import collections
+import json
 import math
 import os
 import socket
@@ -39,7 +40,8 @@ from .geometry import Band, SkyGrid, altaz, auto_nside, beam_fwhm_deg, image_wcs
 from .inject import LiveInjector
 from .known import KnownSources
 from .search import Searcher
-from .quality import candidate_quality
+from .flux import CalibrationFeed, candidate_flux, measure_calibrators
+from .quality import candidate_quality, channel_contributions
 from .watch import Watches, measure, predicted_bottom
 
 
@@ -84,6 +86,8 @@ class Config:
     narrowband_top2: float = 0.6
     known_pulsars_csv: str | None = None  # name,ra_deg,dec_deg,dm,period_s: extra pulsars
     # data-quality periods (conditions.py), sampled on the image clock
+    calinfo_path: str | None = None  # streamcal's calibration record (flux.py); None: no flux
+    flux_every_s: float = 60.0  # calibrators measured in the images this often
     cond_interval_s: float = 10.0
     cond_baseline_tau_s: float = 3600.0  # slow baseline of the noise
     cond_hours: float = 6.0  # samples kept in memory
@@ -115,6 +119,15 @@ class Monitor:
                                cfg.cond_noise_ratio, cfg.cond_rfi_rate, cfg.cond_sky_fraction,
                                cfg.cond_npix, rng=np.random.default_rng(cfg.seed))
         self._disturbed = False
+        # calibration: the gain table version of the images (epic++ --gain_table,
+        # streamcal), and its changes over the last 6 h as (unix, old, new)
+        self.gain_version = None
+        self.gain_changes = collections.deque(maxlen=20000)
+        # flux calibration: streamcal's records, and the calibrators measured in the images
+        self.calfeed = CalibrationFeed(cfg.calinfo_path)
+        self.flux_meas = None
+        self.flux_unwritten = collections.deque(maxlen=2000)
+        self._flux_next = None
         self.band = None
         self.searcher = None
         self.grid = None
@@ -237,6 +250,7 @@ class Monitor:
             results = self.searcher.push(None)
         else:
             meta, image = item
+            self._note_gains(meta.gain_version, unix)
             self.injector.schedule(unix, self.grid, self.searcher,
                                    self.cfg.warmup_images + 4 * self.cfg.block0)
             self.injector.prepare(unix, self.grid, self.searcher)
@@ -259,6 +273,77 @@ class Monitor:
         self.metrics["process_s"] += time.perf_counter() - t0
         return found
 
+    def _note_gains(self, version, unix):
+        """
+        Follow the calibration of the images. streamcal updates the gains about
+        every 10 s, which changes each image only slightly; applying the first
+        table, or reverting to the nominal phases, changes the images more.
+        No image is held back: the changes are counted in the conditions and
+        recorded with every candidate whose sweep they fall in, for review.
+        """
+        version = int(version)
+        old, self.gain_version = self.gain_version, version
+        if old is None or version == old:
+            return
+        self.gain_changes.append((unix, old, version))
+        self.cond.note_gain_change()
+        if old == 0:
+            print(f"skymon: calibration applied (gain table v{version}) at {utc(unix)}", flush=True)
+        elif version == 0:
+            print(f"skymon: calibration reverted to the nominal phases at {utc(unix)}", flush=True)
+
+    def _flux_calibration(self, unix):
+        """Read streamcal's record, and measure the calibrators in the images every flux_every_s"""
+        try:
+            self.calfeed.poll()
+            if self._flux_next is not None and unix < self._flux_next:
+                return
+            self._flux_next = unix + self.cfg.flux_every_s
+            rec = self.calfeed.for_version(self.gain_version)
+            if rec is None:
+                return
+            with self.grid_lock:
+                m = measure_calibrators(self.grid, self.accum, self.beam, rec,
+                                        self.band.centres_mhz(), unix)
+            if m is not None:
+                self.flux_meas = m
+                self.flux_unwritten.append(m)
+        except Exception as e:  # flux is for review; it must never stop the search
+            print(f"skymon: flux calibration failed: {e!r}", flush=True)
+
+    def _flux(self, contrib, raw_sigma, tier_level, width_s, el, az, snr):
+        """Fluence of a candidate from the latest calibrator measurement (None without one)"""
+        m = self.flux_meas
+        if m is None or m.get("k") is None:
+            return None
+        rec = self.calfeed.for_version(self.gain_version)
+        try:
+            f = candidate_flux(contrib, raw_sigma, tier_level, self.dt, width_s, m["k"], rec, el, az,
+                               self.band.centres_mhz(), snr)
+        except Exception as e:
+            print(f"skymon: flux of a candidate failed: {e!r}", flush=True)
+            return None
+        if f is not None:
+            f.update(calibrators=[dict(name=c["name"], el_deg=c["el_deg"], excess_snr=c["excess_snr"],
+                                       scale=c["scale"]) for c in m["calibrators"]],
+                     measured_unix=m["t"], measured_gain_version=m["gain_version"])
+        return f
+
+    def _calibration_around(self, c):
+        """Gain table of a candidate and the changes within its sweep (with a margin of its width)"""
+        t0, t1 = c.t_top - 2 * c.width_s, c.t_bottom + c.width_s
+        ch = [g for g in self.gain_changes if t0 <= g[0] <= t1]
+        return dict(gain_version=self.gain_version, changes_in_sweep=len(ch),
+                    applied_or_reverted_in_sweep=any(o == 0 or n == 0 for _, o, n in ch))
+
+    def calibration_status(self, window_s=3600.0):
+        now = self.last_image_unix or time.time()
+        recent = [g for g in self.gain_changes if g[0] > now - window_s]
+        last = self.gain_changes[-1] if self.gain_changes else None
+        return dict(gain_version=self.gain_version, calibrated=bool(self.gain_version),
+                    changes_last_hour=len(recent),
+                    last_change=None if last is None else dict(t=last[0], old=last[1], new=last[2]))
+
     def cfg_pix_deg(self, meta):
         return meta.grid_res
 
@@ -270,6 +355,7 @@ class Monitor:
         """
         s = self.searcher
         rec = self.cond.sample(s.var, s.age, s.live, s.warmup, self.metrics["tracked"])
+        self._flux_calibration(rec["t"])
         was, self._disturbed = self._disturbed, rec["disturbed"]
         if rec["disturbed"] and not was:
             print(f"skymon: disturbed period from {utc(rec['t'] - rec['interval_s'])} "
@@ -381,6 +467,7 @@ class Monitor:
             if not certain:
                 self._label_known(c)
             c.quality["conditions"] = self.cond.around(c.t_bottom)
+            c.quality["calibration"] = self._calibration_around(c)
             stored = self.store.add(c, products, self.radius)
             if stored is not None:
                 self.cond.note_candidate(stored.cls)
@@ -433,10 +520,22 @@ class Monitor:
             cand.quality["flagged_fraction"] = None if fz is None else round(fz, 4)
         t_win = self.searcher.tier_time(tier, res.first_sample + np.arange(win.shape[1]))
         ta, acc = self.accum.pixel(s, since=hit.t_inf - 1800)
+        # the pixel's noise per image in image units: undoes the normalisation (flux.py)
+        raw_sigma = np.sqrt(np.maximum(self.searcher.var[:, s], 0)).astype(np.float32)
+        raw_mean = self.searcher.mu[:, s].astype(np.float32)
+        if cand is not None:
+            contrib = channel_contributions(win, self.band.edges_mhz(), hit.row,
+                                            hit.t_end - res.first_sample, hit.width)
+            cand.flux = self._flux(contrib, raw_sigma, tier.level, cand.width_s, cand.el, cand.az,
+                                   cand.snr)
+        rec = self.calfeed.for_version(self.gain_version)
         return dict(dynspec=win.astype(np.float32), dynspec_t=t_win, dmt=dmt.astype(np.float32),
                     dmt_dm=np.arange(self.searcher.D + 1) * tier.dm_per_delay,
                     freqs_mhz=self.band.centres_mhz(), accum=acc, accum_t=ta,
-                    sigma=res.sigma)
+                    sigma=res.sigma, raw_sigma=raw_sigma, raw_mean=raw_mean,
+                    tier_images=np.int32(2 ** tier.level), image_s=np.float64(self.dt),
+                    calinfo=np.array(json.dumps(rec) if rec else ""),
+                    flux_measurement=np.array(json.dumps(self.flux_meas) if self.flux_meas else ""))
 
     # ------------------------------------------------------------ watches
     def _measure_watches(self, res):
@@ -494,6 +593,9 @@ class Monitor:
                                  slot=slots[k], tier=tier.level, tier_dt=tier.dt, dm_step=dpd,
                                  t_inf=t_bottom - K_DM * dm / self.band.f_lo ** 2)
                 w["_win"] = np.ascontiguousarray(res.window[:, :, slots[k]])
+                w["_raw_sigma"] = np.sqrt(np.maximum(self.searcher.var[:, slots[k]], 0)).astype(
+                    np.float32)
+                w["_track"] = (row, t, wd)
                 w["_t_win"] = self.searcher.tier_time(tier, first + np.arange(W))
                 w["_sigma"] = res.sigma
             if hi_s <= new_hi:
@@ -524,17 +626,26 @@ class Monitor:
             host=self.cfg.host, detected_unix=time.time(), event_id=w["event_id"],
             quality=dict(conditions=self.cond.around(b["t_bottom"])))
         win = w.pop("_win")
+        raw_sigma = w.pop("_raw_sigma")
+        row, t_idx, wd = w.pop("_track")
+        c.flux = self._flux(channel_contributions(win, self.band.edges_mhz(), row, t_idx, wd),
+                            raw_sigma, b["tier"], b["width_s"], c.el, c.az, c.snr)
         plan = fdmt_plan(self.band.edges_mhz(), self.searcher.D)
         products = dict(dynspec=win.astype(np.float32), dynspec_t=w.pop("_t_win"),
                         dmt=fdmt(win[:, :, None], plan)[:, :, 0].astype(np.float32),
                         dmt_dm=np.arange(self.searcher.D + 1) * b["dm_step"],
                         freqs_mhz=self.band.centres_mhz(), sigma=w.pop("_sigma"),
+                        raw_sigma=raw_sigma, tier_images=np.int32(2 ** b["tier"]),
+                        image_s=np.float64(self.dt),
                         watch=np.array([w["ra"], w["dec"], w["dm"], w["t_inf"], w["dm_err"],
                                         w["t_tol"]]))
         stored = self.store.add(c, products, self.radius, dedupe=False)
         w.update(state="measured", result=dict(cand_id=c.id, snr=c.snr, dm=c.dm,
                                                t_inf=c.t_inf, t_bottom=c.t_bottom, ra=ra, dec=dec,
-                                               el=c.el, conditions=c.quality["conditions"]))
+                                               el=c.el, conditions=c.quality["conditions"],
+                                               fluence_jy_ms=(c.flux or {}).get("fluence_jy_ms"),
+                                               fluence_err_jy_ms=(c.flux or {}).get(
+                                                   "fluence_err_jy_ms")))
         print(f"skymon: followup {c.id} for {w['event_id']} S/N {c.snr:.1f} DM {c.dm:.1f}",
               flush=True)
         return stored
@@ -629,6 +740,17 @@ class Monitor:
         if db.spooled():
             db.replay()
         self.cond.write(db)
+        while self.calfeed.unwritten:
+            r = self.calfeed.unwritten[0]
+            if not db.put_calibration("record", r.get("t_solved_unix") or time.time(),
+                                      r.get("gain_version"), r):
+                break
+            self.calfeed.unwritten.pop(0)
+        while self.flux_unwritten:
+            m = self.flux_unwritten[0]
+            if not db.put_calibration("measurement", m["t"], m.get("gain_version"), m):
+                break
+            self.flux_unwritten.popleft()
         st = self.status()
         st.pop("injections", None)
         db.put_status("monitor", st)
@@ -669,7 +791,15 @@ class Monitor:
                       ready=self.db.ready, errors=self.db.errors, last_error=self.db.last_error,
                       spooled=self.db.spooled()),
                   write_queue=self.store.q.qsize(),
-                  conditions=self.cond.status())
+                  conditions=self.cond.status(),
+                  calibration=dict(self.calibration_status(), records=self.calfeed.status(),
+                                   flux=None if self.flux_meas is None else dict(
+                                       t=self.flux_meas["t"],
+                                       gain_version=self.flux_meas["gain_version"],
+                                       n_used=self.flux_meas["n_used"],
+                                       calibrators=[dict(name=c["name"], el_deg=c["el_deg"],
+                                                         excess_snr=c["excess_snr"])
+                                                    for c in self.flux_meas["calibrators"]])))
         if self.band:
             st.update(band=dict(f_lo=self.band.f_lo, f_hi=self.band.f_hi,
                                 nchan=self.band.nchan, chan0=self.band.chan0,

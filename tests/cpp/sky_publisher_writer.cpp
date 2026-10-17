@@ -1,7 +1,7 @@
 // Writes test images through SkyPublisher; read back by tests/python/test_skymon.py.
 //   sky_publisher_writer <ring name> <nchan> <grid> <nbin> <nimages>
 // Element (chan c, a, b, pol k) of image n holds n*1e5 + c*1e4 + a*100 + b + 0.1*k,
-// and seq_start of image n is 1000000 + 2000 n.
+// seq_start of image n is 1000000 + 2000 n, and its gain_version is 7 + n.
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
@@ -30,6 +30,7 @@ int main(int argc, char** argv) {
     info.chan0 = 2336;
     info.grid_res = 1.056;
     info.img_len_ms = 83.592;
+    info.gain_version = 7ULL + uint64_t(n);
     pub.Publish(img.data(), nchan, info);
   }
   std::printf("%llu\n", static_cast<unsigned long long>(pub.Count()));

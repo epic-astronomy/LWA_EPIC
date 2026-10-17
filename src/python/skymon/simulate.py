@@ -9,7 +9,11 @@ same WCS, same time stamps and image length) with
 * a primary beam proportional to sin(el)^1.6 and nothing below the horizon,
 * radiometer noise per pixel and channel proportional to the sky brightness,
 * optional RFI: whole-sky broadband flashes and a noisy channel,
-* FRBs at random positions, times, DMs, widths and S/N (truth in a JSONL file).
+* FRBs at random positions, times, DMs, widths and S/N (truth in a JSONL file,
+  with each burst's fluence in the simulator's flux units),
+* optionally a calibration record in the format of streamcal's (flux.py), in
+  the same units: the point sources as calibrators, the primary beam as the
+  dipole response, and an absolute scale of 1.
 
 The images can be written to a shared-memory ring at the real image rate,
 where a monitor reads them exactly as it reads the imager, or handed to a
@@ -44,7 +48,8 @@ class SkySimulator:
                  start_unix=None, phase_mode="plane", noise_factor=3.0, frb_per_hour=30.0,
                  snr=(8.0, 30.0), dm=(20.0, 3000.0), width_s=(0.001, 0.05), el_min=15.0,
                  rfi_per_hour=6.0, rfi_channel=True, truth_path=None, seed=None,
-                 tier_dt=None, model_interval_s=10.0, fft_workers=4, frb_list=None):
+                 tier_dt=None, model_interval_s=10.0, fft_workers=4, frb_list=None,
+                 calinfo_path=None):
         self.band = Band(chan0, nchan, 1)
         self.grid, self.grid_res, self.nseqs = grid, grid_res, nseqs
         self.dt = nseqs * SEQ_MULT_S / FS
@@ -59,6 +64,7 @@ class SkySimulator:
         self.rfi_channel = rfi_channel
         self.rng = np.random.default_rng(seed)
         self.truth_path = truth_path
+        self.calinfo_path = calinfo_path
         self.model_interval = model_interval_s
         self.fft_workers = fft_workers
         # FRBs from a list shared by the simulators of several bands (make_frb_list)
@@ -101,8 +107,62 @@ class SkySimulator:
             a = self._snapshot(unix)
         self._snap_a, self._snap_b = a, self._snapshot(a["t"] + self.model_interval)
         self.model_t = a["t"]
+        if self.calinfo_path:
+            self.write_calinfo(a["t"])
         self.wcs = a["wcs"]
         self.ra_grid, self.dec_grid, self.el_grid = a["ra"], a["dec"], a["el"]
+
+    @staticmethod
+    def primary_beam(el_deg):
+        """The simulator's primary beam (power, zenith = 1)"""
+        return np.where(np.asarray(el_deg) > 0, np.sin(np.radians(np.clip(el_deg, 0, 90))) ** 1.6, 0.0)
+
+    def calinfo_record(self, unix):
+        """
+        A calibration record (streamcal/calinfo.py format) of this sky: the
+        point sources as calibrators with their model spectra, the primary
+        beam as the dipole response of both polarisations, and an absolute
+        scale of 1, so that an image unit is a flux unit of the simulator.
+        """
+        spec = (self.centres / 60.0) ** -2.55
+        cals = []
+        for name, sra, sdec, flux in SOURCES:
+            el, az = altaz(sra, sdec, unix)
+            if el <= 5:
+                continue
+            g = float(self.primary_beam(el))
+            cals.append(dict(name=name.replace(" ", ""), ra_deg=sra, dec_deg=sdec, alt_deg=float(el),
+                             az_deg=float(az), model_jy=(flux * spec).tolist(), free_flux=False,
+                             beam_x=g, beam_y=g, scale=1.0, offset_deg=[0.0, 0.0]))
+        alt = np.arange(0.0, 90.0 + 1e-9, 5.0)
+        az = np.arange(0.0, 360.0, 10.0)
+        b = np.repeat(self.primary_beam(alt)[:, None], len(az), axis=1)
+        freqs = [float(self.edges[0]), float(np.mean(self.centres)), float(self.edges[-1])]
+        tab = [b.tolist()] * 3
+        n = len(self.centres)
+        return dict(layout=1, gain_version=0, applied=True, t_solved_unix=float(unix),
+                    chan0=int(self.band.chan0), nchan=n,
+                    solve_chans=[int(self.band.chan0 + i) for i in range(n)],
+                    flux_scale=dict(X=[1.0] * n, Y=[1.0] * n, units="simulator"),
+                    calibrators=cals, model="skymon simulator",
+                    quality=dict(chi2_median=1.0, chi2_cut=3.0, rfi_channels=[],
+                                 flagged_stands=dict(X=0, Y=0)),
+                    beam=dict(model="sin(el)^1.6", freqs_mhz=freqs, alt_deg=alt.tolist(),
+                              az_deg=az.tolist(), X=tab, Y=tab, normalised="zenith"),
+                    solver="skymon simulator")
+
+    def write_calinfo(self, unix):
+        tmp = f"{self.calinfo_path}.tmp{os.getpid()}"
+        with open(tmp, "w") as f:
+            json.dump(self.calinfo_record(unix), f)
+        os.replace(tmp, self.calinfo_path)
+
+    def _fluence_truth(self, b):
+        """The burst's fluence over the band (simulator flux units x ms): apparent and intrinsic"""
+        app = float(np.mean(b._amp)) * self.dt * 1e3
+        el = float(altaz(b.ra, b.dec, float(b.arrival(self.edges[0])))[0])
+        pb = float(self.primary_beam(el))
+        return dict(fluence_apparent=app, fluence_jy_ms=app / pb if pb > 0 else None)
 
     def _interp(self, t0):
         a, b = self._snap_a, self._snap_b
@@ -206,6 +266,7 @@ class SkySimulator:
         b._amp = b.amp_sigma * sig * decim ** 0.5
         span = b.span(self.edges)
         b.meta = dict(span=list(span), tier_dt=tdt, n_eff=n_eff, el=float(altaz(ra, dec, unix)[0]))
+        b.meta.update(self._fluence_truth(b))
         self.active.append(b)
         rec = b.to_dict()
         rec["t_bottom"] = float(b.arrival(self.edges[0]))
@@ -247,6 +308,7 @@ class SkySimulator:
         b.meta = dict(span=list(b.span(self.edges)), tier_dt=tdt, n_eff=n_eff,
                       el=float(altaz(b.ra, b.dec, unix)[0]), spectral_factor=factor,
                       tau_s=tau, snr_expected=snr * math.sqrt(n_eff / n_scat))
+        b.meta.update(self._fluence_truth(b))
         self.active.append(b)
         rec = b.to_dict()
         rec["t_bottom"] = float(b.arrival(self.edges[0]))

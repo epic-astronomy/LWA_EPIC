@@ -139,6 +139,7 @@ class TestSharedMemory(unittest.TestCase):
             meta, data = r.read()
             self.assertEqual((meta.nchan, meta.nbin, meta.grid, meta.chan0, meta.nseqs),
                              (nchan // nbin, nbin, grid, 2336, 2000))
+            self.assertEqual(meta.gain_version, 7)
             # the imager's buffer and the transform of epic_utils.save_output
             c, a, b, k = np.meshgrid(np.arange(nchan), np.arange(grid), np.arange(grid),
                                      np.arange(4), indexing="ij")

@@ -131,6 +131,14 @@ def report(truth_path, out_dir, radius_deg=None, t_end=None, latency_s=0.0, read
         lines.append(f"  measured/target S/N: median {np.median(ratio):.2f} "
                      f"(16-84%: {np.percentile(ratio, 16):.2f}-{np.percentile(ratio, 84):.2f}); "
                      f"DM error median {100 * np.median(np.abs(ddm)):.1f}%")
+        # fluence against the simulator's (when the monitor had a calibration record)
+        fr = np.array([(c.get("flux") or {}).get("fluence_jy_ms", np.nan) /
+                       (t.get("meta", {}).get("fluence_jy_ms") or np.nan) for t, c in found], float)
+        fr = fr[np.isfinite(fr)]
+        if fr.size:
+            lines.append(f"  measured/true fluence: median {np.median(fr):.2f} "
+                         f"(16-84%: {np.percentile(fr, 16):.2f}-{np.percentile(fr, 84):.2f}, "
+                         f"{fr.size} with a fluence)")
     return dict(text="\n".join(lines), rows=rows, false=false, truth=truth, cands=cands)
 
 
@@ -155,7 +163,7 @@ def report_combiner(frb_file, combiner_dir, radius_deg=6.0):
     with open(frb_file) as f:
         frbs = json.load(f)
     events = load_events(combiner_dir)
-    rows, used = [], set()
+    rows, used, via_other = [], set(), set()
     for fr in frbs:
         best = None
         for i, e in enumerate(events):
@@ -171,6 +179,23 @@ def report_combiner(frb_file, combiner_dir, radius_deg=6.0):
                 continue
             best = i
             break
+        if best is None:
+            # a burst listed with another event as another DM at its position is kept
+            for i, e in enumerate(events):
+                if e["kind"] != "sky":
+                    continue
+                for o in e.get("other_dm", []):
+                    if separation_deg(fr["ra"], fr["dec"], o["ra"], o["dec"]) > radius_deg * 2:
+                        continue
+                    if abs(o["dm"] - fr["dm"]) > max(0.1 * fr["dm"], 3 * o["dm_step"]):
+                        continue
+                    tb = fr["t_inf"] + K_DM * fr["dm"] / o["f_lo_mhz"] ** 2
+                    if abs(o["t_bottom"] - tb) <= 3 * o["tier_dt"] + 2 * o["width_s"] + 30.0:
+                        best = i
+                        via_other.add(fr["id"])
+                        break
+                if best is not None:
+                    break
         if best is not None:
             used.add(best)
         rows.append((fr, events[best] if best is not None else None))
@@ -182,8 +207,10 @@ def report_combiner(frb_file, combiner_dir, radius_deg=6.0):
         n = sum(1 for _, e in rows if e is not None and e["status"] == st)
         if n:
             lines.append(f"  {st}: {n}")
+    if via_other:
+        lines.append(f"  listed as another DM at the position of an event: {len(via_other)}")
     errs = [abs(e["dm"] - fr["dm"]) / fr["dm"] for fr, e in rows
-            if e is not None and e["status"] == "confirmed"]
+            if e is not None and e["status"] == "confirmed" and fr["id"] not in via_other]
     if errs:
         lines.append(f"  DM error of confirmed events: median {100 * np.median(errs):.2f}%, "
                      f"max {100 * np.max(errs):.2f}%")
@@ -199,7 +226,7 @@ def report_combiner(frb_file, combiner_dir, radius_deg=6.0):
         for st in STATUSES)
         if inj else "none"))
     return dict(text="\n".join(lines), rows=rows, unexplained=unexplained, injections=inj,
-                events=events)
+                events=events, via_other=via_other)
 
 
 def report_no_loss(frb_file, combiner_dir, monitor_dirs, detectable_snr=10.0):
