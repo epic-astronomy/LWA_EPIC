@@ -103,7 +103,31 @@ def _lfsm_galactic(nside: int, nu_mhz_key: tuple):
 
     lf = LowFrequencySkyModel(freq_unit="MHz")
     maps = np.atleast_2d(lf.generate(np.array(nu_mhz_key)))  # K, Galactic, RING
+    maps = np.array([remove_compact(m) for m in maps])
     return np.array([hp.ud_grade(m, nside) for m in maps])
+
+
+def remove_compact(m, r_in_deg=6.0, r_out_deg=9.0):
+    """Inpaint the A-team out of a Galactic HEALPix map.
+
+    The LFSM contains Cyg A, Cas A, Tau A and Vir A smoothed to the map resolution
+    (about 12 kJy above the surroundings within 2 deg of Cyg A and of Cas A at 38 MHz).
+    They are modelled separately as point sources, so leaving them in the map counts
+    them twice: on LWA-SV TBF data this drove the fitted Cyg A flux to ~0.3 of the
+    catalogue. Pixels within r_in of each source take the median of the r_in-r_out annulus.
+    """
+    import healpy as hp
+    from astropy.coordinates import SkyCoord
+
+    m = np.array(m, float)
+    nside = hp.npix2nside(len(m))
+    for s in ATEAM:
+        g = s.coord.galactic
+        v = hp.ang2vec(g.l.deg, g.b.deg, lonlat=True)
+        inner = hp.query_disc(nside, v, np.radians(r_in_deg))
+        ring = np.setdiff1d(hp.query_disc(nside, v, np.radians(r_out_deg)), inner)
+        m[inner] = np.median(m[ring])
+    return m
 
 
 @functools.lru_cache(maxsize=4)

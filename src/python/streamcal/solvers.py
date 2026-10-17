@@ -305,7 +305,7 @@ def point_matrix(r, f, s, app):
 
 
 def stefcal_sky(R, M_fixed, sources, W, r, f, g0=None, niter=4, n_outer=20, solve_pos=True, fixed_pos=None,
-                max_step_deg=1.0, tol=1e-6):
+                max_step_deg=1.0, tol=1e-6, max_off_deg=None, scale_bounds=None):
     """StEFCal with the bright compact sources as live model components.
 
     R, M_fixed  data and the fixed part of the model (diffuse sky, faint sources)
@@ -321,15 +321,29 @@ def stefcal_sky(R, M_fixed, sources, W, r, f, g0=None, niter=4, n_outer=20, solv
     the current gains. Updating the sky first matters in streaming, where the
     gains are known from the previous interval but the sky (scintillation, a
     solar burst, refraction) may have changed.
+    Guard rails (LWA-SV TBF data at 28-47 MHz drove free sources to near-zero flux and
+    6-11 deg offsets when the diffuse model was poor): a source whose offset exceeds
+    max_off_deg (default 0.5 deg x (74 MHz / f)^2, a generous refraction prior) or whose
+    scale leaves scale_bounds[k] (default 0.25-4) is reset to its catalogue flux and
+    position and frozen for the rest of the solve. info["frozen"] lists them.
     Returns (g, scale[k], offset[k, 2], info).
     """
     K = len(sources)
+    if max_off_deg is None:
+        max_off_deg = 0.5 * (74e6 / f) ** 2
+    if scale_bounds is None:
+        scale_bounds = [(0.25, 4.0)] * K
+    frozen = np.zeros(K, bool)
     n = R.shape[0]
     scale = np.ones(K)
     off = np.zeros((K, 2)) if fixed_pos is None else np.array(fixed_pos, float).copy()
     k2pi = 2 * np.pi * f / 299792458.0
-    g = np.ones(n, complex) if g0 is None else g0.copy()
     it_total = 0
+    if g0 is None:  # cold start: gains against the nominal sky before the sky parameters move
+        M0 = M_fixed + sum(point_matrix(r, f, src, app) for src, app in sources)
+        g, _, it_total = stefcal(R, M0, W, niter=60)
+    else:
+        g = g0.copy()
     for outer in range(n_outer):
         dirs = [shift_direction(src, off[k]) for k, (src, _) in enumerate(sources)]
         P = [point_matrix(r, f, dirs[k], sources[k][1]) for k in range(K)]
@@ -343,15 +357,28 @@ def stefcal_sky(R, M_fixed, sources, W, r, f, g0=None, niter=4, n_outer=20, solv
                     for t in (t1, t2):
                         b = r @ t
                         cols.append((GG * P[k] * (1j * k2pi) * (b[:, None] - b[None, :])).ravel())
+            step = 3 if solve_pos else 1
+            live = np.repeat(~frozen, step)
             A = np.stack(cols, 1)
             y = (R * W - GG * M_fixed).ravel()
-            theta = np.linalg.lstsq(np.vstack([A.real, A.imag]), np.concatenate([y.real, y.imag]), rcond=None)[0]
-            step = 3 if solve_pos else 1
-            scale = np.maximum(theta[0::step], 0.0)
+            for k in np.flatnonzero(frozen):  # frozen sources: catalogue flux, no offset
+                y = y - (GG * P[k]).ravel()
+            theta = np.zeros(A.shape[1])
+            if live.any():
+                Al = A[:, live]
+                theta[live] = np.linalg.lstsq(np.vstack([Al.real, Al.imag]), np.concatenate([y.real, y.imag]), rcond=None)[0]
+            new_scale = np.where(frozen, 1.0, theta[0::step])
+            new_off = off
             if solve_pos:
-                d = np.stack([theta[1::3], theta[2::3]], 1) / np.maximum(scale, 1e-3)[:, None]
+                d = np.stack([theta[1::3], theta[2::3]], 1) / np.maximum(np.abs(new_scale), 1e-3)[:, None]
                 lim = np.radians(max_step_deg)
-                off = off + np.clip(d, -lim, lim)
+                new_off = np.where(frozen[:, None], 0.0, off + np.clip(d, -lim, lim))
+            bad = ~frozen & ((new_scale < [b[0] for b in scale_bounds]) | (new_scale > [b[1] for b in scale_bounds])
+                             | (np.degrees(np.hypot(new_off[:, 0], new_off[:, 1])) > max_off_deg))
+            frozen |= bad
+            scale = np.where(frozen, 1.0, np.maximum(new_scale, 0.0))
+            off = np.where(frozen[:, None], 0.0, new_off)
+            if solve_pos or bad.any():
                 dirs = [shift_direction(src, off[k]) for k, (src, _) in enumerate(sources)]
                 P = [point_matrix(r, f, dirs[k], sources[k][1]) for k in range(K)]
         M = M_fixed + sum(scale[k] * P[k] for k in range(K))
@@ -360,4 +387,4 @@ def stefcal_sky(R, M_fixed, sources, W, r, f, g0=None, niter=4, n_outer=20, solv
         it_total += it
         if outer > 2 and np.linalg.norm(g - g_old) / np.linalg.norm(g) < tol:
             break
-    return g, scale, off, dict(iterations=it_total, passes=outer + 1)
+    return g, scale, off, dict(iterations=it_total, passes=outer + 1, frozen=np.flatnonzero(frozen).tolist())

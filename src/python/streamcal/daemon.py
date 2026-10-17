@@ -55,8 +55,9 @@ def _solve_job(job):
     if g0 is None:  # cold start: gains against the nominal sky before freeing the sky parameters
         M0 = Md + sum(C.point_matrix(r, f, s_[0], s_[1]) for s_ in srcs)
         g0, _, _ = C.stefcal(R, M0, W, niter=60)
-    g, sc, off, _ = C.stefcal_sky(R, Md, srcs, W, r, f, g0=g0, solve_pos=solve_pos, fixed_pos=fixed_pos,
-                                  n_outer=passes)
+    bounds = [(0.1, 1000.0) if s_[2] == "Sun" else (0.25, 4.0) for s_ in srcs]
+    g, sc, off, info = C.stefcal_sky(R, Md, [(s_[0], s_[1]) for s_ in srcs], W, r, f, g0=g0, solve_pos=solve_pos,
+                                     fixed_pos=fixed_pos, n_outer=passes, scale_bounds=bounds)
     dirs = [C.shift_direction(s_[0], off[j]) for j, s_ in enumerate(srcs)]
     Mfit = Md + sum(sc[j] * C.point_matrix(r, f, dirs[j], srcs[j][1]) for j in range(len(srcs)))
     d = np.maximum(ac, 1e-30)
@@ -66,7 +67,7 @@ def _solve_job(job):
     den = np.sum(np.abs(g[None, :] * Mfit) ** 2 * W, axis=1)
     sig2 = np.sum(np.abs(res * W) ** 2) / max(W.sum(), 1)
     return dict(g=g, scale=sc, off=off, chi=chi, good=ok & (chi_ant < max_chi2 * 3),
-                var=sig2 / np.maximum(den, 1e-30))
+                var=sig2 / np.maximum(den, 1e-30), frozen=info["frozen"])
 
 
 class StreamCal:
@@ -156,7 +157,7 @@ class StreamCal:
                     x = pred[p][:, k]
                     g0 = np.where(np.isfinite(x) & (np.abs(x) > 1e-12), x, np.nanmedian(np.abs(x)))
                 Md, srcs = self.models[p][0][k], self.models[p][1][k]
-                jobs.append((R, Md, [(s_[0], s_[1]) for s_ in srcs], W, self.r, self.freq[k], g0,
+                jobs.append((R, Md, [(s_[0], s_[1], s_[2]) for s_ in srcs], W, self.r, self.freq[k], g0,
                              K > 0 and not a.no_positions, passes, None, ac, ok, tab.nsamp, a.max_chi2))
         # pass 1: gains, fluxes and per-channel positions
         res1 = list(self.pool.map(_solve_job, jobs)) if self.pool else [_solve_job(j) for j in jobs]
