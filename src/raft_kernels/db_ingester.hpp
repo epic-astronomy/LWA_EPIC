@@ -44,107 +44,59 @@
 #include "../ex/tensor.hpp"
 #include "../ex/types.hpp"
 
+/**
+ * @brief Writes the extracted pixels (epic_pixels) and the sessions
+ * (epic_img_metadata2) to the node's database.
+ *
+ * run() copies each image's rows out of the pipeline buffer and hands them to
+ * a PgLink, whose writer thread inserts them, one transaction per image. The
+ * pipeline never waits for the database: while it is unavailable the images
+ * are kept (up to p_queue_len, about 100 s at 12 images/s), then dropped with
+ * rate-limited logs; nothing here stops the imager. Counts of the waiting,
+ * dropped and failed writes are exported as runtime gauges.
+ */
 template <typename _PldIn>
 class DBIngesterRft : public raft::kernel {
  private:
-  // extraction kernel size
-  int m_ext_kernel_size{5};
-  int m_nkernel_elems{25};
-  bool is_db_alive{false};
-  // Each image is written in its own transaction. A transaction opened at
-  // start-up and reused would hold locks on epic_pixels and
-  // epic_img_metadata2 until its first commit (hours, if no watched source is
-  // up), blocking schema changes and partition maintenance.
-  std::unique_ptr<pqxx::connection> m_pg_conn;
-  std::string m_conn_string;
   const std::string m_pix_stmnt_id{"insert_pixels"};
   const std::string m_meta_stmnt_id{"insert_meta"};
-  std::string m_pix_stmnt_id_n{m_pix_stmnt_id + "_1"};
-  std::string m_meta_stmnt_id_n{m_meta_stmnt_id + "_1"};
-  std::map<int, std::pair<std::string, std::string>> m_avail_ksizes;
   std::string m_schema{"public"};
 
   unsigned int m_rt_gauge_id{0};
+  unsigned int m_pending_gauge_id{0};
+  unsigned int m_dropped_gauge_id{0};
+  unsigned int m_failed_gauge_id{0};
   Timer m_timer;
+  // last: destroyed first, while everything its writer uses still exists
+  std::unique_ptr<PgLink> m_db;
 
  public:
   // https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING
   // https://www.postgresql.org/docs/current/libpq-envars.html
-  DBIngesterRft(std::string p_schema="public",
-                int p_kernel_size = 1,
-                std::string p_conn_string = ""/* set from env variables*/
-                )
+  DBIngesterRft(std::string p_schema = "public", int p_kernel_size = 1,
+                std::string p_conn_string = "" /* EPIC_NODE_DSN or PG* env */,
+                size_t p_queue_len = 1200)
       : raft::kernel() {
     input.addPort<_PldIn>("in_pixel_rows");
-
-    m_conn_string = p_conn_string;
-    try {
-      m_pg_conn = std::make_unique<pqxx::connection>(p_conn_string);
-    } catch (const std::exception& e) {
-      LOG(FATAL) << e.what();
-    }
-
-    m_schema = p_schema==""?"public":p_schema;
-
-    is_db_alive = true;
-
-    // insertions will be made source-wise
-    // for example, if the kernel size is 5 for a source, 25 rows will
-    // be inserted in a single transaction
-    UpdatePreparedStmnts(p_kernel_size);
+    (void)p_kernel_size;  // statements are prepared per kernel size on use
+    m_schema = p_schema == "" ? "public" : p_schema;
+    m_db = std::make_unique<PgLink>("db ingester", p_conn_string, p_queue_len);
 
     m_rt_gauge_id = PrometheusExporter::AddRuntimeSummaryLabel(
         {{"type", "exec_time"},
          {"kernel", "db_ingester"},
          {"units", "s"},
          {"kernel_id", std::to_string(this->get_id())}});
-  }
-
-  bool IsUpdateStmntIds(int p_kernel_size) {
-    if (m_avail_ksizes.count(p_kernel_size) == 1) {
-      auto ids = m_avail_ksizes.at(p_kernel_size);
-      m_pix_stmnt_id_n = ids.first;
-      m_meta_stmnt_id_n = ids.second;
-      return false;
-    }
-    m_pix_stmnt_id_n = m_pix_stmnt_id + "_" + std::to_string(p_kernel_size);
-    m_meta_stmnt_id_n = m_meta_stmnt_id + "_" + std::to_string(p_kernel_size);
-    m_avail_ksizes[p_kernel_size] =
-        std::pair(m_pix_stmnt_id_n, m_meta_stmnt_id_n);
-
-    return true;
-  }
-
-  void UpdatePreparedStmnts(int p_kernel_size) {
-    if (p_kernel_size == m_ext_kernel_size) {
-      return;
-    }
-
-    m_ext_kernel_size = p_kernel_size;
-    m_nkernel_elems = p_kernel_size * p_kernel_size;
-
-    if (IsUpdateStmntIds(p_kernel_size)) {
-      VLOG(3)<<"Preparing pixel insert stmnt";
-      m_pg_conn.get()->prepare(m_pix_stmnt_id_n,
-                               GetMultiPixelInsertStmnt(m_nkernel_elems, m_schema));
-
-      VLOG(3)<<"Preparing meta insert statement";
-      m_pg_conn.get()->prepare(m_meta_stmnt_id_n, GetMultiImgMetaInsertStmnt(
-                                                      1, m_schema));  // one row per image
-
-      VLOG(3)<<"Done preparing statements";
-    }
-  }
-
-  void Reconnect() {
-    try {
-      m_pg_conn = std::make_unique<pqxx::connection>(m_conn_string);
-      // prepared statements belong to the old connection
-      m_avail_ksizes.clear();
-      m_ext_kernel_size = -1;
-    } catch (const std::exception& e) {
-      LOG(ERROR) << "Reconnecting to the database failed: " << e.what();
-    }
+    auto gauge = [&](const char* what) {
+      return PrometheusExporter::AddRunTimeGaugeLabel(
+          {{"type", "db_writes"},
+           {"kernel", "db_ingester"},
+           {"value", what},
+           {"kernel_id", std::to_string(this->get_id())}});
+    };
+    m_pending_gauge_id = gauge("pending");
+    m_dropped_gauge_id = gauge("dropped");
+    m_failed_gauge_id = gauge("failed");
   }
 
   raft::kstatus run() override {
@@ -156,20 +108,26 @@ class DBIngesterRft : public raft::kernel {
       return raft::proceed;
     }
     try {
-      if (!m_pg_conn->is_open()) {
-        Reconnect();
-      }
-      UpdatePreparedStmnts(pld.get_mbuf()->m_kernel_dim);
-      pqxx::work tx(*(m_pg_conn.get()));
-      IngestPayload(&pld, &tx, m_nkernel_elems, m_pix_stmnt_id_n,
-                    m_meta_stmnt_id_n);
-      tx.commit();
-    } catch (const pqxx::broken_connection& e) {
-      LOG(ERROR) << "Lost the database connection: " << e.what();
-      Reconnect();
+      int kdim = pld.get_mbuf()->m_kernel_dim;
+      int npix = kdim * kdim;
+      auto job = MakePixelJob(&pld, npix);
+      pld = _PldIn();  // the pipeline's buffer goes back to its pool now
+
+      std::string pix_id = m_pix_stmnt_id + "_" + std::to_string(kdim);
+      std::string meta_id = m_meta_stmnt_id + "_1";
+      PgLink::Statements stmts{
+          {pix_id, GetMultiPixelInsertStmnt(npix, m_schema)},
+          {meta_id, GetMultiImgMetaInsertStmnt(1, m_schema)}};
+      m_db->Submit("image " + job->time_stamp, std::move(stmts),
+                   [job, pix_id, meta_id](pqxx::work& tx) {
+                     IngestPixelJob(*job, &tx, pix_id, meta_id);
+                   });
     } catch (const std::exception& e) {
-      LOG(ERROR) << e.what();
+      LOG(ERROR) << "db ingester: " << e.what();
     }
+    PrometheusExporter::SetRunTimeGauge(m_pending_gauge_id, m_db->Pending());
+    PrometheusExporter::SetRunTimeGauge(m_dropped_gauge_id, m_db->Dropped());
+    PrometheusExporter::SetRunTimeGauge(m_failed_gauge_id, m_db->Failed());
     m_timer.Tock();
     PrometheusExporter::ObserveRunTimeValue(m_rt_gauge_id, m_timer.Duration());
     return raft::proceed;

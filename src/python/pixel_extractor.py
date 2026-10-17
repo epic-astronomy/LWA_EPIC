@@ -26,7 +26,11 @@ import dns.resolver
 
 
 import grpc
+import io
 import json
+import os
+import sys
+import time
 
 
 FS = 196.0e6
@@ -57,10 +61,55 @@ def get_endpoint(service="epic-watchdog.service.consul"):
     raise RuntimeError(f"Cannot resolve {service}: {'; '.join(errors)}")
 
 
-def get_watch_list(watchdog_endpoint=None):
-    """
-    Fetch the watchlist for EPIC at Sevilleta
-    """
+WATCH_COLUMNS = ["id", "source_name", "ra", "dec", "kernel_dim"]
+
+# The watch list is global: it lives in the head node's database and is served
+# by the epic-watchdog service. The imager must go on when either is down, so
+#   1. it asks the watchdog (gRPC);
+#   2. failing that, it reads the table directly if EPIC_WATCH_DSN (a libpq
+#      connection string for the head node's database) is set;
+#   3. failing that, it uses the last list it obtained, kept in memory and in
+#      the file EPIC_WATCHLIST_CACHE (if set) so that it survives a restart;
+#   4. with none of these, it extracts no pixels until a list is available.
+# After a failure the watchdog is not asked again for WATCH_RETRY_S, so that a
+# dead service does not cost a time-out at every refresh.
+WATCH_RETRY_S = 60.0
+WATCH_SQL = """
+SELECT id, source AS source_name, ra_deg AS ra, dec_deg AS dec,
+       patch_type AS kernel_dim
+FROM public.epic_watchdog
+WHERE watch_status = 'watching'
+  AND t_start < (now() AT TIME ZONE 'UTC')
+  AND (t_end IS NULL OR t_end > (now() AT TIME ZONE 'UTC'))
+ORDER BY id
+"""
+
+_watch = {"df": None, "json": None, "source": None, "time": 0.0,
+          "grpc_retry_at": 0.0, "log_at": {}}
+
+
+def _log_limited(key, msg, every=300.0):
+    """Print msg (to the imager's log) at most once per `every` seconds per key."""
+    now = time.monotonic()
+    if now - _watch["log_at"].get(key, -1e9) >= every:
+        _watch["log_at"][key] = now
+        print(f"pixel_extractor: {msg}", file=sys.stderr, flush=True)
+
+
+def _empty_watch_list():
+    return pd.DataFrame({c: pd.Series(dtype=t) for c, t in zip(
+        WATCH_COLUMNS, ["int64", "str", "float64", "float64", "int64"])})
+
+
+def _normalise(df):
+    df = df.rename(columns=dict(patch_type="kernel_dim"))
+    missing = [c for c in WATCH_COLUMNS if c not in df.columns]
+    if missing:
+        raise ValueError(f"watch list without the columns {missing}")
+    return df[WATCH_COLUMNS].reset_index(drop=True)
+
+
+def _fetch_watchdog(watchdog_endpoint):
     endpoint = (
         watchdog_endpoint
         if watchdog_endpoint is not None
@@ -70,12 +119,103 @@ def get_watch_list(watchdog_endpoint=None):
         stub = epic_image_pb2_grpc.epic_post_processStub(channel)
         response = stub.fetch_watchlist(epic_image_pb2.empty(), timeout=5)
         df_json = json.loads(response.pd_json)
-        df = pd.read_json(df_json)
-        df.rename(columns=dict(patch_type="kernel_dim"), inplace=True)
-        # df = pd.DataFrame(
-        #     dict(id=[0], source_name=["sun"], ra=[0.0], dec=[0.0], kernel_dim=[5])
-        # )
+        return _normalise(pd.read_json(io.StringIO(df_json)))
+
+
+def _fetch_database(dsn):
+    import psycopg2
+
+    conn = psycopg2.connect(dsn, connect_timeout=5,
+                            options="-c statement_timeout=5000",
+                            application_name="epic-imager-watchlist")
+    try:
+        with conn.cursor() as cur:
+            cur.execute(WATCH_SQL)
+            rows = cur.fetchall()
+    finally:
+        conn.close()
+    df = pd.DataFrame(rows, columns=WATCH_COLUMNS)
+    return _normalise(df.astype({"ra": float, "dec": float}))
+
+
+def _cache_path():
+    return os.environ.get("EPIC_WATCHLIST_CACHE", "")
+
+
+def _remember(df, source):
+    _watch.update(df=df, source=source, time=time.time())
+    path = _cache_path()
+    if not path:
+        return
+    js = df.to_json(orient="records")
+    if js == _watch["json"]:
+        return
+    try:
+        tmp = f"{path}.tmp{os.getpid()}"
+        with open(tmp, "w") as f:
+            json.dump({"saved": time.time(), "source": source,
+                       "rows": json.loads(js)}, f)
+        os.replace(tmp, path)
+        _watch["json"] = js
+    except OSError as e:
+        _log_limited("cache-write", f"cannot save the watch list to {path}: {e}")
+
+
+def _cached():
+    if _watch["df"] is not None:
+        return _watch["df"], _watch["time"]
+    path = _cache_path()
+    if not path or not os.path.exists(path):
+        return None, None
+    try:
+        with open(path) as f:
+            saved = json.load(f)
+        df = _normalise(pd.DataFrame(saved["rows"], columns=WATCH_COLUMNS))
+        _watch.update(df=df, time=saved["saved"], source="cache file")
+        return df, saved["saved"]
+    except (OSError, ValueError, KeyError) as e:
+        _log_limited("cache-read", f"cannot read the cached watch list {path}: {e}")
+        return None, None
+
+
+def get_watch_list(watchdog_endpoint=None):
+    """
+    Fetch the watchlist for EPIC at Sevilleta. Never raises: see the notes
+    above WATCH_SQL for the fallbacks. Columns: WATCH_COLUMNS.
+    """
+    errors = []
+    if time.monotonic() >= _watch["grpc_retry_at"]:
+        try:
+            df = _fetch_watchdog(watchdog_endpoint)
+            _remember(df, "watchdog")
+            return df
+        except Exception as e:  # grpc, DNS, decoding: all mean "not now"
+            _watch["grpc_retry_at"] = time.monotonic() + WATCH_RETRY_S
+            errors.append(f"watchdog: {str(e).splitlines()[0] if str(e) else type(e).__name__}")
+    else:
+        errors.append("watchdog: skipped after a recent failure")
+
+    dsn = os.environ.get("EPIC_WATCH_DSN", "")
+    if dsn:
+        try:
+            df = _fetch_database(dsn)
+            _remember(df, "head database")
+            _log_limited("fallback-db", "watch list read from the head node's database ("
+                         + "; ".join(errors) + ")")
+            return df
+        except Exception as e:
+            errors.append(f"head database: {str(e).strip().splitlines()[0] if str(e) else type(e).__name__}")
+
+    df, saved = _cached()
+    if df is not None:
+        age_min = (time.time() - saved) / 60.0
+        _log_limited("fallback-cache", f"using the watch list from {age_min:.0f} min ago "
+                     f"({len(df)} sources; " + "; ".join(errors) + ")")
         return df
+
+    _log_limited("no-list", "no watch list available, extracting no pixels ("
+                 + "; ".join(errors) + ")")
+    return _empty_watch_list()
 
 
 def get_image_headers_sv(seq_start_id, grid_size, grid_res):
@@ -350,50 +490,46 @@ class EpicPixels:
                 )
 
 
+def _no_sources():
+    return dict(
+        nsrc=np.array([0]).copy(),
+        ncoords=np.array([0]).copy(),
+        kernel_dim=np.array([0]).copy(),
+        src_ids=np.array([]).astype(str).copy(),
+        l=np.array([]).astype(float).copy(),
+        m=np.array([]).astype(float).copy(),
+        pix_x=np.array([]).astype(float).copy(),
+        pix_y=np.array([]).astype(float).copy(),
+        pix_ofst_x=np.array([]).astype(float).copy(),
+        pix_ofst_y=np.array([]).astype(float).copy(),
+        src_names=[],
+    )
+
+
 def get_pixel_indices(
     seq_start_id, grid_size, grid_res, elev_limit, watchdog_endpoint
 ):
     watchlist = get_watch_list(watchdog_endpoint)
+    if len(watchlist.index) == 0:
+        return _no_sources()
     phdu, ihdu = get_image_headers_sv(seq_start_id, grid_size, grid_res)
 
     pix_extractor = EpicPixels(ihdu, phdu, watchlist, elev_limit)
     indices = pix_extractor.get_pix_indices()
     if indices is None:  # no sources in the FOV
-        return dict(
-            nsrc=np.array([0]).copy(),
-            ncoords=np.array([0]).copy(),
-            kernel_dim=np.array([0]).copy(),
-            src_ids=np.array([]).astype(str).copy(),
-            l=np.array([]).astype(float).copy(),
-            m=np.array([]).astype(float).copy(),
-            pix_x=np.array([]).astype(float).copy(),
-            pix_y=np.array([]).astype(float).copy(),
-            pix_ofst_x=np.array([]).astype(float).copy(),
-            pix_ofst_y=np.array([]).astype(float).copy(),
-            src_names=[],
-        )
+        return _no_sources()
     else:
         return indices
 
 
 def get_pixel_indices2(ihdu, phdu, elev_limit=10):
     watchlist = get_watch_list()
+    if len(watchlist.index) == 0:
+        return _no_sources()
     pix_extractor = EpicPixels(ihdu, phdu, watchlist, elev_limit)
     indices = pix_extractor.get_pix_indices()
     if indices is None:  # no sources in the FOV
-        return dict(
-            nsrc=np.array([0]).copy(),
-            ncoords=np.array([0]).copy(),
-            kernel_dim=np.array([0]).copy(),
-            src_ids=np.array([]).astype(str).copy(),
-            l=np.array([]).astype(float).copy(),
-            m=np.array([]).astype(float).copy(),
-            pix_x=np.array([]).astype(float).copy(),
-            pix_y=np.array([]).astype(float).copy(),
-            pix_ofst_x=np.array([]).astype(float).copy(),
-            pix_ofst_y=np.array([]).astype(float).copy(),
-            src_names=[],
-        )
+        return _no_sources()
     else:
         return indices
 

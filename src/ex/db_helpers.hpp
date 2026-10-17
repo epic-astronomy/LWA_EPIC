@@ -25,12 +25,14 @@
 #include <algorithm>
 #include <cstring>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "./constants.h"
+#include "./pg_link.hpp"
 #include "./py_funcs.hpp"
 #include "git.h"
 #include "pqxx/pqxx"
@@ -258,6 +260,98 @@ void IngestMetadata(_Pld* pld_ptr, pqxx::work* work_ptr, int npix_per_src,
   work.exec_prepared0(stmnt, pars);
 }
 
+/**
+ * @brief The rows of one image for epic_pixels and epic_img_metadata2, copied
+ * out of the pipeline's buffers so that they can be written later, on the
+ * database writer's thread.
+ *
+ * The member names are those of EpicPixelTableDataRows, so
+ * IngestPixelsSingleSrc() takes either.
+ */
+struct PixelJob {
+  std::string time_stamp;
+  std::string session_id;
+  int64_t chan0{0};
+  int nchan{0};
+  int nsrc{0};
+  int npix_per_src{0};
+  int chan_bw{0};
+  int grid_size{0};
+  double int_time{0};
+  std::string source_name_arr;
+  std::unique_ptr<float[]> pixel_values;
+  std::vector<std::pair<int, int>> pixel_coords;
+  std::vector<std::pair<float, float>> pixel_lm;
+  std::vector<std::pair<int, int>> pixel_offst;
+  std::vector<std::pair<float, float>> source_pix;
+  std::vector<std::string> source_ids;
+};
+
+/**
+ * @brief Copy one image's pixel rows and session metadata out of a payload.
+ *
+ * @param pld_ptr Payload from the pixel extractor
+ * @param npix_per_src Pixels per source (kernel_dim * kernel_dim)
+ */
+template <typename _Pld>
+std::shared_ptr<PixelJob> MakePixelJob(_Pld* pld_ptr, int npix_per_src) {
+  auto& pix_data = *(pld_ptr->get_mbuf());
+  auto& meta = pix_data.m_img_metadata;
+  auto job = std::make_shared<PixelJob>();
+  auto time_tag = std::get<uint64_t>(meta["time_tag"]);
+  auto img_len_ms = std::get<double>(meta["img_len_ms"]);
+  job->time_stamp = Meta2PgTime(time_tag, img_len_ms);
+  job->session_id = std::get<std::string>(meta["session_id"]);
+  job->chan0 = std::get<int64_t>(meta["chan0"]);
+  job->chan_bw = std::get<int>(meta["chan_width"]);
+  job->grid_size = std::get<int>(meta["grid_size"]);
+  job->int_time = img_len_ms / 1000;
+  job->nchan = pix_data.m_nchan;
+  job->nsrc = pix_data.nsrcs;
+  job->npix_per_src = npix_per_src;
+  job->source_name_arr = pix_data.source_name_arr;
+
+  size_t ncoords = size_t(job->nsrc) * npix_per_src;
+  assert((pix_data.m_ncoords == ncoords) &&
+         "Mismatch between the extracted pixels and the source number");
+  size_t nvalues = ncoords * job->nchan * NSTOKES;
+  job->pixel_values = std::make_unique<float[]>(nvalues);
+  std::copy(pix_data.pixel_values.get(), pix_data.pixel_values.get() + nvalues,
+            job->pixel_values.get());
+  job->pixel_coords.assign(pix_data.pixel_coords.begin(),
+                           pix_data.pixel_coords.begin() + ncoords);
+  job->pixel_lm.assign(pix_data.pixel_lm.begin(),
+                       pix_data.pixel_lm.begin() + ncoords);
+  job->pixel_offst.assign(pix_data.pixel_offst.begin(),
+                          pix_data.pixel_offst.begin() + ncoords);
+  job->source_pix.assign(pix_data.source_pix.begin(),
+                         pix_data.source_pix.begin() + ncoords);
+  job->source_ids.assign(pix_data.source_ids.begin(),
+                         pix_data.source_ids.begin() + ncoords);
+  return job;
+}
+
+/**
+ * @brief Insert one image: its pixel rows source by source, then the session
+ * row (epic_img_metadata2), in the given transaction.
+ */
+inline void IngestPixelJob(const PixelJob& job, pqxx::work* work_ptr,
+                           const std::string& pix_stmnt_id,
+                           const std::string& meta_stmnt_id) {
+  for (int src_idx = 0; src_idx < job.nsrc; ++src_idx) {
+    IngestPixelsSingleSrc(job, work_ptr, src_idx, job.nchan, job.npix_per_src,
+                          pix_stmnt_id, job.time_stamp, job.chan0);
+  }
+  // session_id,chan0,n_pol,n_chan,chan_bw_hz, epic_version, npix_kernel,
+  // int_time, source_names,img_size,session_start,session_end
+  pqxx::params pars(job.session_id, static_cast<int>(job.chan0),
+                    static_cast<int>(NSTOKES), job.nchan, job.chan_bw,
+                    git_CommitSHA1(), job.npix_per_src, job.int_time,
+                    job.source_name_arr, job.grid_size, job.grid_size,
+                    job.time_stamp);
+  work_ptr->exec_prepared0(meta_stmnt_id, pars);
+}
+
 std::string GetFileMetaInsertStmt(std::string schema="public") {
   const std::vector<std::string> cols{
       "file_name",   "chan_width",   "nchan",        "support_size",
@@ -285,14 +379,12 @@ std::string GetFileMetaInsertStmt(std::string schema="public") {
   return stmnt;
 }
 
-template <typename _Pld>
-void InsertFilenametoDb(_Pld* pld_ptr, pqxx::work* work_ptr,
-                        const std::string& insert_stmt) {
+inline void InsertFileMetaToDb(dict_t& meta, pqxx::work* work_ptr,
+                               const std::string& insert_stmt) {
   //  "filename",    "chan_width",   "nchan",        "support_size",
   //  "gulp_len_ms", "image_len_ms", "epoch_time_s", "grid_size",
   //  "grid_res",    "cfreq_mhz",    "epic_version"
 
-  auto& meta = pld_ptr->get_mbuf()->GetMetadataRef();
   auto filename = std::get<std::string>(meta["filename"]);
   auto chan_width = std::get<int>(meta["chan_width"]);
   int nchan = std::get<uint8_t>(meta["nchan"]);
@@ -311,6 +403,20 @@ void InsertFilenametoDb(_Pld* pld_ptr, pqxx::work* work_ptr,
   (*work_ptr).exec_prepared0(insert_stmt, pars);
 }
 
+template <typename _Pld>
+void InsertFilenametoDb(_Pld* pld_ptr, pqxx::work* work_ptr,
+                        const std::string& insert_stmt) {
+  InsertFileMetaToDb(pld_ptr->get_mbuf()->GetMetadataRef(), work_ptr,
+                     insert_stmt);
+}
+
+/**
+ * @brief A synchronous connection for kernels that write in their own
+ * thread. A database that is down never stops the imager: the connection is
+ * attempted again by Reconnect(), and errors are the caller's to log.
+ * Kernels in the pipeline use PgLink (pg_link.hpp) instead, which writes off
+ * the pipeline's threads.
+ */
 class PgDbConnectMixin {
  protected:
   bool is_db_alive{false};
@@ -318,23 +424,37 @@ class PgDbConnectMixin {
   // kept open would hold locks on the tables until its first commit.
   std::unique_ptr<pqxx::connection> m_pg_conn;
   std::string m_conn_str;
+  std::map<std::string, std::string> m_stmts;
 
  public:
-  explicit PgDbConnectMixin(std::string p_conn_str) : m_conn_str(p_conn_str) {
-    try {
-      m_pg_conn = std::make_unique<pqxx::connection>(p_conn_str);
-    } catch (const std::exception& e) {
-      LOG(FATAL) << e.what();
-    }
+  explicit PgDbConnectMixin(std::string p_conn_str)
+      : m_conn_str(NodeDbConnString(p_conn_str)) {
+    Reconnect();
+  }
 
-    is_db_alive = true;
+  bool Reconnect() {
+    try {
+      m_pg_conn = std::make_unique<pqxx::connection>(m_conn_str);
+      for (auto& [id, sql] : m_stmts) {
+        m_pg_conn->prepare(id, sql);
+      }
+      is_db_alive = true;
+    } catch (const std::exception& e) {
+      LOG(WARNING) << "Database unavailable: " << e.what();
+      is_db_alive = false;
+    }
+    return is_db_alive;
   }
 
   void prepare_stmt(std::string p_name, std::string p_stmt) {
-    if (is_db_alive) {
-      m_pg_conn.get()->prepare(p_name, p_stmt);
-    } else {
-      LOG(FATAL) << "Unable to prepare stament";
+    m_stmts[p_name] = p_stmt;
+    if (!is_db_alive) return;  // prepared on reconnecting
+    try {
+      m_pg_conn->prepare(p_name, p_stmt);
+    } catch (const std::exception& e) {
+      LOG(WARNING) << "Unable to prepare statement " << p_name << ": "
+                   << e.what();
+      is_db_alive = false;
     }
   }
 };

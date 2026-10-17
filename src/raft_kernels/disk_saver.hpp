@@ -40,9 +40,17 @@
 #include "../ex/video_streaming.hpp"
 // #include "./epic_live_streamer.hpp"
 
+/**
+ * @brief Writes the long accumulations (FITS, quick look, daily digest) and
+ * registers each file in epic_files_metadata2.
+ *
+ * The registration goes through a PgLink: it is written off the pipeline's
+ * thread, kept while the node's database is unavailable and dropped (with
+ * rate-limited logs) when too many wait. A database error never stops the
+ * imager.
+ */
 template <class Payload>
-class DiskSaverRft : public raft::kernel,
-                     protected PgDbConnectMixin
+class DiskSaverRft : public raft::kernel
 /* ,protected EpicLiveStream */ {
  private:
   std::string m_img_suffix;
@@ -55,19 +63,20 @@ class DiskSaverRft : public raft::kernel,
   std::string m_file_stmt_id{"insert_file_meta"};
   std::string m_filename_db_schema{"public"};
   std::string m_out_dir{"./"};
+  // last: destroyed first, while everything its writer uses still exists
+  std::unique_ptr<PgLink> m_db;
 
  public:
   explicit DiskSaverRft(std::string p_db_schema="public",
     std::string p_out_dir = "./",
                         std::string p_db_conn_str = "")
-      : raft::kernel(),
-        PgDbConnectMixin(p_db_conn_str) /* , EpicLiveStream() */ {
+      : raft::kernel() /* , EpicLiveStream() */ {
     input.addPort<Payload>("image");
     m_filename_db_schema=p_db_schema!=""?p_db_schema:"public";
     m_db_insert_stmt = GetFileMetaInsertStmt(m_filename_db_schema);
     m_out_dir = p_out_dir;
-    LOG(INFO) << "Preparing stmt";
-    this->prepare_stmt(m_file_stmt_id, m_db_insert_stmt);
+    // a few files a minute: 256 cover hours of an unavailable database
+    m_db = std::make_unique<PgLink>("disk saver", p_db_conn_str, 256);
 
     // m_img_suffix = p_img_suffix;
     m_rt_gauge_id = PrometheusExporter::AddRuntimeSummaryLabel(
@@ -113,14 +122,15 @@ class DiskSaverRft : public raft::kernel,
     img_metadata["filename"]=SaveImageToDisk(imsize, nchan, pld.get_mbuf()->GetDataPtr(),
                     m_out_dir + "/"s, img_metadata);
 
-    try {
-      if(std::get<std::string>(img_metadata["filename"])!=""){
-        pqxx::work tx(*(this->m_pg_conn.get()));
-        InsertFilenametoDb(&pld, &tx, m_file_stmt_id);
-        tx.commit();
-      }
-    } catch (const std::exception& e) {
-      LOG(FATAL) << e.what();
+    if (std::get<std::string>(img_metadata["filename"]) != "") {
+      // a copy: the payload goes back to its pool
+      auto meta = std::make_shared<dict_t>(img_metadata);
+      auto stmt_id = m_file_stmt_id;
+      m_db->Submit("file " + std::get<std::string>(img_metadata["filename"]),
+                   {{m_file_stmt_id, m_db_insert_stmt}},
+                   [meta, stmt_id](pqxx::work& tx) {
+                     InsertFileMetaToDb(*meta, &tx, stmt_id);
+                   });
     }
     VLOG(3)<<"Streaming image";
     // m_streamer->Stream(chan0, cfreq, pld.get_mbuf()->GetDataPtr());

@@ -37,6 +37,7 @@
 #include "../ex/constants.h"
 #include "../ex/orm_types.hpp"
 #include "../ex/py_funcs.hpp"
+#include "../ex/pg_link.hpp"
 #include "../ex/tensor.hpp"
 #include "../ex/types.hpp"
 
@@ -70,6 +71,7 @@ class IndexFetcherRft : public raft::kernel {
   }
 
   uint64_t m_tstart;
+  LogThrottle m_error_log{std::chrono::seconds(300)};
 
  public:
   explicit IndexFetcherRft(unsigned int p_grid_size = 128,
@@ -95,10 +97,22 @@ class IndexFetcherRft : public raft::kernel {
       return raft::proceed;
     }
     if (is_refresh_required()) {
-      output["meta_pixel_rows"].push(
-          GetWatchIndices(m_tstart, m_grid_size, m_grid_res, m_elev_limit_deg,
-                            m_watchdog_endpoint));
-      VLOG(2) << "FIRED INDEX FETCHER";
+      // The watch list comes from the watchdog on the head node (with a cached
+      // copy when it is unreachable, see pixel_extractor.get_watch_list). If
+      // anything still fails, keep extracting the previous indices.
+      try {
+        output["meta_pixel_rows"].push(
+            GetWatchIndices(m_tstart, m_grid_size, m_grid_res,
+                            m_elev_limit_deg, m_watchdog_endpoint));
+        VLOG(2) << "FIRED INDEX FETCHER";
+      } catch (const std::exception& e) {
+        size_t held;
+        if (m_error_log.Due(&held)) {
+          LOG(ERROR) << "index fetcher: watch list indices not updated: "
+                     << e.what() << " (" << held
+                     << " more since the last report)";
+        }
+      }
     }
     return raft::proceed;
   }
