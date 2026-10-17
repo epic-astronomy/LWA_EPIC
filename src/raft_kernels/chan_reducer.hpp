@@ -26,6 +26,7 @@
 #include <chrono>
 #include <cmath>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <type_traits>
@@ -69,8 +70,14 @@ class ChanReducerRft : public raft::kernel {
   unsigned int m_rt_gauge_id{0};
   Timer m_timer;
   std::set<int> m_hc_chans;
-  /// Stokes I images for the all-sky monitor (null when --sky_shm is empty)
-  std::unique_ptr<SkyPublisher> m_sky{nullptr};
+  /// Input image being published (keeps its buffer until the worker has read it).
+  /// Declared before m_sky so the worker stops before the buffer is released.
+  std::optional<_PldIn> m_sky_hold;
+  /// Stokes I images for the all-sky monitor, published on their own thread
+  /// (null when --sky_shm is empty)
+  std::unique_ptr<SkyPublishWorker> m_sky{nullptr};
+  uint64_t m_sky_dropped_logged{0};
+  std::chrono::steady_clock::time_point m_sky_last_log{std::chrono::steady_clock::now()};
 
   template <typename M>
   static double MetaNum(M& p_meta, const char* p_key) {
@@ -99,9 +106,20 @@ class ChanReducerRft : public raft::kernel {
         it->second);
   }
 
-  /// Copy the full-resolution image to the sky ring. Never stops the imager.
+  /// Hand the full-resolution image to the sky ring's writer thread. Never
+  /// waits: while the previous image is still being written this one is
+  /// dropped for the monitor (and counted), not for the imager.
   void PublishSky(_PldIn& p_pld) {
-    try {
+    if (m_sky->Failed()) {
+      LOG(ERROR) << "Sky publisher disabled: " << m_sky->Error();
+      m_sky.reset();
+      m_sky_hold.reset();
+      return;
+    }
+    if (m_sky_hold && !m_sky->InFlight()) {
+      m_sky_hold.reset();  // the worker has read it: release the buffer here
+    }
+    if (!m_sky_hold) {
       auto& meta = p_pld.get_mbuf()->GetMetadataRef();
       SkyPublisher::ImageInfo info;
       info.seq_start = MetaU64(meta, "seq_start");
@@ -110,10 +128,20 @@ class ChanReducerRft : public raft::kernel {
       info.grid_res = MetaNum(meta, "grid_res");
       info.img_len_ms = MetaNum(meta, "img_len_ms");
       info.gain_version = MetaU64(meta, "gain_version");  // set by the correlator with --gain_table
-      m_sky->Publish(p_pld.get_mbuf()->GetDataPtr(), static_cast<int>(m_in_nchan), info);
-    } catch (const std::exception& e) {
-      LOG(ERROR) << "Sky publisher disabled: " << e.what();
-      m_sky.reset();
+      m_sky_hold.emplace(p_pld);
+      if (!m_sky->TrySubmit(p_pld.get_mbuf()->GetDataPtr(), static_cast<int>(m_in_nchan), info)) {
+        m_sky_hold.reset();
+      }
+    } else {
+      m_sky->CountDropped();  // still busy with the previous image
+    }
+    auto now = std::chrono::steady_clock::now();
+    if (now - m_sky_last_log > std::chrono::seconds(60) && m_sky->Dropped() > m_sky_dropped_logged) {
+      LOG(WARNING) << "Sky publisher: " << m_sky->Dropped() - m_sky_dropped_logged
+                   << " images not published in the last minute (writer busy); "
+                   << m_sky->Published() << " published in total, last took " << m_sky->LastMs() << " ms";
+      m_sky_dropped_logged = m_sky->Dropped();
+      m_sky_last_log = now;
     }
   }
 
@@ -154,9 +182,9 @@ class ChanReducerRft : public raft::kernel {
 
     if (!p_sky_shm.empty()) {
       try {
-        m_sky = std::make_unique<SkyPublisher>(p_sky_shm, p_sky_slots,
-                                               static_cast<int>(m_in_nchan),
-                                               static_cast<int>(m_xdim), p_sky_nbin);
+        m_sky = std::make_unique<SkyPublishWorker>(std::make_unique<SkyPublisher>(
+            p_sky_shm, p_sky_slots, static_cast<int>(m_in_nchan), static_cast<int>(m_xdim),
+            p_sky_nbin));
         LOG(INFO) << "Publishing Stokes I images to " << m_sky->Path();
       } catch (const std::exception& e) {
         LOG(ERROR) << "Sky publisher not started: " << e.what();
