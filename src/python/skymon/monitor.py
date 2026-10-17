@@ -31,6 +31,7 @@ from .candidates import (Candidate, CandidateStore, cluster_hits, elevation_radi
 from .dedisp import K_DM, fdmt, fdmt_plan
 from .geometry import Band, SkyGrid, altaz, auto_nside, beam_fwhm_deg, image_wcs
 from .inject import LiveInjector
+from .known import KnownSources
 from .search import Searcher
 from .quality import candidate_quality
 from .watch import Watches, measure, predicted_bottom
@@ -64,6 +65,11 @@ class Config:
     inject_snr: tuple = (10.0, 30.0)
     inject_dm: tuple = (10.0, 3000.0)
     store_rfi: bool = True
+    # a candidate whose signal is in fewer effective channels than this, or
+    # with more than narrowband_top2 of it in two channels, is narrowband RFI
+    narrowband_min_channels: float = 6.0
+    narrowband_top2: float = 0.6
+    known_pulsars_csv: str | None = None  # name,ra_deg,dec_deg,dm,period_s: extra pulsars
     seed: int | None = None
     host: str = field(default_factory=socket.gethostname)
 
@@ -118,6 +124,12 @@ class Monitor:
         self.raw = np.zeros((self.band.nchan, self.grid.capacity), np.float32)
         self.beam = beam_fwhm_deg(self.band.f_centre)
         self.radius = max(2.0 * self.beam, 2.5 * self.grid.pix_deg)
+        try:
+            self.known = KnownSources(self.beam, cfg.known_pulsars_csv)
+        except (OSError, ValueError, KeyError) as e:
+            print(f"skymon: could not read {cfg.known_pulsars_csv} ({e}); "
+                  f"using the built-in pulsars", flush=True)
+            self.known = KnownSources(self.beam)
         beam_area = 1.1331 * self.beam ** 2
         self.rfi_max_pix = max(9, int(cfg.rfi_max_beams * beam_area / self.grid.pix_deg ** 2))
         self.last_index = -1
@@ -294,16 +306,27 @@ class Monitor:
                 f_hi_mhz=self.band.f_hi, host=self.cfg.host, detected_unix=time.time(),
                 members=[[int(hp[i]), round(hits[i].snr, 2)] for i in g[:64]],
                 rfi_reasons=reasons, rfi_certain=certain)
+            if cls == "rfi" and not self.cfg.store_rfi:
+                continue
+            # keep the data of everything that is not certainly RFI (this also
+            # measures the candidate's quality)
+            products = None if (cls == "rfi" and certain) else self._products(res, b, c)
+            if cls != "rfi" and self._narrowband(c.quality):
+                # a carrier in one or two channels; not certain, so its data stay.
+                # Tested before injections are matched, so the measured efficiency
+                # includes any burst this rule would lose
+                c.rfi_reasons.append("narrowband (a few channels)")
+                cls = c.cls = "rfi"
+                if not self.cfg.store_rfi:
+                    continue
             if cls != "rfi":
                 inj = self.injector.match(c, float(elevation_radius(self.radius, c.el)))
                 if inj is not None:
                     c.cls = "injection"
                     c.injection_id = inj.id
                     self.injector.record(inj, c)
-            elif not self.cfg.store_rfi:
-                continue
-            # keep the data of everything that is not certainly RFI
-            products = None if (cls == "rfi" and certain) else self._products(res, b, c)
+            if not certain:
+                self._label_known(c)
             stored = self.store.add(c, products, self.radius)
             if stored is not None:
                 found.append(stored)
@@ -311,6 +334,29 @@ class Monitor:
                       f"RA {stored.ra:.2f} Dec {stored.dec:.2f} tier {tier.level} "
                       f"({len(pix)} px, {n_all} hits)", flush=True)
         return found
+
+    def _narrowband(self, q: dict) -> bool:
+        """Is the signal confined to a few channels (quality.spread_measures)?"""
+        n_eff, top2 = q.get("n_eff_channels"), q.get("top2_fraction")
+        return (n_eff is not None and n_eff < self.cfg.narrowband_min_channels) or \
+            (top2 is not None and top2 > self.cfg.narrowband_top2)
+
+    def _label_known(self, c: Candidate):
+        """
+        Record a known source at the candidate's position (and DM). A plain
+        candidate there becomes class "known": its data are kept, but it opens
+        no event. RFI and injections keep their class and only carry the label.
+        """
+        try:
+            ks = self.known.classify(c.ra, c.dec, c.el, c.t_bottom, c.dm, c.dm_step)
+        except Exception as e:  # a label for review must never stop the search
+            print(f"skymon: known-source check failed: {e!r}", flush=True)
+            return
+        if ks is None:
+            return
+        c.known_source = ks
+        if c.cls == "candidate":
+            c.cls = "known"
 
     def _products(self, res, hit, cand=None):
         """Data around a candidate: its pixel's window, DM-time plane, and accumulation"""

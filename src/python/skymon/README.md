@@ -33,6 +33,12 @@ epic++ (ChanReducer) ──Stokes I──▶ /dev/shm/<ring> ──▶ skymon ru
    - Each tier searches boxcars of 1, 2, 4 and 8 samples. The noise of every delay row and width is measured from the data (clipped RMS of the previous blocks).
    - Hits above `--threshold` (S/N 8) are clustered over the sky, DM and time.
    - Two kinds of cluster are classified as RFI: one wider than six beam areas, and one at a moment when more than 1% of the sky triggers.
+   - A candidate whose signal lies in a few channels is classified as RFI (`narrowband (a few channels)`), with its data kept. Along the dispersion track, each channel's samples are summed over the boxcar at that channel's delay (`quality.channel_contributions`). From these contributions c (positive part), `n_eff_channels` = (Σc)² / Σc² and `top2_fraction` is the share of the two strongest channels. Below `--narrowband-min-channels` (6) effective channels, or above 0.6 in two channels, the candidate is narrowband. A dispersed burst spreads over most of the band, while the carrier of an aircraft or of meteor scatter occupies one or two channels of 24 kHz.
+   - A candidate at a known source is stored, with its data, as class `known` (`known.py`), and its `known_source` field gives the kind, name and separation:
+     - `solar`, `jovian`: within 3 beams of the Sun or Jupiter. The positions come from astropy's built-in ephemeris for the candidate's time, are converted to FK5 J2000 like the image WCS, and are cached for 60 s.
+     - `bright_source`: within 1.5 beams of Cyg A, Cas A, Tau A, Vir A, Her A or Hya A.
+     - `pulsar`: within 2 beams of a bright low-frequency pulsar, with |DM − DM_psr| ≤ max(3 DM steps, 10%). The list is built in, and a CSV (`--known-pulsars`, columns name,ra_deg,dec_deg,dm,period_s) extends it or replaces entries of the same name.
+     - The beam is that at the band centre, widened towards the horizon like the clustering radius.
    - A burst found again by another tier or block is stored once.
 6. **Products.** Each candidate is a JSON record plus an `.npz` file under `<out>/candidates/YYYYMMDD/`. The `.npz` holds:
    - the pixel's dynamic spectrum at the tier's resolution;
@@ -65,7 +71,7 @@ No result discards data:
 - every sky event is marked `review: pending`;
 - a verdict is recorded with `POST /api/events/<id>/review {verdict: frb|rfi|unclear, by, note}`.
 
-Monitors keep the data of RFI candidates too, unless the RFI is certain (DM < 2, or much of the sky at once). Each candidate also carries in-band quality measures (`quality.py`).
+Monitors keep the data of RFI candidates too, unless the RFI is certain (DM < 2, or much of the sky at once). Each candidate also carries in-band quality measures (`quality.py`). Only class `candidate` (and coordinated injections) opens events; candidates at known sources (`known`) do not. On the node, the archiver (`archiver.py`) removes `known` candidates that are not archived after `--review-days` (14).
 
 Events go to `<out>/events/YYYYMMDD/*.json` and are served on :8096 (`/api/status`, `/api/events`).
 
@@ -121,7 +127,7 @@ python -m skymon evaluate --truth /tmp/simtest/truth.jsonl --out /tmp/simtest
 ## Tests
 
 ```bash
-cd tests/python && python -m unittest -v test_skymon
+cd tests/python && python -m unittest -v test_known test_skymon test_combiner test_localdb
 ```
 
 The tests cover:
@@ -133,4 +139,5 @@ The tests cover:
 - detection by the searcher;
 - an end-to-end simulated sky with stored candidates and the HTTP interface;
 - live injections;
+- known-source labels (Sun, pulsars, bright sources) and the narrowband classification (`test_known`);
 - a monitor that waits for a missing imager and survives a restart and a gap.

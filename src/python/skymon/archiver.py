@@ -21,6 +21,8 @@ On each node the archiver, a process of its own, does two things.
    - candidates of certain RFI (no data products in any case) after rfi_days;
    - candidates of events reviewed as RFI, and RFI candidates in no event,
      after review_days;
+   - candidates at known sources (class "known": the Sun, Jupiter, bright
+     sources, pulsars), unless archived, after review_days;
    - archived candidates after keep_days;
    - above max_disk_fraction, archived candidates are removed first, oldest
      first.
@@ -192,6 +194,7 @@ class Archiver:
             if (certain_rfi and age_d > self.rfi_days) or \
                     (cid in rfi_reviewed and not archived and age_d > self.review_days) or \
                     (cls == "rfi" and cid not in in_events and age_d > self.review_days) or \
+                    (cls == "known" and not archived and age_d > self.review_days) or \
                     (archived is not None and age_d > self.keep_days):
                 self._remove(cid, rec, npz)
                 removed += 1

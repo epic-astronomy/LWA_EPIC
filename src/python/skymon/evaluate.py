@@ -4,8 +4,8 @@ Compare stored candidates with the simulator's truth file.
 A simulated FRB is recovered by a candidate within match_radius_deg on the
 sky whose DM is within 10% (or three DM steps) and whose bottom-edge arrival
 time agrees within three tier samples plus twice the boxcar width plus 2 s.
-Candidates matching no FRB and not marked as RFI or as a live injection are
-false candidates.
+Candidates matching no FRB and not marked as RFI, as a live injection or as
+a known source are false candidates.
 """
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ def _matches(t, c, radius_deg):
 def match(truth, cands, radius_deg):
     """
     rows: (burst, its brightest matching candidate or None) for each burst.
-    false: candidates (not RFI, not injections) that match no burst. A second
+    false: candidates (not RFI, injections or known sources) that match no burst. A second
     candidate of one burst (another part of its cluster) is not false.
     """
     rows = []
@@ -60,7 +60,7 @@ def match(truth, cands, radius_deg):
                 best = i
         rows.append((t, cands[best] if best is not None else None))
     false = [c for i, c in enumerate(cands)
-             if i not in hit and c["cls"] not in ("rfi", "injection")]
+             if i not in hit and c["cls"] not in ("rfi", "injection", "known")]
     return rows, false
 
 
@@ -108,7 +108,8 @@ def report(truth_path, out_dir, radius_deg=None, t_end=None, latency_s=0.0, read
              f"{n_warm} while the tier for their DM was starting"] if (n_late or n_warm) else []
     lines += [f"simulated FRBs counted: {len(truth)}, recovered: {len(found)} "
              f"({100 * len(found) / max(1, len(truth)):.0f}%), false candidates: {len(false)}, "
-             f"RFI-classified: {sum(c['cls'] == 'rfi' for c in cands)}"]
+             f"RFI-classified: {sum(c['cls'] == 'rfi' for c in cands)}, "
+             f"at known sources: {sum(c['cls'] == 'known' for c in cands)}"]
     for lo, hi in [(0, 10), (10, 15), (15, 20), (20, 1e9)]:
         sel = [r for r in rows if lo <= r[0]["snr"] < hi]
         if sel:

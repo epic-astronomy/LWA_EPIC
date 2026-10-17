@@ -552,6 +552,8 @@ class Combiner:
                 if (name, c["id"]) in self.seen:
                     continue
                 self.seen.add((name, c["id"]))
+                # only plain candidates open events: not RFI, not candidates at
+                # known sources ("known"), and of injections only coordinated ones
                 if c["cls"] == "candidate" or (c["cls"] == "injection" and
                                                str(c.get("injection_id", "")).startswith("cinj-")):
                     new.append((name, c))

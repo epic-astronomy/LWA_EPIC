@@ -10,7 +10,9 @@ burst found by two tiers or blocks) is not stored twice.
 Every stored candidate is a JSON record plus an .npz with the data around
 it, under <out_dir>/candidates/YYYYMMDD/. Only RFI that is certain (a DM near
 zero, or much of the sky at once) is stored without its data: anything that
-might be a burst is kept for a person to judge.
+might be a burst is kept for a person to judge. A candidate at a known
+source (the Sun, Jupiter, a bright source, or a pulsar at its DM; known.py)
+is stored with its data as class "known".
 """
 from __future__ import annotations
 
@@ -43,7 +45,7 @@ def utc(unix: float) -> str:
 @dataclass
 class Candidate:
     id: str
-    cls: str  # candidate | injection | rfi | followup | context
+    cls: str  # candidate | known | injection | rfi | followup | context
     snr: float
     dm: float
     dm_step: float
@@ -73,6 +75,7 @@ class Candidate:
     rfi_reasons: list = field(default_factory=list)  # why it was classified as RFI
     rfi_certain: bool = False  # only certain RFI is stored without its data
     quality: dict = field(default_factory=dict)  # in-band measures (quality.py)
+    known_source: dict | None = None  # a known source at the position (known.py)
     duplicates: int = 0
     members: list = field(default_factory=list)  # [hpix, snr] of the cluster's pixels
     files: dict = field(default_factory=dict)
@@ -138,7 +141,8 @@ class CandidateStore:
         self.thread = threading.Thread(target=self._writer, daemon=True)
         self.thread.start()
         os.makedirs(os.path.join(out_dir, "candidates"), exist_ok=True)
-        self.counts = dict(stored=0, duplicates=0, rfi=0, injection=0, followup=0, context=0)
+        self.counts = dict(stored=0, duplicates=0, rfi=0, injection=0, followup=0, context=0,
+                           known=0)
 
     def _dir(self, unix: float) -> str:
         d = os.path.join(self.out_dir, "candidates",
