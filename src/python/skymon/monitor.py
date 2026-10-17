@@ -527,7 +527,7 @@ class Monitor:
                 self._label_known(c)
             c.quality["conditions"] = self.cond.around(c.t_bottom)
             c.quality["calibration"] = self._calibration_around(c)
-            stored = self.store.add(c, products, self.radius)
+            stored = self.store.add(c, products, self.beam)  # repeats peak within a beam
             if stored is not None:
                 self.cond.note_candidate(stored.cls)
                 found.append(stored)

@@ -434,5 +434,37 @@ class TestIndependence(unittest.TestCase):
             shutil.rmtree(out, ignore_errors=True)
 
 
+
+class TestDuplicates(unittest.TestCase):
+    """The candidate store keeps distinct bursts and merges only repeats of one burst"""
+
+    def cand(self, cid, snr, ra, dec, t_bottom, dm=120.0):
+        from skymon.candidates import Candidate
+
+        return Candidate(id=cid, cls="candidate", snr=snr, dm=dm, dm_step=2.4, width_s=0.17,
+                         t_inf=t_bottom - 30.0, t_bottom=t_bottom, t_top=t_bottom - 5.0, utc_inf="",
+                         hpix=0, nside=64, ra=ra, dec=dec, el=70.0, az=0.0, image_x=0.0, image_y=0.0,
+                         tier=1, tier_dt=0.167, n_pix=3, extent_deg=1.0, f_lo_mhz=55.9,
+                         f_hi_mhz=58.9, host="test", detected_unix=time.time())
+
+    def test_distinct_bursts_both_kept_repeat_merged(self):
+        from skymon.candidates import CandidateStore
+
+        out = tempfile.mkdtemp()
+        try:
+            store = CandidateStore(out)
+            beam = 3.0
+            t0 = 1792008000.0
+            self.assertIsNotNone(store.add(self.cand("a", 20.0, 200.0, 34.0, t0), None, beam))
+            # a second burst at the same DM, 5 deg and 28 s away: kept
+            self.assertIsNotNone(store.add(self.cand("b", 12.0, 206.0, 34.0, t0 + 28.0), None, beam))
+            # the first burst found again by another tier, 1 deg off: merged
+            self.assertIsNone(store.add(self.cand("a2", 15.0, 201.0, 34.0, t0 + 0.5), None, beam))
+            store.flush()
+            self.assertEqual(sorted(c.id for c in store.list()), ["a", "b"])
+            self.assertEqual(store.counts["duplicates"], 1)
+        finally:
+            shutil.rmtree(out, ignore_errors=True)
+
 if __name__ == "__main__":
     unittest.main()

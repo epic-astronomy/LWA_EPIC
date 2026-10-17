@@ -152,6 +152,13 @@ class CandidateStore:
         return d
 
     def find_duplicate(self, c: Candidate, radius_deg: float):
+        """
+        A stored candidate that c repeats: the same burst found again by
+        another tier or block peaks within a beam of the first (radius_deg is
+        the beam, widened towards the horizon), at a similar DM and arrival.
+        A wider radius would merge distinct bursts, and the weaker would be
+        lost.
+        """
         with self.lock:
             for o in reversed(self.recent):
                 if o.cls == "followup":
