@@ -27,12 +27,15 @@
 #include <cmath>
 #include <memory>
 #include <set>
+#include <string>
+#include <type_traits>
 #include <variant>
 
 #include "../ex/buffer.hpp"
 #include "../ex/constants.h"
 #include "../ex/metrics.hpp"
 #include "../ex/py_funcs.hpp"
+#include "../ex/sky_publisher.hpp"
 #include "../ex/tensor.hpp"
 #include "../ex/types.hpp"
 #include "glog/logging.h"
@@ -66,6 +69,52 @@ class ChanReducerRft : public raft::kernel {
   unsigned int m_rt_gauge_id{0};
   Timer m_timer;
   std::set<int> m_hc_chans;
+  /// Stokes I images for the all-sky monitor (null when --sky_shm is empty)
+  std::unique_ptr<SkyPublisher> m_sky{nullptr};
+
+  template <typename M>
+  static double MetaNum(M& p_meta, const char* p_key) {
+    auto it = p_meta.find(p_key);
+    if (it == p_meta.end()) return 0;
+    return std::visit(
+        [](auto&& v) -> double {
+          using T = std::decay_t<decltype(v)>;
+          if constexpr (std::is_arithmetic_v<T>) return static_cast<double>(v);
+          return 0.0;
+        },
+        it->second);
+  }
+
+  template <typename M>
+  static uint64_t MetaU64(M& p_meta, const char* p_key) {
+    auto it = p_meta.find(p_key);
+    if (it == p_meta.end()) return 0;
+    return std::visit(
+        [](auto&& v) -> uint64_t {
+          using T = std::decay_t<decltype(v)>;
+          if constexpr (std::is_integral_v<T>) return static_cast<uint64_t>(v);
+          if constexpr (std::is_floating_point_v<T>) return static_cast<uint64_t>(v);
+          return 0;
+        },
+        it->second);
+  }
+
+  /// Copy the full-resolution image to the sky ring. Never stops the imager.
+  void PublishSky(_PldIn& p_pld) {
+    try {
+      auto& meta = p_pld.get_mbuf()->GetMetadataRef();
+      SkyPublisher::ImageInfo info;
+      info.seq_start = MetaU64(meta, "seq_start");
+      info.nseqs = static_cast<uint32_t>(MetaU64(meta, "nseqs"));
+      info.chan0 = static_cast<uint32_t>(MetaU64(meta, "chan0"));
+      info.grid_res = MetaNum(meta, "grid_res");
+      info.img_len_ms = MetaNum(meta, "img_len_ms");
+      m_sky->Publish(p_pld.get_mbuf()->GetDataPtr(), static_cast<int>(m_in_nchan), info);
+    } catch (const std::exception& e) {
+      LOG(ERROR) << "Sky publisher disabled: " << e.what();
+      m_sky.reset();
+    }
+  }
 
  public:
   /**
@@ -76,7 +125,9 @@ class ChanReducerRft : public raft::kernel {
    * @param p_ydim Y side of the image
    * @param p_in_nchan Number of input channels to the reducer
    */
-  ChanReducerRft(int p_ncombine, int p_xdim, int p_ydim, int p_in_nchan)
+  ChanReducerRft(int p_ncombine, int p_xdim, int p_ydim, int p_in_nchan,
+                 const std::string& p_sky_shm = "", int p_sky_slots = 64,
+                 int p_sky_nbin = 1)
       : raft::kernel(),
         m_ncombine(p_ncombine),
         m_xdim(p_xdim),
@@ -99,6 +150,17 @@ class ChanReducerRft : public raft::kernel {
     m_buf_mngr.reset(new BufferMngr(m_nbufs,
                                     m_xdim * m_ydim * m_out_nchan * NSTOKES,
                                     m_max_buf_reqs, false));
+
+    if (!p_sky_shm.empty()) {
+      try {
+        m_sky = std::make_unique<SkyPublisher>(p_sky_shm, p_sky_slots,
+                                               static_cast<int>(m_in_nchan),
+                                               static_cast<int>(m_xdim), p_sky_nbin);
+        LOG(INFO) << "Publishing Stokes I images to " << m_sky->Path();
+      } catch (const std::exception& e) {
+        LOG(ERROR) << "Sky publisher not started: " << e.what();
+      }
+    }
 
     m_rt_gauge_id = PrometheusExporter::AddRuntimeSummaryLabel(
         {{"type", "exec_time"},
@@ -128,6 +190,8 @@ class ChanReducerRft : public raft::kernel {
     //                       // runtime to destroy the object
     //   return raft::proceed;
     // }
+
+    if (m_sky) PublishSky(in_pld);
 
     auto out_pld = m_buf_mngr->acquire_buf();
     if (!out_pld) {

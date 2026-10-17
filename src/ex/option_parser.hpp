@@ -101,6 +101,17 @@ cxxopts::Options GetEpicOptions() {
       cxxopts::value<int>()->default_value("-1"))
       ("out_dir","Output directory to store the long accumulation files. Defaults to the current directory.",cxxopts::value<std::string>()->default_value("./"));
 
+  options.add_options("All-sky monitor")(
+      "sky_shm",
+      "Publish every image's Stokes I (XX + YY) at full resolution to the "
+      "shared-memory ring /dev/shm/<name> for the all-sky monitor "
+      "(src/python/skymon). Empty: off.",
+      cxxopts::value<std::string>()->default_value(""))(
+      "sky_shm_slots", "Images held by the sky ring",
+      cxxopts::value<int>()->default_value("64"))(
+      "sky_nbin", "Channels summed per published channel",
+      cxxopts::value<int>()->default_value("1"));
+
   options.add_options("Execution options")(
       "nstreams", "Number of cuda streams to process images",
       cxxopts::value<int>()->default_value("8"))(

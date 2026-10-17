@@ -175,7 +175,9 @@ struct Kernel<_CHAN_REDUCER> : KernelTypeDefs {
     int imsize = options["imagesize"].as<int>();
     int im_nchan = options["channels"].as<int>();
     int chan_nbin = options["chan_nbin"].as<int>();
-    return ktype(chan_nbin, imsize, imsize, im_nchan);
+    return ktype(chan_nbin, imsize, imsize, im_nchan,
+                 options["sky_shm"].as<std::string>(),
+                 options["sky_shm_slots"].as<int>(), options["sky_nbin"].as<int>());
   }
 };
 using ChanReducer_kt = Kernel<_CHAN_REDUCER>::ktype;
