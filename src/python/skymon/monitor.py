@@ -40,7 +40,7 @@ from .geometry import Band, SkyGrid, altaz, auto_nside, beam_fwhm_deg, image_wcs
 from .inject import LiveInjector
 from .known import KnownSources
 from .search import Searcher
-from .flux import CalibrationFeed, candidate_flux, measure_calibrators
+from .flux import CalibrationFeed, beam_table, candidate_flux, measure_calibrators
 from .quality import candidate_quality, channel_contributions
 from .watch import Watches, measure, predicted_bottom
 
@@ -88,6 +88,7 @@ class Config:
     # data-quality periods (conditions.py), sampled on the image clock
     calinfo_path: str | None = None  # streamcal's calibration record (flux.py); None: no flux
     flux_every_s: float = 60.0  # calibrators measured in the images this often
+    beam_model: str = "empirical"  # lsl dipole model for the primary beam; "record": the record's
     cond_interval_s: float = 10.0
     cond_baseline_tau_s: float = 3600.0  # slow baseline of the noise
     cond_hours: float = 6.0  # samples kept in memory
@@ -151,6 +152,13 @@ class Monitor:
         self.unix0 = meta.unix
         nside = cfg.nside or auto_nside(self.band.f_centre, meta.grid_res)
         self.grid = SkyGrid(nside, cfg.el_min, meta.grid, meta.grid_res, meta.phase_mode)
+        self.beam_tab = None  # the primary beam of this band (flux.py)
+        if cfg.beam_model != "record":
+            try:
+                e = self.band.edges_mhz()
+                self.beam_tab = beam_table([e[0], self.band.f_centre, e[-1]], cfg.beam_model)
+            except Exception as ex:  # no lsl: the calibration record's beam, if any
+                print(f"skymon: primary beam ({cfg.beam_model}) unavailable: {ex!r}", flush=True)
         self.searcher = Searcher(self.band.edges_mhz(), self.dt, self.grid.capacity,
                                  dm_max=cfg.dm_max, widths=cfg.widths, block0=cfg.block0,
                                  threshold=cfg.threshold, nthreads=cfg.nthreads,
@@ -304,7 +312,8 @@ class Monitor:
                 return
             with self.grid_lock:
                 m = measure_calibrators(self.grid, self.accum, self.beam, rec,
-                                        self.band.centres_mhz(), unix)
+                                        self.band.centres_mhz(), unix,
+                                        beam_tab=getattr(self, "beam_tab", None))
             if m is not None:
                 self.flux_meas = m
                 self.flux_unwritten.append(m)
@@ -319,7 +328,8 @@ class Monitor:
         rec = self.calfeed.for_version(self.gain_version)
         try:
             f = candidate_flux(contrib, raw_sigma, tier_level, self.dt, width_s, m["k"], rec, el, az,
-                               self.band.centres_mhz(), snr)
+                               self.band.centres_mhz(), snr,
+                               beam_tab=getattr(self, "beam_tab", None))
         except Exception as e:
             print(f"skymon: flux of a candidate failed: {e!r}", flush=True)
             return None

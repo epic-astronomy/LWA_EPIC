@@ -60,6 +60,9 @@ def add_monitor_args(p):
     p.add_argument("--calinfo", default=None,
                    help="streamcal's calibration record, e.g. /dev/shm/epic_calinfo_gpu0.json: "
                         "fluence and flux density of candidates (none: no flux)")
+    p.add_argument("--beam-model", default="empirical",
+                   help="lsl dipole model of the primary beam for fluences ('record': the beam "
+                        "table of the calibration record, as the simulator writes)")
     p.add_argument("--seed", type=int, default=None)
 
 
@@ -72,7 +75,8 @@ def make_config(a) -> Config:
                   narrowband_min_channels=a.narrowband_min_channels,
                   known_pulsars_csv=a.known_pulsars,
                   clip=a.clip, chan_flag_sigma=a.chan_flag_sigma,
-                  cond_rfi_rate=a.disturbed_rfi_rate, calinfo_path=a.calinfo)
+                  cond_rfi_rate=a.disturbed_rfi_rate, calinfo_path=a.calinfo,
+                  beam_model=a.beam_model)
 
 
 def run_ring(monitor: Monitor, ring: str, stop: threading.Event, max_queue: int = 512,
@@ -323,6 +327,7 @@ def cmd_simtest(a):
     if not a.calinfo:
         a.calinfo = os.path.join(os.path.abspath(a.out), "calinfo.json")
     a.sim_calinfo = a.calinfo
+    a.beam_model = "record"  # the simulated sky has its own primary beam
     monitor = Monitor(make_config(a))
     _serve(monitor, a.port)
     sync_stop = threading.Event()

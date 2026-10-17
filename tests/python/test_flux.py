@@ -40,11 +40,11 @@ class TestArithmetic(unittest.TestCase):
         rec = flat_record(beam_fn=lambda alt: np.sin(np.radians(alt)))
         f = Band(2336, 64).centres_mhz()
         for el in (90.0, 60.0, 32.5, 12.0):
-            bx, by = FX.beam(rec, el, 123.0, f)
+            bx, by = FX.beam(rec["beam"], el, 123.0, f)
             np.testing.assert_allclose(bx, np.sin(np.radians(el)), atol=0.01)
             np.testing.assert_allclose(by, bx)
         # azimuth wraps
-        np.testing.assert_allclose(FX.beam(rec, 45.0, 355.0, f)[0], FX.beam(rec, 45.0, 5.0, f)[0])
+        np.testing.assert_allclose(FX.beam(rec["beam"], 45.0, 355.0, f)[0], FX.beam(rec["beam"], 45.0, 5.0, f)[0])
 
     def test_fluence_of_a_known_signal(self):
         """sum_track(x) sigma sqrt(2^tier) dt / (k Beff), in Jy ms"""
@@ -63,6 +63,31 @@ class TestArithmetic(unittest.TestCase):
         self.assertAlmostEqual(out["fluence_jy_ms"], 4 * expect, places=1)
         # without a measurement there is no flux
         self.assertIsNone(FX.candidate_flux(np.ones(64), np.ones(64), 0, 0.1, 0.1, None, rec, 90, 0, f))
+
+    def test_lsl_beam_table(self):
+        """The monitor's own primary beam: the LWA dipole from lsl, zenith = 1, falling to the horizon"""
+        f = Band(2336, 64)
+        e = f.edges_mhz()
+        tab = FX.beam_table([e[0], f.f_centre, e[-1]])
+        c = f.centres_mhz()
+        for pol in (0, 1):
+            np.testing.assert_allclose(FX.beam(tab, 90.0, 0.0, c)[pol], 1.0, atol=1e-6)
+        b45 = np.mean(0.5 * (FX.beam(tab, 45.0, 0.0, c)[0] + FX.beam(tab, 45.0, 0.0, c)[1]))
+        b20 = np.mean(FX.beam(tab, 20.0, 0.0, c)[0])
+        self.assertTrue(1.0 > b45 > b20 > 0.0, (b45, b20))
+        # X and Y differ off the zenith (dipoles at right angles)
+        self.assertGreater(abs(FX.beam(tab, 30.0, 0.0, c)[0].mean() - FX.beam(tab, 30.0, 0.0, c)[1].mean()), 1e-3)
+        # the monitor's beam is used when the record has none; a record's beam
+        # (a calibrated beam) takes precedence
+        rec = flat_record()  # flat beam table, zenith = 1 everywhere
+        args = (np.ones(64), np.ones(64), 0, 0.1, 0.1, np.ones(64))
+        out_rec = FX.candidate_flux(*args, rec, 45.0, 0.0, c, beam_tab=tab)
+        self.assertNotEqual(out_rec["beam_model"], "empirical")
+        no_beam = dict(rec)
+        del no_beam["beam"]
+        out_lsl = FX.candidate_flux(*args, no_beam, 45.0, 0.0, c, beam_tab=tab)
+        self.assertEqual(out_lsl["beam_model"], "empirical")
+        self.assertAlmostEqual(out_lsl["fluence_jy_ms"] / out_rec["fluence_jy_ms"], 1 / b45, delta=0.02 / b45)
 
     def test_feed_reads_new_records_only(self):
         d = tempfile.mkdtemp()
@@ -126,7 +151,8 @@ class TestEndToEnd(unittest.TestCase):
         cls.sim = sim
         cls.mon = Monitor(Config(out_dir=cls.out, nside=64, el_min=40.0, dm_max=300.0, block0=64,
                                  nthreads=4, warmup_images=32, inject_interval_s=0, seed=11,
-                                 accum_hours=0.2, calinfo_path=cls.calinfo))
+                                 accum_hours=0.2, calinfo_path=cls.calinfo,
+                                 beam_model="record"))
         for _ in range(int(200 / sim.dt)):
             meta, img = sim.next_image()
             cls.mon.process(meta, img)

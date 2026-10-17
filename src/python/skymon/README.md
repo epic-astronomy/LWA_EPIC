@@ -63,21 +63,28 @@ epic++ (ChanReducer) ──Stokes I──▶ /dev/shm/<ring> ──▶ skymon ru
 9. **Calibration.** With `epic++ --gain_table` the images are calibrated by streamcal (branch streaming-calibration). Each image carries the version of the gain table it was made with (slot header offset 56 of the ring; 0: nominal phases).
    - The monitor counts the changes of version in the conditions (`gain_changes`). It logs when calibration is first applied, and when it reverts to the nominal phases.
    - Each candidate records in `quality.calibration` the table version and the changes within its sweep. `applied_or_reverted_in_sweep` marks the larger change of the images when calibration starts or stops. No image is held back.
-10. **Flux and fluence** (`flux.py`). The gain tables are relative (median |c| = 1 per channel) and epic++ applies no primary beam, so the images have no absolute scale. With `--calinfo /dev/shm/epic_calinfo_gpu0.json`, the monitor reads the calibration record streamcal writes with every solution. The record holds:
+10. **Flux and fluence** (`flux.py`). The gain tables are relative (median |c| = 1 per channel) and epic++ applies no primary beam, so the images have no absolute scale. With `--calinfo <file>`, the monitor reads the calibration record that the streaming calibrator writes with every gain table. What the record must hold, and why, is set out in `docs/skymon/streamcal-interface.md`:
     - the absolute scale F_X, F_Y per channel;
-    - the calibrators, with their model spectra, solved scales, positions and dipole responses;
-    - a table of the dipole response.
+    - the calibrators, with their positions, model spectra and solved scales;
+    - later, the beam calibrated after direction-dependent calibration.
+
+    Until the record carries a beam, the monitor computes the LWA dipole response itself with lsl (`--beam-model`, default `empirical`). A beam table in the record takes precedence.
 
     Every minute the monitor measures each calibrator above 20° in its own accumulation, as the excess of its pixel over a ring 2–4 beams around it. It divides the excess by S (F_X² B_X + F_Y² B_Y) / 2 to get k, in image units per Jy, per channel. A candidate's fluence per channel is
 
     sum along the track (normalised) × σ_raw × sqrt(2^tier) × t_image / (k Beff(position)),
 
-    and `flux` gives it in Jy ms over the band and per channel, with the mean flux density over the boxcar, the beam relative to the zenith and the calibrators used. The `.npz` adds:
-    - `raw_sigma` and `raw_mean`, the pixel's noise and mean per image in image units;
-    - `tier_images` and `image_s`;
-    - the calibration record and the calibrator measurement as JSON.
+    and `flux` gives it in Jy ms over the band and per channel, with:
+    - the mean flux density over the boxcar;
+    - the beam relative to the zenith, and the beam's source, model and version;
+    - the calibrators used.
 
-    Records and measurements go to the table `calibration` of the node's database. On a simulated sky with its own record (`simtest` writes one), Cyg A gave k = 0.98 of the true value. A burst of known fluence was measured at 0.82 of it, about the same loss as its S/N (34 found for 40 injected): the burst lies off the centre of its HEALPix pixel, and the search filters remove part of it.
+    The `.npz` adds:
+    - `raw_sigma` and `raw_mean`;
+    - `tier_images` and `image_s`;
+    - the calibration record and the calibrator measurement.
+
+    Records and measurements go to the table `calibration` of the node's database. On a simulated sky with its own record (`simtest` writes one), Cyg A gave k = 0.98 of the true value. A burst of known fluence was measured at 0.82 of it, about the same loss as its S/N (34 found for 40 injected).
 
 ## Consensus across bands (combiner.py)
 

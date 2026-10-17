@@ -323,7 +323,7 @@ A candidate that might be a burst and is not archived is never removed.
 
 ## 6. Calibration and flux
 
-**Interface status.** The streaming calibrator (`streamcal`, branch `streaming-calibration`) is under development, including direction-dependent calibration. skymon assumes that it provides the calibration record described below; the interface is defined here only from the consumer side, `skymon/flux.py`, and may change.
+**Interface status.** The streaming calibrator (branch `streaming-calibration`) is under development, including direction-dependent calibration. What the monitor requires from it, why, and the open questions are set out in [What the all-sky monitor needs from the streaming calibrator](streamcal-interface.md). This section describes the monitor's side.
 
 ### 6.1 Gain version in the images
 
@@ -341,11 +341,13 @@ The gain tables are relative (median |c| = 1 per channel and polarisation) and e
 | `chan0`, `nchan` | channels of the record |
 | `solve_chans` | channels at which calibrator models are given |
 | `flux_scale.X`, `flux_scale.Y` | per-channel absolute scale F_X, F_Y removed from the table (data counts per Jy^½) |
-| `calibrators[]` | `name`, `ra_deg`, `dec_deg`, `model_jy` (model spectrum at `solve_chans`), `scale` (solved flux scale), `beam_x`, `beam_y` (dipole response towards it) |
-| `beam` | dipole response table: `alt_deg`, `az_deg`, `freqs_mhz`, `X[freq][alt][az]`, `Y[freq][alt][az]` (zenith = 1) |
+| `calibrators[]` | `name`, `ra_deg`, `dec_deg`, `model_jy` (model spectrum at `solve_chans`), `scale` (solved flux scale) |
+| `beam` (optional) | beam table (`source`, `model`, `version`, `freqs_mhz`, `alt_deg`, `az_deg`, `X[freq][alt][az]`, `Y[freq][alt][az]`), for the beam calibrated after direction-dependent calibration |
 | `quality.chi2_median` | solution quality (reported in status) |
 
 A record without these fields, or any failure, gives candidates without a flux and is logged; it never stops the search.
+
+**Primary beam.** Until the calibrator delivers a calibrated beam, the monitor computes the LWA dipole response itself with lsl (`--beam-model`, model `empirical` by default), on a grid of 2.5° in elevation and 5° in azimuth at the bottom, centre and top of the band, once per band. A beam table in the record takes precedence. Only ratios of the beam enter the fluence (calibrator against candidate), so its normalisation is free. Every fluence reports the `beam_source` (`model` or `calibrated`), `beam_model` and `beam_version` it used.
 
 ### 6.3 Calibrators measured in the images
 
@@ -361,7 +363,7 @@ $$
 k = \frac{\text{excess}}{S\,B_\mathrm{eff}},
 $$
 
-with S the model spectrum times the solved scale and B_eff from the beam table (or from the calibrator's `beam_x`, `beam_y` if there is no table). k is the median over calibrators with excess S/N ≥ 5. Nothing about the imager's internal normalisation is assumed.
+with S the model spectrum times the solved scale and B_eff from the beam table. k is the median over calibrators with excess S/N ≥ 5. Nothing about the imager's internal normalisation is assumed.
 
 ### 6.4 Fluence
 
@@ -371,7 +373,7 @@ $$
 F_c = \frac{\sum_\mathrm{track} x_c \;\sigma_c\; \sqrt{2^j}\; \Delta t}{k_c\, B_{\mathrm{eff},c}(\text{position})},
 $$
 
-where x_c is the normalised signal along the dispersion track (`quality.channel_contributions`), σ_c the pixel's noise per image in image units (square root of the running variance), and Δt the image length. The candidate's `flux` record holds `fluence_jy_ms` (the mean over channels of F_c), `fluence_err_jy_ms` (fluence / S/N), `flux_density_jy` (fluence over the boxcar width), `fluence_per_channel_jy_ms`, `beam_relative` (response at the position relative to zenith) and `gain_version`. The `.npz` adds `raw_sigma`, `raw_mean`, `tier_images`, `image_s`, the calibration record and the calibrator measurement, so the fluence can be recomputed.
+where x_c is the normalised signal along the dispersion track (`quality.channel_contributions`), σ_c the pixel's noise per image in image units (square root of the running variance), and Δt the image length. The candidate's `flux` record holds `fluence_jy_ms` (the mean over channels of F_c), `fluence_err_jy_ms` (fluence / S/N), `flux_density_jy` (fluence over the boxcar width), `fluence_per_channel_jy_ms`, `beam_relative` (response at the position relative to zenith), the beam's source, model and version, and `gain_version`. The `.npz` adds `raw_sigma`, `raw_mean`, `tier_images`, `image_s`, the calibration record and the calibrator measurement, so the fluence can be recomputed.
 
 Stated limits (`flux.py`): the pixel nearest a calibrator can miss its peak by up to half a pixel (a few per cent); the ring background contains diffuse emission and sidelobes; the calibrator models are corrected only by the solved scale; the dipole response is a model.
 
