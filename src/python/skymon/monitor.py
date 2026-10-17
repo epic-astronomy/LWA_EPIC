@@ -56,6 +56,11 @@ class Config:
     threshold: float = 8.0
     widths: tuple = (1, 2, 4, 8)
     block0: int = 256
+    # delay rows of each tier's FDMT as a multiple of the channels: with 2 each
+    # tier reaches twice the DM at its time resolution, so a burst is searched
+    # at a finer time resolution against its smearing (+18-33% S/N above
+    # tier 0) for about 1.45 times the search time with block0 512
+    delay_factor: float = 1.0
     nthreads: int = 8
     regrid_interval_s: float = 10.0
     max_gap_s: float = 60.0
@@ -167,6 +172,7 @@ class Monitor:
                 print(f"skymon: primary beam ({cfg.beam_model}) unavailable: {ex!r}", flush=True)
         self.searcher = Searcher(self.band.edges_mhz(), self.dt, self.grid.capacity,
                                  dm_max=cfg.dm_max, widths=cfg.widths, block0=cfg.block0,
+                                 max_delay=max(1, int(round(cfg.delay_factor * self.band.nchan))),
                                  threshold=cfg.threshold, nthreads=cfg.nthreads,
                                  warmup_images=cfg.warmup_images, norm_tau_s=cfg.norm_tau_s,
                                  var_tau_s=cfg.var_tau_s, hp_tau=cfg.hp_tau, clip=cfg.clip,

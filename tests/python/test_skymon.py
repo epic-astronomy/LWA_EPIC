@@ -435,6 +435,25 @@ class TestIndependence(unittest.TestCase):
 
 
 
+
+class TestDelayFactor(unittest.TestCase):
+    def test_twice_the_delays_doubles_each_tiers_dm(self):
+        """
+        D = 2C: each tier keeps its DM step but reaches twice the DM, so a burst
+        is searched in a lower tier (finer time resolution against its
+        smearing); fewer tiers reach dm_max
+        """
+        from skymon.geometry import Band
+        from skymon.search import Searcher
+
+        e = Band(2336, 64).edges_mhz()
+        one = Searcher(e, 0.0836, 16, dm_max=3000.0, block0=64, nthreads=1).describe()
+        two = Searcher(e, 0.0836, 16, dm_max=3000.0, block0=64, nthreads=1, max_delay=128).describe()
+        self.assertAlmostEqual(two[0]["dm_step"], one[0]["dm_step"], places=6)
+        self.assertAlmostEqual(two[0]["dm_max"], 2 * one[0]["dm_max"], delta=one[0]["dm_step"])
+        self.assertGreaterEqual(two[-1]["dm_max"], 3000.0)
+        self.assertEqual(len(two), len(one) - 1)
+
 class TestDuplicates(unittest.TestCase):
     """The candidate store keeps distinct bursts and merges only repeats of one burst"""
 
