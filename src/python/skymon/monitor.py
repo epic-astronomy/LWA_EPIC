@@ -40,8 +40,9 @@ from .geometry import Band, SkyGrid, altaz, auto_nside, beam_fwhm_deg, image_wcs
 from .inject import LiveInjector
 from .known import KnownSources
 from .search import Searcher
-from .flux import CalibrationFeed, beam_table, candidate_flux, measure_calibrators
-from .quality import candidate_quality, channel_contributions
+from .flux import (CalibrationFeed, beam_sigma_pix, beam_table, candidate_flux, measure_calibrators,
+                   peak_fit)
+from .quality import candidate_quality, channel_contributions, contribution_noise
 from .watch import Watches, measure, predicted_bottom
 
 
@@ -328,7 +329,46 @@ class Monitor:
         except Exception as e:  # flux is for review; it must never stop the search
             print(f"skymon: flux calibration failed: {e!r}", flush=True)
 
-    def _flux(self, contrib, raw_sigma, tier_level, width_s, el, az, snr):
+    def _peak(self, window, slot, row, t_idx, width):
+        """
+        peak_fit over a candidate's pixel and its 8 neighbours: each pixel's
+        contributions along the track (high-pass undone), summed over the band,
+        against its image position; the beam's width at the band centre. The
+        fitted position is converted to RA, Dec with the grid's WCS. Returns
+        peak_fit's dict with ra_deg, dec_deg added, or None on failure.
+        """
+        try:
+            with self.grid_lock:
+                hp_c = int(self.grid.hpix_of[slot])
+                nb = self.grid.neighbours(hp_c) if hp_c >= 0 else []
+                slots = [slot] + [int(self.grid.slot_of[n]) for n in nb]
+                xy = np.array([self.grid.xy[q] if q >= 0 else (np.nan, np.nan) for q in slots])
+                xy_a = self.grid.xy_a[slot].copy()
+                wcs = self.grid.wcs
+            if any(q < 0 for q in slots):
+                vals = np.full(len(slots), np.nan)
+            else:
+                e = self.band.edges_mhz()
+                a = self.searcher.a_hp
+                vals = np.array([float(np.sum(channel_contributions(window[:, :, q], e, row, t_idx,
+                                                                    width, a_hp=a)))
+                                 for q in slots])
+            sig = float(beam_sigma_pix([self.band.f_centre], self.grid.grid_res)[0])
+            out = peak_fit(xy, vals, sig)
+            out["n_pixels"] = len(slots)
+            if out["x"] is not None:
+                # the fitted offset, applied to the pixel's position at the WCS's time
+                px = xy_a[0] + (out["x"] - xy[0, 0])
+                py = xy_a[1] + (out["y"] - xy[0, 1])
+                ra, dec = wcs.all_pix2world(px, py, 1, ra_dec_order=True)
+                out.update(ra_deg=round(float(ra) % 360.0, 4), dec_deg=round(float(dec), 4))
+            return out
+        except Exception as ex:  # flux is for review; it must never stop the search
+            print(f"skymon: peak fit failed: {ex!r}", flush=True)
+            return None
+
+    def _flux(self, contrib, raw_sigma, tier_level, width_s, el, az, snr, contrib_err=None,
+              peak=None):
         """Fluence of a candidate from the latest calibrator measurement (None without one)"""
         m = self.flux_meas
         if m is None or m.get("k") is None:
@@ -337,7 +377,8 @@ class Monitor:
         try:
             f = candidate_flux(contrib, raw_sigma, tier_level, self.dt, width_s, m["k"], rec, el, az,
                                self.band.centres_mhz(), snr,
-                               beam_tab=getattr(self, "beam_tab", None))
+                               beam_tab=getattr(self, "beam_tab", None), contrib_err=contrib_err,
+                               peak=peak)
         except Exception as e:
             print(f"skymon: flux of a candidate failed: {e!r}", flush=True)
             return None
@@ -542,10 +583,16 @@ class Monitor:
         raw_sigma = np.sqrt(np.maximum(self.searcher.var[:, s], 0)).astype(np.float32)
         raw_mean = self.searcher.mu[:, s].astype(np.float32)
         if cand is not None:
-            contrib = channel_contributions(win, self.band.edges_mhz(), hit.row,
-                                            hit.t_end - res.first_sample, hit.width)
+            t_idx = hit.t_end - res.first_sample
+            e = self.band.edges_mhz()
+            a = self.searcher.a_hp
+            contrib = channel_contributions(win, e, hit.row, t_idx, hit.width, a_hp=a)
+            err = contribution_noise(win, e, hit.row, t_idx, hit.width, a_hp=a)
+            peak = self._peak(res.window, s, hit.row, t_idx, hit.width)
             cand.flux = self._flux(contrib, raw_sigma, tier.level, cand.width_s, cand.el, cand.az,
-                                   cand.snr)
+                                   cand.snr, err, peak)
+            if peak is not None:
+                cand.quality["peak"] = peak
         rec = self.calfeed.for_version(self.gain_version)
         return dict(dynspec=win.astype(np.float32), dynspec_t=t_win, dmt=dmt.astype(np.float32),
                     dmt_dm=np.arange(self.searcher.D + 1) * tier.dm_per_delay,
@@ -614,6 +661,7 @@ class Monitor:
                 w["_raw_sigma"] = np.sqrt(np.maximum(self.searcher.var[:, slots[k]], 0)).astype(
                     np.float32)
                 w["_track"] = (row, t, wd)
+                w["_peak"] = self._peak(res.window, slots[k], row, t, wd)
                 w["_t_win"] = self.searcher.tier_time(tier, first + np.arange(W))
                 w["_sigma"] = res.sigma
             if hi_s <= new_hi:
@@ -646,8 +694,13 @@ class Monitor:
         win = w.pop("_win")
         raw_sigma = w.pop("_raw_sigma")
         row, t_idx, wd = w.pop("_track")
-        c.flux = self._flux(channel_contributions(win, self.band.edges_mhz(), row, t_idx, wd),
-                            raw_sigma, b["tier"], b["width_s"], c.el, c.az, c.snr)
+        peak = w.pop("_peak", None)
+        e, a = self.band.edges_mhz(), self.searcher.a_hp
+        c.flux = self._flux(channel_contributions(win, e, row, t_idx, wd, a_hp=a),
+                            raw_sigma, b["tier"], b["width_s"], c.el, c.az, c.snr,
+                            contribution_noise(win, e, row, t_idx, wd, a_hp=a), peak)
+        if peak is not None:
+            c.quality["peak"] = peak
         plan = fdmt_plan(self.band.edges_mhz(), self.searcher.D)
         products = dict(dynspec=win.astype(np.float32), dynspec_t=w.pop("_t_win"),
                         dmt=fdmt(win[:, :, None], plan)[:, :, 0].astype(np.float32),

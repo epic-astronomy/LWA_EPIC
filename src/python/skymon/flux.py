@@ -20,17 +20,36 @@ in direction s appears in the image as
 
 where k (image units per counts^2) collects the gridding, the transform, the
 accumulation over the image and the quantisation. The monitor measures k for
-each channel from the calibrators in its own images: the excess of the
-calibrator's pixel over a ring around it, in the 10 s accumulation, divided by
-S Beff at the calibrator. A burst's fluence per channel then follows from its
-signal along the dispersion track (quality.channel_contributions, in normalised
-units), the pixel's noise in image units (the square root of the running
-variance) and k Beff at the burst's position:
+each channel from the calibrators in its own images (measure_calibrators):
+the excess, in the 10 s accumulation, of the pixel that sees most of the
+calibrator over a quadratic background fitted to a ring around it, divided
+by S Beff at the calibrator and by R, the pixel's modelled response to the
+calibrator at its known offset (the beam through the pixel's interpolation
+taps). A burst's fluence per channel then follows from its signal along the
+dispersion track (quality.channel_contributions with the tiers' high-pass
+undone, in normalised units), the pixel's noise in image units (the square
+root of the running variance), a peak correction P and k Beff at the burst's
+position:
 
-    fluence_c = sum_track(x) sigma_c sqrt(2^tier) dt_image / (k_c Beff_c(s))
+    fluence_c = sum_track(x) sigma_c sqrt(2^tier) dt_image P_c / (k_c Beff_c(s))
 
 (a sample of tier j is the sum of 2^j normalised images divided by
-sqrt(2^j)). Nothing about the imager's internal normalisation is assumed.
+sqrt(2^j)). P (peak_fit) is the peak of a Gaussian of the beam's width fitted
+to the candidate's pixel and its 8 neighbours, over the pixel's value: a
+burst between pixel centres loses up to 17% of its peak (3.6% on average at
+nside 64), and the calibrator gets the corresponding correction through R,
+so the loss cancels. The error of the fluence follows from the noise of each
+channel's contribution (quality.contribution_noise). Nothing about the
+imager's internal normalisation is assumed.
+
+Measured on the simulated sky of tests/python/test_flux.py (57 MHz, 64
+channels, nside 64): k = 1.00 for Cyg A; over 32 bursts of S/N 40 at pixel
+centres, edges, vertices and random positions the fluence is 1.013 +- 0.009
+of the truth; 16 bursts of S/N 120 give 1.008 +- 0.005 and 15 bursts at DM
+120 give 1.013 +- 0.012. Without the corrections, a burst was measured at
+0.82 of its fluence (tier high-pass 9%, pixel offset and interpolation 5%,
+noise 6%), and k = 0.98 was the product of two errors that cancelled by
+chance (-6.8% at the pixel, +5.3% from a median background).
 
 The record format is the interface with the calibration, which is still
 being developed (direction-dependent calibration). The fields used are those
@@ -39,9 +58,11 @@ any kind, gives candidates without a flux and is logged, and never stops the
 search. The record of the simulator (simulate.py) carries its own beam table,
 which therefore replaces the lsl model in the simulated tests.
 
-Limits: the HEALPix pixel nearest a calibrator can miss its peak by up to half
-a pixel (a few per cent at half a beam per pixel); the ring background holds
-diffuse emission and sidelobes of other sources; the model spectra of the
+Limits: the peak correction and R assume a Gaussian synthesised beam of
+FWHM lambda / D in the image's direction cosines; the real beam's shape and
+sidelobes, and direction-dependent calibration, change both. The ring
+background holds diffuse emission and sidelobes of other sources that a
+quadratic surface describes only in part; the model spectra of the
 calibrators are corrected only by the scale the calibrator solves; the dipole
 response is a model. Without a calibration record (no streamcal, or its
 record missing) the monitor still stores the calibrators' excess in image
@@ -55,7 +76,7 @@ import os
 
 import numpy as np
 
-from .geometry import altaz
+from .geometry import altaz, beam_fwhm_deg
 
 
 class CalibrationFeed:
@@ -233,16 +254,148 @@ def beam_eff(rec, el_deg, az_deg, freqs_mhz, tab=None):
     return 0.5 * (fx2 * bxy[0] + fy2 * bxy[1])
 
 
+# ------------------------------------------------------------------ the beam's peak
+def beam_sigma_pix(freqs_mhz, grid_res_deg):
+    """Gaussian sigma (image pixels) of the synthesised beam, lambda / D FWHM, per frequency"""
+    return np.array([beam_fwhm_deg(float(f)) for f in np.atleast_1d(freqs_mhz)]) / grid_res_deg / 2.3548
+
+
+def peak_fit(xy, values, sigma_pix, max_factor=1.3, min_factor=0.8, max_offset_pix=1.5):
+    """
+    The peak of a point source from the values of a HEALPix pixel (first) and
+    its neighbours: a Gaussian of the beam's width sigma_pix (image pixels) is
+    fitted to values at the pixels' image positions xy [n, 2] (amplitude and
+    position). The images are in direction cosines, where the synthesised
+    beam is round whatever the elevation, so the fit is made there.
+
+    Returns dict(factor, x, y, applied, reason): factor is the fitted peak over
+    the first pixel's value (1 when not applied). It is not applied with fewer
+    than 7 pixels, a first value <= 0, a failed fit, a peak more than
+    max_offset_pix from the first pixel, or a factor outside
+    [min_factor, max_factor].
+    """
+    xy = np.asarray(xy, float)
+    v = np.asarray(values, float)
+    out = dict(factor=1.0, x=None, y=None, applied=False, reason=None)
+    if len(v) < 7 or not np.all(np.isfinite(v)) or not np.all(np.isfinite(xy)):
+        out["reason"] = "neighbours missing"
+        return out
+    if v[0] <= 0:
+        out["reason"] = "no signal at the pixel"
+        return out
+    s2 = 2.0 * float(sigma_pix) ** 2
+    try:
+        from scipy.optimize import least_squares
+
+        def resid(p):
+            return p[0] * np.exp(-((xy[:, 0] - p[1]) ** 2 + (xy[:, 1] - p[2]) ** 2) / s2) - v
+
+        sol = least_squares(resid, np.array([float(v.max()), xy[0, 0], xy[0, 1]]), method="lm")
+        a, px, py = (float(q) for q in sol.x)
+    except Exception as e:  # noqa: BLE001 (a failed fit leaves the pixel's value)
+        out["reason"] = f"fit failed: {type(e).__name__}"
+        return out
+    out.update(x=round(px, 4), y=round(py, 4))
+    if not np.isfinite(a) or math.hypot(px - xy[0, 0], py - xy[0, 1]) > max_offset_pix:
+        out["reason"] = "peak too far from the pixel"
+        return out
+    f = a / v[0]
+    if not (min_factor <= f <= max_factor):
+        out["reason"] = f"factor {f:.3f} out of bounds"
+        return out
+    out.update(factor=round(f, 5), applied=True)
+    return out
+
+
+def peak_factors(factor, freqs_mhz):
+    """
+    Per-channel peak correction from the band's: the Gaussian beam's width
+    scales as 1 / f, so the loss at a fixed offset is exp(-d^2 / 2 sigma_c^2)
+    and ln(factor_c) = ln(factor) (f_c / f_mid)^2.
+    """
+    f = np.asarray(freqs_mhz, float)
+    return np.exp(math.log(max(factor, 1e-6)) * (f / float(np.mean(f))) ** 2)
+
+
+def _model_response(grid, slot, x_src, y_src, freqs_mhz):
+    """
+    The regridded value at a tracked pixel of a point source of peak 1 at image
+    position (x_src, y_src) (1-based FITS), per channel: the Gaussian beam
+    sampled at the pixel's interpolation taps. Positions at the grid's last
+    update.
+    """
+    from .geometry import bicubic
+
+    G = grid.grid_size
+    xp, yp = grid.xy_a[slot]
+    idx, w = bicubic(np.array([xp]), np.array([yp]), G)
+    iy, ix = np.divmod(idx[0].astype(np.int64), G)
+    sig = beam_sigma_pix(freqs_mhz, grid.grid_res)
+    d2 = (ix - (x_src - 1.0)) ** 2 + (iy - (y_src - 1.0)) ** 2
+    return np.exp(-d2[None, :] / (2 * sig[:, None] ** 2)) @ w[0].astype(float)
+
+
+def _ring_background(grid, ring, values, centre_pix, at_pix):
+    """
+    Background at pixel at_pix from ring values [n, C]: a quadratic surface
+    in the tangent plane at centre_pix, fitted with one pass of rejection
+    beyond 4 robust deviations (other sources in the ring). A median is
+    biased where the background is curved (a calibrator on the Galactic
+    ridge: +5% of Cyg A in the simulated sky; quadratic +0.5%). Falls back to
+    the median with fewer than 12 ring pixels. Returns (background [C], spread [C]).
+    """
+    import healpy as hp
+
+    vals = np.asarray(values, float)
+    med = np.median(vals, axis=0)
+    spread = 1.4826 * np.median(np.abs(vals - med), axis=0)
+    if len(ring) < 12:
+        return med, spread
+    c0 = np.array(hp.pix2vec(grid.nside, int(centre_pix)))
+    e1 = np.cross([0.0, 0.0, 1.0], c0)
+    if np.linalg.norm(e1) < 1e-6:
+        e1 = np.array([1.0, 0.0, 0.0])
+    e1 /= np.linalg.norm(e1)
+    e2 = np.cross(c0, e1)
+
+    def design(pix):
+        v = np.array(hp.pix2vec(grid.nside, np.asarray(pix, int))).T.reshape(-1, 3)
+        u, w = v @ e1, v @ e2
+        return np.stack([np.ones_like(u), u, w, u * u, u * w, w * w], 1)
+
+    X = design(ring)
+    keep = np.ones(len(ring), bool)
+    coef = None
+    for _ in range(2):
+        coef, *_ = np.linalg.lstsq(X[keep], vals[keep], rcond=None)
+        res = vals - X @ coef
+        sd = 1.4826 * np.median(np.abs(res[keep] - np.median(res[keep], axis=0)), axis=0)
+        bad = np.any(np.abs(res) > 4 * np.maximum(sd, 1e-30), axis=1)
+        if bad.sum() == 0 or (~bad).sum() < 12:
+            break
+        keep = ~bad
+    res = vals[keep] - X[keep] @ coef
+    spread = 1.4826 * np.median(np.abs(res - np.median(res, axis=0)), axis=0)
+    return (design([at_pix]) @ coef)[0], spread
+
+
 # ------------------------------------------------------------------ calibrators in the images
 def measure_calibrators(grid, accum, beam_deg, rec, freqs_mhz, unix, window_s=60.0,
                         min_el=20.0, min_snr=5.0, beam_tab=None):
     """
     The calibrators of rec in the monitor's own images: per calibrator, the
-    excess (image units) of its pixel over a ring of 2-4 beams, averaged over
-    the last window_s of the accumulation, and k = excess / (S Beff). The
-    pixel is the brightest of the calibrator's HEALPix pixel and its
-    neighbours. Returns a dict with the calibrators measured and k per
-    channel (the median over calibrators with S/N >= min_snr), or None.
+    excess (image units) of its pixel over the background, averaged over the
+    last window_s of the accumulation, and
+    k = excess / (S Beff R), R being the pixel's modelled response to the
+    calibrator (_model_response: the beam at the calibrator's known offset
+    from the pixel, through the pixel's interpolation taps). The pixel is the
+    one, among the calibrator's HEALPix pixel and its neighbours, with the
+    largest R; the background is a quadratic surface fitted to a ring of 2-4
+    beams (_ring_background), evaluated at that pixel. Candidates get the
+    same correction for their own offset (peak_fit), so the beam's loss
+    between pixel centres cancels. Returns a dict with the calibrators
+    measured and k per channel (the median over calibrators with
+    S/N >= min_snr), or None.
     """
     import healpy as hp
 
@@ -269,38 +422,47 @@ def measure_calibrators(grid, accum, beam_deg, rec, freqs_mhz, unix, window_s=60
         rslots = [s for s in rslots if s >= 0]
         if all(s < 0 for s in slots) or len(rslots) < 8:
             continue
-        means = []
-        for s in slots:
-            if s < 0:
-                means.append(None)
+        rings, rpix = [], []
+        for p in ring:
+            sl = int(grid.slot_of[p])
+            if sl < 0:
                 continue
-            _, d = accum.pixel(s, since=unix - window_s)
-            d = np.asarray(d, float)
-            means.append(None if d.size == 0 else np.nanmean(d, axis=0))
-        if all(m is None for m in means):
-            continue
-        rings = []
-        for s in rslots:
-            _, d = accum.pixel(s, since=unix - window_s)
+            _, d = accum.pixel(sl, since=unix - window_s)
             d = np.asarray(d, float)
             if d.size:
                 rings.append(np.nanmean(d, axis=0))
+                rpix.append(p)
         if len(rings) < 8:
             continue
-        rings = np.array(rings)
-        bg = np.median(rings, axis=0)
-        spread = 1.4826 * np.median(np.abs(rings - bg), axis=0)
-        peak = max((m for m in means if m is not None), key=lambda m: float(np.nansum(m - bg)))
-        excess = peak - bg
-        snr = float(np.nansum(excess) / math.sqrt(np.nansum(spread ** 2))) if np.nansum(spread ** 2) > 0 \
-            else float("nan")
+        # the pixel that sees most of the calibrator, from its known position
+        xs, ys = grid.wcs.all_world2pix(ra, dec, 1, ra_dec_order=True)
+        resp, best = None, None
+        for p, sl in zip(cand, slots):
+            if sl < 0 or not np.all(np.isfinite(grid.xy_a[sl])):
+                continue
+            r = _model_response(grid, sl, float(xs), float(ys), freqs_mhz)
+            if resp is None or float(np.mean(r)) > float(np.mean(resp)):
+                resp, best = r, (p, sl)
+        if best is None:
+            continue
+        _, d = accum.pixel(best[1], since=unix - window_s)
+        d = np.asarray(d, float)
+        if d.size == 0:
+            continue
+        peak = np.nanmean(d, axis=0)
+        bg, spread = _ring_background(grid, rpix, np.array(rings), hpix, best[0])
+        excess = (peak - bg) / np.clip(resp, 0.3, 1.2)
+        snr = float(np.nansum(peak - bg) / math.sqrt(np.nansum(spread ** 2))) \
+            if np.nansum(spread ** 2) > 0 else float("nan")
         model = channel_values(solved, c["model_jy"], freqs_mhz) * (c.get("scale") or 1.0)
         be = beam_eff(rec, el, az, freqs_mhz, beam_tab)
         if be is None:
             continue
         k = excess / np.maximum(model * be, 1e-30)
         out.append(dict(name=c["name"], el_deg=round(el, 2), az_deg=round(az, 2),
-                        excess_snr=round(snr, 1), scale=c.get("scale"),
+                        excess_snr=round(snr, 1), scale=c.get("scale"), hpix=int(best[0]),
+                        pixel_response=round(float(np.mean(resp)), 4),
+                        background="quadratic" if len(rpix) >= 12 else "median",
                         excess=np.round(excess, 6).tolist(), k=np.round(k, 9).tolist()))
         if np.isfinite(snr) and snr >= min_snr:
             ks.append(k)
@@ -313,15 +475,24 @@ def measure_calibrators(grid, accum, beam_deg, rec, freqs_mhz, unix, window_s=60
 
 
 # ------------------------------------------------------------------ candidates
+ERR_FACTOR = 1.7  # fluence error / (fluence / S/N) when the window's noise is not given
+
+
 def candidate_flux(contrib, raw_sigma, tier_level, dt_image, width_s, k, rec, el_deg, az_deg,
-                   freqs_mhz, snr=None, beam_tab=None):
+                   freqs_mhz, snr=None, beam_tab=None, contrib_err=None, peak=None):
     """
     Fluence (Jy ms) per channel and over the band, and the mean flux density
     over the boxcar (Jy), of a candidate. contrib [C]: its signal along the
-    dispersion track (normalised tier units, quality.channel_contributions);
-    raw_sigma [C]: its pixel's noise per image in image units; k [C]: image
-    units per (Jy counts^2), from measure_calibrators. Returns None without k
-    or a beam.
+    dispersion track (normalised tier units, quality.channel_contributions with
+    the high-pass undone); raw_sigma [C]: its pixel's noise per image in image
+    units; k [C]: image units per (Jy counts^2), from measure_calibrators.
+    contrib_err [C]: the noise of contrib (quality.contribution_noise); the
+    fluence error follows from it, or is ERR_FACTOR x fluence / S/N without it
+    (the contribution spans more samples than the boxcar of the S/N: 1.66 /
+    S/N measured on simulated bursts). peak: peak_fit's result for the
+    candidate's pixel and its neighbours; its factor (per channel,
+    peak_factors) corrects the fluence for the burst's offset from the pixel.
+    Returns None without k or a beam.
     """
     if k is None or rec is None:
         return None
@@ -332,20 +503,35 @@ def candidate_flux(contrib, raw_sigma, tier_level, dt_image, width_s, k, rec, el
     k = np.asarray(k, float)
     img = np.asarray(contrib, float) * np.asarray(raw_sigma, float) * math.sqrt(2 ** tier_level) * dt_image
     den = k * be
+    pf = peak_factors(peak["factor"], freqs_mhz) if peak and peak.get("applied") else \
+        np.ones(len(den))
     ok = np.isfinite(img) & np.isfinite(den) & (den > 0)
-    fl = np.where(ok, img / np.where(ok, den, 1.0), np.nan) * 1e3  # Jy ms
+    scale = np.where(ok, pf * np.asarray(raw_sigma, float) * math.sqrt(2 ** tier_level) * dt_image
+                     / np.where(ok, den, 1.0), np.nan) * 1e3  # Jy ms per normalised unit
+    fl = np.where(ok, np.asarray(contrib, float) * scale, np.nan)
     if not ok.any():
         return None
     band = float(np.nanmean(fl))
+    if contrib_err is not None:
+        e = np.asarray(contrib_err, float) * scale
+        e = e[ok & np.isfinite(e)]
+        err = float(math.sqrt(np.sum(e ** 2)) / max(int(ok.sum()), 1)) if len(e) else None
+        err_method = "window noise"
+    else:
+        err = None if not snr else ERR_FACTOR * abs(band) / float(snr)
+        err_method = f"{ERR_FACTOR} x fluence / S/N"
     bz = beam(tab, 90.0, 0.0, freqs_mhz)
     rel = beam(tab, el_deg, az_deg, freqs_mhz)
     beam_rel = float(np.nanmean(0.5 * (rel[0] + rel[1]) / (0.5 * (bz[0] + bz[1]))))
     out = dict(fluence_jy_ms=round(band, 3),
-               fluence_err_jy_ms=None if not snr else round(abs(band) / float(snr), 3),
+               fluence_err_jy_ms=None if err is None else round(err, 3),
+               fluence_err_method=err_method,
                flux_density_jy=round(band / 1e3 / max(width_s, 1e-6), 3),
                fluence_per_channel_jy_ms=[None if not np.isfinite(v) else round(float(v), 3) for v in fl],
                beam_relative=round(beam_rel, 4), beam_model=tab.get("model"),
                beam_source=tab.get("source", "model"), beam_version=tab.get("version"),
                gain_version=rec.get("gain_version"),
                method="calibrators in the images (flux.py)")
+    if peak is not None:
+        out["peak_correction"] = dict(peak)
     return out

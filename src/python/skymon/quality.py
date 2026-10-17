@@ -30,6 +30,8 @@ interference (search.Searcher) over the images of the candidate's sweep.
 """
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 
@@ -51,8 +53,17 @@ def track_lags(edges_mhz, row: int) -> np.ndarray:
     return np.rint(row * (inv2[0] - fc2) / (inv2[0] - inv2[-1])).astype(int)
 
 
+def _track_spans(edges_mhz, row: int, width: int, slack: int):
+    """Per channel, the span [t + lo, t + hi) of channel_contributions, relative to t"""
+    inv2 = np.asarray(edges_mhz, float) ** -2
+    lag_e = row * (inv2[0] - inv2) / (inv2[0] - inv2[-1])  # samples before t, per edge
+    hi = -np.floor(lag_e[:-1]).astype(int) + 1 + slack
+    lo = -np.ceil(lag_e[1:]).astype(int) - width + 1 - slack
+    return lo, hi
+
+
 def channel_contributions(win: np.ndarray, edges_mhz, row: int, t: int, width: int,
-                          slack: int = 1) -> np.ndarray:
+                          slack: int = 1, a_hp: float = 0.0) -> np.ndarray:
     """
     Each channel's contribution to the dedispersed boxcar: its samples summed
     over the boxcar of the given width at that channel's delay on the track of
@@ -62,16 +73,57 @@ def channel_contributions(win: np.ndarray, edges_mhz, row: int, t: int, width: i
     boxcar spans that interval plus the width. The FDMT follows the track only
     to within a sample, so slack samples are added on each side. Samples
     outside the window count as zero.
+
+    a_hp: the weight of the tier's high-pass (search.Searcher, 1 / hp_tau).
+    Each tier subtracts from every sample a running baseline that, after a
+    pulse of amplitude A, has risen by a_hp A, so the samples after the pulse
+    carry about -a_hp A each. With a_hp > 0 the high-pass is undone inside
+    each channel's span: sample t' is weighted by 1 + a_hp n, n being the
+    number of samples of the span after t' (the baseline's rise caused by the
+    samples before it within the span). This is exact for the recursion of
+    skymon_tier_push. Without it, the 2-3 samples after the pulse in a span
+    remove 7-9% of a burst's fluence. The fluence uses a_hp; the narrowband
+    measures (spread_measures) keep 0.
     """
     C, W = win.shape
-    inv2 = np.asarray(edges_mhz, float) ** -2
-    lag_e = row * (inv2[0] - inv2) / (inv2[0] - inv2[-1])  # samples before t, per edge
+    lo_r, hi_r = _track_spans(edges_mhz, row, width, slack)
     out = np.zeros(C)
     for c in range(C):
-        hi = min(t - int(np.floor(lag_e[c])) + 1 + slack, W)
-        lo = max(t - int(np.ceil(lag_e[c + 1])) - width + 1 - slack, 0)
+        hi = min(t + int(hi_r[c]), W)
+        lo = max(t + int(lo_r[c]), 0)
         if hi > lo:
-            out[c] = float(np.sum(win[c, lo:hi]))
+            seg = win[c, lo:hi]
+            if a_hp:
+                seg = seg * (1.0 + a_hp * np.arange(hi - lo - 1, -1, -1))
+            out[c] = float(np.sum(seg))
+    return out
+
+
+def contribution_noise(win: np.ndarray, edges_mhz, row: int, t: int, width: int,
+                       slack: int = 1, a_hp: float = 0.0, guard: int = 2) -> np.ndarray:
+    """
+    The noise of each channel's contribution (channel_contributions, same
+    arguments): sqrt(sum of the squared weights of its span) times the
+    channel's noise per sample, measured as the robust standard deviation of
+    the window outside the burst's sweep (the track's spans widened by
+    guard samples, and every sample after them, where the high-pass leaves
+    the burst's negative tail). Channels with fewer than 16 such samples use
+    the normalised noise of 1. In normalised tier units, like the
+    contributions.
+    """
+    C, W = win.shape
+    lo_r, hi_r = _track_spans(edges_mhz, row, width, slack)
+    out = np.zeros(C)
+    for c in range(C):
+        hi = min(t + int(hi_r[c]), W)
+        lo = max(t + int(lo_r[c]), 0)
+        n = max(hi - lo, 0)
+        w = 1.0 + a_hp * np.arange(n - 1, -1, -1) if n else np.zeros(0)
+        off = win[c, :max(lo - guard, 0)]
+        rms = _robust_std(np.asarray(off, float)) if len(off) >= 16 else np.nan
+        if not np.isfinite(rms) or rms <= 0:
+            rms = 1.0
+        out[c] = math.sqrt(float(np.sum(w * w))) * rms
     return out
 
 
