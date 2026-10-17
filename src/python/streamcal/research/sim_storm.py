@@ -14,6 +14,8 @@ Solver variants, each feeding its own Kalman tracker and applied gains:
   C  fluxes and per-channel tangent-plane offsets free
   D  C, then offsets fitted to d = d0 (f0/f)^2 across the band and the band re-solved
      with the positions fixed to the fit (fluxes free)
+STORM_PRIOR (deg at 74 MHz, scaled as f^-2) passes the daemon's refraction prior to the
+free-position solves (C, D); 0 = none.
 Errors are reported with the image shift (linear phase gradient) removed, and the
 shift separately.
 """
@@ -69,7 +71,11 @@ def worker(args):
             g, sc, off, _ = C.stefcal_sky(R, Md, [(s[0], s[1]) for s in srcs], W, r, f, g0=g0, solve_pos=False)
             par = (sc, off)
         elif v == "C" or (v == "D" and phase == 1):
-            g, sc, off, _ = C.stefcal_sky(R, Md, [(s[0], s[1]) for s in srcs], W, r, f, g0=g0, solve_pos=True)
+            prior = float(os.environ.get("STORM_PRIOR", "0")) * (74e6 / f) ** 2 or None  # deg at 74 MHz
+            g, sc, off, _ = C.stefcal_sky(R, Md, [(s[0], s[1]) for s in srcs], W, r, f, g0=g0, solve_pos=True,
+                                          prior_off_deg=prior,
+                                          prior_neff=float(os.environ.get("STORM_NEFF", "100")),
+                                          prior_nsamp=T if os.environ.get("STORM_NOISE", "1") == "1" else None)
             par = (sc, off)
         else:  # D, second pass with positions from the band fit
             g, sc, off, _ = C.stefcal_sky(R, Md, [(s[0], s[1]) for s in srcs], W, r, f, g0=g0, solve_pos=False,

@@ -305,7 +305,8 @@ def point_matrix(r, f, s, app):
 
 
 def stefcal_sky(R, M_fixed, sources, W, r, f, g0=None, niter=4, n_outer=20, solve_pos=True, fixed_pos=None,
-                max_step_deg=1.0, tol=1e-6, max_off_deg=None, scale_bounds=None, prior_off_deg=None):
+                max_step_deg=1.0, tol=1e-6, max_off_deg=None, scale_bounds=None, prior_off_deg=None,
+                prior_neff=100.0, prior_nsamp=None):
     """StEFCal with the bright compact sources as live model components.
 
     R, M_fixed  data and the fixed part of the model (diffuse sky, faint sources)
@@ -328,8 +329,17 @@ def stefcal_sky(R, M_fixed, sources, W, r, f, g0=None, niter=4, n_outer=20, solv
     position and frozen for the rest of the solve. info["frozen"] lists them.
     prior_off_deg: optional Gaussian refraction prior (1-sigma per axis, degrees, at this
     frequency): a Tikhonov row per offset component pulls the total offset toward zero, weighted
-    by the total data residual norm / prior width (the misfit is treated as one systematic error,
-    not as independent noise per visibility). A poorly constrained offset (or one that would absorb
+    by sqrt(total residual^2 / prior_neff) / prior width. prior_neff is the effective number of
+    independent constraints in the misfit: an offset d is accepted only if it removes more than
+    (d / prior_off_deg)^2 / prior_neff of the misfit. 1 pins the sources (it also suppressed real
+    refraction in the storm simulation); the number of visibilities (~1e5) makes the prior
+    ineffective; 100 rejects the 1-2% gains of free offsets on quiet nights (TBF captures, where
+    they absorb direction-dependent and sky-model error).
+    prior_nsamp: samples per visibility (T). With it the thermal-noise part of the misfit
+    (R_aa R_bb / T) enters the prior with its true per-visibility weight and only the excess over
+    the noise (from an unregularised fit) is divided by prior_neff: weak in a noise-dominated
+    solve (real refraction comes through), strong where the sky model leaves a systematic misfit.
+    Without it the whole misfit counts as systematic (too strong when the noise dominates). A poorly constrained offset (or one that would absorb
     direction-dependent phase errors or sky-model error) then stays near the catalogue position;
     a well-measured refraction shift still comes through.
     Returns (g, scale[k], offset[k, 2], info).
@@ -376,14 +386,26 @@ def stefcal_sky(R, M_fixed, sources, W, r, f, g0=None, niter=4, n_outer=20, solv
                 if solve_pos and prior_off_deg:
                     # rows alpha * (u_t + s_k off_t) = 0 for u_t = s_k d_t, the offset increment
                     # times the scale, so the prior acts on the total offset off + d
-                    th0 = np.zeros(A.shape[1])
-                    th0[0::step] = scale
-                    res0 = yr - np.vstack([A.real, A.imag]) @ th0
-                    # the misfit is mostly systematic (sky model, direction-dependent phases),
-                    # correlated over all baselines, not independent noise: weight the prior by
-                    # the total residual norm, so prior_off_deg acts at its stated width (with the
-                    # per-visibility rms the ~1e5 visibilities per offset swamp any prior)
-                    alpha = np.sqrt(np.sum(res0 ** 2)) / np.radians(prior_off_deg)
+                    if prior_nsamp:
+                        # split the misfit: thermal noise (independent per visibility, variance R_aa R_bb / T
+                        # over the real and imaginary parts) enters with its true per-row weight; only the
+                        # excess over it, measured after an unregularised fit (so uncorrected refraction is not
+                        # counted as systematic), is divided by prior_neff
+                        th_free = np.zeros(A.shape[1])
+                        th_free[live] = np.linalg.lstsq(Ar, yr, rcond=None)[0]
+                        res_free = yr - np.vstack([A.real, A.imag]) @ th_free
+                        acd = np.maximum(np.real(np.diag(R)), 0)
+                        noise_tot = float(np.sum(np.outer(acd, acd) / prior_nsamp * (W > 0)))
+                        n_rows = 2 * int(np.count_nonzero(W > 0))
+                        excess = max(float(np.sum(res_free ** 2)) - noise_tot, 0.0)
+                        alpha = np.sqrt(noise_tot / max(n_rows, 1) + excess / prior_neff) / np.radians(prior_off_deg)
+                    else:
+                        # no noise estimate: the misfit is treated as systematic (sky model, direction-dependent
+                        # phases), correlated over all baselines, weighted by 1 / prior_neff
+                        th0 = np.zeros(A.shape[1])
+                        th0[0::step] = scale
+                        res0 = yr - np.vstack([A.real, A.imag]) @ th0
+                        alpha = np.sqrt(np.sum(res0 ** 2) / prior_neff) / np.radians(prior_off_deg)
                     rows, rhs = [], []
                     idx_live = np.flatnonzero(live)
                     for k in np.flatnonzero(~frozen):
