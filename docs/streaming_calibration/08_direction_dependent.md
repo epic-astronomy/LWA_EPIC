@@ -191,6 +191,41 @@ The remainder is sky-model error.
 
 Gridding-kernel corrections stay off the table unless EPIC gains a model-subtraction loop.
 
+## 8.11 Pilot: kernel-StEFCal on real data
+
+The 32 Memo 12 TBF captures (2023-09-17, 00:15–08:00 UTC, every 15 min) were re-correlated in full on the GPUs of epic1–6 (`research/tbf_tcc.py`, `tbf_tcc_dispatch.sh`): every sample (about 25,000 per channel) of all 792 channels, as even and odd halves. The correlations agree with the earlier 16-channel cache of the same capture to correlation 0.999 or better. The 27 captures after sunset (01:30–08:00 UTC, about 6.5 h of sky rotation) were solved with `research/dd_kernelcal_real.py`:
+
+- per channel and polarisation, direction-independent gains per snapshot;
+- per-stand direction-dependent modes pooled over all snapshots, with the pattern common to all stands removed;
+- solved separately on the even half, the odd half and both.
+
+Two hold-out schemes test whether the screens describe the instrument or absorb sky-model error:
+
+- **interleaved:** every 4th snapshot is held out, so the held-out data see nearly the training sky;
+- **sky-rotated:** the last quarter of the night is held out, after the sky has rotated away from the training snapshots.
+
+Held-out residual change against direction-independent calibration alone (positive is better):
+
+| Channel (MHz) | Pol. | 24 modes, interleaved | 24 modes, sky rotated | 8 smoothest modes, sky rotated | Even/odd correlation (8 modes) | Cyg A/Cas A from screens (8 modes) |
+|---|---|---|---|---|---|---|
+| 30.9 | X / Y | +9.5 / +6.3% | −14.5 / −6.8% | +0.2 / +2.0% | 0.96 / 0.70 | 11 / 12° |
+| 35.7 | X / Y | +7.4 / +14.8% | −5.2 / +7.5% | +8.6 / +9.6% | 0.81 / 0.95 | 13 / 13° |
+| 40.5 | X / Y | −7.4 / −79.7% | +4.3 / +9.2% | +6.0 / +7.3% | 0.98 / 0.95 | 15 / 18° |
+| 45.3 | X / Y | +36.4 / +7.1% | +16.9 / +7.1% | +12.0 / +7.9% | 0.99 / 0.99 | 18 / 20° |
+
+Correlation of the 8-mode screens (phase toward a grid of directions):
+
+- **Between channels:** 0.45–0.67 among 35.7, 40.5 and 45.3 MHz, in both polarisations. The 30.9 MHz screens are uncorrelated with the others (−0.09 to +0.29).
+- **Between X and Y:** 0.63–0.67 at 35.7–45.3 MHz, and 0.36 at 30.9 MHz.
+
+**Findings.**
+
+1. **A station-fixed direction-dependent component exists.** With the 8 smoothest modes and stronger regularisation, screens trained on the first three quarters of the night improve the held-out residual on the rotated sky in all 8 channel–polarisation pairs, by 0.2–12% (median about 7.6%). They are repeatable between independent halves (0.70–0.99), largely shared by X and Y, and consistent across 35.7–45.3 MHz.
+2. **The 24-mode solution over-fits.** It absorbs sky-model error: it degrades the rotated-sky residual at the low channels and fails badly on one interleaved case. The smooth basis is the usable one.
+3. **The implied Cyg A/Cas A phase ratio** (11–20°, rising with frequency) matches the direct measurement of section 8.5 (14–19°).
+4. **The gain is modest because sky-model error dominates the residual.** The held-out residual includes all unmodelled sky, which no station-fixed screen can remove. Improving the sky model (section 4.7, de Gasperin spectra, more compact sources) is the larger lever and should come first.
+5. **30.9 MHz is the exception.** Its screens neither improve the held-out data nor agree with the other channels. There the diffuse sky is brightest relative to the A-team, so sky-model error dominates most.
+
 ## 8.9 Tensor-core correlator
 
 The ASTRON Tensor-Core Correlator (Romein 2021, https://git.astron.nl/RD/tensor-core-correlator) was built on epic1 at commit d772f81. It needs cudawrappers 1.0.0, because cudawrappers `main` requires CUDA ≥ 12.4 and the workers run 12.3. CMake points `FETCHCONTENT_SOURCE_DIR_CUDAWRAPPERS` at a 1.0.0 checkout.
