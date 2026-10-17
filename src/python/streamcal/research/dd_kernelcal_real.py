@@ -6,7 +6,9 @@
          default 1), KC_NITER (default 15), KC_LAM (Tikhonov weight toward 0, default 1e-2),
          KC_HOLD (every Nth snapshot held out, default 4), KC_TMIN (earliest UTC hour, default 1.5),
          KC_DIFFUSE (diffuse sky model, a sky.DIFFUSE_MODELS entry; default lfsm),
-         KC_SCALEMAX (upper bound on the bright-source flux scales in stefcal_sky, default 4)
+         KC_SCALEMAX (upper bound on the bright-source flux scales in stefcal_sky, default 4),
+         KC_BEAM (optional beam_fit.py output: the fitted dipole-beam correction, half "sum",
+         multiplies the whole model sky; section 9.7)
 
 Pilot of step 2 in section 8.10 on the Memo 12 TBF captures, correlated in full by
 tbf_tcc.py (R_even, R_odd per capture). Model, per channel and polarisation:
@@ -37,7 +39,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import numpy as np  # noqa: E402
 from astropy.time import Time  # noqa: E402
 
-from streamcal import forward as F, geometry as G, solvers as C  # noqa: E402
+from streamcal import beamcorr as BC, forward as F, geometry as G, solvers as C  # noqa: E402
 import tbf_cal as TC  # noqa: E402
 
 SOL = 299792458.0
@@ -63,6 +65,7 @@ hold = int(env("KC_HOLD", "4"))
 tmin = float(env("KC_TMIN", "1.5"))
 diffuse_model = env("KC_DIFFUSE", "lfsm")
 scalemax = float(env("KC_SCALEMAX", "4"))
+beam_corr = BC.Table(env("KC_BEAM")) if env("KC_BEAM") else None
 
 
 def basis(enu):
@@ -86,7 +89,8 @@ class Snap:
         W = (bl / (SOL / f) >= umin).astype(float)
         np.fill_diagonal(W, 0)
         self.W = W * np.outer(self.ok, self.ok)
-        snap = F.build_snapshot(t, [f / G.CHAN_BW], pol=("XX", "YY")[p], nside=nside, diffuse_model=diffuse_model)
+        snap = F.build_snapshot(t, [f / G.CHAN_BW], pol=("XX", "YY")[p], nside=nside, diffuse_model=diffuse_model,
+                                  beam_corr=beam_corr)
         Md = snap.matrix(ant, 0, names=["diffuse"])
         srcs = [(c.enu[0], float(c.flux[0, 0]), c.name) for c in snap.comps if c.name != "diffuse"]
         g, sc, off, _ = C.stefcal_sky(self.R["sum"], Md, [(s[0], s[1]) for s in srcs], self.W, r, f, n_outer=20,
@@ -163,7 +167,7 @@ def main():
         if t.datetime.hour + t.datetime.minute / 60 < tmin:
             continue  # the Sun is up
         zs.append((fn, z, t))
-    print(f"diffuse model {diffuse_model}, nside {nside}; ", end="")
+    print(f"diffuse model {diffuse_model}, nside {nside}, beam correction {env('KC_BEAM') or 'none'}; ", end="")
     print(f"{len(zs)} captures from {zs[0][2].isot} to {zs[-1][2].isot}", flush=True)
     results = {}
     for c in want:
