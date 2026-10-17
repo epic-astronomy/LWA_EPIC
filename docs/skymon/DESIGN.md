@@ -387,8 +387,8 @@ All three jobs are constrained to `epic1`–`epic6` and never run on the head no
 
 | Job | Type | Command (abridged) | CPU placement | Resources |
 |---|---|---|---|---|
-| `epic-skymon` | system, one per node | `nice -n 10 taskset -c 24-47 … skymon run --shm epic_sky0 --out <skymon_root>/data --port 8095 --threads 8 --inject-every 60 --calinfo <shm>/epic_calinfo_gpu0.json` | cores 24–47, nice 10, 8 compute threads | 8000 MHz, 48 GB |
-| `epic-skymon-combiner` | service, count 1 | `nice -n 10 taskset -c 24-47 … skymon combine --nodes … --db-port 5433 --out <skymon_root>/combiner --port 8096 --inject-every 6` | cores 24–47, nice 10 | 500 MHz, 1 GB; unlimited rescheduling |
+| `epic-skymon` | system, one per node | `nice -n 10 taskset -c 12-23,36-47 … skymon run --shm epic_sky0 --out <skymon_root>/data --port 8095 --threads 8 --inject-every 60 --calinfo <shm>/epic_calinfo_gpu0.json` | cores 24–47, nice 10, 8 compute threads | 8000 MHz, 48 GB |
+| `epic-skymon-combiner` | service, count 1 | `nice -n 10 taskset -c 12-23,36-47 … skymon combine --nodes … --db-port 5433 --out <skymon_root>/combiner --port 8096 --inject-every 6` | cores 24–47, nice 10 | 500 MHz, 1 GB; unlimited rescheduling |
 | `epic-skymon-archiver` | system, one per node | `nice -n 15 ionice -c 3 … skymon archive --data <skymon_root>/data --archive <shared archive>` | nice 15, idle I/O class | 200 MHz, 512 MB |
 
 The imager has priority: the monitor reads the ring without blocking it and runs at reduced priority on cores separate from the imager. The imager publishes only when started with `--sky_shm epic_sky0`; until then the monitor waits for the ring.
@@ -474,6 +474,20 @@ Settings: 55.88–58.94 MHz, 128 channels, 83.6 ms images, `nside` 64 (20 310 pi
 | Live injections recovered | 5 of 5, including DM 1894 at S/N 20.0 | 3 of 3 (DM 425, 430, 2365) |
 | Candidates matching no burst | 1 (S/N 9.3, elevation 12°) | 0 |
 | RFI-classified events | 49 | |
+
+### 10.1a Imager and monitor on the same node
+
+epic++ built from `phoenix-skymon` (full CUDA build) was run in its benchmark mode (generator → correlator → ChanReducer with `--sky_shm` → sink; no F-engine, packet capture, database or video), paced at real time on simulated F-engine data of the 74–77 MHz band (sky model and noise; `nside` 64, 20 300 pixels), 12 min per case, on one imaging node (RTX 4090).
+
+| | Imager alone | Imager publishing to the ring | Imager publishing, monitor following |
+|---|---|---|---|
+| Imager time per 41.8 ms gulp, mean | 36.15 ms | 36.23 ms | 36.22 ms |
+| Imager, worst 10 s block (p99) | 36.70 ms | 36.71 ms | 37.04 ms |
+| Images lost or late in the monitor | n/a | n/a | 0 of 8 613 |
+| Monitor processing time | n/a | n/a | 43–44% of real time (about 2.5 cores) |
+| Node memory | 16 GB | 16 GB | 43 GB (monitor 28 GB) |
+
+Publishing costs about 9 ms per image on the ChanReducer thread, within its 83.6 ms per image, and adds no measurable time to the correlator. The cores 24–47 used in this run are the hyperthread siblings of cores 0–23, which hold the imager's threads; the monitor's effect on the imager's worst block (+0.3 ms) is attributed to this sharing, and the jobs pin the monitor to cores 12–23 and 36–47 instead. Contention with packet capture (no F-engine in the benchmark) is not measured.
 
 ### 10.2 Multi-band consensus and fault test
 
