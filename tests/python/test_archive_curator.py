@@ -37,9 +37,9 @@ class Tree:
         self.sky = os.path.join(self.dir, "skymon")
         self.state = os.path.join(self.dir, "state")
 
-    def add_fits(self, node, age_d, png=True):
+    def add_fits(self, node, age_d, png=True, nested=False):
         t = NOW - age_d * DAY
-        d = os.path.join(self.fits, node)
+        d = os.path.join(self.fits, node, day_dir(t) if nested else "")
         os.makedirs(d, exist_ok=True)
         stem = os.path.join(d, f"EPIC_{t:.3f}_57.400MHz")
         with open(stem + ".fits", "wb") as f:
@@ -115,8 +115,8 @@ class TestCurator(unittest.TestCase):
         return ac.Curator(**kw)
 
     def test_age_rule_by_name_not_mtime(self):
-        old = self.t.add_fits("epic1", 800)
-        new = self.t.add_fits("epic1", 700)
+        old = self.t.add_fits("epic1", 2000)
+        new = self.t.add_fits("epic1", 1800)
         recent = self.t.add_fits("epic2", 1)
         os.utime(new, (0, 0))  # an old mtime must not matter
         os.utime(old, (NOW, NOW))  # nor a new one
@@ -132,8 +132,26 @@ class TestCurator(unittest.TestCase):
             self.assertTrue(os.path.exists(p), p)
         self.assertEqual(db.calls, [([old], False)])
 
+    def test_nested_and_flat_layouts(self):
+        flat = self.t.add_fits("epic1", 2000)
+        nested = self.t.add_fits("epic1", 2001, nested=True)
+        kept = self.t.add_fits("epic1", 10, nested=True)
+        shared_day = self.t.add_fits("epic2", 2002, nested=True)
+        other = os.path.join(os.path.dirname(shared_day), "notes.txt")
+        with open(other, "w") as f:
+            f.write("keeps its day directory")
+        db = FakeDB()
+        self.assertEqual(self.curator(db=db).run(), 0)
+        for p in (flat, nested, shared_day):
+            self.assertFalse(os.path.exists(p), p)
+        self.assertEqual(sorted(db.calls[0][0]), sorted([flat, nested, shared_day]))
+        self.assertFalse(os.path.exists(os.path.dirname(nested)))  # emptied day removed
+        self.assertTrue(os.path.exists(other))  # a day with other files stays
+        self.assertTrue(os.path.exists(kept))
+        self.assertTrue(os.path.isdir(os.path.join(self.t.fits, "epic1")))  # node dir stays
+
     def test_dry_run_changes_nothing(self):
-        old = self.t.add_fits("epic1", 800)
+        old = self.t.add_fits("epic1", 2000)
         self.t.add_fits("epic1", 1)
         db = FakeDB()
         c = self.curator(db=db, dry_run=True, state_dir=self.t.state)
@@ -144,12 +162,12 @@ class TestCurator(unittest.TestCase):
         self.assertTrue(any("would remove age fits" in l for l in self.lines))
 
     def test_skymon_review_protection_under_age_rule(self):
-        pend = self.t.add_candidate("epic3", "c_pending", 800)
-        done = self.t.add_candidate("epic3", "c_reviewed", 800)
-        orphan = self.t.add_candidate("epic3", "c_orphan", 800)
+        pend = self.t.add_candidate("epic3", "c_pending", 2000)
+        done = self.t.add_candidate("epic3", "c_reviewed", 2000)
+        orphan = self.t.add_candidate("epic3", "c_orphan", 2000)
         young = self.t.add_candidate("epic3", "c_young", 10)
-        ev_p = self.t.add_event("ev-p", 800, "pending", {"epic3": "c_pending"})
-        ev_r = self.t.add_event("ev-r", 800, "rfi", {"epic3": "c_reviewed"})
+        ev_p = self.t.add_event("ev-p", 2000, "pending", {"epic3": "c_pending"})
+        ev_r = self.t.add_event("ev-r", 2000, "rfi", {"epic3": "c_reviewed"})
         self.t.add_event("ev-y", 10, "frb", {"epic3": "c_young"})
         self.assertEqual(self.curator().run(), 0)
         for p in pend + young + [ev_p]:
@@ -158,8 +176,8 @@ class TestCurator(unittest.TestCase):
             self.assertFalse(os.path.exists(p), p)
 
     def test_keep_review_extends_protection(self):
-        c = self.t.add_candidate("epic3", "c_frb", 800)
-        ev = self.t.add_event("ev-f", 800, "frb", {"epic3": "c_frb"})
+        c = self.t.add_candidate("epic3", "c_frb", 2000)
+        ev = self.t.add_event("ev-f", 2000, "frb", {"epic3": "c_frb"})
         self.t.add_event("ev-new", 1, "pending", {})
         self.curator(keep_review=["pending", "frb"]).run()
         for p in c + [ev]:
@@ -195,13 +213,13 @@ class TestCurator(unittest.TestCase):
         self.assertTrue(any("nothing eligible" in l for l in lines))
 
     def test_clock_guard(self):
-        a = self.t.add_fits("epic1", 800)
-        b = self.t.add_fits("epic2", 900)
+        a = self.t.add_fits("epic1", 2000)
+        b = self.t.add_fits("epic2", 2100)
         self.assertEqual(self.curator().run(), 1)
         self.assertTrue(os.path.exists(a) and os.path.exists(b))
 
     def test_lock_and_stale_lock(self):
-        old = self.t.add_fits("epic1", 800)
+        old = self.t.add_fits("epic1", 2000)
         self.t.add_fits("epic1", 1)
         os.makedirs(self.t.state)
         lock = os.path.join(self.t.state, "curator.lock")
@@ -220,7 +238,7 @@ class TestCurator(unittest.TestCase):
             self.assertIn("removed age fits", f.read())
 
     def test_db_outage_is_journaled_and_replayed(self):
-        old = self.t.add_fits("epic1", 800)
+        old = self.t.add_fits("epic1", 2000)
         self.t.add_fits("epic1", 1)
         self.assertEqual(self.curator(state_dir=self.t.state, db=FakeDB(fail=True)).run(), 1)
         self.assertFalse(os.path.exists(old))
@@ -232,19 +250,19 @@ class TestCurator(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.t.state, "pending-db.txt")))
 
     def test_two_runs_at_once_are_harmless(self):
-        old = self.t.add_fits("epic1", 800)
+        old = self.t.add_fits("epic1", 2000)
         self.t.add_fits("epic1", 1)
         a, b = self.curator(), self.curator()
         a.scan_fits(self.t.fits)  # b scans the same files, then a removes them first
         items = b.scan_fits(self.t.fits)
         self.assertEqual(a.run(), 0)
-        self.assertEqual(b._delete([it for it in items if it.t < NOW - 731 * DAY], "age"),
+        self.assertEqual(b._delete([it for it in items if it.t < NOW - 1827 * DAY], "age"),
                          FITS_SIZE + 10)  # already gone: no error
         self.assertFalse(os.path.exists(old))
         self.assertEqual(b.errors, [])
 
     def test_max_delete(self):
-        for age in (800, 801, 802):
+        for age in (2000, 2001, 2002):
             self.t.add_fits("epic1", age)
         self.t.add_fits("epic1", 1)
         c = self.curator(max_delete=2)
@@ -259,7 +277,7 @@ class TestCurator(unittest.TestCase):
         self.assertLess(time.time() - t0, 10)
 
     def test_hung_scan_stops_the_run(self):
-        self.t.add_fits("epic1", 800)
+        self.t.add_fits("epic1", 2000)
         c = self.curator()
 
         def hung(root, depth):
@@ -269,7 +287,7 @@ class TestCurator(unittest.TestCase):
         self.assertEqual(c.removed, [])
 
     def test_missing_archive_is_skipped(self):
-        old = self.t.add_fits("epic1", 800)
+        old = self.t.add_fits("epic1", 2000)
         self.t.add_fits("epic1", 1)
         c = self.curator(skymon_roots=[os.path.join(self.t.dir, "not-yet")])
         self.assertEqual(c.run(), 0)

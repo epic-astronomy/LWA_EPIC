@@ -5,7 +5,9 @@ Two kinds of archive are curated:
 
 - ``fits``: the accumulated images of the imager (``--out_dir`` of epic++),
   ``EPIC_<unix time>_<cfreq>MHz.fits`` with its ``_QL.png`` quick look, one
-  directory per node. Each FITS file is registered in the table
+  directory per node, in daily subdirectories ``YYYYMMDD/`` (files written
+  before the subdirectories were introduced lie directly in the node's
+  directory; both layouts are handled). Each FITS file is registered in the table
   ``<schema>.epic_files_metadata2`` by the disk saver.
 - ``skymon``: the archive of the all-sky monitor (the ``--archive`` of
   ``skymon archive``): ``<node>/YYYYMMDD/<candidate>.{json,npz}`` and
@@ -13,7 +15,7 @@ Two kinds of archive are curated:
 
 Each run applies two rules.
 
-1. Age. Data older than ``--retention-days`` (731, two years) are removed. The
+1. Age. Data older than ``--retention-days`` (1827, five years) are removed. The
    time of a file is read from its name (the Unix time of a FITS file) or from
    its day directory (skymon, taken as the end of that day). A file whose time
    cannot be read is never removed. The modification time is not used.
@@ -41,7 +43,7 @@ Safety:
   a wrong system clock), the age rule is not applied and the run fails.
 - At most ``--max-delete`` items are removed per run.
 
-Removed FITS files are deleted from ``epic_files_metadata2`` (the table lists
+Day directories emptied by a run are removed. Removed FITS files are deleted from ``epic_files_metadata2`` (the table lists
 the files on disk; no reader keeps rows for absent files). When the database
 cannot be reached, the paths are kept in ``<state-dir>/pending-db.txt`` and
 deleted on a later run. Every removal is logged on stdout and, with
@@ -161,7 +163,7 @@ class MetadataDB:
 
 
 class Curator:
-    def __init__(self, fits_roots=(), skymon_roots=(), retention_days=731.0, protect_days=30.0,
+    def __init__(self, fits_roots=(), skymon_roots=(), retention_days=1827.0, protect_days=30.0,
                  ceiling=0.85, target=None, keep_review=("pending",), dry_run=False,
                  state_dir=None, db=None, op_timeout_s=60.0, scan_timeout_s=1800.0,
                  max_delete=100000, lock_stale_hours=12.0, now=None, usage_fn=None,
@@ -257,7 +259,7 @@ class Curator:
     # ------------------------------------------------------------ scanning
     def scan_fits(self, root):
         groups: dict[str, Item] = {}
-        for rel, size in self._list(root, 2):
+        for rel, size in self._list(root, 3):  # <node>/[YYYYMMDD/]file
             m = FITS_RE.match(os.path.basename(rel))
             if not m:
                 continue
@@ -393,13 +395,29 @@ class Curator:
             if pending_path and not self.dry_run:
                 self._append(pending_path, names)
 
+    def _remove_empty_days(self):
+        """rmdir the day directories (YYYYMMDD) that removals have emptied; others stay"""
+        if self.dry_run:
+            return
+        days = sorted({os.path.dirname(p) for it in self.removed for p, _ in it.files
+                       if DAY_RE.match(os.path.basename(os.path.dirname(p)))})
+        for i in range(0, len(days), 64):
+            chunk = days[i:i + 64]
+            run_limited(["rmdir", "--ignore-fail-on-non-empty", "--"] + chunk, self.op_timeout_s)
+        self.summary["day_dirs_checked"] = len(days)
+
     def run(self) -> int:
         if not self._lock():
             return 0
         try:
-            self._run()
-        except OpTimeout as e:
-            self.error(f"{e}; stopping (is the mount hung?)")
+            try:
+                self._run()
+            except OpTimeout as e:
+                self.error(f"{e}; stopping (is the mount hung?)")
+            try:
+                self._remove_empty_days()
+            except OpTimeout as e:
+                self.error(f"{e}; empty day directories left (is the mount hung?)")
         finally:
             try:
                 self._db_sync()
@@ -495,7 +513,7 @@ def main(argv=None):
     ap.add_argument("--fits", action="append", default=[],
                     help="directory of FITS accumulations, or the parent of the per-node directories")
     ap.add_argument("--skymon", action="append", default=[], help="archive of the all-sky monitor")
-    ap.add_argument("--retention-days", type=float, default=731.0)
+    ap.add_argument("--retention-days", type=float, default=1827.0)
     ap.add_argument("--protect-days", type=float, default=30.0)
     ap.add_argument("--ceiling", type=float, default=0.85)
     ap.add_argument("--target", type=float, default=None, help="default: ceiling - 0.02")
