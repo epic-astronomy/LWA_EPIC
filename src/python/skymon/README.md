@@ -23,6 +23,11 @@ epic++ (ChanReducer) ──Stokes I──▶ /dev/shm/<ring> ──▶ skymon ru
    - The default `nside` gives pixels of at most half the beam (λ/D): nside 64 above 40 MHz, 32 near 35 MHz, 16 at 16–21 MHz.
 3. **Normalisation.** The values of every pixel and channel are normalised by a running mean (2 min) and variance (5 min). The variance comes from successive differences, so a source rising through the primary beam does not inflate it. Outliers are clipped out of these statistics.
    - The median over the sky of each channel is subtracted, which removes RFI and gain changes common to the whole image.
+   - **Interference flagging** (`skymon_normalise` in `_kernels.c`). After the median, the spread of each channel over the sky (1.4826 × the median absolute deviation over a subset of up to 2048 pixels) is about 1 for noise. A narrowband carrier seen over much of the sky (aircraft or meteor scatter of a distant transmitter) widens it, while a burst, confined to a beam, does not. A channel whose spread exceeds `chan_flag_sigma` (1.6) is set to zero for every pixel in that image.
+   - A channel flagged persistently is masked: its flag rate (exponential, 30 s) above 0.5 sets it to zero in every image until the rate falls below 0.2.
+   - A single cell (pixel and channel) beyond `clip` (12) is set to zero. A burst of S/N s adds about s / sqrt(nchan × samples per channel) to a cell, under 9 for s = 100 with 128 channels, so the clip removes only what no burst produces.
+   - Flagged channels and clipped cells do not update the running statistics. A cell withheld for 30 s in a row is updated again (deviations limited to 5σ), so a lasting change of level is followed in the end.
+   - `/api/status` reports `rfi_flagging`: the fraction of channels zeroed over the last minute, the masked channels and the flags per channel. Each candidate's `quality.flagged_fraction` is the fraction zeroed along its sweep.
 4. **Dedispersion in tiers** (`search.py`, `dedisp.py`).
    - Tier j averages 2^j images and runs the fast dispersion measure transform (FDMT) over delays 0..D samples, with D equal to the number of channels.
    - The dispersion delay is linear in DM, so tier j covers DMs 2^j times those of tier 0. The tiers together cover 0–`--dm-max` in octaves.
@@ -131,6 +136,7 @@ The tests cover:
 - the C++ publisher's pixel order against `epic_utils.save_output`;
 - the geometry;
 - detection by the searcher;
+- interference flagging (`test_chanflag.py`): one channel and one image, noise without flags, the persistent mask and its release, and a moving carrier in a simulated sky that leaves no candidate while a burst is found;
 - an end-to-end simulated sky with stored candidates and the HTTP interface;
 - live injections;
 - a monitor that waits for a missing imager and survives a restart and a gap.

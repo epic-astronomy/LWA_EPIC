@@ -324,6 +324,9 @@ class TestEndToEnd(unittest.TestCase):
             found = sum(c is not None for _, c in rep["rows"])
             self.assertGreaterEqual(found, max(1, int(0.7 * len(rep["truth"]))), rep["text"])
             self.assertLessEqual(len(rep["false"]), 2, rep["text"])
+            # the S/N is not lost to the normalisation, clipping or flagging
+            ratio = [c["snr"] / t["snr"] for t, c in rep["rows"] if c is not None]
+            self.assertGreater(float(np.median(ratio)), 0.7, rep["text"])
             # nothing that might be a burst is stored without its data
             for c in rep["cands"]:
                 if not c.get("rfi_certain"):

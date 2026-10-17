@@ -344,9 +344,10 @@ static float select_kth(float* a, int n, int k) {
 }
 
 /*
- * Normalise one regridded image in place and accumulate the raw values.
+ * Normalise one regridded image in place, flag interference, and accumulate
+ * the raw values.
  *
- * raw [C][P]: sky values (bilinear regrid output); on return x = normalised.
+ * raw [C][P]: sky values (regrid output); on return x = normalised.
  * mu, var [C][P]: running mean and variance (exponential, per pixel/channel).
  *   The variance is half the mean square difference between consecutive
  *   images, which a slow trend (a source rising through the primary beam)
@@ -357,66 +358,126 @@ static float select_kth(float* a, int n, int k) {
  * acc [C][P] += raw (for the spectrogram accumulation) when acc != NULL.
  * sub [nsub]: slots used for the common-mode median of each channel.
  * a_mu, a_var: exponential weights per image after warm-up.
- * clip: |x| above this is set to zero.
+ * clip: a cell (pixel and channel) with |x| above this is set to zero.
+ * med_out [C]: the common-mode median of each channel (may be NULL).
+ *
+ * Interference flagging per channel. After the common mode is removed, the
+ * spread of x over the subset of warm pixels (1.4826 times the median
+ * absolute deviation) is close to 1 for noise, whatever the sky. A carrier
+ * that reaches much of the sky in one channel (aircraft or meteor scatter of
+ * a distant transmitter, seen directly and through the sidelobes) widens it,
+ * while a burst, confined to a beam, leaves it unchanged. A channel whose
+ * spread exceeds chan_flag_sigma is set to zero for every pixel in this
+ * image and reported in flags_out [C] (1 = flagged). The spread needs at
+ * least 64 warm pixels in the subset; with fewer no channel is flagged.
+ * chan_mask [C] (may be NULL): channels set to zero regardless (the
+ * persistent mask kept by the caller). They are still measured and flagged,
+ * so the caller can tell when the interference has stopped.
+ * spread_out [C] (may be NULL): the measured spread of each channel.
+ *
+ * Statistics. The raw value of a cell is compared with the statistics of the
+ * previous images first; the statistics are updated only afterwards, and not
+ * at all for a cell whose output is set to zero by a channel flag or by the
+ * clip: interference must not enter the mean and variance against which the
+ * next images are measured. held [C][P] counts the consecutive images for
+ * which a cell's update was withheld; after max_hold images the cell is
+ * updated again (with deviations limited to 5 sigma), so that a lasting
+ * change of level, not interference, is followed in the end instead of
+ * blanking the cell for good. A cell whose update is withheld keeps its
+ * previous raw value, so the next successive difference spans the gap.
+ * Without held (NULL) every cell is updated, as before flagging existed.
+ * A channel set to zero only by chan_mask updates its statistics normally.
  * Returns the number of live pixels.
  */
 int skymon_normalise(float* raw, int C, int P, float* mu, float* var, float* prev, int32_t* age,
                      const uint8_t* live, float* acc, const int32_t* sub, int nsub,
                      int warmup, float a_mu, float a_var, float clip, float* med_out,
-                     int nthreads) {
+                     float chan_flag_sigma, const uint8_t* chan_mask, uint8_t* flags_out,
+                     float* spread_out, uint16_t* held, int max_hold, int nthreads) {
   int nlive = 0;
   for (int p = 0; p < P; ++p) {
     if (live[p]) { age[p] += 1; ++nlive; } else age[p] = 0;
   }
+  if (max_hold > 65535) max_hold = 65535;
 #pragma omp parallel num_threads(nthreads)
   {
     float* tmp = malloc(sizeof(float) * (nsub > 0 ? nsub : 1));
+    float* rv = malloc(sizeof(float) * (P > 0 ? P : 1));
 #pragma omp for schedule(static)
     for (int c = 0; c < C; ++c) {
       float* x = raw + (size_t)c * P;
       float* m = mu + (size_t)c * P;
       float* v = var + (size_t)c * P;
       float* pv = prev + (size_t)c * P;
+      uint16_t* hd = held ? held + (size_t)c * P : NULL;
       float* ac = acc ? acc + (size_t)c * P : NULL;
+      /* pass 1: deviations from the statistics of the previous images; the
+         statistics of pixels still warming up are updated here */
       for (int p = 0; p < P; ++p) {
         if (!live[p]) { x[p] = 0.f; continue; }
         float r = x[p];
+        rv[p] = r;
         if (ac) ac[p] += r;
         int a = age[p];
-        float wm, wv;
-        if (a <= warmup) { wm = 1.f / a; wv = a > 1 ? 1.f / (a - 1) : 0.f; }
-        else { wm = a_mu; wv = a_var; }
-        float d = r - m[p];
-        if (a == 1) { m[p] = r; v[p] = 0.f; pv[p] = r; x[p] = 0.f; continue; }
-        /* update the statistics, with deviations limited to 5 sigma after
-           warm-up so that RFI and bursts do not inflate them */
-        float du = d, dd = r - pv[p];
-        pv[p] = r;
-        if (a > warmup && v[p] > 0.f) {
-          float lim = 5.f * sqrtf(v[p]);
-          du = d > lim ? lim : (d < -lim ? -lim : d);
-          float lim2 = 1.41421356f * lim;
-          dd = dd > lim2 ? lim2 : (dd < -lim2 ? -lim2 : dd);
+        if (a == 1) { m[p] = r; v[p] = 0.f; pv[p] = r; x[p] = 0.f; if (hd) hd[p] = 0; continue; }
+        if (a <= warmup) {
+          float wm = 1.f / a, wv = 1.f / (a - 1);
+          float d = r - m[p], dd = r - pv[p];
+          pv[p] = r;
+          v[p] += wv * (0.5f * dd * dd - v[p]);
+          m[p] += wm * d;
+          x[p] = 0.f;
+          continue;
         }
-        v[p] += wv * (0.5f * dd * dd - v[p]);
-        m[p] += wm * du;
-        x[p] = (a > warmup && v[p] > 0.f) ? d / sqrtf(v[p]) : 0.f;
+        x[p] = v[p] > 0.f ? (r - m[p]) / sqrtf(v[p]) : 0.f;
       }
-      /* common mode: median over the subset of warm pixels */
+      /* common mode: median over the subset of warm pixels, then the spread
+         about it (the median absolute deviation, on the same copy) */
       int n = 0;
       for (int i = 0; i < nsub; ++i) {
         int s = sub[i];
         if (live[s] && age[s] > warmup) tmp[n++] = x[s];
       }
       float med = n > 8 ? select_kth(tmp, n, n / 2) : 0.f;
+      float spread = 0.f;
+      if (n >= 64) {
+        for (int i = 0; i < n; ++i) tmp[i] = fabsf(tmp[i] - med);
+        spread = 1.4826f * select_kth(tmp, n, n / 2);
+      }
+      const int flag = n >= 64 && spread > chan_flag_sigma;
+      const int zero = flag || (chan_mask && chan_mask[c]);
       if (med_out) med_out[c] = med;
+      if (spread_out) spread_out[c] = spread;
+      if (flags_out) flags_out[c] = (uint8_t)flag;
+      /* pass 2: output, then the statistics of the cells that are kept */
       for (int p = 0; p < P; ++p) {
         if (!live[p] || age[p] <= warmup) continue;
         float y = x[p] - med;
-        x[p] = fabsf(y) > clip ? 0.f : y;
+        const int over = fabsf(y) > clip;
+        x[p] = (zero || over) ? 0.f : y;
+        if (hd) {
+          if (!(flag || over)) hd[p] = 0;
+          else if (hd[p] < max_hold) { hd[p] += 1; continue; }
+        }
+        /* update the statistics, with deviations limited to 5 sigma so that
+           what the flags miss (weaker interference, bursts) does not
+           inflate them */
+        float r = rv[p];
+        float d = r - m[p];
+        float du = d, dd = r - pv[p];
+        pv[p] = r;
+        if (v[p] > 0.f) {
+          float lim = 5.f * sqrtf(v[p]);
+          du = d > lim ? lim : (d < -lim ? -lim : d);
+          float lim2 = 1.41421356f * lim;
+          dd = dd > lim2 ? lim2 : (dd < -lim2 ? -lim2 : dd);
+        }
+        v[p] += a_var * (0.5f * dd * dd - v[p]);
+        m[p] += a_mu * du;
       }
     }
     free(tmp);
+    free(rv);
   }
   return nlive;
 }

@@ -9,7 +9,16 @@ Per image (83.6 ms at LWA-SV) the regridded sky values [chan, pixel] are
 2. freed of the common mode: the median over the sky of each channel is
    subtracted, which removes RFI and gain changes seen by the whole image
    while a burst, confined to a beam, leaves the median unchanged,
-3. pushed into tier 0. Each tier high-passes its input with a time constant
+3. flagged for interference: a channel whose spread over the sky (1.4826
+   times the median absolute deviation, about 1 for noise) exceeds
+   chan_flag_sigma carries interference seen over much of the sky in this
+   image, such as a carrier scattered by an aircraft or a meteor trail, and
+   is set to zero for every pixel. A channel flagged in more than half of the
+   images (exponential rate, time constant flag_tau_s) is masked, set to zero
+   in every image, until its rate falls below a fifth. Single cells (pixel
+   and channel) with |x| > clip are set to zero as well. Neither a flagged
+   channel nor a clipped cell updates the running statistics,
+4. pushed into tier 0. Each tier high-passes its input with a time constant
    of hp_tau of its own samples and passes the sum of every two inputs to the
    next tier.
 
@@ -62,7 +71,24 @@ class Searcher:
     def __init__(self, edges_mhz, dt_img, capacity, dm_max=3000.0, widths=(1, 2, 4, 8),
                  max_delay=None, block0=256, min_block=32, seg=16, threshold=8.0,
                  nthreads=8, warmup_images=64, norm_tau_s=120.0, var_tau_s=300.0,
-                 hp_tau=32.0, clip=20.0, median_npix=2048, unix0=0.0, rng=None):
+                 hp_tau=32.0, clip=12.0, median_npix=2048, unix0=0.0, rng=None,
+                 chan_flag_sigma=1.6, flag_tau_s=30.0, mask_on=0.5, mask_off=0.2,
+                 hold_s=30.0):
+        """
+        clip: a normalised cell (one pixel, channel and image) beyond this is
+        set to zero and kept out of the statistics. A burst of S/N s spread
+        over C channels and n samples per channel adds about
+        s / sqrt(C * n) to each cell it covers, below 9 for s = 100 with
+        C = 128 and n = 1, so 12 removes only what no burst can produce in a
+        single cell (in a band of 64 channels, up to S/N 96).
+        chan_flag_sigma: spread over the sky (robust standard deviation of the
+        normalised values, about 1 for noise) above which a channel is flagged
+        in one image.
+        flag_tau_s, mask_on, mask_off: time constant of the flag rate of each
+        channel, and the rates at which a channel is masked and released.
+        hold_s: longest time for which the statistics of a flagged or clipped
+        cell are withheld; after it they follow again (skymon_normalise).
+        """
         self.edges = np.asarray(edges_mhz, float)
         self.C = len(self.edges) - 1
         self.P = capacity
@@ -92,6 +118,18 @@ class Searcher:
         self.live = np.zeros(P, np.uint8)
         self.sub = np.zeros(0, np.int32)
         self.median = np.zeros(C, np.float32)
+        # interference flagging (skymon_normalise)
+        self.chan_flag_sigma = chan_flag_sigma
+        self.a_flag = dt_img / flag_tau_s
+        self.mask_on, self.mask_off = mask_on, mask_off
+        self.max_hold = int(min(65535, round(hold_s / dt_img)))
+        self.held = np.zeros((C, P), np.uint16)
+        self.flags = np.zeros(C, np.uint8)  # flagged in the last image
+        self.spread = np.zeros(C, np.float32)  # spread over the sky in the last image
+        self.flag_rate = np.zeros(C, np.float64)
+        self.chan_mask = np.zeros(C, np.uint8)  # masked: set to zero in every image
+        self.flag_total = np.zeros(C, np.int64)  # images flagged, per channel
+        self.n_minute = max(1, int(round(60.0 / dt_img)))
         for t in self.tiers:
             W = self.D + t.block
             t.history = np.zeros((C, W, P), np.float32)
@@ -107,6 +145,10 @@ class Searcher:
             t.calibrated = False
             t.sigma = np.ones((self.D + 1, len(self.widths)), np.float32)
         self.images = 0
+        # channels set to zero (flagged or masked) in each recent image, for
+        # the flagged fraction of the last minute and of a candidate's sweep
+        span = max((self.D + t.block) * t.decim for t in self.tiers)
+        self.zeroed_hist = np.zeros(max(self.n_minute, span) + 1, np.int16)
         self.stats = dict(search_s=0.0, ingest_s=0.0, blocks=0)
 
     # ------------------------------------------------------------------ slots
@@ -125,6 +167,7 @@ class Searcher:
         self.var[:, slots] = 0
         self.prev[:, slots] = 0
         self.age[slots] = 0
+        self.held[:, slots] = 0
         for t in self.tiers:
             t.history[:, :, slots] = 0
             t.base[:, slots] = 0
@@ -142,16 +185,36 @@ class Searcher:
         Returns a list of BlockResult for the tiers that completed a block.
         """
         t0 = time.perf_counter()
+        k = self.images % len(self.zeroed_hist)
         if raw is None:
             x = np.zeros((self.C, self.P), np.float32)
+            self.zeroed_hist[k] = 0
         else:
             kernels.normalise(raw, self.mu, self.var, self.prev, self.age, self.live, acc, self.sub,
                               self.warmup, self.a_mu, self.a_var, self.clip, self.median,
-                              self.nthreads)
+                              self.nthreads, chan_flag_sigma=self.chan_flag_sigma,
+                              chan_mask=self.chan_mask, flags=self.flags, spread=self.spread,
+                              held=self.held, max_hold=self.max_hold)
+            self.zeroed_hist[k] = np.count_nonzero(self.flags | self.chan_mask)
+            self._update_mask()
             x = raw
         self.images += 1
         self.stats["ingest_s"] += time.perf_counter() - t0
         return self._push_tier(0, x)
+
+    def _update_mask(self):
+        """
+        Persistent interference: the flag rate of each channel follows the
+        flags with time constant flag_tau_s. A channel is masked when its rate
+        exceeds mask_on and released when it falls below mask_off; between
+        the two it keeps its state, so a channel whose interference comes and
+        goes is not switched on and off with every gap. The new mask applies
+        from the next image.
+        """
+        self.flag_total += self.flags
+        self.flag_rate += self.a_flag * (self.flags - self.flag_rate)
+        self.chan_mask[self.flag_rate > self.mask_on] = 1
+        self.chan_mask[self.flag_rate < self.mask_off] = 0
 
     def _push_tier(self, j: int, x: np.ndarray):
         tier = self.tiers[j]
@@ -225,6 +288,34 @@ class Searcher:
         self._pending_shift = []
 
     # ------------------------------------------------------------- utilities
+    def zeroed_fraction(self, first_image: int, n_images: int):
+        """
+        Fraction of the channels set to zero (flagged or masked) over images
+        first_image .. first_image + n_images - 1 (absolute image indices);
+        None when none of them is still in the history.
+        """
+        lo = max(first_image, self.images - len(self.zeroed_hist) + 1, 0)
+        hi = min(first_image + n_images, self.images)
+        if hi <= lo:
+            return None
+        idx = np.arange(lo, hi) % len(self.zeroed_hist)
+        return float(self.zeroed_hist[idx].sum()) / (self.C * (hi - lo))
+
+    def tier_zeroed_fraction(self, tier: Tier, first_sample: int, last_sample: int):
+        """zeroed_fraction over tier samples first_sample..last_sample (inclusive)"""
+        return self.zeroed_fraction(first_sample * tier.decim,
+                                    (last_sample - first_sample + 1) * tier.decim)
+
+    def rfi_status(self) -> dict:
+        """Interference flagging: the last minute, and the channels masked now"""
+        n = min(self.images, self.n_minute)
+        frac = self.zeroed_fraction(self.images - n, n) if n else None
+        return dict(flagged_fraction_last_minute=None if frac is None else round(frac, 5),
+                    masked_channels=np.nonzero(self.chan_mask)[0].tolist(),
+                    flagged_last_image=np.nonzero(self.flags)[0].tolist(),
+                    flagged_images_per_channel=self.flag_total.tolist(),
+                    chan_flag_sigma=self.chan_flag_sigma, clip=self.clip)
+
     def describe(self):
         return [dict(level=t.level, dt_s=t.dt, dm_min=t.dm_min, dm_max=t.dm_max,
                      dm_step=t.dm_per_delay, block=t.block, window=self.D + t.block,
@@ -237,7 +328,7 @@ class Searcher:
         return self.tiers[-1]
 
     def memory_bytes(self) -> int:
-        n = self.mu.nbytes + self.var.nbytes + self.prev.nbytes
+        n = self.mu.nbytes + self.var.nbytes + self.prev.nbytes + self.held.nbytes
         for t in self.tiers:
             n += t.history.nbytes + t.base.nbytes + t.acc.nbytes
         return n

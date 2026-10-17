@@ -13,6 +13,9 @@ tier searched:
                   narrow), narrowband interference in one
   peak_rows       how many trial DMs reach half the best S/N (a measure of
                   how well the DM is determined)
+
+The monitor adds flagged_fraction: the fraction of channels set to zero for
+interference (search.Searcher) over the images of the candidate's sweep.
 """
 from __future__ import annotations
 
