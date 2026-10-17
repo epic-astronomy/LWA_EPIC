@@ -319,16 +319,25 @@ and the events themselves. The selection reads the event copies in the node's ow
 
 A candidate that might be a burst and is not archived is never removed.
 
-**Archive retention.** The archive itself is curated by `archive_curator.py` (outside the skymon package, since it also curates the imager's FITS accumulations of `--out_dir`). The periodic job `epic-archive-curator` runs it once a day on one imaging node.
+**Long integrations of the imager.** Besides the images published to the monitor, epic++ sums `--nimg_accum` images into one accumulation (3589 images of 83.6 ms, or 7178 of 41.8 ms, for 300 s) and writes it as a FITS file with a quick-look PNG under `--out_dir` on the shared file system, in a directory per UTC day of the accumulation's middle: `<out_dir>/YYYYMMDD/EPIC_<mid time>_<cfreq>MHz.fits`. The full path is registered in `epic_files_metadata2`, and the daily digest (`epic_daily_digest`) records the spectra of the watched sources from the same accumulation.
+
+- **Times.** `DATE-OBS`, `DATETIME`, the LST and the celestial WCS refer to the middle of the accumulation; `DATE-BEG` and `DATE-END` give its span and `NIMGACC` the number of images summed.
+- **Partial sums.** A gap in the images or a change of frequency ends the current sum. It is written with its true span and image count when it holds at least `--nimg_accum_min` images (default 10% of `--nimg_accum`), and dropped otherwise.
+- **Digest scale.** The digest spectra are means per image (patch sums divided by `NIMGACC`), so a partial sum does not appear fainter and accumulations of any length are on one scale. Digest rows written before this change are sums over the accumulation.
+- **Failures.** The disk saver copies each accumulation into a queue of four entries served by a writer thread and returns at once, so a slow or hung mount stalls only the writer. When the queue is full the accumulation is dropped. A missing or read-only directory, a full disk or a stale file handle makes `save_output` drop the accumulation; a database error leaves the file unregistered and the connection is retried once a minute. All of these are logged at most once per five minutes with a count. A FITS file appears under its final name only once completely written. The digest's database writes have connection and statement time limits.
+
+At 300 s an accumulation is 16.8 MB (64 channels, 4 correlation products, 128 × 128 pixels): about 4.8 GB per node and 29 GB per day for six nodes, about 53 TB over five years, against a shared file system of 221 TB of which about 26 TB are used.
+
+**Archive retention.** The archive is curated by `archive_curator.py` (outside the skymon package, since it also curates the long integrations). The periodic job `epic-archive-curator` runs it once a day on one imaging node.
 
 | Archive data | Removed |
 |---|---|
-| Archived candidates and events, FITS accumulations | when older than 731 days (`--retention-days`), by the date of the day directory (skymon) or the Unix time in the file name (FITS), never by modification time |
+| FITS accumulations, archived candidates and events | when older than five years (1827 days, `--retention-days`), by the Unix time in the file name (FITS) or the date of the day directory (skymon), never by modification time |
 | File system at or above 85% (`--ceiling`) | down to 83% (`--target`): FITS accumulations first, then skymon data, oldest first in each; nothing younger than 30 days (`--protect-days`) |
 | Events awaiting review (`review: pending`, or as listed in `--keep-review`) and the data of their candidates | never |
 | Candidates whose event is not in the archive (review state unknown) | by age only, never to meet the ceiling |
 
-Every listing, read, removal and `statfs` runs in a child process with a time limit; a timed-out operation ends the run without assuming anything was removed. A dry run (`--dry-run`) reports what would be removed and changes nothing. A lock file in the state directory (`--state-dir`) serialises runs started on several nodes, and removing a file already removed is not an error. If the age rule would remove every item of every archive, as after a wrong system clock, the rule is not applied. Removals are logged in the state directory (`curator-YYYYMM.log`), and the rows of removed FITS files are deleted from `epic_files_metadata2`; when the database cannot be reached they are kept in `pending-db.txt` and deleted on a later run.
+The curator handles both the daily directories and the flat layout of files written before them, and removes the day directories its removals have emptied. Every listing, read, removal and `statfs` runs in a child process with a time limit; a timed-out operation ends the run without assuming anything was removed. A dry run (`--dry-run`) reports what would be removed and changes nothing. A lock file in the state directory (`--state-dir`) serialises runs started on several nodes, and removing a file already removed is not an error. If the age rule would remove every item of every archive, as after a wrong system clock, the rule is not applied. Removals are logged in the state directory (`curator-YYYYMM.log`), and the rows of removed FITS files are deleted from `epic_files_metadata2`; when the database cannot be reached they are kept in `pending-db.txt` and deleted on a later run.
 
 ### 5.4 Failure modes
 
@@ -482,7 +491,7 @@ The All-sky monitor page of the Waterfalls site (`/waterfalls/spectrograms/skymo
 export PYTHONPATH=<repository>/src/python
 python -m skymon simtest --realtime --duration 1800 --out <dir>      # simulated sky, then evaluation
 cd tests/python && python -m unittest -v test_known test_chanflag test_skymon test_combiner \
-    test_coincidence test_context test_conditions test_localdb test_flux test_archive_curator
+    test_coincidence test_context test_conditions test_localdb test_flux test_archive_curator test_save_output
 ```
 
 The compiled kernels (`_kernels.c`) are built on first use into a per-host cache directory (`SKYMON_CACHE`; the `cache` directory under `skymon_root` in the Nomad job). `tests/cpp/sky_publisher_writer.cpp` checks the C++ publisher's pixel order against `epic_utils.save_output`. Tests and simulations run on a worker node, never on the head node `epic-sv`.
@@ -606,7 +615,7 @@ The errors are the reported `fluence_err_jy_ms` for single bursts and standard e
 
 ### 10.4 Unit tests
 
-The suite covers the FDMT against numpy and brute force; tier coverage; the ring, including overruns and writer restarts; the C++ publisher's pixel order; the geometry; detection; channel flagging (single channel and image, noise without flags, the persistent mask and its release, a moving carrier that leaves no candidate while a burst is found); an end-to-end simulated sky with stored candidates and HTTP; live injections; known-source labels and the narrowband class; a monitor that waits for a missing imager and survives a restart and a gap; the combiner's consensus and coincidence veto; external context (saved SWPC samples, lightning, unreachable sources); conditions during threefold noise, over HTTP, in events and in the database through an outage; the local database; and flux (the fluence arithmetic and its error, the peak fit, the exact undoing of the high-pass, k = 1 for Cyg A, the fluence of a burst of S/N 40 within 3 errors and 3%, and a burst of S/N 120 kept by the clip's sky-shape exemption)); and the archive curator (the age rule read from names, not modification times; review protection; the ceiling order and protected period; the dry run; the lock; a database outage journaled and replayed; the time limit of file operations; and the row deletions in `epic_files_metadata2`).
+The suite covers the FDMT against numpy and brute force; tier coverage; the ring, including overruns and writer restarts; the C++ publisher's pixel order; the geometry; detection; channel flagging (single channel and image, noise without flags, the persistent mask and its release, a moving carrier that leaves no candidate while a burst is found); an end-to-end simulated sky with stored candidates and HTTP; live injections; known-source labels and the narrowband class; a monitor that waits for a missing imager and survives a restart and a gap; the combiner's consensus and coincidence veto; external context (saved SWPC samples, lightning, unreachable sources); conditions during threefold noise, over HTTP, in events and in the database through an outage; the local database; and flux (the fluence arithmetic and its error, the peak fit, the exact undoing of the high-pass, k = 1 for Cyg A, the fluence of a burst of S/N 40 within 3 errors and 3%, and a burst of S/N 120 kept by the clip's sky-shape exemption); and the archive curator (the age rule read from names, not modification times; the daily and flat layouts and the removal of emptied day directories; review protection; the ceiling order and protected period; the dry run; the lock; a database outage journaled and replayed; the time limit of file operations; and the row deletions in `epic_files_metadata2`).
 
 ---
 
