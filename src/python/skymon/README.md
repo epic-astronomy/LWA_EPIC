@@ -133,7 +133,7 @@ Each provider is polled in its own thread every `--context-every` minutes (15). 
 **Independence.** The monitors never depend on the combiner. The combiner keeps its state on disk, so it can be restarted on any node.
 
 ```bash
-python -m skymon combine --nodes epic1=http://epic1:8095,...,epic6=http://epic6:8095 --db-port 5433 --out /var/lib/skymon/combiner --port 8096 --inject-every 6
+python -m skymon combine --nodes epic1=http://epic1:8095,...,epic6=http://epic6:8095 --db-port 5433 --out combiner --port 8096 --inject-every 6
 python -m skymon frblist --out frbs.json --start $(date +%s) --duration 3600   # the same FRBs for every band's simulator
 python -m skymon simtest --realtime --frb-file frbs.json --chan0 1378 ...     # one per band, on its own worker
 ```
@@ -151,14 +151,14 @@ A candidate that matches an injection is classified as `injection`. Every inject
 
 ## Use
 
-The `epic310` environment has everything the monitor needs: numpy, astropy, healpy, lsl and gcc. The compiled kernels (`_kernels.c`) are built on first use into `~/.cache/skymon/<host>/`.
+The `epic310` environment has everything the monitor needs: numpy, astropy, healpy, lsl and gcc. The compiled kernels (`_kernels.c`) are built on first use into the user's cache directory (`$XDG_CACHE_HOME/skymon/<host>/`).
 
 ```bash
 export PYTHONPATH=/path/to/LWA_EPIC/src/python
 python -m skymon run --shm epic_sky0 --out /data/skymon --port 8095 --threads 8
-python -m skymon simtest --duration 1800 --realtime --out /tmp/simtest     # simulated sky, then evaluation
+python -m skymon simtest --duration 1800 --realtime --out simtest     # simulated sky, then evaluation
 python -m skymon simulate --shm skysim --duration 3600                    # images only, at the real rate
-python -m skymon evaluate --truth /tmp/simtest/truth.jsonl --out /tmp/simtest
+python -m skymon evaluate --truth simtest/truth.jsonl --out simtest
 ```
 
 `epic++` needs `--sky_shm epic_sky0` to publish. The ring holds 64 images by default (5.3 s, 537 MB for 128 channels).

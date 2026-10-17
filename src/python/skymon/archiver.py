@@ -1,7 +1,7 @@
 """
 Archiving and local retention on one imaging node.
 
-The shared file system (/FileStore) is the archive: it holds what is
+The shared file system is the archive: it holds what is
 analysed and must be kept, and nothing in the real-time path depends on it.
 On each node the archiver, a process of its own, does two things.
 

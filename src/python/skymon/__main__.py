@@ -195,7 +195,7 @@ def main(argv=None):
     p = sub.add_parser("archive", help="copy what is worth keeping to the archive; free local disk")
     p.add_argument("--db", default=os.environ.get("SKYMON_DB"), required=False)
     p.add_argument("--data", required=True, help="the monitor's local output directory")
-    p.add_argument("--archive", required=True, help="the archive root (on /FileStore)")
+    p.add_argument("--archive", required=True, help="the archive root (on the shared file system)")
     p.add_argument("--node", default=None, help="this node's name in the combiner's events")
     p.add_argument("--rfi-days", type=float, default=3.0)
     p.add_argument("--review-days", type=float, default=14.0)

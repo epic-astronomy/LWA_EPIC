@@ -2,7 +2,7 @@
 ctypes bindings to the compiled kernels in _kernels.c.
 
 The shared library is built on first use into a per-host cache directory
-(gcc -O3 -march=x86-64-v3 -fopenmp), so the same checkout on /FileStore serves
+(gcc -O3 -march=x86-64-v3 -fopenmp), so the same checkout on the shared file system serves
 every worker. ctypes releases the GIL during each call.
 """
 from __future__ import annotations
