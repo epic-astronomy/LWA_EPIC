@@ -157,6 +157,52 @@ class TestDedispersion(unittest.TestCase):
             self.assertEqual(b.decim, 2 * a.decim)
 
 
+class TestClusterHits(unittest.TestCase):
+    @staticmethod
+    def _reference(hits, ra, dec, radius_deg, d_rows):
+        """The original loop over group heads, for comparison"""
+        from skymon.candidates import unit_vectors
+        order = np.argsort([-h.snr for h in hits])
+        vec = unit_vectors(ra, dec)
+        cos_r = np.cos(np.radians(np.broadcast_to(np.asarray(radius_deg, float), (len(hits),))))
+        heads, groups = [], []
+        for i in order:
+            h = hits[i]
+            for g, k in enumerate(heads):
+                b = hits[k]
+                if abs(h.row - b.row) > d_rows:
+                    continue
+                if abs(h.t_end - b.t_end) > abs(h.row - b.row) + h.width + b.width + 2:
+                    continue
+                if float(vec[i] @ vec[k]) < cos_r[k]:
+                    continue
+                groups[g].append(int(i))
+                break
+            else:
+                heads.append(i)
+                groups.append([int(i)])
+        return groups
+
+    def test_same_groups_as_the_loop(self):
+        """The vectorised clustering joins each hit to the same (first matching) head"""
+        from types import SimpleNamespace
+        from skymon.candidates import cluster_hits
+        rng = np.random.default_rng(5)
+        for n, spread in ((1, 1), (50, 30), (3000, 4), (3000, 60)):
+            slot = rng.integers(0, 500, n)
+            pos_ra, pos_dec = rng.uniform(0, 30, 500), rng.uniform(-10, 20, 500)
+            hits = [SimpleNamespace(slot=int(s), row=int(r), t_end=int(t), width=int(w),
+                                    snr=float(round(8 + rng.exponential(3), 1)))  # ties
+                    for s, r, t, w in zip(slot, rng.integers(0, spread, n),
+                                          rng.integers(0, 40, n), rng.integers(1, 9, n))]
+            radius = rng.uniform(0.5, 4, n)  # one per hit
+            ra, dec = pos_ra[slot], pos_dec[slot]
+            self.assertEqual(cluster_hits(hits, ra, dec, radius, 16),
+                             self._reference(hits, ra, dec, radius, 16))
+            self.assertEqual(cluster_hits(hits, ra, dec, 2.0, 16),
+                             self._reference(hits, ra, dec, 2.0, 16))
+
+
 class TestSharedMemory(unittest.TestCase):
     def test_roundtrip_overrun_and_restart(self):
         name = f"skymon_test_{os.getpid()}"

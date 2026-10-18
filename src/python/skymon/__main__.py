@@ -87,6 +87,8 @@ def add_monitor_args(p):
                    help="spread over the sky above which a channel is flagged in an image "
                         "(noise gives about 1; inf disables)")
     p.add_argument("--no-rfi-records", action="store_true", help="do not store RFI candidates")
+    p.add_argument("--rfi-records-max", type=int, default=20,
+                   help="records kept per search block for certain RFI, brightest first; the rest are counted")
     p.add_argument("--narrowband-min-channels", type=float, default=d.narrowband_min_channels,
                    help="fewer effective channels than this is narrowband RFI")
     p.add_argument("--known-pulsars", default=None,
@@ -108,7 +110,7 @@ def make_config(a) -> Config:
                   delay_factor=a.max_delay_factor,
                   accum_interval_s=a.accum_interval, accum_hours=a.accum_hours,
                   inject_interval_s=a.inject_every * 60, inject_snr=tuple(a.inject_snr),
-                  inject_dm=tuple(a.inject_dm), store_rfi=not a.no_rfi_records, seed=a.seed,
+                  inject_dm=tuple(a.inject_dm), store_rfi=not a.no_rfi_records, rfi_records_max=a.rfi_records_max, seed=a.seed,
                   narrowband_min_channels=a.narrowband_min_channels,
                   known_pulsars_csv=a.known_pulsars,
                   clip=a.clip, chan_flag_sigma=a.chan_flag_sigma,

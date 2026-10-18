@@ -104,28 +104,38 @@ def cluster_hits(hits, ra, dec, radius_deg, d_rows):
     """
     if not hits:
         return []
+    n = len(hits)
     order = np.argsort([-h.snr for h in hits])
     vec = unit_vectors(ra, dec)
-    cos_r = np.cos(np.radians(np.broadcast_to(np.asarray(radius_deg, float), (len(hits),))))
-    heads, groups = [], []
+    cos_r = np.cos(np.radians(np.broadcast_to(np.asarray(radius_deg, float), (n,))))
+    row = np.array([h.row for h in hits], np.int64)
+    t_end = np.array([h.t_end for h in hits], np.int64)
+    width = np.array([h.width for h in hits], np.int64)
+    # the heads so far, in the order they were found (a hit joins the first
+    # that matches); arrays grow by doubling so each test is one numpy step
+    cap = 64
+    h_row, h_t, h_w = (np.empty(cap, np.int64) for _ in range(3))
+    h_vec, h_cos = np.empty((cap, 3)), np.empty(cap)
+    nh = 0
+    groups = []
     for i in order:
-        h = hits[i]
-        joined = False
-        for g, k in enumerate(heads):
-            b = hits[k]
-            if abs(h.row - b.row) > d_rows:
-                continue
-            tol = abs(h.row - b.row) + h.width + b.width + 2
-            if abs(h.t_end - b.t_end) > tol:
-                continue
-            if float(vec[i] @ vec[k]) < cos_r[k]:
-                continue
-            groups[g].append(i)
-            joined = True
-            break
-        if not joined:
-            heads.append(i)
-            groups.append([i])
+        if nh:
+            dr = np.abs(row[i] - h_row[:nh])
+            ok = (dr <= d_rows) & (np.abs(t_end[i] - h_t[:nh]) <= dr + width[i] + h_w[:nh] + 2)
+            if ok.any():
+                cand = np.flatnonzero(ok)
+                near = h_vec[cand] @ vec[i] >= h_cos[cand]
+                if near.any():
+                    groups[int(cand[np.argmax(near)])].append(int(i))
+                    continue
+        if nh == cap:
+            cap *= 2
+            h_row, h_t, h_w, h_cos = (np.resize(a, cap) for a in (h_row, h_t, h_w, h_cos))
+            h_vec = np.resize(h_vec, (cap, 3))
+        h_row[nh], h_t[nh], h_w[nh] = row[i], t_end[i], width[i]
+        h_vec[nh], h_cos[nh] = vec[i], cos_r[i]
+        nh += 1
+        groups.append([int(i)])
     return groups
 
 

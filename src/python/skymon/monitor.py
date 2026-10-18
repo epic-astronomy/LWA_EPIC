@@ -34,7 +34,7 @@ from . import kernels
 from .accumulate import Accumulator
 from .conditions import Conditions
 from .candidates import (Candidate, CandidateStore, cluster_hits, elevation_radius,
-                         separation_deg, utc)
+                         separation_deg, unit_vectors, utc)
 from .dedisp import K_DM, fdmt, fdmt_plan
 from .geometry import Band, SkyGrid, altaz, auto_nside, beam_fwhm_deg, image_wcs
 from .inject import LiveInjector
@@ -123,6 +123,11 @@ class Config:
     inject_tau600_ms: tuple = (0.31, 10.0)
     inject_unscattered_fraction: float = 0.2
     store_rfi: bool = True
+    # records kept per search block for groups that are certainly RFI (zero DM
+    # or much of the sky at once), brightest first; the rest are only counted
+    # (conditions RFI rate, status rfi_unrecorded). An interference storm
+    # otherwise costs a record per group and stalls the search
+    rfi_records_max: int = 20
     # a candidate whose signal is in fewer effective channels than this, or
     # with more than narrowband_top2 of it in two channels, is narrowband RFI
     narrowband_min_channels: float = 6.0
@@ -513,6 +518,7 @@ class Monitor:
         groups = cluster_hits(hits, ra, dec, radius, self.searcher.D // 4)
         found = []
         n_all = len(hits)
+        n_certain = 0
         # moments when much of the sky triggers at once (RFI seen through the
         # sidelobes). A broadband flash at T answers trial delay d at times
         # T..T + d, so each hit stands for the span [t_end - row, t_end]; a
@@ -531,14 +537,18 @@ class Monitor:
                 busy |= ov
         # a burst comes from one place: clusters at several well-separated
         # positions with overlapping time spans are one flash of RFI
-        heads = [g[0] for g in groups]
+        # (all pairs of group heads at once, in row chunks to bound memory)
+        heads = np.array([g[0] for g in groups], int)
         sites = np.zeros(len(groups), int)
-        for i, k in enumerate(heads):
-            for j, m in enumerate(heads):
-                if t_lo[m] <= t_hi[k] and t_hi[m] >= t_lo[k] and (
-                        i == j or separation_deg(ra[k], dec[k], ra[m], dec[m]) >
-                        2 * max(radius[k], radius[m])):
-                    sites[i] += 1
+        hv = unit_vectors(ra[heads], dec[heads])
+        h_lo, h_hi, h_r = t_lo[heads], t_hi[heads], radius[heads]
+        for a in range(0, len(heads), 1024):
+            b = slice(a, a + 1024)
+            sep = np.degrees(np.arccos(np.clip(hv[b] @ hv.T, -1, 1)))
+            apart = sep > 2 * np.maximum(h_r[b, None], h_r[None, :])
+            apart[np.arange(apart.shape[0]), np.arange(a, a + apart.shape[0])] = True
+            overlap = (h_lo[None, :] <= h_hi[b, None]) & (h_hi[None, :] >= h_lo[b, None])
+            sites[b] = np.count_nonzero(overlap & apart, axis=1)
         for gi, g in enumerate(groups):
             b = hits[g[0]]
             flash = bool(busy[g[0]]) or sites[gi] >= self.cfg.rfi_min_sites
@@ -563,6 +573,12 @@ class Monitor:
             # certain: terrestrial (no dispersion) or seen over much of the sky
             certain = "DM near zero" in reasons or "much of the sky at once" in reasons
             cls = "rfi" if reasons else "candidate"
+            if certain:  # groups come brightest first
+                n_certain += 1
+                if n_certain > self.cfg.rfi_records_max:
+                    self.cond.note_candidate("rfi")
+                    self.metrics["rfi_unrecorded"] += 1
+                    continue
             xy = self.grid.xy[b.slot]
             cid = f"{time.strftime('%Y%m%dT%H%M%S', time.gmtime(b.t_inf))}_" \
                   f"{self.band.f_centre:.0f}MHz_{uuid.uuid4().hex[:6]}"
@@ -927,6 +943,7 @@ class Monitor:
                   images=int(m.get("images", 0)),
                   missing_images=int(m.get("missing_images", 0)),
                   late_images=int(m.get("late_images", 0)),
+                  rfi_unrecorded=int(m.get("rfi_unrecorded", 0)),
                   tracked=int(m.get("tracked", 0)),
                   last_image_unix=self.last_image_unix,
                   lag_s=(time.time() - self.last_image_unix) if self.last_image_unix else None,
