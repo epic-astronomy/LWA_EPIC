@@ -120,6 +120,38 @@ def _log_limited(key, msg, every_s=300.0):
         _log_last[key] = (last, held + 1)
 
 
+def quick_look(img_data, grid_size, sll, scale=4):
+    """
+    RGBA quick look of an accumulation: Stokes I (XX + YY summed over all
+    channels), blank beyond the horizon, on an asinh stretch scaled by the
+    sky's robust noise so that one bright source (the Sun, Cas A) does not
+    flatten the rest, enlarged scale times. img_data is
+    [pol][chan][y][x] as written to the FITS file; the horizon is at
+    grid_size * sll pixels from the phase centre (grid/2, grid/2 - 1 for an
+    even grid; apply_wcs).
+    """
+    import matplotlib
+
+    stokes_i = np.asarray(img_data[0], np.float64).sum(0) + np.asarray(img_data[1], np.float64).sum(0)
+    n = stokes_i.shape[-1]
+    y, x = np.mgrid[:n, :n]
+    sky = np.hypot(x - n // 2, y - (n // 2 - (n + 1) % 2)) <= grid_size * sll
+    vals = stokes_i[sky & np.isfinite(stokes_i)]
+    if vals.size:
+        med = np.median(vals)
+        noise = 1.4826 * np.median(np.abs(vals - med)) or 1.0
+        lo, hi = np.percentile(vals, 1.0), vals.max()
+    else:
+        med, noise, lo, hi = 0.0, 1.0, 0.0, 1.0
+    # asinh stretch: linear within a few noise levels of the background,
+    # logarithmic above, so a bright source and the sky around it both show
+    stretch = lambda v: np.arcsinh((v - lo) / (3.0 * noise))  # noqa: E731
+    norm = np.clip(stretch(stokes_i) / (stretch(hi) or 1.0), 0, 1)
+    rgba = matplotlib.colormaps["inferno"](norm)
+    rgba[~sky] = (0, 0, 0, 1)
+    return np.kron(rgba, np.ones((scale, scale, 1)))
+
+
 def save_output(output_arr, grid_size, nchan, outdir, metadata):
     """
     Save an accumulated image to <outdir>/YYYYMMDD/ (UTC day of its middle)
@@ -247,7 +279,8 @@ def _save_output(output_arr, grid_size, nchan, outdir, metadata):
 
     try:
         matplotlib.image.imsave(os.path.join(daydir, filename + "_QL.png"),
-                                img_data[0, 0, :, :], origin="lower")
+                                quick_look(img_data, metadata["grid_size"], sll),
+                                origin="lower")
     except Exception as e:  # noqa: BLE001 - the quick look is optional
         _log_limited("png", f"quick look not written: {e!r}")
 
