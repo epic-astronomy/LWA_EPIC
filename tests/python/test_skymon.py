@@ -203,6 +203,35 @@ class TestClusterHits(unittest.TestCase):
                              self._reference(hits, ra, dec, 2.0, 16))
 
 
+class TestFixedDirections(unittest.TestCase):
+    def test_fixed_ground_direction_while_the_sky_moves(self):
+        from skymon.candidates import FixedDirections
+        fd = FixedDirections(hours=6)
+        # the same azimuth and elevation every 10 min; the sky moves 2.5 deg in RA each time
+        for k in range(3):
+            n = fd.repeats(1000.0 + 600 * k, 151.0, 60.0, 190.0 + 2.5 * k, 7.0, radius_deg=1.0)
+            self.assertEqual(n, k)
+            fd.add(1000.0 + 600 * k, 151.0, 60.0, 190.0 + 2.5 * k, 7.0)
+
+    def test_a_source_fixed_on_the_sky_is_not_flagged(self):
+        """A pulsar repeats at one RA and Dec while its azimuth and elevation change"""
+        from skymon.candidates import FixedDirections
+        fd = FixedDirections(hours=6)
+        for k in range(4):
+            self.assertEqual(fd.repeats(1000.0 + 600 * k, 150.0 + 3 * k, 60.0 - 1.5 * k, 190.0, 7.0, 1.0), 0)
+            fd.add(1000.0 + 600 * k, 150.0 + 3 * k, 60.0 - 1.5 * k, 190.0, 7.0)
+
+    def test_repeats_before_the_sky_moved_do_not_count_and_old_ones_expire(self):
+        from skymon.candidates import FixedDirections
+        fd = FixedDirections(hours=1)
+        fd.add(0.0, 151.0, 60.0, 190.0, 7.0)
+        self.assertEqual(fd.repeats(30.0, 151.0, 60.0, 190.1, 7.0, 1.0), 0)  # same sky: no evidence
+        fd.add(30.0, 151.0, 60.0, 190.1, 7.0)
+        fd.add(7200.0, 10.0, 20.0, 40.0, 0.0)  # the first two expire
+        self.assertEqual(fd.repeats(7300.0, 151.0, 60.0, 220.0, 7.0, 1.0), 0)
+        self.assertEqual(len(fd.t), 1)
+
+
 class TestSharedMemory(unittest.TestCase):
     def test_roundtrip_overrun_and_restart(self):
         name = f"skymon_test_{os.getpid()}"

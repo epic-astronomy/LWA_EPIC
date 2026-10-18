@@ -33,8 +33,8 @@ import numpy as np
 from . import kernels
 from .accumulate import Accumulator
 from .conditions import Conditions
-from .candidates import (Candidate, CandidateStore, cluster_hits, elevation_radius,
-                         separation_deg, unit_vectors, utc)
+from .candidates import (Candidate, CandidateStore, FixedDirections, cluster_hits,
+                         elevation_radius, separation_deg, unit_vectors, utc)
 from .dedisp import K_DM, fdmt, fdmt_plan
 from .geometry import Band, SkyGrid, altaz, auto_nside, beam_fwhm_deg, image_wcs
 from .inject import LiveInjector
@@ -135,6 +135,11 @@ class Config:
     # (a solar burst, a flash of interference) puts about 0.4 percent of
     # itself on every pixel, enough to cross the threshold on a few
     sidelobe_max: float = 0.03
+    # a candidate at an azimuth and elevation where at least this many earlier
+    # detections (in the last fixed_dir_hours) were made while the sky was
+    # elsewhere is tied to the ground or the instrument: RFI, data kept
+    fixed_dir_repeats: int = 2
+    fixed_dir_hours: float = 6.0
     # a candidate whose signal is in fewer effective channels than this, or
     # with more than narrowband_top2 of it in two channels, is narrowband RFI
     narrowband_min_channels: float = 6.0
@@ -198,6 +203,7 @@ class Monitor:
         self.last_index = -1
         self.started = time.time()
         self.metrics = collections.defaultdict(float)
+        self.fixed_dirs = FixedDirections(cfg.fixed_dir_hours)
         self.lag_hist = collections.deque(maxlen=600)
         self.last_image_unix = None
         self.config_key = None
@@ -663,6 +669,18 @@ class Monitor:
                     c.cls = "injection"
                     c.injection_id = inj.id
                     self.injector.record(inj, c)
+            if not solar:
+                # a fixed direction above the horizon where detections keep
+                # coming while the sky moves on
+                if c.cls == "candidate":
+                    n_rep = self.fixed_dirs.repeats(c.t_bottom, c.az, c.el, c.ra, c.dec,
+                                                    float(elevation_radius(self.radius, c.el)))
+                    if n_rep >= self.cfg.fixed_dir_repeats:
+                        c.rfi_reasons.append(
+                            f"repeats at a fixed direction (az {c.az:.0f}, el {c.el:.0f}): "
+                            f"{n_rep} detections there before, with the sky elsewhere")
+                        cls = c.cls = "rfi"
+                self.fixed_dirs.add(c.t_bottom, c.az, c.el, c.ra, c.dec)
             if not certain and not solar:
                 self._label_known(c)
             c.quality["conditions"] = self.cond.around(c.t_bottom)

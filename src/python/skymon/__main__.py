@@ -89,6 +89,11 @@ def add_monitor_args(p):
     p.add_argument("--no-rfi-records", action="store_true", help="do not store RFI candidates")
     p.add_argument("--rfi-records-max", type=int, default=20,
                    help="records kept per search block for certain RFI, brightest first; the rest are counted")
+    p.add_argument("--fixed-dir-repeats", type=int, default=2,
+                   help="earlier detections at a candidate's azimuth and elevation, with the sky elsewhere, "
+                        "that make it RFI (data kept)")
+    p.add_argument("--fixed-dir-hours", type=float, default=6.0,
+                   help="how long detections are remembered by their direction above the horizon")
     p.add_argument("--sidelobe-max", type=float, default=0.03,
                    help="a burst at most this fraction of the amplitude of one elsewhere at the same time "
                         "is its sidelobe (RFI, data kept)")
@@ -114,7 +119,8 @@ def make_config(a) -> Config:
                   accum_interval_s=a.accum_interval, accum_hours=a.accum_hours,
                   inject_interval_s=a.inject_every * 60, inject_snr=tuple(a.inject_snr),
                   inject_dm=tuple(a.inject_dm), store_rfi=not a.no_rfi_records, rfi_records_max=a.rfi_records_max,
-                  sidelobe_max=a.sidelobe_max, seed=a.seed,
+                  sidelobe_max=a.sidelobe_max,
+                  fixed_dir_repeats=a.fixed_dir_repeats, fixed_dir_hours=a.fixed_dir_hours, seed=a.seed,
                   narrowband_min_channels=a.narrowband_min_channels,
                   known_pulsars_csv=a.known_pulsars,
                   clip=a.clip, chan_flag_sigma=a.chan_flag_sigma,

@@ -139,6 +139,42 @@ def cluster_hits(hits, ra, dec, radius_deg, d_rows):
     return groups
 
 
+class FixedDirections:
+    """
+    Detections remembered for hours by their direction above the horizon. A
+    signal that keeps appearing at one azimuth and elevation while the sky
+    moves on is tied to the ground or the instrument (interference from a
+    fixed direction, correlated noise or crosstalk between inputs, an imaging
+    artefact), never to the sky; an astrophysical source that repeats (a
+    pulsar, a repeating FRB) stays at one RA and Dec instead.
+    """
+
+    def __init__(self, hours: float = 6.0):
+        self.keep_s = hours * 3600.0
+        self.t = np.empty(0)
+        self.hor = np.empty((0, 3))  # unit vectors in (east, north, up)
+        self.sky = np.empty((0, 3))
+
+    @staticmethod
+    def horizon_vector(az_deg, el_deg):
+        az, el = np.radians(az_deg), np.radians(el_deg)
+        return np.stack([np.cos(el) * np.sin(az), np.cos(el) * np.cos(az), np.sin(el)], -1)
+
+    def repeats(self, t, az, el, ra, dec, radius_deg):
+        """Earlier detections within radius_deg of (az, el) whose sky positions are more than two radii away"""
+        if not len(self.t):
+            return 0
+        same_dir = self.hor @ self.horizon_vector(az, el) >= np.cos(np.radians(radius_deg))
+        moved = self.sky @ unit_vectors(ra, dec) < np.cos(np.radians(2 * radius_deg))
+        return int(np.count_nonzero(same_dir & moved & (self.t < t)))
+
+    def add(self, t, az, el, ra, dec):
+        keep = self.t > t - self.keep_s
+        self.t = np.append(self.t[keep], t)
+        self.hor = np.vstack([self.hor[keep], self.horizon_vector(az, el)])
+        self.sky = np.vstack([self.sky[keep], unit_vectors(ra, dec)])
+
+
 class CandidateStore:
     """Writes candidates to disk in a background thread and keeps recent ones in memory"""
 
