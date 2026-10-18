@@ -127,7 +127,7 @@ Flagged channels and cells beyond the clip do not update the running statistics,
 
 The smearing within a channel is the sweep across the band divided by the number of channels N_c. The search (`dedisp.py`, `search.py`) uses this in tiers:
 
-- tier j averages 2^j images (each tier passes the sum of every two inputs to the next, after a high-pass of time constant `hp_tau` = 32 of its own samples);
+- tier j averages 2^j images (each tier passes the sum of every two inputs to the next, after a high-pass whose time constant is at least `hp_tau` = 32 of its own samples and at least `hp_factor` = 4 times the tier's widest boxcar: 512 samples in tiers 0–4 and 32 above with the default boxcars of §3.3);
 - each tier runs the fast dispersion measure transform (FDMT; Zackay & Ofek 2017) over delays 0..D samples, D = N_c = 128;
 - the delay is linear in DM, so every tier uses the same delay table and tier j covers DMs 2^j times those of tier 0;
 - tiers above 0 report only delays above D/2, so the tiers together cover 0–`dm_max` (3000 pc cm⁻³) in octaves;
@@ -151,9 +151,11 @@ A tier begins reporting once its window has filled twice: about 21 s for tier 0 
 
 ### 3.3 Detection
 
-Before each transform, a straight line fitted over the window (D + block samples) is subtracted from every channel of every pixel; a burst loses about 1/W of its signal for a window of W samples. Above tier 0 the mean over channels at each time is also subtracted (zero-DM filter; Eatough et al. 2009), which removes gain variations and the residual interpolation ripple of bright sources at a cost of one or two parts in N_c of a burst. Tier 0 is not zero-DM filtered, so that low-DM bursts and pulsars keep their full signal.
+Before each transform, the mean over the window (D + block samples, or a longer history set by `--detrend-len` and `--detrend-factor`) is subtracted from every channel of every pixel (`--detrend mean`, the default); a pulse of w samples loses w/W of its signal for a window of W samples. The alternative, a straight line fitted over the window (`--detrend linear`, the default before the wide-pulse search), takes up to 4w/W from a pulse at the end of the window, where the search looks: in the tiers with a block of 32 samples it removed most of any pulse wider than about 20 samples. The tier high-pass turns a slow ramp into a constant offset, which the mean removes. Above tier 0 the mean over channels at each time is also subtracted (zero-DM filter; Eatough et al. 2009), which removes gain variations and the residual interpolation ripple of bright sources. A pulse of w samples in a tier whose sweep spans S samples (D/2 ≤ S ≤ D above tier 0) loses about w/S of its signal to this filter; a pulse longer than its sweep is removed almost entirely, so a higher tier cannot recover a wide burst at low DM. Tier 0 is not zero-DM filtered, so that low-DM bursts and pulsars keep their full signal.
 
-Each tier searches boxcars of 1, 2, 4 and 8 samples at every delay. The noise of every delay row and boxcar width is measured from the data, as the clipped RMS of the previous blocks, so the S/N does not assume white noise. Hits above S/N 8 (`--threshold`) are retained.
+**Boxcars.** Tiers 0–4 search boxcars of 1, 2, 4, …, 128 samples and the tiers above 1, 2, 4 and 8 (`--widths`, a list for every tier or per tier range, such as `0-4:1,2,4,8,16,32,64,128;5-:1,2,4,8`). Tiers 0–4 hold DM up to 1450–2900 pc cm⁻³ at 57–76 MHz. A boxcar of w ≥ 16 samples is evaluated at every (w/8)-th end sample (`--boxcar-stride` 8), which costs a matched pulse at most 1/16 and on average 1/32 of its S/N and makes the wide boxcars nearly free. A boxcar is at most D + 1 samples long; wider ones are left out (in test bands with few channels). The widest boxcar is 5.4 s in tier 0 and 86 s in tier 4 at 41.8 ms images. The noise of every delay row and boxcar width is measured from the data, as the clipped RMS of the previous blocks, so the S/N does not assume white noise.
+
+**Threshold.** `--threshold` (S/N 8) is the threshold of the reference search (boxcars 1, 2, 4, 8 in every tier). The threshold applied keeps its Gaussian false-alarm rate (`search.far_threshold`), counting each width w as w⁻¹ of an independent trial per delay row and sample. The wide boxcars add 6.2% to the trials, and the threshold rises from 8.000 to 8.007. On white noise through the whole chain the wide boxcars are so correlated with the narrower ones that the measured rate of segment maxima above S/N 4.5 changed by a factor of only 0.97–1.02 (a threshold of 7.996–8.002), so the model errs on the safe side (§10.1c). Real noise at widths of seconds to a minute (scintillation of the bright sources, gain steps) is not white; its level is recorded in the conditions (§4.6). `--no-far-match` applies `--threshold` unchanged.
 
 ### 3.4 Clustering and classification
 
@@ -269,6 +271,8 @@ Each provider is polled in its own thread every 15 min; the last good data are k
 | `sky_fraction_triggered` | fraction of tracked pixels with a hit in the interval |
 | `missing_fraction` | fraction of missing images |
 | `gain_changes` | changes of `gain_version` (§6) |
+| `search_noise` | the measured search noise relative to white noise, at widths of about 1, 7 and 20 s: for each, the tier and boxcar of nearest duration, and the median over the tier's reported delay rows of the measured noise over that of unit white noise through the same chain (computed once per tier). A ratio of 1 is the radiometer limit; scintillation of the bright sources, gain steps and slow interference raise it at the widths of scattered bursts |
+| `el_cyg_a`, `el_cas_a` | elevations of Cyg A and Cas A (deg), whose scintillation and passage through the beam raise the noise at these widths |
 | `disturbed` | `noise_ratio` > 1.5, `rfi_rate` > 2 per minute, or `sky_fraction_triggered` > 1% |
 
 Samples are kept 6 h in memory and written to table `conditions`; they wait in memory while the database is away. Each candidate carries the summary of the minute before its arrival; each decided event carries the conditions of the bands that detected or measured it, with `disturbed` set if any was disturbed.
@@ -480,7 +484,7 @@ The imager has priority: the monitor reads the ring without blocking it and runs
 
 ### 7.3 Test injections
 
-- **Live, per band.** Every `--inject-every` minutes on average (Poisson; 60 in the Nomad job), the monitor adds a dispersed burst to an incoming image before regridding: at a random tracked position that stays up for the whole sweep, with DM log-uniform over what that position can still complete (10–3000), and amplitude for a target S/N of 10–30 from the pixel's measured noise. Each injection is logged in `<out>/injections.jsonl` when scheduled and again as recovered or missed; `/api/status` reports totals. Injections exercise every stage after the imager.
+- **Live, per band.** Every `--inject-every` minutes on average (Poisson; 60 in the Nomad job), the monitor adds a dispersed burst to an incoming image before regridding: at a random tracked position that stays up for the whole sweep, with DM log-uniform over what that position can still complete (10–3000), and amplitude for a target S/N of 10–30 from the pixel's measured noise. Injections are scattered as FRBs at these frequencies are (`--inject-scatter`, on by default): the scattering time at 600 MHz is drawn log-uniformly over 0.31–10 ms (`--inject-tau600-ms`, the base distribution of the sensitivity study) and scaled as ν⁻⁴, a one-sided exponential in every channel (1.4–120 s at 57–76 MHz). A fraction of 0.2 (`--inject-unscattered`) is left unscattered as a check of short, pulsar-like pulses. The target S/N is that of an ideal search for the scattered burst (its scattering added in quadrature to its width), so the recovered over the target S/N measures the search efficiency for real bursts; the position must stay up for the sweep and seven scattering times. Each injection records `tau_1ghz` and the scattering time at the band centre (`tau_s`). Each injection is logged in `<out>/injections.jsonl` when scheduled and again as recovered or missed; `/api/status` reports totals. Injections exercise every stage after the imager.
 - **Coordinated, across bands.** Every `--inject-every` hours on average (6 in the Nomad job), the combiner asks every monitor to inject the same burst (position, DM in 50–1000, t_∞), each band setting the amplitude from its own noise. The resulting events measure the efficiency of the whole chain including the consensus.
 
 ### 7.4 Website
@@ -580,6 +584,70 @@ Before, the monitor fell behind at 41.8 ms with D = 2C and dropped the oldest im
 
 `OMP_WAIT_POLICY=passive` raised the processing time to 0.66 (8 threads), 0.60 (12) and 0.59 (16), and `GOMP_SPINCOUNT=10000` to 0.65 (8), since a sleeping thread takes longer to wake for the next parallel region. The default policy is therefore kept. Eight threads leave the most cores and memory bandwidth to the imager; 12 threads save another 0.05 of real time for two more cores.
 
+### 10.1c Wide-pulse search
+
+**Motivation.** Scattering broadens FRBs at 57–76 MHz to 1–30 s: with the scattering time at 600 MHz log-uniform over 0.31–10 ms and scaled as ν⁻⁴, the median is 21 s at 57.4 MHz and 7 s at 75.8 MHz. With boxcars to 8 samples (0.33 s in tier 0 at 41.8 ms images), a high-pass of 32 samples and a straight line removed over each window, such a burst was found with an efficiency of 0.1–0.3 below DM 300–700.
+
+**Efficiency.** A dispersed burst with a one-sided exponential scattering tail in every channel is passed through the search chain: the running mean of the normalisation, tier decimation and high-pass, the trend removal, the zero-DM filter, and the compiled transform and boxcars. This is done at 20 DMs, 17 scattering times and 4 arrival phases, at 41.8 ms images with D = 2C and a tier-0 block of 512. The noise of every row and width is that of white noise through the same chain. The efficiency η is the S/N found over the reference S/N of the sensitivity model with η = 1. That reference assumes 83.6 ms images, so η exceeds 1 for short pulses at 41.8 ms. Before → after, best over the tiers, mean over the phases (τ is the scattering time at the band centre):
+
+| DM | 57.4 MHz, τ = 0 | 2.9 s | 9.2 s | 29 s | 92 s | 75.8 MHz, τ = 0 | 1.0 s | 3.0 s | 9.6 s | 30 s |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 10 | 1.08 → 1.09 | 0.28 → 0.54 | 0.16 → 0.42 | 0.09 → 0.27 | 0.05 → 0.16 | 1.03 → 1.04 | 0.44 → 0.58 | 0.28 → 0.55 | 0.16 → 0.42 | 0.09 → 0.26 |
+| 50 | 0.97 → 0.99 | 0.30 → 0.55 | 0.17 → 0.47 | 0.10 → 0.26 | 0.05 → 0.16 | 1.04 → 1.05 | 0.44 → 0.58 | 0.28 → 0.54 | 0.16 → 0.41 | 0.09 → 0.26 |
+| 100 | 0.80 → 0.81 | 0.37 → 0.50 | 0.22 → 0.41 | 0.12 → 0.24 | 0.06 → 0.14 | 1.00 → 1.01 | 0.46 → 0.60 | 0.29 → 0.55 | 0.17 → 0.46 | 0.09 → 0.28 |
+| 300 | 0.81 → 0.82 | 0.49 → 0.57 | 0.34 → 0.49 | 0.21 → 0.35 | 0.11 → 0.21 | 0.82 → 0.84 | 0.54 → 0.58 | 0.38 → 0.51 | 0.22 → 0.37 | 0.12 → 0.23 |
+| 1000 | 0.74 → 0.75 | 0.57 → 0.59 | 0.50 → 0.57 | 0.34 → 0.49 | 0.19 → 0.34 | 0.73 → 0.75 | 0.59 → 0.61 | 0.54 → 0.57 | 0.40 → 0.52 | 0.23 → 0.39 |
+| 2000 | 0.73 → 0.73 | 0.60 → 0.60 | 0.55 → 0.55 | 0.43 → 0.44 | 0.27 → 0.28 | 0.73 → 0.74 | 0.62 → 0.63 | 0.56 → 0.59 | 0.49 → 0.56 | 0.33 → 0.47 |
+| 3000 | 0.69 → 0.69 | 0.60 → 0.60 | 0.56 → 0.56 | 0.50 → 0.50 | 0.36 → 0.36 | 0.68 → 0.68 | 0.63 → 0.63 | 0.58 → 0.58 | 0.55 → 0.56 | 0.43 → 0.49 |
+
+At 57.4 MHz DM 2000 lies in tier 5, which keeps the boxcars to 8 samples. Unscattered bursts keep their S/N at every DM (+0–2%, from the removal of the mean instead of a line).
+
+**Rate.** The detection rate over the population models of the DM study (M1, the z–DM reference model; M0, the CHIME DM distribution with fluence independent of DM; spectral index 0, the ideal noise), relative to the search with boxcars to 8 samples:
+
+| Configuration (tiers 0–4; tiers 5 and above keep boxcars to 8) | 57.4 MHz, M1 / M0 | 71.2 MHz | 75.8 MHz |
+|---|---|---|---|
+| Boxcars to 64, straight line | 1.45 / 1.25 | 1.44 / 1.24 | 1.50 / 1.25 |
+| Boxcars to 64, mean | 1.53 / 1.31 | 1.48 / 1.27 | 1.55 / 1.29 |
+| Boxcars to 64, straight line over a history of 8 times the widest boxcar | 1.49 / 1.29 | 1.46 / 1.26 | 1.51 / 1.27 |
+| Boxcars to 128, mean | 1.56 / 1.33 | 1.54 / 1.29 | 1.60 / 1.30 |
+| **Boxcars to 128, mean, stride w/8 (chosen)** | **1.55 / 1.32** | **1.53 / 1.28** | **1.59 / 1.29** |
+| Boxcars to 256, mean, stride w/16 | 1.57 / 1.33 | 1.56 / 1.29 | 1.61 / 1.30 |
+| Matched search, η = 0.8 | 3.80 / 2.62 | 3.19 / 2.36 | 3.16 / 2.34 |
+
+With a spectral index of −0.9 the gains are 0.02–0.03 lower. A longer history (a trend span of 4–16 times the widest boxcar) gains 0–1% for 6–31 GiB of memory, and boxcars to 256 another 1–2%; neither is used. The rest of the gap to the matched search lies in tier 0 below DM 80–180, where the widest boxcar (5.4 s) is shorter than the median scattering, and in the zero-DM filter above tier 0, which removes a pulse longer than its sweep.
+
+**Cost.** Pre-generated simulator images (74–77 MHz, 128 channels, `nside` 64, 20 300 pixels, DM ≤ 3000) fed to the monitor unpaced, 8 threads, D = 2C, block 512, at nice 10; processing time per image over 41.8 ms, after a warm-up of 11 000 images (every tier full and calibrated), over 4000 images. Two nodes of the same type:
+
+| Setting | Cores | Fraction of real time |
+|---|---|---|
+| Boxcars to 8, straight line, kernel before the change | 8 cores and siblings (12–19, 36–43) | 0.663, 0.666 |
+| The same search, noise sums in single precision | 12–19, 36–43 | 0.648, 0.660 |
+| **Chosen wide search** | 12–19, 36–43 | **0.667, 0.667** |
+| Boxcars to 256, stride w/16 | 12–19, 36–43 | 0.676, 0.669 |
+| Chosen wide search, one L3 group (6 cores and siblings, 12–17, 36–41) | 8 / 10 / 12 threads | 0.870 / 0.871 / 0.928 |
+| Boxcars to 8, kernel before, one L3 group | 8 / 12 threads | 0.868 / 0.908 |
+
+Per image, the search kernel takes 0.39 of real time, the normalisation 0.10, the regridding 0.09, the tier pushes 0.03, the window shifts 0.02, the bicubic taps 0.02 and the candidates 0.01. In the kernel alone the wide boxcars cost 0.010 of real time with the stride (0.05 without), which the single-precision noise sums in the boxcar loop (0.014) offset. The state memory is unchanged (37.2 GiB): the histories are not lengthened. A real-time run of the chosen search, fed by a separate simulator process through the ring (12.5 min, 7000 images after a warm-up of 450 s), took 0.657 of real time with no image lost, and a resident memory of 38.9 GiB (peak 39.4 GiB).
+
+The imager on the same node slows the monitor by a factor of about 1.19 (shared L3 cache and memory bandwidth). The chosen search then projects to 0.79 of real time beside the imager, against a budget of 0.75; the search before the change projects to the same 0.79. One L3 group of 6 cores is slower by a third and does not hold the monitor at any thread count.
+
+**End to end.** Simulated sky at 74–77 MHz (`nside` 32, 45 min, the same FRB list for both searches, 41.8 ms images, D = 2C, block 512):
+
+| | Before (boxcars to 8, straight line) | Chosen wide search |
+|---|---|---|
+| FRB list | 50 bursts, DM 30–1500, scattering at 600 MHz log-uniform 0.31–10 ms (1.6–37 s at the band centre) for 36 of them, 14 unscattered; each burst's amplitude set for an S/N of 15–35 in an ideal search of the burst as scattered | |
+| Recovered | 18 of 50 | 38 of 50 |
+| Scattered bursts recovered | 4 of 36 (τ = 2.1–8.2 s, DM 250–1390) | 24 of 36 (τ = 1.6–24 s, DM 38–1390), of which 1 of the 9 with τ > 15 s |
+| Unscattered bursts | 14 of 14 | 14 of 14, S/N ratio to before 1.00–1.03 (predicted 1.01–1.02) |
+| Scattered bursts found by both, S/N ratio | | 1.07, 1.20, 1.23 (predicted 1.12, 1.30, 1.55) |
+| Candidates matching no burst | 0 | 0 |
+
+The scattered bursts that the wide search lost have τ > 15 s (8), where η falls below 0.3, or an ideal S/N below 21 at DM 650–1200 (4), where η ≈ 0.4 leaves them near the threshold. A second run with the same positions and DMs but amplitudes 1.5–2.5 times lower (most scattered bursts then below the threshold of an ideal search) recovered 16 and 18 bursts.
+
+**Live injections.** Live injections every 1.5 min on average over 45 min of simulated sky (target S/N 15–30, scattered by default): 24 completed, 19 recovered. The 7 unscattered were found at 0.94 of their target S/N (median, 6 of 7 recovered). The 17 scattered (τ = 1.3–33 s at the band centre) were found at 0.53 of their target (13 recovered); the 4 missed had τ = 17–33 s. These ratios are the search efficiency for each burst, as in the table above. `tau_1ghz` and `tau_s` are logged with each injection.
+
+**Short pulses and false alarms.** Unscattered bursts were found at the same S/N by both searches (S/N ratio 1.00–1.03, predicted 1.01–1.02, 14 bursts at DM 30–1390). Without a guard, the wide boxcars produced false candidates on pixels that had just risen above the elevation limit (at 10.0–10.1° elevation, 5.3 s boxcars at random DM): such a pixel brightens quickly while its running mean and its tier's high-pass start from nothing. A boxcar wider than 8 samples now reports a pixel only once it has been tracked for the tier's history plus three high-pass time constants (96 s in tier 0, 20 min in tier 4), which costs only the lowest elevations for that time after rising. With the guard and the horizon rule (a candidate from a boxcar wider than 8 samples within 3° of the elevation limit is classified as RFI with its data kept, `wide_el_margin`), the simulated skies gave no candidate matching no burst in either search; the only other candidates were detections of bright bursts at a neighbouring DM, listed by the combiner as `other_dm` entries (§4.2). On white noise through the chain, the rate of segment maxima above S/N 4.5 changed by a factor of 0.97–1.02 (§3.3).
+
 ### 10.2 Multi-band consensus and fault test
 
 Simulators of several bands received the same FRB list; each band's monitor ran in real time on its own imaging node and the combiner on another.
@@ -633,7 +701,7 @@ The errors are the reported `fluence_err_jy_ms` for single bursts and standard e
 
 ### 10.4 Unit tests
 
-The suite covers the FDMT against numpy and brute force; tier coverage; the ring, including overruns and writer restarts; the C++ publisher's pixel order; the geometry; detection; channel flagging (single channel and image, noise without flags, the persistent mask and its release, a moving carrier that leaves no candidate while a burst is found); an end-to-end simulated sky with stored candidates and HTTP; live injections; known-source labels and the narrowband class; a monitor that waits for a missing imager and survives a restart and a gap; the combiner's consensus and coincidence veto; external context (saved SWPC samples, lightning, unreachable sources); conditions during threefold noise, over HTTP, in events and in the database through an outage; the local database; and flux (the fluence arithmetic and its error, the peak fit, the exact undoing of the high-pass, k = 1 for Cyg A, the fluence of a burst of S/N 40 within 3 errors and 3%, and a burst of S/N 120 kept by the clip's sky-shape exemption); and the archive curator (the age rule read from names, not modification times; the daily and flat layouts and the removal of emptied day directories; review protection; the ceiling order and protected period; the dry run; the lock; a database outage journaled and replayed; the time limit of file operations; and the row deletions in `epic_files_metadata2`).
+The suite covers the FDMT against numpy and brute force; tier coverage; the ring, including overruns and writer restarts; the C++ publisher's pixel order; the geometry; detection; channel flagging (single channel and image, noise without flags, the persistent mask and its release, a moving carrier that leaves no candidate while a burst is found); an end-to-end simulated sky with stored candidates and HTTP; live injections; known-source labels and the narrowband class; a monitor that waits for a missing imager and survives a restart and a gap; the combiner's consensus and coincidence veto; external context (saved SWPC samples, lightning, unreachable sources); conditions during threefold noise, over HTTP, in events and in the database through an outage; the local database; and flux (the fluence arithmetic and its error, the peak fit, the exact undoing of the high-pass, k = 1 for Cyg A, the fluence of a burst of S/N 40 within 3 errors and 3%, and a burst of S/N 120 kept by the clip's sky-shape exemption); the wide-pulse search (the trend fitted over a longer history than the transform against a reference, the boxcar strides and width limits, the high-pass per tier in the tier cascade, the tier settings and the false-alarm threshold, a scattered burst gained without loss on a short one, rising pixels with the wide boxcars, the search noise against white noise at fixed widths, and the noise fields of the conditions); the exponential scattering model (fluence conservation, the mean delay) and the scattered live injections; and the archive curator (the age rule read from names, not modification times; the daily and flat layouts and the removal of emptied day directories; review protection; the ceiling order and protected period; the dry run; the lock; a database outage journaled and replayed; the time limit of file operations; and the row deletions in `epic_files_metadata2`).
 
 ---
 
@@ -656,11 +724,13 @@ The suite covers the FDMT against numpy and brute force; tier coverage; the ring
 7. The Nomad jobs do not set `SKYMON_TOKEN`, and `db.env` written by the playbook contains only the database password; `POST` endpoints (watch, inject, review) are therefore unauthenticated unless the token is provided elsewhere. The website backend sends the token only when configured.
 8. The Nomad variable `epic_skymon_src` points to the main checkout of the repository, not to this branch. The deployment state of the jobs is not verified in this document.
 9. Lightning context is disabled in the Nomad job (no `--lightning-url`); SWPC context requires internet access from the combiner's node, which is not verified here.
-10. After a start, a monitor's high-DM tiers need up to 17 min before they report (a tier reports once its window has filled twice); bursts at high DM arriving in that interval are missed by that band.
+10. The monitor with the wide-pulse search takes 0.66–0.67 of real time alone on 8 cores and their siblings at 41.8 ms images with D = 2C and a block of 512 (§10.1c), which projects to 0.79 beside the imager against a budget of 0.75. The search before the change projects to the same 0.79. The largest remaining costs are the search kernel (0.39), the normalisation (0.10) and the regridding (0.09).
+11. Scattered bursts at low DM with τ beyond about 15 s are still found with η < 0.3: tier 0 holds boxcars of at most D + 1 samples (10.7 s at 41.8 ms), and the zero-DM filter of the higher tiers removes a pulse longer than its sweep.
+12. After a start, a monitor's high-DM tiers need up to 17 min before they report (a tier reports once its window has filled twice); bursts at high DM arriving in that interval are missed by that band.
 
 **Search limits**
 
-11. At 16–21 MHz, positions near the western horizon set before high-DM sweeps complete, limiting the DM reach to a few hundred there.
-12. The zero-DM filter (1.1–1.3% of S/N above tier 0) and the linear detrend (0.6%) each remove a small, measured fraction of a burst's S/N, and neither enters the fluence. Bursts beyond the clip are kept by the sky-shape exemption (§3.1) and verified up to S/N 120. Bursts wider than the 8-sample boxcar are not separately characterised.
-13. The `implausible` status is in practice reachable only between bands that nearly overlap in frequency; with bands several MHz apart, almost any single-band detection fits a band-limited spectrum.
-14. The candidate store took a candidate as a repeat of a stored one within the clustering radius (two beams, widened towards the horizon), and merged two distinct simulated bursts at the same DM, about 5° and 28 s apart; the weaker was lost. The radius is now one beam (widened towards the horizon), within which a burst found again by another tier or block peaks, and two such bursts are both kept (`test_skymon`). Two bursts within a beam, at a similar DM and within the time window, are still taken as one; the time window (at least 30 s) is not characterised for repeating sources.
+13. At 16–21 MHz, positions near the western horizon set before high-DM sweeps complete, limiting the DM reach to a few hundred there.
+14. The zero-DM filter (1.1–1.3% of S/N above tier 0 for a short burst, about w/S for a pulse of w samples over a sweep of S) and the removal of the window mean each remove a measured fraction of a burst's S/N, and neither enters the fluence. Bursts beyond the clip are kept by the sky-shape exemption (§3.1) and verified up to S/N 120. The efficiency for scattered bursts is characterised in §10.1c.
+15. The `implausible` status is in practice reachable only between bands that nearly overlap in frequency; with bands several MHz apart, almost any single-band detection fits a band-limited spectrum.
+16. The candidate store took a candidate as a repeat of a stored one within the clustering radius (two beams, widened towards the horizon), and merged two distinct simulated bursts at the same DM, about 5° and 28 s apart; the weaker was lost. The radius is now one beam (widened towards the horizon), within which a burst found again by another tier or block peaks, and two such bursts are both kept (`test_skymon`). Two bursts within a beam, at a similar DM and within the time window, are still taken as one; the time window (at least 30 s) is not characterised for repeating sources.

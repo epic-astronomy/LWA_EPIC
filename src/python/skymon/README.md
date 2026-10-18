@@ -32,15 +32,17 @@ epic++ (ChanReducer) ──Stokes I──▶ /dev/shm/<ring> ──▶ skymon ru
    - Flagged channels and cells beyond the clip, kept or not, do not update the running statistics. A cell withheld for 30 s in a row is updated again (deviations limited to 5σ), so a lasting change of level is followed in the end.
    - `/api/status` reports `rfi_flagging`: the fraction of channels zeroed over the last minute, the masked channels and the flags per channel. Each candidate's `quality.flagged_fraction` is the fraction zeroed along its sweep.
 4. **Dedispersion in tiers** (`search.py`, `dedisp.py`).
-   - Tier j averages 2^j images and runs the fast dispersion measure transform (FDMT) over delays 0..D samples, with D equal to the number of channels.
+   - Tier j averages 2^j images and runs the fast dispersion measure transform (FDMT) over delays 0..D samples, with D equal to the number of channels times `--max-delay-factor`.
+   - Each tier high-passes its input with a time constant of at least 32 of its samples (`--hp-tau`) and at least 4 times its widest boxcar (`--hp-factor`).
    - The dispersion delay is linear in DM, so tier j covers DMs 2^j times those of tier 0. The tiers together cover 0–`--dm-max` in octaves.
    - At the top of each tier, a pulse is smeared by about one sample per channel, so averaging further would lose signal.
    - Every tier keeps only D + block samples of history, whatever its DM. All tiers together take about 0.7 MB per pixel for 128 channels (14 GB at nside 64), and the accumulation (step 7) another 12 GB.
    - The FDMT and the boxcar search are compiled (`skymon_search` in `_kernels.c`). Each thread transforms a tile of 16 pixels depth first, so that the small subbands stay in the core's cache, and searches each final delay row as soon as it is formed.
 5. **Search.**
-   - A straight line fitted over the window is removed from every channel of every pixel before the FDMT. Above tier 0 the mean over channels at each time is removed too (zero-DM filter), which takes out broadband variations at a cost of 1–2 parts in nchan of a burst.
-   - Each tier searches boxcars of 1, 2, 4 and 8 samples. The noise of every delay row and width is measured from the data (clipped RMS of the previous blocks).
-   - Hits above `--threshold` (S/N 8) are clustered over the sky, DM and time.
+   - The mean over the window is removed from every channel of every pixel before the FDMT (`--detrend mean`; `linear` removes a fitted straight line, which takes up to 4w/W of a pulse of w samples at the end of a window of W). `--detrend-len` and `--detrend-factor` lengthen a tier's history beyond the transform's window, for the trend fit only. Above tier 0 the mean over channels at each time is removed too (zero-DM filter), which takes out broadband variations; a pulse of w samples loses about w/S of its signal, S being its sweep in tier samples, so a pulse longer than its sweep is lost in the higher tiers.
+   - **Wide pulses.** FRBs at 57–76 MHz are broadened to seconds or minutes by scattering. Tiers 0–4 search boxcars of 1, 2, 4, …, 128 samples, and the tiers above 1, 2, 4 and 8 (`--widths`, one list or per tier range, e.g. `0-4:1,2,4,8,16,32,64,128;5-:1,2,4,8`). A boxcar of w samples is evaluated at every (w/8)-th end sample (`--boxcar-stride` 8), at an average cost of 1/32 of a matched pulse's S/N. Against the boxcars to 8 samples, this raises the FRB rate by a factor of 1.52–1.59 at 57–76 MHz for the reference population, at 0.004 of real time (docs/skymon/DESIGN.md, §3.3 and §10.1c).
+   - The noise of every delay row and width is measured from the data (clipped RMS of the previous blocks).
+   - Hits above the threshold are clustered over the sky, DM and time. `--threshold` (S/N 8) applies to the boxcars 1, 2, 4 and 8; the threshold applied is raised for the extra trials of the wider boxcars at the same Gaussian false-alarm rate, to 8.007 (`--no-far-match` to keep 8).
    - Two kinds of cluster are classified as RFI: one wider than six beam areas, and one at a moment when more than 1% of the sky triggers.
    - A candidate whose signal lies in a few channels is classified as RFI (`narrowband (a few channels)`), with its data kept. Along the dispersion track, each channel's samples are summed over the boxcar at that channel's delay (`quality.channel_contributions`). From these contributions c (positive part), `n_eff_channels` = (Σc)² / Σc² and `top2_fraction` is the share of the two strongest channels. Below `--narrowband-min-channels` (6) effective channels, or above 0.6 in two channels, the candidate is narrowband. A dispersed burst spreads over most of the band, while the carrier of an aircraft or of meteor scatter occupies one or two channels of 24 kHz.
    - A candidate at a known source is stored, with its data, as class `known` (`known.py`), and its `known_source` field gives the kind, name and separation:
@@ -60,6 +62,7 @@ epic++ (ChanReducer) ──Stokes I──▶ /dev/shm/<ring> ──▶ skymon ru
    - `rfi_rate` and `cand_rate`: RFI-class and all candidates per minute, over the last minute;
    - `sky_fraction_triggered`: the fraction of tracked pixels with a hit in the search blocks of the interval;
    - `missing_fraction`: the fraction of missing images;
+   - `search_noise`: the measured search noise relative to white noise through the same chain, at widths of about 1, 7 and 20 s (nearest tier and boxcar), the realised noise floor at the widths of scattered bursts; with `el_cyg_a` and `el_cas_a`, the elevations of Cyg A and Cas A;
    - `disturbed`: noise ratio above 1.5, RFI rate above `--disturbed-rfi-rate` (2 per minute), or more than 1% of the sky triggered.
 
    The last 6 h are kept in memory (`/api/status`, `/api/conditions`) and written to the table `conditions` of the node's database by the database thread; samples wait in memory while the database is away. Each candidate carries in `quality.conditions` the summary of the minute before its arrival, and each decided event of the combiner carries the conditions of the bands that detected or measured it, with `disturbed` set when any of them was disturbed.
@@ -173,7 +176,8 @@ python -m skymon simtest --realtime --frb-file frbs.json --chan0 1378 ...     # 
 Every `--inject-every` minutes on average (Poisson), the monitor adds a simulated dispersed burst to the incoming image, before regridding.
 - **Where.** A random tracked position that stays up for the whole sweep.
 - **DM.** Log-uniform over what that position can still complete.
-- **Strength.** A target S/N of 10–30, set from the measured noise of that pixel.
+- **Strength.** A target S/N of 10–30, set from the measured noise of that pixel, for an ideal search of the burst as injected.
+- **Scattering.** Scattered by default (`--inject-scatter`): the scattering time at 600 MHz is log-uniform over 0.31–10 ms (`--inject-tau600-ms`) and scales as ν⁻⁴, a one-sided exponential in each channel. A fraction 0.2 (`--inject-unscattered`) is left unscattered as a check of short pulses. `tau_1ghz` and `tau_s` (at the band centre) are logged; the recovered over the target S/N is the search efficiency for that burst.
 
 A candidate that matches an injection is classified as `injection`. Every injection is logged twice in `<out>/injections.jsonl`: when it is scheduled, and again as recovered or missed. The detection efficiency of the running system is therefore measured continuously; `/api/status` reports the totals.
 
@@ -189,7 +193,7 @@ python -m skymon simulate --shm skysim --duration 3600                    # imag
 python -m skymon evaluate --truth simtest/truth.jsonl --out simtest
 ```
 
-With 8 threads the monitor takes 0.57 of real time at 41.8 ms images with `--max-delay-factor 2 --block 512` (0.32 at 83.6 ms) on a Threadripper PRO 5965WX; 12 threads take 0.52, and more threads add nothing, since they then compete for memory bandwidth. The default OpenMP wait policy is faster than `OMP_WAIT_POLICY=passive` by about 15% (docs/skymon/DESIGN.md, §10.1b).
+With 8 threads on 12 cores the monitor takes 0.57 of real time at 41.8 ms images with `--max-delay-factor 2 --block 512` (0.32 at 83.6 ms) on a Threadripper PRO 5965WX; 12 threads take 0.52, and more threads add nothing, since they then compete for memory bandwidth. Confined to 8 cores and their siblings (the production layout), it takes 0.66 before and 0.67 with the wide-pulse search; confined to one L3 group of 6 cores it takes 0.87 (docs/skymon/DESIGN.md, §10.1c). The default OpenMP wait policy is faster than `OMP_WAIT_POLICY=passive` by about 15% (docs/skymon/DESIGN.md, §10.1b).
 
 `epic++` needs `--sky_shm epic_sky0` to publish. The ring holds 64 images by default (5.3 s, 537 MB for 128 channels).
 
@@ -212,7 +216,7 @@ With 8 threads the monitor takes 0.57 of real time at 41.8 ms images with `--max
 ## Tests
 
 ```bash
-cd tests/python && python -m unittest -v test_known test_chanflag test_skymon test_combiner test_coincidence test_context test_conditions test_localdb test_flux
+cd tests/python && python -m unittest -v test_known test_chanflag test_skymon test_combiner test_coincidence test_context test_conditions test_localdb test_flux test_archive_curator test_save_output
 ```
 
 The tests cover:
@@ -222,6 +226,7 @@ The tests cover:
 - the C++ publisher's pixel order against `epic_utils.save_output`;
 - the geometry;
 - detection by the searcher;
+- the wide-pulse search: the trend fitted over a longer history than the transform, the high-pass per tier, the tier settings and the false-alarm threshold, the gain on a scattered burst without loss on a short one, rising pixels with the wide boxcars, and the noise at fixed widths; the exponential scattering model and the scattered live injections;
 - interference flagging (`test_chanflag.py`): one channel and one image, noise without flags, the persistent mask and its release, and a moving carrier in a simulated sky that leaves no candidate while a burst is found;
 - an end-to-end simulated sky with stored candidates and the HTTP interface;
 - live injections;
