@@ -292,9 +292,13 @@ std::optional<std::string> ValidateOptions(const cxxopts::ParseResult& result) {
            std::to_string(GetNumGpus()) + " available!";
   }
 
-  if (channels > MAX_CHANNELS_4090) {
-    return "RTX 4090 only supports output channels upto "s +
-           std::to_string(MAX_CHANNELS_4090);
+  // the E-field kernel holds a channel per thread block (128 on an RTX 4090);
+  // the FX imager takes every channel kept from the stream
+  const int max_channels = result["imager"].as<std::string>() == "fx" ? int(NDP_NCHAN_SELECT) : int(MAX_CHANNELS_4090);
+  if (channels > max_channels) {
+    return "At most "s + std::to_string(max_channels) + " output channels with --imager " +
+           result["imager"].as<std::string>() +
+           (max_channels < int(NDP_NCHAN_SELECT) ? "" : " (build with -DEPIC_NCHAN_SELECT=192 for more)");
   }
 
   auto aeffs = result["aeff"].as<std::vector<float>>();

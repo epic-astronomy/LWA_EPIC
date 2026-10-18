@@ -100,6 +100,9 @@ set(AV_LIBS -lavcodec -lavformat -lavutil -lswscale -lavfilter )
 #set(CUDA_NVCC_EXECUTABLE "/home/batman/miniconda3/envs/epic310/bin/nvcc")
 #set(CMAKE_CUDA_COMPILER "/home/batman/miniconda3/envs/epic310/bin/nvcc")
 
+# Channels kept from each NDP stream (of 192): every target sees the same value
+set(EPIC_NCHAN_SELECT 128 CACHE STRING "channels kept from the centre of each NDP stream (128 or 192)")
+add_compile_definitions(EPIC_NCHAN_SELECT=${EPIC_NCHAN_SELECT})
 add_library(epic_cu STATIC src/MOFF_cu_handler.cu src/ex/host_helpers.cu src/ex/tcc_tap.cu src/ex/rfi_stage.cu
             src/ex/fx_imager.cu)
 target_compile_features(epic_cu PUBLIC cxx_std_17)

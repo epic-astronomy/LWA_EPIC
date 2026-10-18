@@ -27,6 +27,10 @@
 #define PI 3.141592653589793238
 #define SOL 299792458.0
 
+#ifndef EPIC_NCHAN_SELECT
+#define EPIC_NCHAN_SELECT 128
+#endif
+
 enum RESULT { SUCCESS = 0, FAILURE = -1 };
 
 enum RECEIVERS { VMA, VERBS };
@@ -53,8 +57,9 @@ enum CONSTANTS {
   SEQ_MULT_S = 8192,
   // NDP sends each stream's channels in this many packets per board
   NDP_CHAN_BLOCKS = 2,
-  // Number of channels kept from the centre of each NDP stream (192 channels)
-  NDP_NCHAN_SELECT = 128,
+  // Number of channels kept from the centre of each NDP stream (192 channels);
+  // a build setting (-DEPIC_NCHAN_SELECT, 128 or 192)
+  NDP_NCHAN_SELECT = EPIC_NCHAN_SELECT,
   LWA_SV_NSTANDS = 256,
   LWA_SV_NPOLS = 2,
   LWA_SV_INP_PER_CHAN = LWA_SV_NSTANDS * LWA_SV_NPOLS,
