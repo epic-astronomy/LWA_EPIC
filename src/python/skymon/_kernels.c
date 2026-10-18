@@ -141,6 +141,23 @@ static void detrend_tile(float* tile, int C, int W, int Pt, double* sx, double* 
   }
 }
 
+/* Remove the mean over the window from each channel of each pixel of a tile */
+static void demean_tile(float* tile, int C, int W, int Pt, double* sx) {
+  for (int c = 0; c < C; ++c) {
+    float* x = tile + (size_t)c * W * Pt;
+    for (int p = 0; p < Pt; ++p) sx[p] = 0;
+    for (int t = 0; t < W; ++t) {
+      const float* r = x + (size_t)t * Pt;
+      for (int p = 0; p < Pt; ++p) sx[p] += r[p];
+    }
+    for (int p = 0; p < Pt; ++p) sx[p] /= W;
+    for (int t = 0; t < W; ++t) {
+      float* r = x + (size_t)t * Pt;
+      for (int p = 0; p < Pt; ++p) r[p] -= (float)sx[p];
+    }
+  }
+}
+
 /*
  * Zero-DM filter (Eatough et al. 2009): subtract from every sample of a pixel
  * the mean over channels at that time. It removes whatever changes in all
@@ -310,15 +327,33 @@ static float* thread_buffer(size_t n) {
   return buf;
 }
 
-int skymon_search(const float* data, int C, int W, int P, const int* plan, int row0, int nb,
+/*
+ * The search of one window [C][Wh][P] (a tier's history). The trend
+ * (detrend: 1 a straight line, 2 the mean, 0 none) is fitted over all Wh
+ * samples; the FDMT and the zero-DM filter then run over the last
+ * W = Wh - f0 samples only, so a long detrend span costs memory but almost no
+ * transform time. Boxcars end in the last nb samples; every width must be at
+ * most W - nb + 1. strides (NULL: all 1): boxcar wi is evaluated at every
+ * strides[wi]-th end sample only, which must divide nb. noise 0: the noise
+ * sums (sumsq, cnt) are not accumulated and stay zero. Returns D, or -1 for
+ * an invalid width, stride or f0.
+ */
+int skymon_search(const float* data, int C, int Wh, int P, const int* plan, int row0, int nb,
                   const int* widths, int nw, const float* sigma, int seg, float clip,
                   float* best_snr, int* best_info, double* sumsq, int64_t* cnt,
-                  int nthreads, int ptile, int detrend, int zerodm) {
+                  int nthreads, int ptile, int detrend, int zerodm, int f0,
+                  const int* strides, int noise) {
   int final_rows = 0;
   max_rows(plan, C, &final_rows);
   const int D = final_rows - 1;
   const int nseg = (nb + seg - 1) / seg;
+  if (f0 < 0 || f0 >= Wh) return -1;
+  const int W = Wh - f0;
   const int t_first = W - nb;
+  for (int wi = 0; wi < nw; ++wi) {
+    if (widths[wi] < 1 || widths[wi] > t_first + 1) return -1;
+    if (strides && (strides[wi] < 1 || nb % strides[wi])) return -1;
+  }
   if (ptile <= 0) ptile = 16;
   const int ntile = (P + ptile - 1) / ptile;
   const int** pairbuf = malloc(sizeof(int*) * (C > 1 ? C : 1));
@@ -326,7 +361,7 @@ int skymon_search(const float* data, int C, int W, int P, const int* plan, int r
   fplan_init(&fp, plan, C, pairbuf);
   const size_t slab = (size_t)W * ptile;
   /* per thread: tile, the two halves of every level below the last, one row */
-  size_t need = (size_t)C * slab + slab + (size_t)(W + 1) * ptile;
+  size_t need = (size_t)C * Wh * ptile + slab + (size_t)(W + 1) * ptile;
   for (int L = 0; L < fp.nlev; ++L) need += 2 * (size_t)fp.maxrows[L] * slab;
   if (fp.nlev == 0) need += (size_t)fp.maxrows[0] * slab;
   for (int i = 0; i < P * nseg; ++i) {
@@ -339,7 +374,7 @@ int skymon_search(const float* data, int C, int W, int P, const int* plan, int r
   {
     float* wsp = thread_buffer(need);
     float* tile = wsp;
-    float* row = tile + (size_t)C * slab;
+    float* row = tile + (size_t)C * Wh * ptile;
     float* cs = row + slab;
     float* slots[64];
     float* s = cs + (size_t)(W + 1) * ptile;
@@ -357,8 +392,10 @@ int skymon_search(const float* data, int C, int W, int P, const int* plan, int r
     int* bd = malloc((size_t)ptile * nseg * sizeof(int));
     int* bt = malloc((size_t)ptile * nseg * sizeof(int));
     int* bw = malloc((size_t)ptile * nseg * sizeof(int));
-    double* accp = malloc((size_t)ptile * sizeof(double));
-    int64_t* nap = malloc((size_t)ptile * sizeof(int64_t));
+    /* per-pixel noise sums over one row and width (at most nb terms, each
+       below clip^2 sigma^2): float is ample and vectorises twice as wide */
+    float* accp = malloc((size_t)ptile * sizeof(float));
+    int32_t* nap = malloc((size_t)ptile * sizeof(int32_t));
     double* dsx = malloc((size_t)ptile * sizeof(double));
     double* dstx = malloc((size_t)ptile * sizeof(double));
 #pragma omp for schedule(dynamic)
@@ -366,8 +403,13 @@ int skymon_search(const float* data, int C, int W, int P, const int* plan, int r
       int p0 = it * ptile;
       int pt = P - p0 < ptile ? P - p0 : ptile;
       const size_t sl = (size_t)W * pt;
-      load_tile(data, C, W, P, p0, pt, tile);
-      if (detrend) detrend_tile(tile, C, W, pt, dsx, dstx);
+      load_tile(data, C, Wh, P, p0, pt, tile);
+      if (detrend == 1) detrend_tile(tile, C, Wh, pt, dsx, dstx);
+      else if (detrend == 2) demean_tile(tile, C, Wh, pt, dsx);
+      if (f0 > 0) /* keep the last W samples of every channel, packed [C][W][pt] */
+        for (int c = 0; c < C; ++c)
+          memmove(tile + (size_t)c * W * pt, tile + ((size_t)c * Wh + f0) * pt,
+                  (size_t)W * pt * sizeof(float));
       if (zerodm) zerodm_tile(tile, C, W, pt);
       for (int i = 0; i < pt * nseg; ++i) {
         bb[i] = -INFINITY;
@@ -406,8 +448,11 @@ int skymon_search(const float* data, int C, int W, int P, const int* plan, int r
           const float sg_ = sigma[d * nw + wi];
           const float inv = sg_ > 0 ? 1.f / sg_ : 0.f;
           const float lim = clip * sg_;
+          /* a wide boxcar may be evaluated every stride samples, ending on
+             the last sample of the window (strides divide nb) */
+          const int st = strides ? strides[wi] : 1;
           for (int p = 0; p < pt; ++p) { accp[p] = 0; nap[p] = 0; }
-          for (int t = t_first; t < W; ++t) {
+          for (int t = t_first + st - 1; t < W; t += st) {
             const int sg = (t - t_first) / seg;
             const float* restrict hi = cs + (size_t)(t + 1) * pt;
             const float* restrict lo = cs + (size_t)(t + 1 - w) * pt;
@@ -415,22 +460,33 @@ int skymon_search(const float* data, int C, int W, int P, const int* plan, int r
             int* restrict b2 = bd + (size_t)sg * pt;
             int* restrict b3 = bt + (size_t)sg * pt;
             int* restrict b4 = bw + (size_t)sg * pt;
-            for (int p = 0; p < pt; ++p) {
-              const float v = hi[p] - lo[p];
-              const int in = fabsf(v) < lim;
-              accp[p] += in ? (double)v * v : 0.0;
-              nap[p] += in;
-              const float snr = v * inv;
-              const int better = snr > b1[p];
-              b1[p] = better ? snr : b1[p];
-              b2[p] = better ? d : b2[p];
-              b3[p] = better ? t : b3[p];
-              b4[p] = better ? wi : b4[p];
+            if (noise) {
+              for (int p = 0; p < pt; ++p) {
+                const float v = hi[p] - lo[p];
+                const int in = fabsf(v) < lim;
+                accp[p] += in ? v * v : 0.f;
+                nap[p] += in;
+                const float snr = v * inv;
+                const int better = snr > b1[p];
+                b1[p] = better ? snr : b1[p];
+                b2[p] = better ? d : b2[p];
+                b3[p] = better ? t : b3[p];
+                b4[p] = better ? wi : b4[p];
+              }
+            } else {
+              for (int p = 0; p < pt; ++p) {
+                const float snr = (hi[p] - lo[p]) * inv;
+                const int better = snr > b1[p];
+                b1[p] = better ? snr : b1[p];
+                b2[p] = better ? d : b2[p];
+                b3[p] = better ? t : b3[p];
+                b4[p] = better ? wi : b4[p];
+              }
             }
           }
           double acc = 0;
           int64_t na = 0;
-          for (int p = 0; p < pt; ++p) { acc += accp[p]; na += nap[p]; }
+          for (int p = 0; p < pt; ++p) { acc += (double)accp[p]; na += nap[p]; }
           ssq[d * nw + wi] += acc;
           nn[d * nw + wi] += na;
         }
@@ -800,11 +856,12 @@ void skymon_tier_push(const float* x, int C, int P, float* base, float* hist, in
  * while dec_j is set to zero. The last tier reached adds its input to its own
  * sum when dec[ntier - 1] is not NULL. The same operations as successive
  * calls of skymon_tier_push (Searcher._push_tier), one channel at a time.
- * base, hist, dec: arrays of ntier pointers; W, pos: [ntier].
+ * base, hist, dec: arrays of ntier pointers; W, pos, a_hp: [ntier] (each tier's
+ * high-pass weight, 1 / hp_tau).
  */
 void skymon_tier_cascade(const float* x, int C, int P, int ntier, float** base, float** hist,
-                         const int* W, const int* pos, float** dec, float a_hp, float scale,
-                         int nthreads) {
+                         const int* W, const int* pos, float** dec, const float* a_hp,
+                         float scale, int nthreads) {
 #pragma omp parallel num_threads(nthreads)
   {
     float* tmp = thread_buffer((size_t)P > 0 ? (size_t)P : 1);
@@ -815,10 +872,11 @@ void skymon_tier_cascade(const float* x, int C, int P, int ntier, float** base, 
         float* b = base[j] + (size_t)c * P;
         float* h = hist[j] + ((size_t)c * W[j] + pos[j]) * P;
         float* dc = dec[j] ? dec[j] + (size_t)c * P : NULL;
+        const float a = a_hp[j];
         for (int p = 0; p < P; ++p) {
           float v = xc[p];
           float y = v - b[p];
-          b[p] += a_hp * y;
+          b[p] += a * y;
           h[p] = y;
           if (dc) dc[p] += v;
         }

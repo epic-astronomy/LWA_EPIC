@@ -36,7 +36,31 @@ def add_monitor_args(p):
     p.add_argument("--nside", type=int, default=0, help="HEALPix nside (0: from the beam)")
     p.add_argument("--el-min", type=float, default=d.el_min)
     p.add_argument("--dm-max", type=float, default=d.dm_max)
-    p.add_argument("--threshold", type=float, default=d.threshold)
+    p.add_argument("--threshold", type=float, default=d.threshold,
+                   help="S/N threshold of the reference search (boxcars 1, 2, 4, 8); wider "
+                        "boxcars raise the threshold applied for their extra trials, at the same "
+                        "Gaussian false-alarm rate, unless --no-far-match")
+    p.add_argument("--no-far-match", action="store_true",
+                   help="apply --threshold unchanged whatever the boxcar widths")
+    p.add_argument("--widths", default=None,
+                   help="boxcar widths in tier samples: '1,2,4,8' for every tier, or per tier "
+                        "range, e.g. '0-4:1,2,4,8,16,32,64;5-:1,2,4,8' (default "
+                        f"{d.widths if isinstance(d.widths, str) else ','.join(map(str, d.widths))})")
+    p.add_argument("--hp-tau", default=None,
+                   help=f"tier high-pass time constant in tier samples, a number or a per-tier "
+                        f"spec (default {d.hp_tau}); at least --hp-factor times the widest boxcar")
+    p.add_argument("--hp-factor", type=float, default=d.hp_factor)
+    p.add_argument("--detrend-len", default=None,
+                   help="tier history (span of the trend fit) of at least this many tier samples, "
+                        "a number or a per-tier spec (default: the transform's window)")
+    p.add_argument("--detrend-factor", type=float, default=d.detrend_factor,
+                   help="tier history of at least this many times the widest boxcar")
+    p.add_argument("--detrend", choices=("linear", "mean"), default=d.detrend)
+    p.add_argument("--boxcar-stride", type=int, default=d.boxcar_stride_div,
+                   help="evaluate a boxcar of w samples every w / N samples (a power of two; "
+                        "0: every sample); the S/N loss is 1/(4N) on average")
+    p.add_argument("--noise-every", type=int, default=d.noise_every,
+                   help="measure the search noise in one block of this many per tier")
     p.add_argument("--threads", type=int, default=d.nthreads)
     p.add_argument("--block", type=int, default=d.block0, help="tier-0 samples per search")
     p.add_argument("--max-delay-factor", type=float, default=d.delay_factor,
@@ -50,6 +74,13 @@ def add_monitor_args(p):
                    help="mean minutes between live test injections (0 = off)")
     p.add_argument("--inject-snr", type=float, nargs=2, default=d.inject_snr)
     p.add_argument("--inject-dm", type=float, nargs=2, default=d.inject_dm)
+    p.add_argument("--inject-scatter", action=argparse.BooleanOptionalAction,
+                   default=d.inject_scatter,
+                   help="scatter live injections: tau at 600 MHz log-uniform over "
+                        "--inject-tau600-ms, scaled as nu^-4")
+    p.add_argument("--inject-tau600-ms", type=float, nargs=2, default=d.inject_tau600_ms)
+    p.add_argument("--inject-unscattered", type=float, default=d.inject_unscattered_fraction,
+                   help="fraction of live injections left unscattered (short-pulse check)")
     p.add_argument("--clip", type=float, default=d.clip,
                    help="normalised cells beyond this are set to zero")
     p.add_argument("--chan-flag-sigma", type=float, default=d.chan_flag_sigma,
@@ -82,7 +113,13 @@ def make_config(a) -> Config:
                   known_pulsars_csv=a.known_pulsars,
                   clip=a.clip, chan_flag_sigma=a.chan_flag_sigma,
                   cond_rfi_rate=a.disturbed_rfi_rate, calinfo_path=a.calinfo,
-                  beam_model=a.beam_model)
+                  beam_model=a.beam_model, far_matched=not a.no_far_match,
+                  inject_scatter=a.inject_scatter, inject_tau600_ms=tuple(a.inject_tau600_ms),
+                  inject_unscattered_fraction=a.inject_unscattered,
+                  hp_factor=a.hp_factor, boxcar_stride_div=a.boxcar_stride,
+                  noise_every=a.noise_every, detrend_factor=a.detrend_factor, detrend=a.detrend,
+                  **{k: v for k, v in (("widths", a.widths), ("hp_tau", a.hp_tau),
+                                       ("detrend_len", a.detrend_len)) if v is not None})
 
 
 def run_ring(monitor: Monitor, ring: str, stop: threading.Event, max_queue: int = 512,
@@ -226,6 +263,11 @@ def main(argv=None):
     p.add_argument("--seed", type=int, default=None)
     p.add_argument("--spectra", action="store_true",
                    help="give each FRB a spectrum (power law or band-limited) and scattering")
+    p.add_argument("--tau600-ms", type=float, nargs=2, default=None,
+                   help="scattering at 600 MHz log-uniform over this range (ms), scaled as "
+                        "nu^-4 (0.31 10 is the base distribution of the sensitivity study)")
+    p.add_argument("--unscattered", type=float, default=0.0,
+                   help="fraction left unscattered with --tau600-ms")
     a = ap.parse_args(argv)
 
     if a.cmd == "combine":
@@ -243,7 +285,8 @@ def main(argv=None):
     if a.cmd == "frblist":
         from .simulate import make_frb_list
         frbs = make_frb_list(a.start or time.time(), a.duration, a.rate, tuple(a.dm),
-                             tuple(a.snr), a.f_low, a.f_high, seed=a.seed, spectra=a.spectra)
+                             tuple(a.snr), a.f_low, a.f_high, seed=a.seed, spectra=a.spectra,
+                             tau600_ms=a.tau600_ms, unscattered=a.unscattered)
         with open(a.out, "w") as f:
             json.dump(frbs, f, indent=1)
         print(f"{len(frbs)} FRBs written to {a.out}")

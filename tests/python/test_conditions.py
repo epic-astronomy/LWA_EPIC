@@ -101,6 +101,22 @@ class TestConditions(unittest.TestCase):
         self.assertIsNotNone(st["summary"]["last_disturbed"])
         self.assertEqual(st["latest"]["t"], self.mon.cond.samples()[-1]["t"])
 
+    def test_search_noise_at_fixed_widths(self):
+        """Each sample records the search noise against white noise at about 1, 7 and 20 s"""
+        s = self.mon.cond.samples()
+        for r in s:
+            self.assertEqual([x["target_s"] for x in r["search_noise"]], [1.0, 7.0, 20.0])
+            self.assertTrue(-90 <= r["el_cyg_a"] <= 90 and -90 <= r["el_cas_a"] <= 90, r)
+        quiet = [x for r in self.window(120, NOISY[0]) for x in r["search_noise"]
+                 if x["target_s"] == 1.0]
+        self.assertTrue(quiet and all(x["ratio"] is not None for x in quiet), quiet)
+        for x in quiet:  # a simulated sky of radiometer noise: about white
+            self.assertLess(abs(x["ratio"] - 1.0), 0.3, x)
+        noisy = [x["ratio"] for r in self.window(NOISY[0] + 40, NOISY[1] + 10)
+                 for x in r["search_noise"] if x["target_s"] == 1.0]
+        self.assertTrue(noisy and max(noisy) > 1.2 * float(np.median([x["ratio"] for x in quiet])),
+                        (noisy, quiet))
+
     def test_candidates_carry_conditions(self):
         cands = self.mon.store.list()
         self.assertTrue(cands)

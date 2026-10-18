@@ -8,8 +8,10 @@ In channel c (edges f1 < f2, MHz) a burst arriving at t_inf at infinite
 frequency is received over [t_inf + K DM / f2^2, t_inf + K DM / f1^2 + width]:
 the sweep across the channel plus the intrinsic width. Its fluence is spread
 uniformly over that interval, and an image covering [t, t + dt) receives the
-overlapping fraction. On the sky it is a point source, which the image shows
-with a Gaussian beam of FWHM lambda / D.
+overlapping fraction. A scattered burst (tau_1ghz > 0) has that box convolved
+with a one-sided exponential of time constant tau_1ghz (nu_c / 1 GHz)^-4 at
+the channel centre nu_c. On the sky it is a point source, which the image
+shows with a Gaussian beam of FWHM lambda / D.
 """
 from __future__ import annotations
 
@@ -34,12 +36,20 @@ class Burst:
     amp_sigma: float = 0.0  # fluence per channel, in units of the per-image noise
     kind: str = "injection"  # injection (live test) or simulated (sky simulator truth)
     meta: dict = field(default_factory=dict)
+    tau_1ghz: float = 0.0  # scattering time at 1 GHz (s), scaled as nu^-4
 
     def arrival(self, f_mhz):
         return self.t_inf + K_DM * self.dm * np.asarray(f_mhz, float) ** -2
 
+    def tau(self, f_mhz):
+        """Scattering time (s) at f_mhz"""
+        return self.tau_1ghz * (np.asarray(f_mhz, float) / 1000.0) ** -4
+
     def span(self, edges_mhz):
-        return float(self.arrival(edges_mhz[-1])), float(self.arrival(edges_mhz[0]) + self.width_s)
+        """From the arrival at the top edge to the end at the bottom, 7 scattering times later"""
+        tail = 7.0 * float(self.tau(edges_mhz[0])) if self.tau_1ghz > 0 else 0.0
+        return float(self.arrival(edges_mhz[-1])), float(self.arrival(edges_mhz[0]) + self.width_s
+                                                         + tail)
 
     def to_dict(self):
         return asdict(self)
@@ -47,16 +57,40 @@ class Burst:
 
 def channel_fractions(burst: Burst, edges_mhz: np.ndarray, t0: float, dt: float) -> np.ndarray:
     """Fraction of each channel's fluence that falls in the image [t0, t0 + dt)"""
+    edges_mhz = np.asarray(edges_mhz, float)
     a = burst.arrival(edges_mhz[1:])  # top edge of each channel arrives first
     b = burst.arrival(edges_mhz[:-1]) + burst.width_s
-    ov = np.clip(np.minimum(b, t0 + dt) - np.maximum(a, t0), 0.0, None)
-    return ov / np.maximum(b - a, 1e-9)
+    if burst.tau_1ghz <= 0:
+        ov = np.clip(np.minimum(b, t0 + dt) - np.maximum(a, t0), 0.0, None)
+        return ov / np.maximum(b - a, 1e-9)
+    # the box [a, b] convolved with exp(-t / tau) / tau: its cumulative
+    # fluence at t is (H(t - a) - H(t - b)) / (b - a), H(u) = u - tau (1 - e^(-u/tau))
+    tau = burst.tau(0.5 * (edges_mhz[:-1] + edges_mhz[1:]))
+    L = np.maximum(b - a, 1e-9)
+
+    def H(u):
+        u = np.maximum(u, 0.0)
+        return u - tau * -np.expm1(-u / tau)
+
+    def F(t):
+        return (H(t - a) - H(t - b)) / L
+
+    return np.clip(F(t0 + dt) - F(t0), 0.0, 1.0)
 
 
 def effective_samples(burst: Burst, edges_mhz: np.ndarray, dt: float) -> float:
-    """Samples a channel's signal occupies at resolution dt, including straddling"""
+    """
+    Samples a channel's signal occupies at resolution dt, including straddling.
+    Scattering (at the band centre) adds in quadrature, as in the sensitivity
+    model's effective width sqrt(w^2 + tau^2), so that a burst given a target
+    S/N with it is found at that S/N times the search efficiency for its
+    scattering.
+    """
     smear = float(np.mean(burst.arrival(edges_mhz[:-1]) - burst.arrival(edges_mhz[1:])))
-    return (smear + burst.width_s) / dt + 1.0
+    w = smear + burst.width_s
+    if burst.tau_1ghz > 0:
+        w = math.hypot(w, float(burst.tau(0.5 * (edges_mhz[0] + edges_mhz[-1]))))
+    return w / dt + 1.0
 
 
 def amplitude_for_snr(snr: float, nchan: int, n_eff: float) -> float:

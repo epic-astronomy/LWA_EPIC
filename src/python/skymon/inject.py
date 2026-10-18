@@ -12,6 +12,16 @@ running system is measured continuously.
 
 Injections exercise everything after the imager: regridding, normalisation,
 RFI excision, dedispersion, search, clustering and storage.
+
+Scattering. By default a burst is scattered as FRBs at these frequencies are:
+tau at 600 MHz is drawn log-uniformly over tau600_ms (0.31-10 ms, the base
+distribution of the sensitivity study) and scaled as nu^-4, a one-sided
+exponential in every channel (burst.channel_fractions); at 57-76 MHz that is
+1.4-120 s. A fraction unscattered_fraction is injected unscattered, as a check
+of short (pulsar-like) pulses. The target S/N is that of an ideal search for
+the scattered burst (its width added in quadrature, burst.effective_samples),
+so the recovered over the target S/N measures the search efficiency for real
+bursts. tau_1ghz is recorded with each injection, and tau_s at the band centre.
 """
 from __future__ import annotations
 
@@ -33,7 +43,8 @@ from .geometry import beam_fwhm_deg, time_to_set
 class LiveInjector:
     def __init__(self, out_dir: str, interval_s: float = 3600.0, snr=(10.0, 30.0),
                  dm=(10.0, 3000.0), width_s=(0.001, 0.05), lead_s: float = 5.0,
-                 rng=None, enabled: bool = True):
+                 rng=None, enabled: bool = True, scatter: bool = True,
+                 tau600_ms=(0.31, 10.0), unscattered_fraction: float = 0.2):
         self.path = os.path.join(out_dir, "injections.jsonl")
         os.makedirs(out_dir, exist_ok=True)
         self.interval = interval_s
@@ -41,6 +52,9 @@ class LiveInjector:
         self.dm = dm
         self.width = width_s
         self.lead = lead_s
+        self.scatter = scatter
+        self.tau600_ms = tau600_ms
+        self.unscattered_fraction = unscattered_fraction
         self.rng = rng or np.random.default_rng()
         self.enabled = enabled  # random injections need interval_s > 0 as well
         self.next_at = None
@@ -70,12 +84,14 @@ class LiveInjector:
             return None
         edges = searcher.edges
         sweep = K_DM * (edges[0] ** -2 - edges[-1] ** -2)
+        tau1 = self.draw_tau_1ghz()
+        tail = 7.0 * tau1 * (float(edges[0]) / 1000.0) ** -4
         for _ in range(20):
             s = int(self.rng.choice(slots))
             h = int(grid.hpix_of[s])
             ra, dec = float(grid.ra[h]), float(grid.dec[h])
             left = float(time_to_set(dec, ra, now, grid.el_min))
-            dm_hi = min(self.dm[1], (left - self.lead - 60.0) / sweep,
+            dm_hi = min(self.dm[1], (left - self.lead - 60.0 - tail) / sweep,
                         searcher.tiers[-1].dm_max)
             if dm_hi > self.dm[0]:
                 break
@@ -87,7 +103,7 @@ class LiveInjector:
         width = float(math.exp(self.rng.uniform(math.log(self.width[0]), math.log(self.width[1]))))
         snr = float(self.rng.uniform(*self.snr))
         b = Burst(id="inj-" + uuid.uuid4().hex[:10], ra=ra, dec=dec, dm=dm, t_inf=t_inf,
-                  width_s=width, snr=snr, kind="injection")
+                  width_s=width, snr=snr, kind="injection", tau_1ghz=tau1)
         b.meta = dict(scheduled_unix=now)
         self._amplitude(b, s, searcher)
         with self.lock:
@@ -95,6 +111,18 @@ class LiveInjector:
         self.stats["injected"] += 1
         self._log(dict(event="scheduled", **b.to_dict()))
         return b
+
+    def draw_tau_1ghz(self) -> float:
+        """
+        Scattering time at 1 GHz (s) of a new injection: 0 for a fraction
+        unscattered_fraction (or with scatter off), else tau at 600 MHz
+        log-uniform over tau600_ms, scaled as nu^-4
+        """
+        if not self.scatter or self.rng.random() < self.unscattered_fraction:
+            return 0.0
+        lo, hi = self.tau600_ms
+        t600 = 1e-3 * math.exp(self.rng.uniform(math.log(lo), math.log(hi)))
+        return float(t600 * (1000.0 / 600.0) ** -4)
 
     def _amplitude(self, b: Burst, slot: int, searcher):
         """Set b's per-channel amplitude from the noise of the tracked pixel slot"""
@@ -106,8 +134,9 @@ class LiveInjector:
         sig = np.sqrt(np.maximum(searcher.var[:, slot], 0)).astype(np.float64)
         b._amp = b.amp_sigma * sig * tier.decim ** 0.5  # noise of a tier sample is decim x
         span = b.span(edges)
+        tau_c = float(b.tau(0.5 * (edges[0] + edges[-1]))) if b.tau_1ghz > 0 else 0.0
         b.meta.update(slot=int(slot), tier=tier.level, n_eff=n_eff,
-                      sigma=float(np.median(sig)), span=list(span),
+                      sigma=float(np.median(sig)), span=list(span), tau_s=tau_c,
                       expire=span[1] + 3 * tier.block * tier.dt + 120.0)
 
     def add_external(self, spec: dict) -> Burst:
@@ -115,7 +144,8 @@ class LiveInjector:
         A burst requested from outside (the combiner's coordinated injections):
         the same position, DM and time in every band, each band setting the
         amplitude for the requested S/N from its own noise once the position is
-        tracked. Fields: id, ra, dec, dm, t_inf, and optional snr, width_s.
+        tracked. Fields: id, ra, dec, dm, t_inf, and optional snr, width_s,
+        tau_1ghz (unscattered unless given).
         """
         for k in ("id", "ra", "dec", "dm", "t_inf"):
             if k not in spec:
@@ -123,7 +153,7 @@ class LiveInjector:
         b = Burst(id=str(spec["id"]), ra=float(spec["ra"]) % 360.0, dec=float(spec["dec"]),
                   dm=float(spec["dm"]), t_inf=float(spec["t_inf"]),
                   width_s=float(spec.get("width_s", 0.005)), snr=float(spec.get("snr", 20.0)),
-                  kind="injection")
+                  kind="injection", tau_1ghz=float(spec.get("tau_1ghz", 0.0)))
         b.meta = dict(external=True, received_unix=time.time())
         with self.lock:
             if any(o.id == b.id for o in self.active + self.waiting):
@@ -177,9 +207,13 @@ class LiveInjector:
                 if separation_deg(b.ra, b.dec, cand.ra, cand.dec) > radius_deg:
                     continue
                 t_bot = b.t_inf + K_DM * b.dm / cand.f_lo_mhz ** 2
-                if abs(t_bot - cand.t_bottom) > 3 * cand.tier_dt + 2 * cand.width_s + 2.0:
+                tau = 3.0 * float(b.tau(cand.f_lo_mhz)) if b.tau_1ghz > 0 else 0.0
+                if abs(t_bot - cand.t_bottom) > 3 * cand.tier_dt + 2 * cand.width_s + 2.0 + tau:
                     continue
-                if abs(b.dm - cand.dm) > max(0.1 * b.dm, 3 * cand.dm_step):
+                # a wide boxcar (or a scattering tail) fixes the DM only to its
+                # width over the sweep per DM
+                ddm = (cand.width_s + tau) / (K_DM * (cand.f_lo_mhz ** -2 - cand.f_hi_mhz ** -2))
+                if abs(b.dm - cand.dm) > max(0.1 * b.dm, 3 * cand.dm_step, ddm):
                     continue
                 return b
         return None
@@ -200,7 +234,8 @@ class LiveInjector:
                 if now > b.meta["expire"]:
                     rec = dict(event="recovered" if "recovered" in b.meta else "missed",
                                id=b.id, dm=b.dm, snr_target=b.snr, ra=b.ra, dec=b.dec,
-                               t_inf=b.t_inf, **({"found": b.meta["recovered"]}
+                               t_inf=b.t_inf, tau_1ghz=b.tau_1ghz,
+                               tau_s=b.meta.get("tau_s", 0.0), **({"found": b.meta["recovered"]}
                                                 if "recovered" in b.meta else {}))
                     if rec["event"] == "missed":
                         self.stats["missed"] += 1

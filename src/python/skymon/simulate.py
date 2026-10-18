@@ -281,7 +281,9 @@ class SkySimulator:
         Start a burst from the shared list; its amplitude comes from this band's
         noise. With a spectrum in the list, the S/N in this band is the listed
         one times the spectrum at the band centre; scattering then spreads the
-        same fluence over tau(nu) more, which lowers the S/N found.
+        same fluence over a one-sided exponential of tau(nu) = tau_1ghz
+        (nu / 1 GHz)^-4 in each channel (burst.channel_fractions), which lowers
+        the S/N of a matched search to snr_expected (width added in quadrature).
         """
         nu = float(np.mean(self.centres))
         factor = spectral_factor(spec.get("spectrum"), nu)
@@ -303,7 +305,7 @@ class SkySimulator:
         iy = int(np.clip(round(float(y)) - 1, 0, G - 1))
         b._amp = b.amp_sigma * self.sigma[:, iy, ix].astype(np.float64) * decim ** 0.5
         # scattering: the same fluence over a longer time (after the amplitude is set)
-        b.width_s += tau
+        b.tau_1ghz = float(spec.get("tau_1ghz", 0.0))
         n_scat = effective_samples(b, self.edges, tdt)
         b.meta = dict(span=list(b.span(self.edges)), tier_dt=tdt, n_eff=n_eff,
                       el=float(altaz(b.ra, b.dec, unix)[0]), spectral_factor=factor,
@@ -411,12 +413,16 @@ def run_shm(sim: SkySimulator, ring_name: str, duration_s: float, nslots: int = 
 
 def make_frb_list(start, duration, rate_per_hour, dm=(50.0, 600.0), snr=(10.0, 30.0),
                   f_low=33.0, f_high=77.3, el_min=20.0, margin_s=400.0, seed=None,
-                  spectra=False):
+                  spectra=False, tau600_ms=None, unscattered=0.0):
     """
     FRBs for several bands at once: every burst reaches the top of the highest
     band after start + 120 s and the bottom of the lowest band before
     start + duration - margin_s, at a position above el_min for the whole
     sweep. Returns a list of dicts (id, ra, dec, dm, t_inf, snr, width_s).
+    tau600_ms (lo, hi): scattering at 600 MHz log-uniform over this range,
+    scaled as nu^-4 (tau_1ghz), except a fraction unscattered; it replaces
+    the scattering of spectra. The burst's scattering tail at f_low (7 tau)
+    also ends before start + duration - margin_s.
     """
     rng = np.random.default_rng(seed)
     n = rng.poisson(rate_per_hour * duration / 3600.0)
@@ -425,8 +431,14 @@ def make_frb_list(start, duration, rate_per_hour, dm=(50.0, 600.0), snr=(10.0, 3
         if len(out) >= n:
             break
         d = float(math.exp(rng.uniform(math.log(dm[0]), math.log(dm[1]))))
+        tau1 = None
+        if tau600_ms is not None:
+            tau1 = 0.0 if rng.random() < unscattered else float(
+                1e-3 * math.exp(rng.uniform(math.log(tau600_ms[0]), math.log(tau600_ms[1])))
+                * (1000.0 / 600.0) ** -4)
+        tail = 7.0 * (tau1 or 0.0) * (f_low / 1000.0) ** -4
         lo = start + 120.0 - K_DM * d / f_high ** 2
-        hi = start + duration - margin_s - K_DM * d / f_low ** 2
+        hi = start + duration - margin_s - tail - K_DM * d / f_low ** 2
         if hi <= lo:
             continue
         t_inf = float(rng.uniform(lo, hi))
@@ -440,6 +452,8 @@ def make_frb_list(start, duration, rate_per_hour, dm=(50.0, 600.0), snr=(10.0, 3
                    width_s=float(math.exp(rng.uniform(math.log(0.001), math.log(0.05)))))
         if spectra:
             frb.update(random_spectrum(rng, f_low, f_high))
+        if tau1 is not None:
+            frb["tau_1ghz"] = tau1
         out.append(frb)
     return sorted(out, key=lambda f: f["t_inf"])
 

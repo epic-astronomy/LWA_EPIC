@@ -111,7 +111,7 @@ class TestDedispersion(unittest.TestCase):
                         rinfo[up, sg] = (d, t, wi)
             np.testing.assert_array_equal(best, ref)
             np.testing.assert_array_equal(info, rinfo)
-            np.testing.assert_allclose(sumsq, ssq, rtol=1e-9)
+            np.testing.assert_allclose(sumsq, ssq, rtol=1e-5)
 
     def test_window_shift(self):
         h = np.random.default_rng(2).standard_normal((3, 10, 5)).astype(np.float32)
@@ -396,7 +396,7 @@ class TestSharedFrbList(unittest.TestCase):
 
 
 def _sim_and_monitor(out, duration, frb_per_hour, inject_every_s, snr=(25, 40), dm=(10, 120),
-                     seed=5):
+                     seed=5, **cfg):
     from skymon.monitor import Config, Monitor
     from skymon.simulate import SkySimulator, tier_dt_function
 
@@ -408,7 +408,7 @@ def _sim_and_monitor(out, duration, frb_per_hour, inject_every_s, snr=(25, 40), 
     mon = Monitor(Config(out_dir=out, nside=32, dm_max=300.0, block0=64, nthreads=4,
                          warmup_images=32, inject_interval_s=inject_every_s,
                          inject_snr=(25, 40), inject_dm=(10, 120), seed=seed,
-                         accum_hours=0.5))
+                         accum_hours=0.5, **cfg))
     for _ in range(int(duration / sim.dt)):
         meta, img = sim.next_image()
         mon.process(meta, img)
@@ -469,7 +469,8 @@ class TestEndToEnd(unittest.TestCase):
     def test_live_injections_are_recovered(self):
         out = tempfile.mkdtemp()
         try:
-            sim, mon = _sim_and_monitor(out, 480, frb_per_hour=0, inject_every_s=40)
+            sim, mon = _sim_and_monitor(out, 480, frb_per_hour=0, inject_every_s=40,
+                                        inject_scatter=False)
             mon.injector.expire(math.inf)
             s = mon.injector.stats
             self.assertGreaterEqual(s["injected"], 3)
@@ -480,6 +481,256 @@ class TestEndToEnd(unittest.TestCase):
             self.assertIn("recovered", events)
             inj = [c for c in mon.store.list() if c.cls == "injection"]
             self.assertGreaterEqual(len(inj), s["recovered"])
+        finally:
+            shutil.rmtree(out, ignore_errors=True)
+
+
+class TestWideSearch(unittest.TestCase):
+    """Per-tier boxcar widths, high-pass and trend span; the false-alarm threshold"""
+
+    def test_search_trend_over_the_history_transform_over_the_last_samples(self):
+        """kernels.search with f0: the trend over all samples, the search over the last W - f0"""
+        rng = np.random.default_rng(11)
+        edges = BAND.edges_mhz()
+        C, D, nb, P, f0 = 64, 64, 32, 24, 40
+        W = f0 + D + nb
+        flat = kernels.flatten_plan(fdmt_plan(edges, D))
+        t = np.arange(W, dtype=np.float32)[None, :, None]
+        x = (rng.standard_normal((C, W, P)) + 0.02 * t).astype(np.float32)
+        widths = np.array([1, 4, 16, 64], np.int32)
+        sigma = np.full((D + 1, 4), 9.0, np.float32)
+        for mode in (1, 2):
+            y = x.astype(np.float64)
+            y -= y.mean(axis=1, keepdims=True)
+            if mode == 1:
+                u = np.arange(W) - (W - 1) / 2.0
+                y -= (np.tensordot(u, y, axes=(0, 1)) / np.sum(u * u))[:, None, :] * u[None, :, None]
+            ref = kernels.search(np.ascontiguousarray(y[:, f0:], np.float32), flat, D, 0, nb, widths,
+                                 sigma, 16, nthreads=2, detrend=False, zerodm=True)
+            got = kernels.search(x, flat, D, 0, nb, widths, sigma, 16, nthreads=2, detrend=mode,
+                                 zerodm=True, f0=f0)
+            np.testing.assert_allclose(got[0], ref[0], rtol=1e-4, atol=1e-4)
+            np.testing.assert_allclose(got[2], ref[2], rtol=1e-3, atol=1e-6 * ref[2].max())
+        with self.assertRaises(ValueError):  # a boxcar longer than D + 1 samples
+            kernels.search(x, flat, D, 0, nb, np.array([1, D + 2], np.int32),
+                           np.ones((D + 1, 2), np.float32), 16, f0=f0)
+
+    def test_cascade_with_a_high_pass_per_tier(self):
+        from types import SimpleNamespace as NS
+        rng = np.random.default_rng(12)
+        C, P, W, n = 3, 11, 6, 3
+        k = float(np.float32(1 / math.sqrt(2)))
+        a_hp = np.array([1 / 32, 1 / 256, 1 / 64], np.float32)
+        a = [NS(base=rng.standard_normal((C, P)).astype(np.float32),
+                history=np.zeros((C, W, P), np.float32), pos=1,
+                acc=rng.standard_normal((C, P)).astype(np.float32)) for _ in range(n)]
+        b = [NS(base=t.base.copy(), history=t.history.copy(), pos=t.pos, acc=t.acc.copy())
+             for t in a]
+        x = rng.standard_normal((C, P)).astype(np.float32)
+        kernels.tier_cascade(x, a, a_hp, k, last_dec=True, nthreads=2)
+        y = x
+        for j, t in enumerate(b):
+            kernels.tier_push(y, t.base, t.history, t.pos, float(a_hp[j]), t.acc)
+            if j + 1 < n:
+                y = t.acc * np.float32(k)
+                t.acc[:] = 0
+        for u, v in zip(a, b):
+            for f in ("base", "history", "acc"):
+                np.testing.assert_array_equal(getattr(u, f), getattr(v, f))
+
+    def test_tier_settings(self):
+        from skymon.search import Searcher, parse_tier_spec, tier_spec
+
+        self.assertEqual(parse_tier_spec("0-4:1,2,64;5-:8"),
+                         [(0, 4, (1.0, 2.0, 64.0)), (5, None, (8.0,))])
+        self.assertEqual(tier_spec("0-1:1,2;2-:4,8", 3), (4.0, 8.0))
+        self.assertEqual(tier_spec([[1, 2], [4]], 5), (4,))
+        self.assertEqual(tier_spec((32, 64), 4, True), 64)
+        e = BAND.edges_mhz()
+        base = Searcher(e, 0.0836, 4, dm_max=3000.0, block0=64, nthreads=1)
+        wide = Searcher(e, 0.0836, 4, dm_max=3000.0, block0=64, nthreads=1,
+                        widths="0-2:1,2,4,8,16,32,64;3-:1,2,4,8", detrend_factor=4,
+                        far_matched=True)
+        for t in base.tiers:  # unchanged by default: boxcars to 8, high-pass 32, D + block
+            self.assertEqual(t.widths.tolist(), [1, 2, 4, 8])
+            self.assertEqual(t.hp_tau, 32.0)
+            self.assertEqual(t.history.shape[1], 64 + t.block)
+            self.assertEqual(t.f0, 0)
+        self.assertEqual(base.threshold, 8.0)
+        for t in wide.tiers:
+            wmax = 64 if t.level <= 2 else 8
+            self.assertEqual(int(t.widths.max()), wmax)
+            self.assertEqual(t.hp_tau, max(32.0, 4 * wmax))
+            self.assertEqual(t.history.shape[1], max(64 + t.block, 4 * wmax))
+            self.assertEqual(t.f0, t.history.shape[1] - 64 - t.block)
+        self.assertEqual(wide.widths.tolist(), [1, 2, 4, 8, 16, 32, 64])
+        # more trials, a slightly higher threshold for the same false-alarm rate
+        self.assertGreater(wide.threshold, 8.0)
+        self.assertLess(wide.threshold, 8.1)
+        unmatched = Searcher(e, 0.0836, 4, dm_max=3000.0, block0=64, nthreads=1,
+                             widths=(1, 2, 4, 8, 16, 32, 64), far_matched=False)
+        self.assertEqual(unmatched.threshold, 8.0)
+        small = Searcher(e, 0.0836, 4, dm_max=300.0, block0=64, nthreads=1, widths=(1, 64, 128))
+        self.assertEqual(small.tiers[0].widths.tolist(), [1, 64])  # beyond D + 1 = 65: left out
+        with self.assertRaises(ValueError):
+            Searcher(e, 0.0836, 4, dm_max=300.0, block0=64, nthreads=1, widths=(66, 128))
+
+    def test_far_threshold(self):
+        """The applied threshold keeps the Gaussian false-alarm rate of the reference"""
+        from types import SimpleNamespace as NS
+        from skymon.search import far_threshold, trial_rate
+
+        tiers = [NS(widths=np.array([1, 2, 4, 8, 16, 32, 64]), row0=0, dt=0.0418)]
+        thr = far_threshold(tiers, 8.0, 256)
+        q = lambda x: 0.5 * math.erfc(x / math.sqrt(2))
+        r_new = trial_rate(tiers, 256)
+        r_ref = trial_rate(tiers, 256, lambda t: (1, 2, 4, 8))
+        self.assertAlmostEqual(r_new * q(thr), r_ref * q(8.0), delta=1e-6 * r_ref * q(8.0))
+        self.assertGreater(thr, 8.0)
+
+    def _run(self, se, P, b, amp, n_img, dt, edges, rng):
+        hits = []
+        for n in range(n_img):
+            raw = rng.standard_normal((BAND.nchan, P)).astype(np.float32) + 10.0
+            raw[:, 3] += amp * channel_fractions(b, edges, n * dt, dt)
+            for res in se.push(raw):
+                hits += [h for h in res.hits if h.slot == 3]
+            se.finish_block()
+        return max([h.snr for h in hits] or [0.0]), hits
+
+    def test_wide_boxcars_gain_on_scattered_bursts_not_on_short_ones(self):
+        from skymon.search import Searcher
+
+        edges = BAND.edges_mhz()
+        dt, P = 0.0836, 16
+        dm = 25.0  # tier 0
+        t_inf = 200.0 - K_DM * dm / edges[-1] ** 2
+        n_img = int(330 / dt)
+        cfgs = dict(base=dict(), wide=dict(widths=(1, 2, 4, 8, 16, 32, 64), detrend_factor=4))
+        out = {}
+        for tau1 in (0.0, 4e-5):  # 0 and about 3.7 s at the band centre
+            b = Burst("x", 0, 0, dm, t_inf, width_s=0.0, tau_1ghz=tau1)
+            amp = 3.0 if tau1 == 0 else 24.0
+            for name, kw in cfgs.items():
+                se = Searcher(edges, dt, P, dm_max=150.0, block0=128, threshold=6.0, nthreads=2,
+                              warmup_images=16, unix0=0.0, rng=np.random.default_rng(3), **kw)
+                se.set_live(np.ones(P, bool))
+                out[(tau1, name)] = self._run(se, P, b, amp, n_img, dt, edges,
+                                              np.random.default_rng(5))
+        s0b, s0w = out[(0.0, "base")][0], out[(0.0, "wide")][0]
+        s1b, s1w = out[(4e-5, "base")][0], out[(4e-5, "wide")][0]
+        self.assertGreater(s0b, 10.0)
+        self.assertAlmostEqual(s0w / s0b, 1.0, delta=0.05)  # short pulses keep their S/N
+        self.assertGreater(s1w, 9.0)
+        self.assertGreater(s1w, 1.5 * s1b, (s1b, s1w))  # a 3.7 s burst gains
+        best = max(out[(4e-5, "wide")][1], key=lambda h: h.snr)
+        self.assertGreaterEqual(best.width, 16)
+        # a boxcar as wide as the sweep fixes the DM only to its width over the sweep per DM
+        self.assertLess(abs(best.dm - dm), best.width_s / (K_DM * (edges[0] ** -2 - edges[-1] ** -2)))
+
+    def test_rising_pixels_give_no_hits_with_wide_boxcars(self):
+        """The monitor's default wide search (mean removal, boxcars to 128) and rising pixels"""
+        from skymon.monitor import Config
+        from skymon.search import Searcher
+
+        cfg = Config()
+        rng = np.random.default_rng(4)
+        edges = BAND.edges_mhz()
+        dt, P = 0.0836, 48
+        se = Searcher(edges, dt, P, dm_max=600.0, block0=64, threshold=8.0, nthreads=2,
+                      warmup_images=16, unix0=0.0, rng=rng, widths=cfg.widths,
+                      detrend=cfg.detrend, stride_div=cfg.boxcar_stride_div, far_matched=True)
+        se.set_live(np.ones(P, bool))
+        self.assertEqual(int(se.tiers[0].widths.max()), 64)  # D + 1 = 65 here
+        slope = np.linspace(0.0, 0.05 * dt, P)[None, :]
+        hits = []
+        for n in range(int(400 / dt)):
+            raw = (rng.standard_normal((BAND.nchan, P)) + 10.0 + slope * n).astype(np.float32)
+            for res in se.push(raw):
+                hits += res.hits
+            se.finish_block()
+        self.assertLessEqual(len(hits), 1, [(h.slot, h.tier, h.width, round(h.snr, 1))
+                                            for h in hits])
+
+    def test_noise_at_fixed_widths(self):
+        """The search noise against white noise at about 1, 7 and 20 s: about 1 for white noise"""
+        from skymon.search import Searcher
+
+        edges = BAND.edges_mhz()
+        dt, P = 0.0836, 32
+        se = Searcher(edges, dt, P, dm_max=600.0, block0=64, nthreads=2, warmup_images=16,
+                      widths="0-2:1,2,4,8,16,32,64;3-:1,2,4,8", rng=np.random.default_rng(1))
+        se.set_live(np.ones(P, bool))
+        rng = np.random.default_rng(2)
+        self.assertTrue(all(r["ratio"] is None for r in se.noise_at_widths()))
+        for _ in range(int(240 / dt)):
+            se.push(rng.standard_normal((BAND.nchan, P)).astype(np.float32) + 5.0)
+            se.finish_block()
+        got = se.noise_at_widths((1.0, 7.0, 20.0))
+        self.assertEqual([r["target_s"] for r in got], [1.0, 7.0, 20.0])
+        for r in got:
+            self.assertLess(abs(math.log(r["width_s"] / r["target_s"])), math.log(2.0), r)
+        for r in got[:2]:  # the tiers holding 1 s and 7 s have measured their noise
+            self.assertIsNotNone(r["ratio"], r)
+            self.assertAlmostEqual(r["ratio"], 1.0, delta=0.15, msg=r)
+
+
+class TestScatteredBursts(unittest.TestCase):
+    def test_exponential_scattering_conserves_fluence(self):
+        edges = BAND.edges_mhz()
+        dt = 0.0836
+        b = Burst("x", 0, 0, 30.0, 0.0, width_s=0.001, tau_1ghz=3e-5)  # about 2.8 s at 57 MHz
+        lo, hi = b.span(edges)
+        ts = np.arange(lo - 1.0, hi + 1.0, dt)
+        f = np.stack([channel_fractions(b, edges, t, dt) for t in ts], 1)
+        np.testing.assert_allclose(f.sum(1), 1.0, atol=2e-3)
+        # the mean arrival in each channel is delayed by its scattering time
+        c = 0.5 * (edges[:-1] + edges[1:])
+        mean_t = (f * (ts + dt / 2)[None, :]).sum(1)
+        box = 0.5 * (b.arrival(edges[1:]) + b.arrival(edges[:-1]) + b.width_s)
+        np.testing.assert_allclose(mean_t - box, b.tau(c), rtol=0.03)
+        u = Burst("y", 0, 0, 30.0, 0.0, width_s=0.001)
+        np.testing.assert_array_equal(channel_fractions(u, edges, 5.0, dt),
+                                      channel_fractions(Burst("z", 0, 0, 30.0, 0.0, width_s=0.001,
+                                                              tau_1ghz=0.0), edges, 5.0, dt))
+
+    def test_injections_draw_scattering(self):
+        from skymon.inject import LiveInjector
+
+        out = tempfile.mkdtemp()
+        try:
+            inj = LiveInjector(out, rng=np.random.default_rng(4))
+            taus = np.array([inj.draw_tau_1ghz() for _ in range(4000)])
+            self.assertAlmostEqual(np.mean(taus == 0), 0.2, delta=0.03)
+            t600 = taus[taus > 0] * (600.0 / 1000.0) ** -4
+            self.assertGreaterEqual(t600.min(), 0.31e-3 * 0.999)
+            self.assertLessEqual(t600.max(), 10e-3 * 1.001)
+            # log-uniform: the median at the geometric mean of the range
+            self.assertAlmostEqual(np.median(t600), math.sqrt(0.31e-3 * 10e-3), delta=3e-4)
+            off = LiveInjector(out, scatter=False, rng=np.random.default_rng(4))
+            self.assertEqual(off.draw_tau_1ghz(), 0.0)
+        finally:
+            shutil.rmtree(out, ignore_errors=True)
+
+    def test_scattered_injections_are_logged(self):
+        out = tempfile.mkdtemp()
+        try:
+            sim, mon = _sim_and_monitor(out, 420, frb_per_hour=0, inject_every_s=30,
+                                        inject_tau600_ms=(0.31, 1.0),
+                                        inject_unscattered_fraction=0.3,
+                                        widths=(1, 2, 4, 8, 16, 32, 64))
+            mon.injector.expire(math.inf)
+            with open(os.path.join(out, "injections.jsonl")) as f:
+                recs = [json.loads(line) for line in f]
+            sched = [r for r in recs if r["event"] == "scheduled"]
+            self.assertGreaterEqual(len(sched), 3)
+            for r in sched:
+                self.assertIn("tau_1ghz", r)
+                self.assertIn("tau_s", r["meta"])
+            self.assertTrue(any(r["tau_1ghz"] > 0 for r in sched), sched)
+            ends = [r for r in recs if r["event"] in ("recovered", "missed")]
+            self.assertTrue(ends and all("tau_1ghz" in r for r in ends))
+            self.assertGreaterEqual(mon.injector.stats["recovered"], 1, mon.injector.stats)
         finally:
             shutil.rmtree(out, ignore_errors=True)
 

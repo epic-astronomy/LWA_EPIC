@@ -53,8 +53,17 @@ class Config:
     nside: int = 0  # 0: from the beam at the band centre
     el_min: float = 10.0
     dm_max: float = 3000.0
+    # S/N threshold of the reference search (boxcars 1, 2, 4, 8 in every
+    # tier); with far_matched the threshold applied is raised for the extra
+    # trials of wider boxcars, at the same Gaussian false-alarm rate
     threshold: float = 8.0
-    widths: tuple = (1, 2, 4, 8)
+    far_matched: bool = True
+    # boxcar widths in tier samples: one list for every tier, or a spec per
+    # tier range such as "0-4:1,2,4,8,16,32,64;5-:1,2,4,8" (search.tier_spec)
+    # (the wide-pulse search: boxcars to 128 samples in tiers 0-4, which hold
+    # DM up to 1450-2900 at 57-76 MHz, and to 8 above; docs/skymon/DESIGN.md
+    # section 3.3)
+    widths: tuple | str = "0-4:1,2,4,8,16,32,64,128;5-:1,2,4,8"
     block0: int = 256
     # delay rows of each tier's FDMT as a multiple of the channels: with 2 each
     # tier reaches twice the DM at its time resolution, so a burst is searched
@@ -67,7 +76,25 @@ class Config:
     warmup_images: int = 64
     norm_tau_s: float = 120.0
     var_tau_s: float = 300.0
-    hp_tau: float = 32.0
+    # tier high-pass time constant in tier samples (a number or a per-tier
+    # spec), at least hp_factor times the tier's widest boxcar
+    hp_tau: float | str = 32.0
+    hp_factor: float = 4.0
+    # each tier's history (the span of the trend fit) holds at least
+    # detrend_len samples and detrend_factor times its widest boxcar, besides
+    # the max_delay + block samples of the transform
+    detrend_len: int | str = 0
+    detrend_factor: float = 0.0
+    # "mean" (default) or "linear": a straight line fitted over the window
+    # takes up to 4 w / W of a pulse of w samples at the window's end
+    detrend: str = "mean"
+    # a boxcar of w samples is evaluated every w / boxcar_stride_div samples
+    # (a power of two; 0: every sample), Searcher stride_div
+    boxcar_stride_div: int = 8
+    # a candidate from a boxcar wider than 8 samples within this many degrees
+    # of el_min is classified as RFI (data kept): rising pixels at the horizon
+    wide_el_margin: float = 3.0
+    noise_every: int = 1  # the search noise is measured in one block of this many
     # a normalised cell beyond clip is set to zero unless at least
     # clip_sky_neighbours of its sky neighbours deviate the same way by
     # clip_sky_fraction of it (a source seen through the beam). A burst whose
@@ -90,6 +117,11 @@ class Config:
     inject_interval_s: float = 3600.0  # 0 disables live injections
     inject_snr: tuple = (10.0, 30.0)
     inject_dm: tuple = (10.0, 3000.0)
+    # live injections are scattered (tau at 600 MHz log-uniform over
+    # inject_tau600_ms, scaled as nu^-4), except a fraction left unscattered
+    inject_scatter: bool = True
+    inject_tau600_ms: tuple = (0.31, 10.0)
+    inject_unscattered_fraction: float = 0.2
     store_rfi: bool = True
     # a candidate whose signal is in fewer effective channels than this, or
     # with more than narrowband_top2 of it in two channels, is narrowband RFI
@@ -107,6 +139,9 @@ class Config:
     cond_rfi_rate: float = 2.0  # disturbed above this many RFI candidates per minute
     cond_sky_fraction: float = 0.01  # disturbed above this fraction of the sky with hits
     cond_npix: int = 1024  # pixels in the median of the noise ratio
+    # widths (s) at which the measured search noise is recorded against
+    # white noise in the conditions samples (Searcher.noise_at_widths)
+    cond_noise_widths_s: tuple = (1.0, 7.0, 20.0)
     seed: int | None = None
     host: str = field(default_factory=socket.gethostname)
 
@@ -125,7 +160,9 @@ class Monitor:
         self.db = LocalDB(cfg.db_dsn, os.path.join(cfg.out_dir, "spool")) if cfg.db_dsn else None
         self.store = CandidateStore(cfg.out_dir, db=self.db)
         self.injector = LiveInjector(cfg.out_dir, cfg.inject_interval_s, cfg.inject_snr,
-                                     cfg.inject_dm, rng=self.rng)
+                                     cfg.inject_dm, rng=self.rng, scatter=cfg.inject_scatter,
+                                     tau600_ms=cfg.inject_tau600_ms,
+                                     unscattered_fraction=cfg.inject_unscattered_fraction)
         self.watches = Watches()
         self.cond = Conditions(cfg.cond_interval_s, cfg.cond_baseline_tau_s, cfg.cond_hours,
                                cfg.cond_noise_ratio, cfg.cond_rfi_rate, cfg.cond_sky_fraction,
@@ -180,7 +217,11 @@ class Monitor:
                                  chan_flag_sigma=cfg.chan_flag_sigma, flag_tau_s=cfg.flag_tau_s,
                                  mask_on=cfg.mask_on, mask_off=cfg.mask_off,
                                  clip_nbr_min=cfg.clip_sky_neighbours,
-                                 clip_nbr_frac=cfg.clip_sky_fraction)
+                                 clip_nbr_frac=cfg.clip_sky_fraction, hp_factor=cfg.hp_factor,
+                                 detrend_len=cfg.detrend_len, detrend_factor=cfg.detrend_factor,
+                                 detrend=cfg.detrend, far_matched=cfg.far_matched,
+                                 stride_div=cfg.boxcar_stride_div,
+                                 noise_every=cfg.noise_every)
         self.accum = Accumulator(self.band.nchan, self.grid.capacity, self.dt,
                                  cfg.accum_interval_s, cfg.accum_hours)
         self.raw = np.zeros((self.band.nchan, self.grid.capacity), np.float32)
@@ -205,10 +246,13 @@ class Monitor:
               f"capacity {self.grid.capacity} px, beam {self.beam:.2f} deg", flush=True)
         for t in self.searcher.describe():
             print(f"skymon:   tier {t['level']}: dt {t['dt_s']:.3f} s, DM {t['dm_min']:.1f}-"
-                  f"{t['dm_max']:.1f} step {t['dm_step']:.2f}, latency {t['latency_s']:.0f} s",
-                  flush=True)
+                  f"{t['dm_max']:.1f} step {t['dm_step']:.2f}, latency {t['latency_s']:.0f} s, "
+                  f"boxcars {','.join(map(str, t['widths']))} (to {t['max_width_s']:.1f} s), "
+                  f"high-pass {t['hp_tau']:g}, history {t['history']}", flush=True)
         mem = self.searcher.memory_bytes() + self.accum.memory_bytes()
-        print(f"skymon: state memory {mem / 2 ** 30:.1f} GiB", flush=True)
+        print(f"skymon: S/N threshold {self.searcher.threshold:.3f} "
+              f"(reference {self.searcher.threshold_ref:g}); state memory "
+              f"{mem / 2 ** 30:.1f} GiB", flush=True)
 
     def _update_grid(self, unix):
         with self.grid_lock:
@@ -335,7 +379,7 @@ class Monitor:
         except Exception as e:  # flux is for review; it must never stop the search
             print(f"skymon: flux calibration failed: {e!r}", flush=True)
 
-    def _peak(self, window, slot, row, t_idx, width):
+    def _peak(self, window, slot, row, t_idx, width, a_hp):
         """
         peak_fit over a candidate's pixel and its 8 neighbours: each pixel's
         contributions along the track (high-pass undone), summed over the band,
@@ -355,9 +399,8 @@ class Monitor:
                 vals = np.full(len(slots), np.nan)
             else:
                 e = self.band.edges_mhz()
-                a = self.searcher.a_hp
                 vals = np.array([float(np.sum(channel_contributions(window[:, :, q], e, row, t_idx,
-                                                                    width, a_hp=a)))
+                                                                    width, a_hp=a_hp)))
                                  for q in slots])
             sig = float(beam_sigma_pix([self.band.f_centre], self.grid.grid_res)[0])
             out = peak_fit(xy, vals, sig)
@@ -412,6 +455,26 @@ class Monitor:
     def cfg_pix_deg(self, meta):
         return meta.grid_res
 
+    def _noise_record(self, rec_t):
+        """
+        The realised noise floor for the conditions sample: the measured
+        search noise relative to white noise at widths of about 1, 7 and 20 s
+        (Searcher.noise_at_widths), and the elevations of Cyg A and Cas A,
+        whose scintillation and beam passage raise the noise at these widths.
+        """
+        out = {}
+        try:
+            out["search_noise"] = self.searcher.noise_at_widths(self.cfg.cond_noise_widths_s)
+        except Exception as e:  # a record for review must never stop the search
+            out["search_noise"] = dict(error=repr(e))
+        for key, (ra, dec) in (("el_cyg_a", (299.868, 40.734)), ("el_cas_a", (350.850, 58.815))):
+            try:
+                el, _ = altaz(ra, dec, rec_t)
+                out[key] = round(float(el), 2)
+            except Exception:
+                out[key] = None
+        return out
+
     def _sample_conditions(self):
         """
         Close a conditions interval (every cond_interval_s of images). The
@@ -419,7 +482,8 @@ class Monitor:
         writes (sync_db), so the search never waits for it.
         """
         s = self.searcher
-        rec = self.cond.sample(s.var, s.age, s.live, s.warmup, self.metrics["tracked"])
+        rec = self.cond.sample(s.var, s.age, s.live, s.warmup, self.metrics["tracked"],
+                               extra=self._noise_record(rec_t=self.cond.next_t))
         self._flux_calibration(rec["t"])
         was, self._disturbed = self._disturbed, rec["disturbed"]
         if rec["disturbed"] and not was:
@@ -491,10 +555,14 @@ class Monitor:
                 reasons.append("several separate positions at once")
             if b.dm < self.cfg.dm_min:
                 reasons.append("DM near zero")
+            el, az = altaz(ra[g[0]], dec[g[0]], b.t_bottom)
+            # a pixel near the elevation limit brightens quickly through the
+            # primary beam, which a wide boxcar at low DM takes for a pulse
+            if b.width > tier.narrow_max and el < self.cfg.el_min + self.cfg.wide_el_margin:
+                reasons.append("wide pulse near the horizon")
             # certain: terrestrial (no dispersion) or seen over much of the sky
             certain = "DM near zero" in reasons or "much of the sky at once" in reasons
             cls = "rfi" if reasons else "candidate"
-            el, az = altaz(ra[g[0]], dec[g[0]], b.t_bottom)
             xy = self.grid.xy[b.slot]
             cid = f"{time.strftime('%Y%m%dT%H%M%S', time.gmtime(b.t_inf))}_" \
                   f"{self.band.f_centre:.0f}MHz_{uuid.uuid4().hex[:6]}"
@@ -576,7 +644,7 @@ class Monitor:
             try:
                 cand.quality = candidate_quality(win, dmt, res.sigma, self.band.edges_mhz(),
                                                  hit.row, hit.t_end - res.first_sample,
-                                                 hit.width, list(self.searcher.widths))
+                                                 hit.width, list(tier.widths))
             except Exception as e:  # a measure for review must never stop the search
                 cand.quality = dict(error=repr(e))
             # channels set to zero for interference along the burst's sweep
@@ -591,10 +659,10 @@ class Monitor:
         if cand is not None:
             t_idx = hit.t_end - res.first_sample
             e = self.band.edges_mhz()
-            a = self.searcher.a_hp
+            a = tier.a_hp
             contrib = channel_contributions(win, e, hit.row, t_idx, hit.width, a_hp=a)
             err = contribution_noise(win, e, hit.row, t_idx, hit.width, a_hp=a)
-            peak = self._peak(res.window, s, hit.row, t_idx, hit.width)
+            peak = self._peak(res.window, s, hit.row, t_idx, hit.width, a)
             cand.flux = self._flux(contrib, raw_sigma, tier.level, cand.width_s, cand.el, cand.az,
                                    cand.snr, err, peak)
             if peak is not None:
@@ -618,7 +686,7 @@ class Monitor:
         W = res.window.shape[1]
         first = res.first_sample
         new_lo, new_hi = first + W - tier.block, first + W - 1
-        widths = self.searcher.widths
+        widths = tier.widths
         done = []
         for w in pend:
             if self.searcher.tier_for_dm(w["dm"]) is not tier:
@@ -653,7 +721,8 @@ class Monitor:
             t1 = min(hi_s, new_hi) - first
             win = res.window[:, :, slots]
             m = measure(win, self.searcher.plan, self.searcher.D, tier, res.sigma, widths,
-                        (r0, r1), (t0, t1), zerodm=tier.level > 0)
+                        (r0, r1), (t0, t1), detrend=self.searcher.detrend_mode,
+                        zerodm=tier.level > 0)
             if m is not None and (w["best"] is None or m[0] > w["best"]["snr"]):
                 snr, row, t, wi, k = m
                 wd = int(widths[wi])
@@ -667,7 +736,7 @@ class Monitor:
                 w["_raw_sigma"] = np.sqrt(np.maximum(self.searcher.var[:, slots[k]], 0)).astype(
                     np.float32)
                 w["_track"] = (row, t, wd)
-                w["_peak"] = self._peak(res.window, slots[k], row, t, wd)
+                w["_peak"] = self._peak(res.window, slots[k], row, t, wd, tier.a_hp)
                 w["_t_win"] = self.searcher.tier_time(tier, first + np.arange(W))
                 w["_sigma"] = res.sigma
             if hi_s <= new_hi:
@@ -701,7 +770,7 @@ class Monitor:
         raw_sigma = w.pop("_raw_sigma")
         row, t_idx, wd = w.pop("_track")
         peak = w.pop("_peak", None)
-        e, a = self.band.edges_mhz(), self.searcher.a_hp
+        e, a = self.band.edges_mhz(), self.searcher.tiers[b["tier"]].a_hp
         c.flux = self._flux(channel_contributions(win, e, row, t_idx, wd, a_hp=a),
                             raw_sigma, b["tier"], b["width_s"], c.el, c.az, c.snr,
                             contribution_noise(win, e, row, t_idx, wd, a_hp=a), peak)
@@ -883,7 +952,8 @@ class Monitor:
                                 nbin=self.band.nbin, dt=self.dt),
                       nside=self.grid.nside, pix_deg=self.grid.pix_deg, beam_deg=self.beam,
                       tiers=self.searcher.describe(), el_min=self.cfg.el_min,
-                      threshold=self.cfg.threshold,
+                      threshold=self.searcher.threshold,
+                      threshold_reference=self.searcher.threshold_ref,
                       memory_gib=(self.searcher.memory_bytes() +
                                   self.accum.memory_bytes()) / 2 ** 30)
             rfi = self.searcher.rfi_status()

@@ -79,7 +79,9 @@ def measure(window: np.ndarray, plan, D: int, tier, sigma: np.ndarray, widths, r
     """
     C, W, k = window.shape
     x = window.astype(np.float64)
-    if detrend:
+    if detrend == 2:  # the mean only (Searcher detrend="mean")
+        x -= x.mean(axis=1, keepdims=True)
+    elif detrend:
         t = np.arange(W) - (W - 1) / 2.0
         x -= x.mean(axis=1, keepdims=True)
         x -= (np.tensordot(t, x, axes=(0, 1)) / np.sum(t * t))[:, None, :] * t[None, :, None]

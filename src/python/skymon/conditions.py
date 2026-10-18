@@ -19,6 +19,14 @@ monitor records a sample:
   sky_fraction_triggered  fraction of the tracked pixels with a hit in the
                           search blocks completed during the interval
   missing_fraction        fraction of the interval's images that were missing
+  search_noise            the measured search noise relative to white noise
+                          through the same chain, at widths of about 1, 7 and
+                          20 s (the nearest tier and boxcar; list of target_s,
+                          tier, width, width_s, ratio): the realised noise
+                          floor at the widths of scattered bursts
+  el_cyg_a, el_cas_a      elevations (deg) of Cyg A and Cas A, whose
+                          scintillation and passage through the beam raise the
+                          noise at those widths
   disturbed               noise_ratio > noise_ratio_max, rfi_rate >
                           rfi_rate_max or sky_fraction_triggered >
                           sky_fraction_max; the reasons are listed
@@ -113,8 +121,12 @@ class Conditions:
             self.n_rfi += cls == "rfi"
 
     # ------------------------------------------------------------ every interval
-    def sample(self, var, age, live, warmup, tracked):
-        """Close the open interval, ending at next_t; returns the sample"""
+    def sample(self, var, age, live, warmup, tracked, extra=None):
+        """
+        Close the open interval, ending at next_t; returns the sample. extra:
+        further fields of the sample (the monitor's search noise at fixed
+        widths and the elevations of Cyg A and Cas A).
+        """
         t = self.next_t
         noise_ratio = self._noise_ratio(var, age, live, warmup)
         frac_trig = len(self.hit_slots) / tracked if tracked else 0.0
@@ -124,6 +136,8 @@ class Conditions:
                    noise_ratio=noise_ratio, rfi=self.n_rfi, candidates=self.n_cand,
                    sky_fraction_triggered=frac_trig, tracked=int(tracked),
                    gain_changes=self.n_gain_changes)
+        if extra:
+            rec.update(extra)
         # rates over the last minute of data, this interval included
         with self.lock:
             recent = [s for s in self.series if s["t"] > t - self.rate_window]

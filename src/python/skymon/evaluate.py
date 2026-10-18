@@ -16,6 +16,7 @@ import os
 import numpy as np
 
 from .candidates import separation_deg
+from .dedisp import K_DM
 
 # event results, in the order reported; terrestrial: moved out by the
 # combiner's cross-band coincidence veto (undispersed in several bands)
@@ -43,8 +44,22 @@ def _matches(t, c, radius_deg):
     from .candidates import elevation_radius
     r = float(elevation_radius(radius_deg, c.get("el", 90.0)))
     return (separation_deg(t["ra"], t["dec"], c["ra"], c["dec"]) <= r
-            and abs(c["dm"] - t["dm"]) <= max(0.1 * t["dm"], 3 * c["dm_step"])
-            and abs(c["t_bottom"] - t["t_bottom"]) <= 3 * c["tier_dt"] + 2 * c["width_s"] + 2.0)
+            and abs(c["dm"] - t["dm"]) <= max(0.1 * t["dm"], 3 * c["dm_step"], _ddm(c, 3 * _tau(t)))
+            and abs(c["t_bottom"] - t["t_bottom"]) <= 3 * c["tier_dt"] + 2 * c["width_s"] + 2.0
+            + 3 * _tau(t))
+
+
+def _ddm(c, extra_s=0.0):
+    """DM uncertainty of a candidate's boxcar: its width (plus extra_s) over the sweep per DM"""
+    try:
+        return (c["width_s"] + extra_s) / (K_DM * (c["f_lo_mhz"] ** -2 - c["f_hi_mhz"] ** -2))
+    except (KeyError, TypeError, ZeroDivisionError):
+        return 0.0
+
+
+def _tau(t):
+    """Scattering time (s) of a truth record at its band centre (0 if unscattered)"""
+    return float((t.get("meta") or {}).get("tau_s") or 0.0)
 
 
 def match(truth, cands, radius_deg):
@@ -99,7 +114,7 @@ def report(truth_path, out_dir, radius_deg=None, t_end=None, latency_s=0.0, read
         radius_deg = max(2.0 * np.degrees(299.792458 / f / 100.0), 3.0)
     n_all = len(truth)
     if t_end is not None:  # only bursts whose sweep ended early enough to have been searched
-        truth = [t for t in truth if t["t_bottom"] + t["width_s"] + latency_s < t_end]
+        truth = [t for t in truth if t["t_bottom"] + t["width_s"] + 5 * _tau(t) + latency_s < t_end]
     n_late = n_all - len(truth)
     if ready is not None:  # and not while the tier for their DM was still starting
         truth = [t for t in truth if t["t_bottom"] >= ready(t["dm"])]

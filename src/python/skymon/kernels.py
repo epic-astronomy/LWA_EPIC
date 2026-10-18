@@ -57,7 +57,8 @@ def lib():
         L.skymon_search.argtypes = [f32p, ctypes.c_int, ctypes.c_int, ctypes.c_int, i32p,
                                     ctypes.c_int, ctypes.c_int, i32p, ctypes.c_int, f32p,
                                     ctypes.c_int, ctypes.c_float, f32p, i32p, f64p, i64p,
-                                    ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+                                    ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                    ctypes.c_int, i32p, ctypes.c_int]
         L.skymon_search.restype = ctypes.c_int
         L.skymon_regrid.argtypes = [f32p, ctypes.c_int, ctypes.c_int, i32p, f32p, ctypes.c_int,
                                     ctypes.c_int, f32p, ctypes.c_int]
@@ -84,8 +85,7 @@ def lib():
         L.skymon_taps.restype = None
         pp = ctypes.POINTER(ctypes.c_void_p)
         L.skymon_tier_cascade.argtypes = [f32p, ctypes.c_int, ctypes.c_int, ctypes.c_int, pp, pp,
-                                          i32p, i32p, pp, ctypes.c_float, ctypes.c_float,
-                                          ctypes.c_int]
+                                          i32p, i32p, pp, f32p, ctypes.c_float, ctypes.c_int]
         L.skymon_tier_cascade.restype = None
         _lib = L
     return _lib
@@ -113,18 +113,35 @@ def fdmt(data: np.ndarray, flat_plan: np.ndarray, max_delay: int, nthreads: int 
 
 
 def search(data, flat_plan, max_delay, row0, nb, widths, sigma, seg, clip=5.0, nthreads=1,
-           ptile=16, detrend=True, zerodm=False):
-    """Returns best_snr [P, nseg], best_info [P, nseg, 3], sumsq, cnt [D + 1, nw]"""
+           ptile=16, detrend=True, zerodm=False, f0=0, strides=None, noise=True):
+    """
+    Returns best_snr [P, nseg], best_info [P, nseg, 3], sumsq, cnt [D + 1, nw].
+    detrend: True or 1 removes a straight line per channel and pixel, fitted
+    over the whole window; 2 removes the mean only; False or 0 nothing.
+    f0: the transform and boxcars use samples f0.. of the window (the trend
+    is fitted over all of it); best_info's times count from f0.
+    strides: per width, evaluate the boxcar at every strides[i]-th end sample
+    only (ending on the window's last sample; each must divide nb).
+    noise: accumulate the clipped noise sums (else sumsq and cnt are zero).
+    """
     C, W, P = data.shape
     nw = len(widths)
+    widths = np.asarray(widths, np.int32)
+    if f0 < 0 or f0 >= W or widths.min() < 1 or widths.max() > W - f0 - nb + 1:
+        raise ValueError(f"widths {widths.tolist()} or f0 {f0} do not fit a window of {W} "
+                         f"samples with block {nb}")
+    strides = np.ones(nw, np.int32) if strides is None else np.ascontiguousarray(strides, np.int32)
+    if len(strides) != nw or strides.min() < 1 or np.any(nb % strides):
+        raise ValueError(f"boxcar strides {strides.tolist()} must divide the block {nb}")
     nseg = (nb + seg - 1) // seg
     best = np.empty((P, nseg), np.float32)
     info = np.empty((P, nseg, 3), np.int32)
     sumsq = np.empty((max_delay + 1, nw), np.float64)
     cnt = np.empty((max_delay + 1, nw), np.int64)
-    lib().skymon_search(data, C, W, P, flat_plan, row0, nb, np.asarray(widths, np.int32), nw,
+    lib().skymon_search(data, C, W, P, flat_plan, row0, nb, widths, nw,
                         np.ascontiguousarray(sigma, np.float32), seg, clip, best, info, sumsq,
-                        cnt, nthreads, ptile, int(detrend), int(zerodm))
+                        cnt, nthreads, ptile, int(detrend), int(zerodm), int(f0), strides,
+                        int(bool(noise)))
     return best, info, sumsq, cnt
 
 
@@ -196,7 +213,8 @@ def taps(xy_a, xy_b, f, grid, xy, idx, w, nthreads=1):
 def tier_cascade(x, tiers, a_hp, scale, last_dec=True, nthreads=1):
     """
     Push x [C, P] into tiers[0] and the decimated sums on into tiers[1:]
-    (skymon_tier_cascade). Each tier needs .base, .history, .pos and .acc;
+    (skymon_tier_cascade). a_hp: the high-pass weight (1 / hp_tau), one for
+    all tiers or one per tier. Each tier needs .base, .history, .pos and .acc;
     the acc of every tier but the last is complete and is set to zero, the
     last tier's acc accumulates when last_dec is set. The caller updates the
     counters.
@@ -214,6 +232,7 @@ def tier_cascade(x, tiers, a_hp, scale, last_dec=True, nthreads=1):
               for i, t in enumerate(tiers)])
     W = np.array([t.history.shape[1] for t in tiers], np.int32)
     pos = np.array([t.pos for t in tiers], np.int32)
+    a = np.ascontiguousarray(np.broadcast_to(np.asarray(a_hp, np.float32), (n,)))
     cast = ctypes.POINTER(ctypes.c_void_p)
     lib().skymon_tier_cascade(x, C, P, n, ctypes.cast(base, cast), ctypes.cast(hist, cast), W, pos,
-                              ctypes.cast(dec, cast), a_hp, scale, nthreads)
+                              ctypes.cast(dec, cast), a, scale, nthreads)
