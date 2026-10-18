@@ -50,6 +50,9 @@ class CorrelatorRft : public raft::kernel {
   uint64_t m_chan0{0};
   int m_ngulps_per_img{1};
   int m_gulp_counter{1};
+  /// FX imaging: the image made at the last image boundary, handed on at the
+  /// next one, so that its copy to the host overlaps the next image
+  typename _Correlator::payload_t m_pending;
   bool m_is_first{false};
   bool m_is_last{false};
   int m_grid_size{0};
@@ -256,6 +259,12 @@ class CorrelatorRft : public raft::kernel {
                  std::chrono::high_resolution_clock::now().time_since_epoch())
                  .count();
       DLOG(INFO) << "Processing the gulp";
+      if (m_correlator.get()->UsesFx() && m_pending) {
+        m_correlator.get()->FinishFxImage();
+        output["img"].push(m_pending);
+        output["img_stream"].push(m_pending);
+        m_pending = typename _Correlator::payload_t();
+      }
       m_correlator.get()->ProcessGulp(
           pld.get_mbuf()->GetDataPtr(), buf.get_mbuf()->GetDataPtr(),
           m_is_first, m_is_last, static_cast<int>(chan0), m_delta);
@@ -274,6 +283,10 @@ class CorrelatorRft : public raft::kernel {
         m_cal_tap->WaitCopied();
       }
       m_gulp_counter = 1;
+      if (m_correlator.get()->UsesFx()) {
+        m_pending = buf;  // handed on at the next image boundary
+        return raft::proceed;
+      }
       VLOG(3) << "Pushing the output image";
       output["img"].push(buf);
       output["img_stream"].push(buf);

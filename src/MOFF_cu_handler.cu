@@ -424,9 +424,7 @@ MOFFCuHandler::ProcessGulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, 
         for (int i = 0; i < m_nstreams; ++i) {
             cuda_check_err(cudaStreamSynchronize(*(m_gulp_custreams.get() + i)));
         }
-        if (m_fx) {
-            m_fx->Sync();
-        }
+
         VLOG(2)<<"Syncing done\n";
         cuda_check_err(cudaPeekAtLastError());
         m_last_impulse_flagged = m_rfi ? m_rfi->CollectFlagged() : 0;
@@ -473,7 +471,9 @@ MOFFCuHandler::ProcessGulpFx(uint8_t* p_data_ptr, uint8_t* p_img_in, bool p_rfi,
     }
     m_fx->Correlate(p_img_in, m_stream_ready.data(), m_nstreams, !p_first);
     if (p_last) {
-        m_fx->Image(m_phases_cu, m_output_cu, p_out_ptr);
+        // returns at once; the correlator kernel waits (FinishFxImage) before
+        // it hands the image on, one image later
+        m_fx->Image(m_phases_cu, p_out_ptr);
     }
 }
 

@@ -283,6 +283,10 @@ class MOFFCuHandler {
   /// Image with the FX imager at p_size x p_size instead of the E-field kernel
   void EnableFx(int p_size) { m_fx_size = p_size; }
   bool UsesFx() const { return m_fx_size > 0; }
+  /// Wait until the last FX image is in its host buffer
+  void FinishFxImage() {
+    if (m_fx) m_fx->Sync();
+  }
   /// (Re)create the FX imager for the current channels and hand it the
   /// geometry (stand cells, kernel weights, gridding correction)
   void SetupFx(int p_nchan, int p_nseq);

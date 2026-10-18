@@ -45,10 +45,12 @@ class FxImager {
   /// event after which the gulp buffer may be overwritten (InputFree).
   void Correlate(const uint8_t* p_gulp, cudaEvent_t const* p_ready, int p_nready, bool p_add);
   /// Image the integrated visibilities with the per-stand phases and gains
-  /// [chan][stand][Xre, Xim, Yre, Yim] into p_out (device, [chan][N][N][4])
-  /// and copy it to p_host (pinned or pageable) when not null.
-  void Image(const float* p_phases, float* p_out, float* p_host);
-  /// Wait for the image (and its copy) to complete
+  /// [chan][stand][Xre, Xim, Yre, Yim] and copy the image ([chan][N][N][4])
+  /// to p_host (page-locked). Returns at once: the copy runs on its own
+  /// stream from one of two device images, overlapping the next image's
+  /// correlation and gridding; Sync waits for it.
+  void Image(const float* p_phases, float* p_host);
+  /// Wait until the last image is in its host buffer
   void Sync();
 
   /// Recorded after the gulp has been read; streams writing the gulp buffer wait for it

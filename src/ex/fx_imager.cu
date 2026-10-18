@@ -5,8 +5,10 @@
 #include <cufft.h>
 #include <glog/logging.h>
 
+#include <algorithm>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "./constants.h"
 
@@ -152,9 +154,16 @@ struct FxImager::Impl {
   float2* d_K{};
   float* d_corr{};
   float2* d_lag{};
+  float4* d_img[2]{};  // the images being combined and copied out, alternately
   cufftHandle plan{};
-  cudaStream_t s{};
-  cudaEvent_t ev_free{}, ev_done{};
+  cudaStream_t s{}, s_copy{};
+  cudaEvent_t ev_free{}, ev_combined{}, ev_copied[2]{};
+  int next{0};  // device image the next combination writes
+  int last{0};  // device image of the last Image call
+  // timing of the last image (gridding to combination, and the copy)
+  cudaEvent_t t_grid{}, t_comb{}, t_copy{};
+  bool timed{false};
+  std::vector<float> img_ms, copy_ms;
   bool geometry{false};
 
   Impl(int p_device, int p_nchan, int p_nseq, int p_n, int p_support, bool p_remove_autocorr)
@@ -171,12 +180,15 @@ struct FxImager::Impl {
     Check(cudaMalloc(&d_base, size_t(nchan) * kStands * sizeof(int2)), "cells");
     Check(cudaMalloc(&d_K, size_t(nchan) * kStands * S * S * sizeof(float2)), "weights");
     Check(cudaMalloc(&d_lag, size_t(nchan) * 4 * N * N * sizeof(float2)), "lag grid");
+    for (auto& p : d_img) Check(cudaMalloc(&p, size_t(nchan) * N * N * sizeof(float4)), "image");
     int dims[2] = {N, N};
     CheckFft(cufftPlanMany(&plan, 2, dims, nullptr, 1, N * N, nullptr, 1, N * N, CUFFT_C2C, nchan * 4), "plan");
     Check(cudaStreamCreateWithFlags(&s, cudaStreamNonBlocking), "stream");
+    Check(cudaStreamCreateWithFlags(&s_copy, cudaStreamNonBlocking), "stream");
     CheckFft(cufftSetStream(plan, s), "stream");
-    Check(cudaEventCreateWithFlags(&ev_free, cudaEventDisableTiming), "event");
-    Check(cudaEventCreateWithFlags(&ev_done, cudaEventDisableTiming), "event");
+    for (auto* e : {&ev_free, &ev_combined, &ev_copied[0], &ev_copied[1]})
+      Check(cudaEventCreateWithFlags(e, cudaEventDisableTiming), "event");
+    for (auto* e : {&t_grid, &t_comb, &t_copy}) Check(cudaEventCreate(e), "event");
     LOG(INFO) << "FxImager: " << N << " x " << N << " images of " << nchan << " channels from the Tensor-Core "
               << "Correlator (" << nseq << " sequences per gulp), auto-correlations "
               << (keep_auto ? "kept" : "removed") << "; "
@@ -186,13 +198,15 @@ struct FxImager::Impl {
   ~Impl() {
     cudaSetDevice(device);
     cudaStreamSynchronize(s);
+    cudaStreamSynchronize(s_copy);
     cufftDestroy(plan);
     for (void* p : {static_cast<void*>(d_tcc_in), static_cast<void*>(d_vis), static_cast<void*>(d_base),
-                    static_cast<void*>(d_K), static_cast<void*>(d_corr), static_cast<void*>(d_lag)})
+                    static_cast<void*>(d_K), static_cast<void*>(d_corr), static_cast<void*>(d_lag),
+                    static_cast<void*>(d_img[0]), static_cast<void*>(d_img[1])})
       if (p) cudaFree(p);
-    cudaEventDestroy(ev_free);
-    cudaEventDestroy(ev_done);
+    for (auto e : {ev_free, ev_combined, ev_copied[0], ev_copied[1], t_grid, t_comb, t_copy}) cudaEventDestroy(e);
     cudaStreamDestroy(s);
+    cudaStreamDestroy(s_copy);
   }
 };
 
@@ -234,10 +248,11 @@ void FxImager::Correlate(const uint8_t* p_gulp, cudaEvent_t const* p_ready, int 
                        reinterpret_cast<CUdeviceptr>(m->d_tcc_in), p_add);
 }
 
-void FxImager::Image(const float* p_phases, float* p_out, float* p_host) {
+void FxImager::Image(const float* p_phases, float* p_host) {
   if (!m->geometry) throw std::logic_error("FxImager: Image before SetGeometry");
   const int N = m->N;
   const size_t nlag = size_t(m->nchan) * 4 * N * N;
+  Check(cudaEventRecord(m->t_grid, m->s), "event");
   Check(cudaMemsetAsync(m->d_lag, 0, nlag * sizeof(float2), m->s), "clear");
   const dim3 blk((2 * kSupport - 1) * (2 * kSupport - 1), kPairs), grd((kNbl + kPairs - 1) / kPairs, m->nchan);
   GridLags<kSupport><<<grd, blk, 0, m->s>>>(m->d_vis, m->d_base, m->d_K, reinterpret_cast<const float4*>(p_phases),
@@ -252,18 +267,52 @@ void FxImager::Image(const float* p_phases, float* p_out, float* p_host) {
   // 128-point image at any N (a 256-point image equals the 128-point one on
   // its even pixels)
   const float r = 128.f / float(N);
-  CombineImages<<<dim3((N * N + 255) / 256, m->nchan), 256, 0, m->s>>>(m->d_lag, reinterpret_cast<float4*>(p_out),
-                                                                     m->d_corr, N, r * r * r * r / 32.f);
+  const int k = m->next;
+  m->next ^= 1;
+  // the copy that last read this device image must be done before it is overwritten
+  Check(cudaStreamWaitEvent(m->s, m->ev_copied[k], 0), "wait copy");
+  CombineImages<<<dim3((N * N + 255) / 256, m->nchan), 256, 0, m->s>>>(m->d_lag, m->d_img[k], m->d_corr, N,
+                                                                     r * r * r * r / 32.f);
   Check(cudaGetLastError(), "combine");
+  Check(cudaEventRecord(m->ev_combined, m->s), "event");
+  Check(cudaEventRecord(m->t_comb, m->s), "event");
+  Check(cudaStreamWaitEvent(m->s_copy, m->ev_combined, 0), "wait combine");
   if (p_host) {
-    Check(cudaMemcpyAsync(p_host, p_out, size_t(m->nchan) * N * N * 4 * sizeof(float), cudaMemcpyDeviceToHost,
-                          m->s),
+    Check(cudaMemcpyAsync(p_host, m->d_img[k], size_t(m->nchan) * N * N * 4 * sizeof(float),
+                          cudaMemcpyDeviceToHost, m->s_copy),
           "copy");
   }
-  Check(cudaEventRecord(m->ev_done, m->s), "event");
+  Check(cudaEventRecord(m->ev_copied[k], m->s_copy), "event");
+  Check(cudaEventRecord(m->t_copy, m->s_copy), "event");
+  m->last = k;
+  m->timed = true;
 }
 
-void FxImager::Sync() { Check(cudaEventSynchronize(m->ev_done), "image"); }
+void FxImager::Sync() {
+  Check(cudaEventSynchronize(m->ev_copied[m->last]), "image");
+  if (!m->timed) return;
+  m->timed = false;
+  float a = 0.f, b = 0.f;
+  cudaEventElapsedTime(&a, m->t_grid, m->t_comb);
+  cudaEventElapsedTime(&b, m->t_comb, m->t_copy);
+  m->img_ms.push_back(a);
+  m->copy_ms.push_back(b);
+  if (m->img_ms.size() == 240) {
+    auto stat = [](std::vector<float>& v, float* mean, float* p99) {
+      std::sort(v.begin(), v.end());
+      double s = 0;
+      for (float x : v) s += x;
+      *mean = float(s / v.size());
+      *p99 = v[std::min(v.size() - 1, size_t(0.99 * v.size()))];
+      v.clear();
+    };
+    float im, ip, cm, cp;
+    stat(m->img_ms, &im, &ip);
+    stat(m->copy_ms, &cm, &cp);
+    LOG(INFO) << "FxImager: grid + transform + combine " << im << " ms (p99 " << ip << "), copy to host " << cm
+              << " ms (p99 " << cp << ") per image, over 240 images";
+  }
+}
 cudaEvent_t FxImager::InputFree() const { return m->ev_free; }
 cudaStream_t FxImager::Stream() const { return m->s; }
 int FxImager::N() const { return m->N; }
@@ -277,7 +326,7 @@ FxImager::FxImager(int, int, int, int, int, bool) {
 FxImager::~FxImager() = default;
 void FxImager::SetGeometry(const float*, const float*, const float*, const float*) {}
 void FxImager::Correlate(const uint8_t*, cudaEvent_t const*, int, bool) {}
-void FxImager::Image(const float*, float*, float*) {}
+void FxImager::Image(const float*, float*) {}
 void FxImager::Sync() {}
 cudaEvent_t FxImager::InputFree() const { return nullptr; }
 cudaStream_t FxImager::Stream() const { return nullptr; }
