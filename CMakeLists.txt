@@ -158,6 +158,13 @@ if(EPIC_BUILD_DB_TESTS)
     pqxx pq cmake_git_version_tracking)
 endif()
 
+# Buffer pool test (tests/cpp/payload_release_test.cpp): CPU only
+add_executable(payload_release_test EXCLUDE_FROM_ALL tests/cpp/payload_release_test.cpp)
+target_compile_options(payload_release_test PRIVATE -O2 -pthread -Wall)
+add_dependencies(payload_release_test hwy)
+target_include_directories(payload_release_test PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+target_link_libraries(payload_release_test PRIVATE epic_cu raft hwy glog::glog CUDA::cudart)
+
 # file(GLOB PY_FILES "src/python/*.py")
 # file(COPY ${PY_FILES} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 

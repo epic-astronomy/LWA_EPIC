@@ -234,8 +234,12 @@ struct Payload {
     VLOG(2) << "Copied payload " << m_mbuf.use_count();
     VLOG_IF(2, m_mbuf.get() != nullptr) << " with ID " << m_mbuf.get()->m_id;
   }
+  // Copy and swap: the buffer held before goes out with p_pld, whose
+  // destructor unlocks it when this was its last reference outside the
+  // manager. Overwriting m_mbuf directly would never unlock it, so
+  // `pld = Payload()` would leak the buffer from its pool.
   Payload& operator=(Payload p_pld) {
-    this->m_mbuf = p_pld.m_mbuf;
+    std::swap(this->m_mbuf, p_pld.m_mbuf);
     return *this;
   }
   ~Payload();
