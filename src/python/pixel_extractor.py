@@ -142,12 +142,21 @@ def _cache_path():
     return os.environ.get("EPIC_WATCHLIST_CACHE", "")
 
 
+def _jsonable(v):
+    """numpy scalars as Python numbers, anything else as text"""
+    return v.item() if hasattr(v, "item") else str(v)
+
+
 def _remember(df, source):
     _watch.update(df=df, source=source, time=time.time())
     path = _cache_path()
     if not path:
         return
-    js = df.to_json(orient="records")
+    # The standard json module, not DataFrame.to_json: inside epic++ the
+    # pandas encoder's encode() binds to libcodec2's (loaded by ffmpeg for
+    # the video stream) and crashes the imager.
+    rows = df.to_dict(orient="records")
+    js = json.dumps(rows, default=_jsonable, sort_keys=True)
     if js == _watch["json"]:
         return
     try:
