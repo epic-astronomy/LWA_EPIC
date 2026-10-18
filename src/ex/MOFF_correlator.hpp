@@ -43,6 +43,7 @@
 #include "./py_funcs.hpp"
 #include "./types.hpp"
 #include "./gain_table.hpp"
+#include "./proj_table.hpp"
 
 // namespace hn = hwy::HWY_NAMESPACE;
 
@@ -89,6 +90,8 @@ class MOFFCorrelator : public MOFFCuHandler {
 
   /// Version of the calibration gain table folded into m_phases (0: none)
   uint64_t m_gain_version{0};
+  /// Version of the interference projector in use (0: none)
+  uint64_t m_proj_version{0};
 
   /// Calibration options (gain table and tap), from MOFFCorrelatorDesc
   MOFFCorrelatorDesc m_cal_desc;
@@ -163,6 +166,7 @@ class MOFFCorrelator : public MOFFCuHandler {
 
   size_t GetNumSeqPerGulp() { return m_nseq_per_gulp; }
   size_t GetNumGulpsPerImg() { return m_ngulps_per_img; }
+  int GetNumStreams() const { return this->m_nstreams; }
   size_t GetGridSize() { return m_grid_size; }
   double GetGridRes() { return m_grid_res; }
   int GetNumPols() { return m_pol_mode & m_pol_mode; }
@@ -182,6 +186,22 @@ class MOFFCorrelator : public MOFFCuHandler {
     ApplyGainCorrections(m_phases_nominal.get(), p_snap, m_phases.get());
     this->UpdatePhases(m_nchan_in, m_phases.get());
     m_gain_version = p_snap.valid ? p_snap.version : 0;
+    return true;
+  }
+  /// Version of the projector applied to the voltages (0: none)
+  uint64_t GetProjVersion() const { return m_proj_version; }
+  /// Upload an interference projector (between images). Returns false if it
+  /// does not match the current spectral window.
+  bool ApplyProjTable(const ProjSnapshot& p_snap) {
+    if (!this->m_rfi || p_snap.chan0 != m_chan0 || int(p_snap.nchan) != m_nchan_in) {
+      return false;
+    }
+    if (p_snap.valid) {
+      this->m_rfi->SetProjector(p_snap.ut.data(), p_snap.vt.data(), p_snap.q, m_nchan_in);
+    } else {
+      this->m_rfi->ClearProjector();
+    }
+    m_proj_version = p_snap.valid ? p_snap.version : 0;
     return true;
   }
   payload_t GetEmptyBuf();
@@ -286,6 +306,9 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc) {
   this->use_bf16_accum = p_desc.use_bf16_accum;
   VLOG(3) << "Setting up GPU for imaging.";
   SetupGpu();
+  if (!p_desc.proj_table_path.empty() || p_desc.impulse_sigma > 0.f) {
+    this->EnableRfiStage(p_desc.impulse_sigma);
+  }
   if (p_desc.caltap_gpu) {
     TccTapOptions tap;
     tap.path = p_desc.caltap_path;
@@ -321,6 +344,10 @@ bool MOFFCorrelator<Dtype, BuffMngr>::ResetImagingConfig(int p_nchan,
   }
 
   m_chan0 = p_chan0;
+  if (this->m_rfi) {
+    this->m_rfi->ClearProjector();  // a projector for the old window does not apply
+  }
+  m_proj_version = 0;
 
   // Reset the gridding kernel because effective area changes with freq
   auto aeff = GetAEff(p_chan0);

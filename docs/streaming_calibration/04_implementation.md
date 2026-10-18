@@ -32,10 +32,12 @@ F-engine packets ──> packet assembler ──> gulp [chan 128][seq 1000][stan
 | `src/ex/cal_tap.hpp` (new) | `CalTap` has a one-slot mailbox, a stager thread and an X-engine thread. The stager copies `nseq` sequences per channel from the offered gulp into one of two staging batches while `ProcessGulp` runs; the correlator calls `WaitCopied()` before releasing the gulp. A full batch (`--caltap_batch` gulps, default 8) goes to the X-engine thread. Correlating one gulp per call kept up with only every second gulp, because the read-modify-write of the 134 MB accumulator dominates at 50 samples; batching keeps up with every gulp (section 7). The X-engine thread publishes `VisTableHeader` plus R as complex64 (Hermitian, R = Σxxᴴ / nsamp) under a seqlock. No `Payload` is shared across threads, because `Payload` unlocks its buffer on `use_count() == 2`, which is not thread safe. |
 | `src/ex/MOFF_cu_handler.{h,cu}` | `UpdatePhases`: an in-place synchronous `cudaMemcpy` into the existing `m_phases_cu`, with no reallocation. It is safe between gulps because `ProcessGulp` returns only after all streams finish. |
 | `src/ex/MOFF_correlator.hpp` | Keeps `m_phases_nominal` (from `GetLwasvPhases`). `ApplyGainTable` sets `m_phases = nominal ⊙ table` and uploads it. A new spectral window resets the gain version to 0, i.e. nominal phases. Adds `GetGainVersion` and `GetCalDesc`. |
-| `src/raft_kernels/correlator.hpp` | Polls the gain table at the first gulp of every image, so each image is made with exactly one table. Offers every gulp to the tap. Adds `gain_version` (uint64) to the image metadata. |
+| `src/raft_kernels/correlator.hpp` | Polls the gain table at the first gulp of every image, so each image is made with exactly one table. Offers every gulp to the tap. Adds `gain_version` (uint64) to the image metadata. With `--proj_table`, polls the projector at the same point and adds `proj_version`, `proj_q` (uint64) and `impulse_flag_frac` (double) to the image metadata; without the interference options the metadata are unchanged. |
 | `src/ex/types.hpp`, `option_parser.hpp`, `kernel_types.hpp` | New options (below). `{gpu}` in paths is replaced by the device id. |
 | `CMakeLists.txt` | Links `OpenMP::OpenMP_CXX` into epic++, for the X-engine. |
 | `src/ex/buffer.hpp` (fix) | `Payload::unlock` released the buffer (`m_lock = 0`) before `ResetBuf()` cleared its metadata. A producer acquiring the buffer in that window wrote metadata concurrently with the reset and crashed in `unordered_map::operator[]`. It reproduced reliably with the benchmark generator under backpressure; the production packet assembler is exposed to the same race. Fixed by resetting first, then releasing with release ordering. |
+| `src/ex/proj_table.hpp` (new) | `ProjTableHeader` (128 bytes) and `ProjTableReader` for the interference projector (section 10.8). Same seqlock and validity rules as the gain table; in addition a table is rejected unless, in each polarisation, $`\tilde V^H \tilde U`$ is the identity on the components in use to 5%. |
+| `src/ex/rfi_stage.{h,cu}` (new) | `RfiStage`, on the imaging GPU after each stream's host-to-device copy. `RfiProject` (one block per channel and sequence, one thread per stand) replaces $`x`$ by $`x - \tilde U(\tilde V^H x)`$ per polarisation, re-quantises to 4+4 bits with a uniform counter-based dither (symmetric clip ±7), writes a second gulp buffer and records the power of every channel and sequence. `ImpulseFlag` (one block per stream) zeroes the sequences whose sub-band power exceeds the gulp median by `--impulse_sigma` robust standard deviations (bitonic sort for median and MAD). The raw buffer is untouched, so the calibration tap keeps correlating unprojected voltages. |
 | `src/raft_kernels/bench_kernels.hpp` (new), `epic_executor.hpp` | `epic++ --bench`: `BenchGulpGen` → `CorrelatorRft` (with tap and gain table) → `BenchSink`. Only these kernels are constructed, so nothing connects to the database, video server or network. The generator plays simulated gulps from a file, rotating each channel's sequences on every pass so the tap sees new samples, or sends empty gulps; it runs unpaced or at the real-time rate. The sink reports image cadence and gain version and dumps sampled images. |
 
 New options:
@@ -43,6 +45,8 @@ New options:
 | Option | Default | Meaning |
 |---|---|---|
 | `--gain_table PATH` | empty (off) | Gain table to apply, e.g. `/dev/shm/epic_gains_gpu{gpu}` |
+| `--proj_table PATH` | empty (off) | Interference projector to apply before imaging, e.g. `/dev/shm/epic_proj_gpu{gpu}` (daemon `--proj`) |
+| `--impulse_sigma S` | 0 (off) | Zero sequences whose stream sub-band power exceeds the gulp median by S robust standard deviations |
 | `--caltap_nseq N` | 0 (off) | Sequences of every 1000-sequence gulp that are correlated (50 = 5%) |
 | `--caltap_out PATH` | `/dev/shm/epic_vis_gpu{gpu}` | Visibility table output |
 | `--caltap_interval S` | 10 | Integration per published table, in seconds of F-engine time |
@@ -91,6 +95,21 @@ Both tables are little-endian files in `/dev/shm` with a 128-byte header. The `s
 
 The visibility table holds raw F-engine correlations, before cable model and phases. It occupies 134 MB per instance.
 
+**Interference projector** (`EPICPROJ`, layout 1). Written by `ProjTableWriter` (daemon `--proj`) after every gain table. Each component acts on the inputs of one polarisation (input index 2 × stand + pol); components beyond `q` are zero. 4 MB for 128 channels and `qmax` = 4.
+
+| Offset | Field |
+|---|---|
+| 0 | `magic[8]` |
+| 8 | `layout`, `header_bytes` (u32 each) |
+| 16 | `seq` (u64) |
+| 24 | `version` (u64) |
+| 32 | `chan0` (i64) |
+| 40 | `nchan`, `ninput` (512), `qmax`, `q`, `flags` (bit 0 = valid), reserved (u32 each) |
+| 64 | `valid_from_seq` (u64) |
+| 72 | `t_solved_unix` (f64) |
+| 80 | `solver[48]` |
+| 128 | data: complex64 $`\tilde U`$ `[nchan][qmax][512]`, then $`\tilde V`$ `[nchan][qmax][512]` |
+
 ## 4.4 streamcal (Python)
 
 | Module | Content |
@@ -108,7 +127,7 @@ The visibility table holds raw F-engine correlations, before cable model and pha
   - the refraction prior (`--refraction-prior-deg`, `--refraction-prior-neff`, `--refraction-tau`);
   - matched-filter weights (`--plain-weights` to disable);
   - the diffuse map choice (`--diffuse-model`, default `auto`);
-  - the interference projection (`--rfi auto|off`, `--rfi-kmax`, `--rfi-mm`, `--rfi-refresh`, `--rfi-thresh`, `--rfi-focus`; section 10.8). |
+  - the interference projection (`--rfi auto|off`, `--rfi-kmax`, `--rfi-mm`, `--rfi-refresh`, `--rfi-thresh`, `--rfi-focus`; section 10.8), and with `--proj PATH` its voltage-domain projector for the imager. |
 | `research/` | Every simulation and real-data script behind sections 3, 6, 7 and 10 (including `replay_tables.py`, which replays recorded GPU-tap tables through the daemon, and `vistable_to_npz.py`), including the benchmark tools (`make_bench_model.py`, `make_bench_gulps.py`, `bench_run.sh`, `bench_watch.py`, `bench_images.py`) |
 
 Dependencies beyond the epic310 environment: `pygdsm`, plus `numba` for `epicop` only. `lsl` provides the dipole beam and the cable model. The daemon imports neither numba nor the GPU stack.
@@ -119,6 +138,7 @@ Dependencies beyond the epic310 environment: `pygdsm`, plus `numba` for `epicop`
 |---|---|
 | `tests/streamcal/test_io.cpp selftest` (epic1, g++ 11.4) | 13/13 pass: the tap R (batched, two threads) matches a scalar reference; the gain reader handles a missing file, slicing, repeated versions, a torn seqlock, deferral by `valid_from_seq`, coverage, NaN, clamping and unnormalised tables; application and zero flags are correct |
 | `tests/streamcal/test_shm_roundtrip.py` (epic1, epic310 Python) | Pass: Python writer → C++ reader, and C++ tap → Python reader |
+| `tests/streamcal/test_rfi_stage.py` with `rfi/rfi_stage_driver` (epic2, RTX 4090; 2026-10-18) | Pass: `ProjTableWriter` → `ProjTableReader` → `RfiStage`. A table that is not a projector pair is rejected; without a projector the output equals the input bit for bit; with one, the interference power in the projected subspace falls to 3.5×10⁻⁴ of the input and the output differs from the floating-point projection by the dithered rounding only (mean 0.001, rms 0.408 per component against √(1/6) = 0.408); impulse detection at 6σ zeroes exactly the injected sequences in every stream |
 | `tests/streamcal/test_daemon.py` | End to end on synthetic tap tables: see section 3.5 |
 | `research/test_epicop.py` | epicop against literal MOFF: relative error 2.5×10⁻⁸; adjoint exact |
 | Full epic++ build (epic1, CUDA 12.3, `build-streamcal/`) | Builds; no new warnings |

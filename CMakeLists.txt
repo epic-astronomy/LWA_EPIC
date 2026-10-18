@@ -100,7 +100,7 @@ set(AV_LIBS -lavcodec -lavformat -lavutil -lswscale -lavfilter )
 #set(CUDA_NVCC_EXECUTABLE "/home/batman/miniconda3/envs/epic310/bin/nvcc")
 #set(CMAKE_CUDA_COMPILER "/home/batman/miniconda3/envs/epic310/bin/nvcc")
 
-add_library(epic_cu STATIC src/MOFF_cu_handler.cu src/ex/host_helpers.cu src/ex/tcc_tap.cu)
+add_library(epic_cu STATIC src/MOFF_cu_handler.cu src/ex/host_helpers.cu src/ex/tcc_tap.cu src/ex/rfi_stage.cu)
 target_compile_features(epic_cu PUBLIC cxx_std_17)
 target_link_libraries(epic_cu glog::glog prometheus-cpp::pull)
 

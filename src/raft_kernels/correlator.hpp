@@ -24,6 +24,7 @@
 #define SRC_RAFT_KERNELS_CORRELATOR_HPP_
 #include <glog/logging.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <memory>
@@ -34,6 +35,7 @@
 #include "../ex/cal_tap.hpp"
 #include "../ex/constants.h"
 #include "../ex/gain_table.hpp"
+#include "../ex/proj_table.hpp"
 #include "../ex/metrics.hpp"
 #include "../ex/station_desc.hpp"
 #include "../ex/types.hpp"
@@ -63,9 +65,13 @@ class CorrelatorRft : public raft::kernel {
   std::string m_session_id; //changes with frequency
   /// Calibration gains from streamcal (null: off)
   std::unique_ptr<GainTableReader> m_gain_reader{nullptr};
+  /// Interference projector from streamcal (null: off)
+  std::unique_ptr<ProjTableReader> m_proj_reader{nullptr};
   /// CPU X-engine on a slice of every gulp for streamcal (null: off; the GPU
   /// tap, --caltap_gpu, lives in the correlator)
   std::unique_ptr<CalTap> m_cal_tap{nullptr};
+
+  bool cal_impulse_on() const { return m_correlator.get()->GetCalDesc().impulse_sigma > 0.f; }
 
   template <typename T, typename Map>
   static T MetaOr(Map& p_meta, const std::string& p_key, T p_default) {
@@ -99,6 +105,10 @@ class CorrelatorRft : public raft::kernel {
     if (!cal.gain_table_path.empty()) {
       m_gain_reader = std::make_unique<GainTableReader>(cal.gain_table_path);
       LOG(INFO) << "Calibration gains will be read from " << cal.gain_table_path;
+    }
+    if (!cal.proj_table_path.empty()) {
+      m_proj_reader = std::make_unique<ProjTableReader>(cal.proj_table_path);
+      LOG(INFO) << "Interference projector will be read from " << cal.proj_table_path;
     }
     if (cal.caltap_nseq > 0 && !cal.caltap_path.empty()) {
       CalTapOptions o;
@@ -166,6 +176,9 @@ class CorrelatorRft : public raft::kernel {
       if (m_gain_reader) {
         m_gain_reader->Reset();  // tables for the old window do not apply
       }
+      if (m_proj_reader) {
+        m_proj_reader->Reset();
+      }
       DLOG(INFO) << "Resetting GPU setup";
       m_delta = m_correlator.get()->GetScalingLen();
       m_gulp_counter = 1;
@@ -190,6 +203,17 @@ class CorrelatorRft : public raft::kernel {
           }
         } else if (!m_gain_reader->LastError().empty()) {
           LOG_EVERY_N(WARNING, 100) << "Gain table rejected: " << m_gain_reader->LastError();
+        }
+      }
+      // the projector likewise changes only between images
+      if (m_proj_reader) {
+        if (auto snap = m_proj_reader->Poll(chan0, nchan, m_seq_start_id)) {
+          if (m_correlator.get()->ApplyProjTable(*snap)) {
+            LOG_EVERY_N(INFO, 30) << "Applied interference projector version " << snap->version << " (" << snap->q
+                                  << " components per polarisation)";
+          }
+        } else if (!m_proj_reader->LastError().empty()) {
+          LOG_EVERY_N(WARNING, 100) << "Projector rejected: " << m_proj_reader->LastError();
         }
       }
     }
@@ -235,6 +259,16 @@ class CorrelatorRft : public raft::kernel {
           pld.get_mbuf()->GetDataPtr(), buf.get_mbuf()->GetDataPtr(),
           m_is_first, m_is_last, static_cast<int>(chan0), m_delta);
       DLOG(INFO) << "Done processing the gulp";
+      // interference stage (only when configured, so other images are unchanged)
+      if (m_proj_reader || cal_impulse_on()) {
+        img_metadata["proj_version"] = m_correlator.get()->GetProjVersion();
+        img_metadata["proj_q"] = uint64_t(m_correlator.get()->GetProjQ());
+        // fraction of (stream sub-band, sequence) pairs the impulse detector zeroed
+        img_metadata["impulse_flag_frac"] =
+            double(m_correlator.get()->GetImpulseFlagged()) /
+            double(std::max<size_t>(1, size_t(m_ngulps_per_img) * m_correlator.get()->GetNumSeqPerGulp() *
+                                           m_correlator.get()->GetNumStreams()));
+      }
       if (tapped) {
         m_cal_tap->WaitCopied();
       }

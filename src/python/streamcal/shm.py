@@ -4,7 +4,10 @@ GainTableWriter  publishes per-antenna corrections c = 1/g, [nchan][256][2] comp
                  which epic++ multiplies into its nominal phases at image boundaries.
 VisTableReader   reads the visibility matrices published by the epic++ calibration tap,
                  [nchan][2][256][256] complex64 (R = sum x x^H / nsamp, raw F-engine voltages).
-Both use a seqlock: an odd `seq` means a write is in progress.
+ProjTableWriter  publishes the interference projector (src/ex/proj_table.hpp): per channel
+                 qmax pairs of vectors (Ut, Vt) over the 512 inputs (input 2 stand + pol);
+                 epic++ replaces every voltage sequence x by x - Ut (Vt^H x) before imaging.
+All use a seqlock: an odd `seq` means a write is in progress.
 """
 from __future__ import annotations
 
@@ -20,7 +23,9 @@ NSTAND, NPOL = 256, 2
 
 GAIN_HDR = struct.Struct("<8sIIQQqIIIIQdfI48s")
 VIS_HDR = struct.Struct("<8sIIQQqIIIIQQQIIQf28s")
-assert GAIN_HDR.size == 128 and VIS_HDR.size == 128
+PROJ_HDR = struct.Struct("<8sIIQQqIIIIIIQd48s")
+assert GAIN_HDR.size == 128 and VIS_HDR.size == 128 and PROJ_HDR.size == 128
+NINPUT = NSTAND * NPOL
 
 # NDP F-engine: one sequence = 8192 samples at 196 MS/s
 SEQ_SECONDS = 8192 / 196e6
@@ -70,6 +75,60 @@ class GainTableWriter:
                             float(t_solved_unix if t_solved_unix is not None else time.time()), float(max_abs), 0,
                             self.solver)
         self.mm[:GAIN_HDR.size] = hdr
+        self.seq += 1  # even: stable
+        struct.pack_into("<Q", self.mm, 16, self.seq)
+        self.mm.flush()
+        return self.version
+
+
+class ProjTableWriter:
+    """Interference projector for epic++: Ut, Vt complex64 [nchan][qmax][512].
+
+    For each polarisation the components act only on that polarisation's inputs (2 stand + pol);
+    unused components are zero. Projection with exact vectors is idempotent: Vt^H Ut = I."""
+
+    def __init__(self, path: str, chan0: int, nchan: int, qmax: int = 4, solver: str = "streamcal"):
+        self.path, self.chan0, self.nchan, self.qmax = path, int(chan0), int(nchan), int(qmax)
+        self.size = PROJ_HDR.size + 2 * nchan * qmax * NINPUT * 8
+        fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
+        try:
+            if os.fstat(fd).st_size != self.size:
+                os.ftruncate(fd, self.size)
+            self.mm = mmap.mmap(fd, self.size, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE)
+        finally:
+            os.close(fd)
+        old = PROJ_HDR.unpack_from(self.mm, 0)
+        self.seq = old[3] + (old[3] & 1)
+        self.version = old[4] if old[0] == b"EPICPROJ" else 0
+        self.solver = solver.encode()[:47]
+        if old[0] != b"EPICPROJ" or old[6] != self.nchan or old[8] != self.qmax:
+            self.mm[:PROJ_HDR.size] = PROJ_HDR.pack(b"EPICPROJ", 1, PROJ_HDR.size, self.seq, self.version,
+                                                    self.chan0, self.nchan, NINPUT, self.qmax, 0, 0, 0, 0, 0.0,
+                                                    self.solver)
+
+    def publish(self, Ut: np.ndarray | None, Vt: np.ndarray | None = None, valid_from_seq: int = 0,
+                t_solved_unix: float | None = None):
+        """Ut, Vt: complex [nchan, qmax, 512], or None to switch the projection off."""
+        valid = Ut is not None
+        q = 0
+        if valid:
+            Ut, Vt = np.asarray(Ut, np.complex64), np.asarray(Vt, np.complex64)
+            assert Ut.shape == Vt.shape == (self.nchan, self.qmax, NINPUT)
+            if not (np.all(np.isfinite(Ut)) and np.all(np.isfinite(Vt))):
+                raise ValueError("projector has non-finite values")
+            used = np.any(Ut != 0, axis=(0, 2))
+            q = int(np.flatnonzero(used).max() + 1) if used.any() else 0
+        self.seq += 1  # odd: writing
+        struct.pack_into("<Q", self.mm, 16, self.seq)
+        if valid:
+            n = self.nchan * self.qmax * NINPUT * 8
+            self.mm[PROJ_HDR.size:PROJ_HDR.size + n] = Ut.tobytes()
+            self.mm[PROJ_HDR.size + n:PROJ_HDR.size + 2 * n] = Vt.tobytes()
+        self.version += 1
+        hdr = PROJ_HDR.pack(b"EPICPROJ", 1, PROJ_HDR.size, self.seq, self.version, self.chan0, self.nchan, NINPUT,
+                            self.qmax, q, 1 if valid else 0, 0, int(valid_from_seq),
+                            float(t_solved_unix if t_solved_unix is not None else time.time()), self.solver)
+        self.mm[:PROJ_HDR.size] = hdr
         self.seq += 1  # even: stable
         struct.pack_into("<Q", self.mm, 16, self.seq)
         self.mm.flush()

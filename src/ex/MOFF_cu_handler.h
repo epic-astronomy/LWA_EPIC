@@ -30,6 +30,7 @@
 #include "./channel_descriptor.h"
 #include "./constants.h"
 #include "./metrics.hpp"
+#include "./rfi_stage.h"
 #include "./tcc_tap.h"
 #include "./types.hpp"
 
@@ -105,6 +106,13 @@ class MOFFCuHandler {
 
   /// GPU calibration tap (null: off). Correlates the gulps from m_f_eng_cu.
   std::unique_ptr<TccTap> m_tcc_tap{nullptr};
+
+  /// Interference projection and impulse detection before imaging (null:
+  /// off). When active the imaging kernel reads its output buffer instead of
+  /// m_f_eng_cu, which the calibration tap keeps reading raw.
+  std::unique_ptr<RfiStage> m_rfi{nullptr};
+  /// (stream, sequence) pairs zeroed by the impulse detector in the last image
+  uint64_t m_last_impulse_flagged{0};
 
   /// Number of streams to split a gulp into
   int m_nstreams;
@@ -265,6 +273,14 @@ class MOFFCuHandler {
   /// Start the GPU calibration tap (tensor-core correlator, tcc_tap.h) on the
   /// first p_nchan channels of gulps of p_nseq sequences.
   void EnableTccTap(const TccTapOptions& p_opts, int p_nchan, int p_nseq);
+
+  /// Enable the interference stage (projector uploads via SetProjector;
+  /// impulse detection when p_impulse_sigma > 0). Call before the first gulp.
+  void EnableRfiStage(float p_impulse_sigma);
+  /// Projector components in use (0: none)
+  int GetProjQ() const { return m_rfi ? m_rfi->Q() : 0; }
+  /// (stream, sequence) pairs zeroed by impulse detection in the last image
+  uint64_t GetImpulseFlagged() const { return m_last_impulse_flagged; }
 
   /// Describe the next gulp to the GPU calibration tap; call before
   /// ProcessGulp. Returns true if the gulp will be correlated.

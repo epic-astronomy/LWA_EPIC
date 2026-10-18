@@ -126,6 +126,17 @@ cxxopts::Options GetEpicOptions() {
       "e.g. /dev/shm/epic_gains_gpu{gpu}. Read at image boundaries and "
       "multiplied into the per-antenna phases. Empty: no calibration.",
       cxxopts::value<std::string>()->default_value(""))(
+      "proj_table",
+      "Shared-memory interference projector written by streamcal (daemon "
+      "--proj), e.g. /dev/shm/epic_proj_gpu{gpu}. Read at image boundaries; "
+      "every voltage sequence x becomes x - U (V^H x) before imaging, while "
+      "the calibration tap keeps the raw voltages. Empty: off.",
+      cxxopts::value<std::string>()->default_value(""))(
+      "impulse_sigma",
+      "Zero voltage sequences whose band power exceeds the gulp median by "
+      "this many robust standard deviations, per stream sub-band, before "
+      "imaging (broadband impulses). 0: off.",
+      cxxopts::value<float>()->default_value("0"))(
       "caltap_nseq",
       "Calibration tap: sequences of every gulp correlated on the CPU and "
       "published for streamcal (0: off; 50 = 5% of a 1000-sequence gulp).",
@@ -348,6 +359,8 @@ void InitInfoMetric(const cxxopts::ParseResult& result){
     {"remove_autocorr",std::to_string(result["remove_autocorr"].as<bool>())},
     {"seq_chunk",std::to_string(result["seq_chunk"].as<int>())},
     {"gain_table",result["gain_table"].as<std::string>()},
+    {"proj_table",result["proj_table"].as<std::string>()},
+    {"impulse_sigma",std::to_string(result["impulse_sigma"].as<float>())},
     {"caltap_nseq",std::to_string(result["caltap_nseq"].as<int>())},
     {"caltap_interval",std::to_string(result["caltap_interval"].as<float>())},
     {"caltap_gpu",std::to_string(result["caltap_gpu"].as<bool>())},

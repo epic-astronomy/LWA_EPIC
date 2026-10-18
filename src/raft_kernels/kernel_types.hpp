@@ -164,6 +164,8 @@ struct Kernel<_CORRELATOR> : KernelTypeDefs {
       return p;
     };
     correlator_options.gain_table_path = with_gpu(options["gain_table"].as<std::string>());
+    correlator_options.proj_table_path = with_gpu(options["proj_table"].as<std::string>());
+    correlator_options.impulse_sigma = options["impulse_sigma"].as<float>();
     correlator_options.caltap_nseq = options["caltap_nseq"].as<int>();
     correlator_options.caltap_gpu = options["caltap_gpu"].as<bool>();
     correlator_options.caltap_min_quality = options["caltap_min_quality"].as<float>();

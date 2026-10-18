@@ -163,8 +163,34 @@ The remaining χ²/dof of about 8 is consistent with the prototype study (5.9 wi
 
 **Cost.** With 8 worker processes for 32 channels × 2 polarisations, a table solves in 2.0–2.5 s of wall time (about 1.6–2.5 s without projection), a refresh table in 5–10 s, and the cold table in 13–28 s. This is within the 10 s table interval on 8 cores, and leaves the remaining cores of a worker for the imager and the all-sky monitor.
 
+**Projection of the voltages in the imager.** With `--proj PATH` the daemon publishes, after every gain table, a voltage-domain projector for all 128 imaged channels (section 4.3). The daemon's subspace $`U`$ lives in the whitened, cable-corrected basis of the used stands; on the raw voltages the projection is $`x \mapsto x - \tilde U(\tilde V^H x)`$ with $`\tilde U = D^{1/2}U/c`$ and $`\tilde V = \bar c\, U/D^{1/2}`$, $`c`$ the cable correction. Channels that the daemon does not solve take the whitened subspace of the nearest solved channel (at most two channels away) with their own powers $`D`$: on the 75.8 MHz tables the dominant component's overlap between channels two apart is 0.998, so 0.2% of its power leaks past the projector. epic++ `--proj_table` applies it on the GPU before imaging (`RfiStage`, section 4.2), with dithered re-quantisation to 4+4 bits, and optionally zeroes impulsive sequences (`--impulse_sigma`). The calibration tap keeps correlating the raw voltages, so the daemon continues to see, and track, the interference it removes.
+
+Applied to the raw covariance of recorded tables, the published projector lowers the top whitened eigenvalue from 14.0 (X) and 12.6 (Y) to 2.3 and 2.2 after the cold-start table (one component) and to 1.1 and 0.8 from the second table on (four components), the level of the sky. Unsolved channels reach the same values as solved ones (1.10 and 1.10).
+
+**Real time, imager and calibrator together** (epic2: RTX 4090, Threadripper PRO 5965WX; `research/bench_run.sh` with `PROJ=1 IMPULSE=6`). The benchmark voltages have the covariance of a recorded 75.8 MHz table (`research/make_table_gulps.py`: 240 gulps, one table of distinct samples, quantised to 4+4 bits at the recorded level), so they carry the real sky, gains and interferer. The daemon ran on the four physical cores of the calibration block and their siblings (CPUs 20–23, 44–47; 8 workers, one BLAS thread each).
+
+| | Without the stage | Projection (q = 4) and impulse detection |
+|---|---|---|
+| GPU per gulp, imaging and GPU tap, unpaced | 36.4 ms | 37.3 ms (of 41.8 ms) |
+| Paced at the F-engine rate, 10 min | | 12,000 gulps at 41.796 ms; the generator never waited for a buffer (mean 0.0004 ms); images every 83.6 ms (p99 87 ms) |
+| Daemon per 10 s table | | 3.1–3.2 s; 8.4–8.5 s on subspace-refresh tables (every sixth); cold start 19.8 s |
+| Tables processed | | every table after the cold start (56 of 56), each followed by a gain table and a projector |
+| Impulse detector at 6σ | | 0% of sequences flagged on the Gaussian benchmark data |
+
+The benchmark freezes the model time (`--fixed-time`), so the 10.5 s model refresh ran once. In operation it recurs every 60 s in the daemon's main process; a refresh that coincides with a subspace-refresh table occupies the daemon for about 19 s, which costs at most one table per minute (the tracker coasts over it). Averaged over a minute the daemon uses about 35 of the 60 s on the calibration block.
+
+Images from the same data and calibrator, with and without the voltage projection (`research/bench_rfi_images.py`; noise from consecutive images, peak at the brightest source):
+
+| Images | Noise | Brightest source, S/N |
+|---|---|---|
+| Without voltage projection | 8.05 × 10¹⁴ | 196 |
+| With voltage projection (q = 4) | 5.00 × 10¹⁴ (−38%) | 261 (+33%) |
+
+The source peak itself is 17% lower with the projection: the direction-dependent signal loss of a rank-4 null and the interference's own contribution to that pixel. The S/N, which sets detection, rises by a third.
+
+The χ²/dof of the benchmark run (34 at the cold start, then 11.6 falling to 9.7, with 9–17 of 64 channel solutions rejected) is higher than on the recorded tables themselves (8.2–8.8, 0–1 rejected). Re-synthesised voltages count the table's sampling noise twice and are quantised a second time; the figure describes the benchmark data, not the method.
+
 **Limits.**
-- The projection removes the interference from the calibration, not from the images. The images need the same projection applied to the voltages before gridding (about 0.7 ms per gulp on the GPU).
 - 38–49 inputs per polarisation are still power-flagged, because the interference inflates the autocorrelations (section 4.7).
 - The subspace is assumed fixed between refreshes. A transmitter that moves or switches faster than `--rfi-refresh` tables is caught only by the χ² channel rejection.
 - The interferer itself should be located and removed at the station.

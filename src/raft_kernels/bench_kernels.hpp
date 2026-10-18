@@ -190,21 +190,29 @@ class BenchSink : public raft::kernel {
     uint64_t gv = 0, seq = 0;
     if (auto it = meta.find("gain_version"); it != meta.end()) gv = std::get<uint64_t>(it->second);
     if (auto it = meta.find("seq_start"); it != meta.end()) seq = std::get<uint64_t>(it->second);
+    uint64_t pv = 0, pq = 0;
+    if (auto it = meta.find("proj_version"); it != meta.end()) pv = std::get<uint64_t>(it->second);
+    if (auto it = meta.find("proj_q"); it != meta.end()) pq = std::get<uint64_t>(it->second);
+    if (auto it = meta.find("impulse_flag_frac"); it != meta.end()) m_imp.push_back(std::get<double>(it->second));
     if (m_dump && !m_opts.dump_dir.empty() && m_opts.dump_every > 0 && (m_n % m_opts.dump_every) == 0) {
       int grid = std::get<int>(meta["grid_size"]);
       int nchan = std::get<uint8_t>(meta["nchan"]);
       size_t nbytes = size_t(nchan) * grid * grid * 4 * sizeof(float);
       char fn[512];
-      std::snprintf(fn, sizeof(fn), "%s/img_seq%llu_gv%llu.f32", m_opts.dump_dir.c_str(), (unsigned long long)seq,
-                    (unsigned long long)gv);
+      std::snprintf(fn, sizeof(fn), "%s/img_seq%llu_gv%llu_pv%llu.f32", m_opts.dump_dir.c_str(),
+                    (unsigned long long)seq, (unsigned long long)gv, (unsigned long long)pv);
       std::ofstream(fn, std::ios::binary).write(reinterpret_cast<const char*>(pld.get_mbuf()->GetDataPtr()), nbytes);
     }
     if (m_opts.report_every > 0 && m_n % m_opts.report_every == 0) {
       double m, p50, p99, mx;
       bench_detail::Summarise(m_iv, &m, &p50, &p99, &mx);
+      double imp = 0;
+      for (double x : m_imp) imp += x;
       LOG(INFO) << "bench " << m_name << ": " << m_n << " images; interval mean " << m << " p50 " << p50 << " p99 "
-                << p99 << " max " << mx << " ms; gain_version " << gv;
+                << p99 << " max " << mx << " ms; gain_version " << gv << "; proj_version " << pv << " (q " << pq
+                << "); impulse-flagged " << (m_imp.empty() ? 0.0 : 100.0 * imp / m_imp.size()) << "%";
       m_iv.clear();
+      m_imp.clear();
     }
     return raft::proceed;
   }
@@ -216,6 +224,7 @@ class BenchSink : public raft::kernel {
   int64_t m_n{0};
   std::chrono::steady_clock::time_point m_last;
   std::vector<double> m_iv;
+  std::vector<double> m_imp;
 };
 
 #endif  // SRC_RAFT_KERNELS_BENCH_KERNELS_HPP_

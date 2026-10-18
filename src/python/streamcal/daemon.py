@@ -209,6 +209,11 @@ class StreamCal:
         self.models = None
         if not a.dry_run:
             self.writer = shm.GainTableWriter(a.gains, chan0, nchan, solver="streamcal stefcal+kalman")
+        self.proj_writer = None
+        if not a.dry_run and getattr(a, "proj", "") and getattr(a, "rfi", "auto") != "off":
+            self.proj_writer = shm.ProjTableWriter(a.proj, chan0, nchan, qmax=getattr(a, "rfi_kmax", 4),
+                                                   solver="streamcal rfi subspace")
+            self.cc_all = [np.array([cable_correction(f_, p_)[self.ant] for f_ in self.freq_all]) for p_ in range(2)]
         log.info("spectral window chan0=%d nchan=%d: solving %d channels", chan0, nchan, len(self.solve_idx))
 
     def refresh_model(self, t: Time):
@@ -341,6 +346,36 @@ class StreamCal:
                    offset_deg=np.degrees(law))  # offsets at the band centre
         return g, var, chi, sky, powered
 
+    def projector(self, tab):
+        """Voltage-domain projector for epic++ from the interference subspaces of the solved channels.
+
+        The daemon's subspace U (orthonormal, per polarisation) lives in the whitened, cable-corrected
+        basis of the used stands: P = D^1/2 (I - U U^H) D^-1/2 acts on y = C x, C = diag(cable
+        correction). On the raw voltages x this is x - Ut (Vt^H x) with Ut = D^1/2 U / c and
+        Vt = conj(c) U / D^1/2. Every channel takes the whitened subspace of the nearest solved
+        channel (at most chan_stride / 2 away; on the 75.8 MHz tables 0.2% of the interference
+        power then leaks past the projector at a distance of 2 channels) and its own powers D."""
+        qmax = self.proj_writer.qmax
+        Ut = np.zeros((self.nchan, qmax, shm.NINPUT), np.complex64)
+        Vt = np.zeros_like(Ut)
+        st = getattr(self, "rfi_state", {})
+        near = np.abs(np.arange(self.nchan)[:, None] - self.solve_idx[None, :]).argmin(axis=1)
+        for p in range(2):
+            inp = 2 * np.asarray(self.ant) + p
+            for c in range(self.nchan):
+                U = st.get((p, int(near[c])), {}).get("U")
+                if U is None or U.shape[1] == 0:
+                    continue
+                U = np.asarray(U, complex)[:, :qmax]
+                cc = self.cc_all[p][c]
+                d = np.real(np.diag(tab.R[c, p]))[self.ant] * np.abs(cc) ** 2
+                live = d > 1e-3 * np.median(d[d > 0]) if np.any(d > 0) else np.zeros(len(d), bool)
+                dh = np.sqrt(np.where(live, d, 1.0))
+                k = U.shape[1]
+                Ut[c][:k, inp] = np.where(live[:, None], dh[:, None] * U / cc[:, None], 0).T
+                Vt[c][:k, inp] = np.where(live[:, None], np.conj(cc)[:, None] * U / dh[:, None], 0).T
+        return Ut, Vt
+
     def update_skyfrac(self, skyfrac):
         """Per-stand sky fraction (median over the solved channels), smoothed over tables."""
         with np.errstate(all="ignore"):
@@ -413,6 +448,9 @@ class StreamCal:
         if not self.a.dry_run:
             v = self.writer.publish(self.table(), t_solved_unix=tab.t_mid_unix)
             msg += f"; published gains v{v}"
+            if self.proj_writer is not None:
+                vp = self.proj_writer.publish(*self.projector(tab), t_solved_unix=tab.t_mid_unix)
+                msg += f", projector v{vp}"
         log.info(msg)
         self.history.append(dict(t=tab.t_mid_unix, chi=chi, sky=sky, x=[tr.x.copy() for tr in self.trackers],
                                  flux_scale=getattr(self, "flux_scale", None)))
@@ -426,6 +464,8 @@ def build_parser():
     ap.add_argument("--vis", default="/dev/shm/epic_vis_gpu0")
     ap.add_argument("--gains", default="/dev/shm/epic_gains_gpu0")
     ap.add_argument("--dry-run", action="store_true", help="solve and log, do not publish gains")
+    ap.add_argument("--proj", default="",
+                    help="also publish the interference projector for epic++ --proj_table (empty: off)")
     ap.add_argument("--nside", type=int, default=64, help="HEALPix nside of the diffuse model")
     ap.add_argument("--diffuse-model", default="auto", choices=("auto", "lfsm", "ovrolwa", "gsm16"),
                     help="diffuse sky map; auto: OVRO-LWA at 30-80 MHz when its hybrid map is installed (sky.OVROLWA_MAPS or $STREAMCAL_OVROLWA_MAP), LFSM otherwise")

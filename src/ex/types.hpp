@@ -95,6 +95,13 @@ struct MOFFCorrelatorDesc {
   /// Calibration gain table published by streamcal ("" = off). "{gpu}" is
   /// replaced by the device id.
   std::string gain_table_path;
+  /// Interference projector published by streamcal ("" = off; "{gpu}" as
+  /// above). Applied to the voltages before imaging (proj_table.hpp).
+  std::string proj_table_path;
+  /// Per-sequence impulse detection before imaging: sequences whose band power
+  /// exceeds the gulp median by this many robust standard deviations are
+  /// zeroed (0 = off)
+  float impulse_sigma{0.f};
   /// Calibration tap: output file ("" = off), sequences per gulp, integration
   /// (s) and X-engine threads.
   std::string caltap_path;
