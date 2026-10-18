@@ -10,7 +10,10 @@
 //      reads. The band power of each (channel, sequence) is recorded.
 //   2. ImpulseFlag (optional): per stream sub-band, sequences whose band power
 //      exceeds the gulp median by impulse_sigma robust standard deviations
-//      (1.4826 x MAD) are zeroed.
+//      (1.4826 x MAD) are zeroed. With a Sun vector w (unit norm per
+//      polarisation, from streamcal) the Sun-beam power |w^H x|^2 is removed
+//      from the band power first: a solar burst raises both equally and is
+//      kept, an impulse from elsewhere raises only the band power.
 // The raw gulp buffer is left untouched, so the calibration tap correlates the
 // unprojected voltages and streamcal keeps seeing the interference it tracks.
 // Each imaging stream processes the same channels in every gulp, so the second
@@ -38,9 +41,15 @@ class RfiStage {
   /// (Re)allocate for gulps of p_nchan channels x p_nseq sequences; clears the projector
   void Resize(int p_nchan, int p_nseq);
   /// Upload a projector, [p_nchan][kProjQmax][512] each (synchronous: call
-  /// between gulps). p_q = 0 switches the projection off.
-  void SetProjector(const std::complex<float>* p_ut, const std::complex<float>* p_vt, int p_q, int p_nchan);
-  void ClearProjector() { m_q = 0; }
+  /// between gulps). p_q = 0 switches the projection off. p_sun: the Sun
+  /// vector [p_nchan][512] for the impulse detector, or null for none.
+  void SetProjector(const std::complex<float>* p_ut, const std::complex<float>* p_vt, int p_q, int p_nchan,
+                    const std::complex<float>* p_sun = nullptr);
+  void ClearProjector() {
+    m_q = 0;
+    m_has_sun = false;
+  }
+  bool HasSun() const { return m_has_sun; }
   int Q() const { return m_q; }
   /// Anything to do for the next gulp (projection or impulse detection)
   bool Active() const { return m_q > 0 || m_sigma > 0.f; }
@@ -61,6 +70,8 @@ class RfiStage {
   float m_sigma;
   int m_nchan{0}, m_nseq{0};
   int m_q{0};
+  bool m_has_sun{false};
+  float2* m_sun{nullptr};
   uint32_t m_gulp{0};
   uint8_t* m_out{nullptr};
   float2* m_ut{nullptr};

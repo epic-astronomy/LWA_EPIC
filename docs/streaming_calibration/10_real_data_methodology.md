@@ -190,6 +190,14 @@ The source peak itself is 17% lower with the projection: the direction-dependent
 
 The χ²/dof of the benchmark run (34 at the cold start, then 11.6 falling to 9.7, with 9–17 of 64 channel solutions rejected) is higher than on the recorded tables themselves (8.2–8.8, 0–1 rejected). Re-synthesised voltages count the table's sampling noise twice and are quantised a second time; the figure describes the benchmark data, not the method.
 
+**Solar bursts and the impulse detector.** The detector tests band power only, so it cannot tell a local impulse from a solar burst. Slow solar emission raises the whole gulp and is not flagged, but a type III burst near 75 MHz drifts at roughly 28 MHz/s (the empirical law of Alvarez & Haddock 1973) and crosses a 16-channel (0.38 MHz) sub-band in about 14 ms: a short spike that the detector would zero. The daemon therefore also publishes the Sun's response on the raw inputs, after projection and normalised per polarisation: $`w = Pv/\lVert Pv\rVert`$ with $`v = g\,a(\hat s_\odot)/c`$ from the tracked gains (only once they exist; with the cable model alone the beam does not focus on the Sun). The GPU kernel forms $`|w^H x|^2`$ for every channel and sequence, in the same block reduction as the band power, and the detector tests the band power minus this Sun-beam power. A solar burst raises both by the same amount and is kept; an impulse from elsewhere raises only the band power. The Sun-beam power also carries one input's worth of noise (about 0.4% of the band power), a constant offset for the test.
+
+- Unit test (`test_rfi_stage.py`): a four-sequence burst along a Sun-like response, strong enough to be zeroed with the impulses when the table has no Sun vector, is kept when it has one, while the impulses are still zeroed.
+- Recorded 75.8 MHz day table (Sun at 27.5° elevation): the cross-power of the Sun beam is 6.2 (X) and 8.3 (Y) times the median beam toward other directions at the same elevation (Cyg A: 7.0 and 7.9); with the cable model alone 0.9 and 1.2.
+- Cost: GPU 37.6 ms per 41.8 ms gulp with projection, impulse detection and the Sun beam (37.3 ms without the Sun beam).
+
+The exemption is as good as the Sun vector. Gain errors of 1–2° and 3%, the Sun's position shift by refraction (0.05–0.3° against a 2–3° synthesised beam) and the size of the burst source leave an estimated 1–2% of a burst's power outside the beam, so only bursts some 50–100 times above the detection threshold can still be partly zeroed. Below the horizon there is no Sun vector and the detector works on band power alone.
+
 **Limits.**
 - 38–49 inputs per polarisation are still power-flagged, because the interference inflates the autocorrelations (section 4.7).
 - The subspace is assumed fixed between refreshes. A transmitter that moves or switches faster than `--rfi-refresh` tables is caught only by the χ² channel rejection.

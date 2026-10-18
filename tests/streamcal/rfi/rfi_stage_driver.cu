@@ -32,7 +32,8 @@ int main(int argc, char** argv) {
   }
   RfiStage st(0, sigma);
   st.Resize(nchan, nseq);
-  if (snap->valid) st.SetProjector(snap->ut.data(), snap->vt.data(), snap->q, nchan);
+  if (snap->valid)
+    st.SetProjector(snap->ut.data(), snap->vt.data(), snap->q, nchan, snap->sun.empty() ? nullptr : snap->sun.data());
   uint8_t* d = nullptr;
   cudaMalloc(&d, nbytes);
   cudaMemcpy(d, gulp.data(), nbytes, cudaMemcpyHostToDevice);
@@ -48,7 +49,7 @@ int main(int argc, char** argv) {
   std::vector<uint8_t> out(nbytes);
   cudaMemcpy(out.data(), st.Out(), nbytes, cudaMemcpyDeviceToHost);
   std::ofstream(argv[3], std::ios::binary).write(reinterpret_cast<const char*>(out.data()), nbytes);
-  std::printf("q %d version %llu flagged %llu err %s\n", snap->q, (unsigned long long)snap->version,
+  std::printf("q %d sun %d version %llu flagged %llu err %s\n", snap->q, int(!snap->sun.empty()), (unsigned long long)snap->version,
               (unsigned long long)st.CollectFlagged(), cudaGetErrorString(cudaGetLastError()));
   return 0;
 }
