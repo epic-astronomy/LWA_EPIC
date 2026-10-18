@@ -128,6 +128,13 @@ class Config:
     # (conditions RFI rate, status rfi_unrecorded). An interference storm
     # otherwise costs a record per group and stalls the search
     rfi_records_max: int = 20
+    # a group at most this fraction of the amplitude of a group elsewhere at
+    # the same time is that burst seen through a sidelobe of the array beam
+    # (the strongest single-channel sidelobe of LWA-SV is about 2.3 percent
+    # at 76 MHz): RFI, not certain, its data kept. A very bright transient
+    # (a solar burst, a flash of interference) puts about 0.4 percent of
+    # itself on every pixel, enough to cross the threshold on a few
+    sidelobe_max: float = 0.03
     # a candidate whose signal is in fewer effective channels than this, or
     # with more than narrowband_top2 of it in two channels, is narrowband RFI
     narrowband_min_channels: float = 6.0
@@ -538,16 +545,27 @@ class Monitor:
         # a burst comes from one place: clusters at several well-separated
         # positions with overlapping time spans are one flash of RFI
         # (all pairs of group heads at once, in row chunks to bound memory)
+        # The same pairs give, for each group, the brightest group elsewhere at
+        # the same time, in image units (S/N times the pixel's raw noise), for
+        # the sidelobe test
         heads = np.array([g[0] for g in groups], int)
         sites = np.zeros(len(groups), int)
         hv = unit_vectors(ra[heads], dec[heads])
         h_lo, h_hi, h_r = t_lo[heads], t_hi[heads], radius[heads]
+        h_slot = slots[heads]
+        amp = np.array([hits[k].snr for k in heads]) * \
+            np.sqrt(np.maximum(self.searcher.var[:, h_slot], 0).mean(0))
+        brighter = np.zeros(len(groups))
+        brighter_at = np.full(len(groups), -1)
         for a in range(0, len(heads), 1024):
             b = slice(a, a + 1024)
             sep = np.degrees(np.arccos(np.clip(hv[b] @ hv.T, -1, 1)))
             apart = sep > 2 * np.maximum(h_r[b, None], h_r[None, :])
-            apart[np.arange(apart.shape[0]), np.arange(a, a + apart.shape[0])] = True
             overlap = (h_lo[None, :] <= h_hi[b, None]) & (h_hi[None, :] >= h_lo[b, None])
+            other = np.where(overlap & apart, amp[None, :], 0.0)
+            brighter[b] = other.max(1)
+            brighter_at[b] = other.argmax(1)
+            apart[np.arange(apart.shape[0]), np.arange(a, a + apart.shape[0])] = True
             sites[b] = np.count_nonzero(overlap & apart, axis=1)
         # solar bursts: groups whose brightest hit is at the Sun (known.py's
         # radius for bodies), and flashes over the sky (seen at once by much of
@@ -585,7 +603,13 @@ class Monitor:
             solar = bool(at_sun[gi])
             sidelobe = not solar and bool(solar_time[gi]) and (
                 "much of the sky at once" in reasons or "several separate positions at once" in reasons)
-            if sidelobe:
+            if not solar and brighter[gi] > 0 and amp[gi] <= self.cfg.sidelobe_max * brighter[gi]:
+                j = int(brighter_at[gi])
+                src = "a solar burst" if at_sun[j] else "a burst"
+                reasons.append(f"sidelobe of {src} {brighter[gi] / max(amp[gi], 1e-30):.0f} times "
+                               f"brighter at RA {ra[heads[j]]:.1f} Dec {dec[heads[j]]:.1f}")
+                sidelobe = sidelobe or bool(at_sun[j])
+            elif sidelobe:
                 reasons.append("solar burst at the same time")
             # certain: terrestrial (no dispersion) or seen over much of the sky
             certain = not solar and ("DM near zero" in reasons or "much of the sky at once" in reasons)

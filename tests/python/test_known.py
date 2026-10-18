@@ -154,11 +154,11 @@ class CarrierSimulator:
         return meta, img
 
 
-def _high_position(unix, avoid, min_sep=25.0):
-    """A position above 65 deg elevation, at least min_sep from every (ra, dec) in avoid"""
-    for dec in (34.0, 45.0, 25.0):
+def _high_position(unix, avoid, min_sep=25.0, el_min=65.0):
+    """A position above el_min elevation, at least min_sep from every (ra, dec) in avoid"""
+    for dec in (34.0, 45.0, 25.0, 55.0, 15.0):
         for r in range(0, 360, 3):
-            if altaz(r, dec, unix)[0] < 65:
+            if altaz(r, dec, unix)[0] < el_min:
                 continue
             if all(separation_deg(r, dec, a, d) > min_sep for a, d in avoid):
                 return float(r), dec
@@ -191,8 +191,15 @@ class TestEndToEnd(unittest.TestCase):
         # a solar burst: the "Sun" is put at a high position clear of the
         # others, and a burst with no dispersion goes off there
         cls.sun = _high_position(T0, avoid + [cls.carrier])
-        sim.frb_list.append(dict(id="sim-sun", ra=cls.sun[0], dec=cls.sun[1], dm=0.0, snr=40.0,
+        sim.frb_list.append(dict(id="sim-sun", ra=cls.sun[0], dec=cls.sun[1], dm=0.0, snr=400.0,
                                  width_s=0.2, t_inf=T0 + 130.0))
+        # a faint dispersed burst elsewhere during it, 40 times fainter: what a
+        # sidelobe of the solar burst looks like. It reaches the top of the band
+        # as the solar burst does
+        cls.side = _high_position(T0, avoid + [cls.carrier, cls.sun], el_min=45.0)
+        sim.frb_list.append(dict(id="sim-side", ra=cls.side[0], dec=cls.side[1], dm=20.0, snr=10.0,
+                                 width_s=0.2, t_inf=T0 + 130.0 - K_DM * 20.0 / f_top ** 2))
+        sim.frb_list.sort(key=lambda f: f["t_inf"] + K_DM * f["dm"] / f_top ** 2)
         src = CarrierSimulator(sim, *cls.carrier, chan=[40, 41, 42], t_start=T0 + 100.0, duration_s=8.0)
         cls.mon = Monitor(Config(out_dir=cls.out, nside=32, dm_max=300.0, block0=64, nthreads=4,
                                  warmup_images=32, inject_interval_s=0, seed=7, accum_hours=0.5))
@@ -251,6 +258,19 @@ class TestEndToEnd(unittest.TestCase):
         self.assertFalse([c for c in near if c["cls"] in ("rfi", "candidate")],
                          [(c["cls"], c["dm"], c["rfi_reasons"]) for c in near])
         self.assertGreaterEqual(self.n_solar, 1)  # counted apart from RFI
+
+    def test_faint_burst_during_a_bright_one_is_its_sidelobe(self):
+        near = self._near(*self.side, 3 * self.mon.beam)
+        self.assertTrue(near, "the faint burst was not found at all")
+        side = [c for c in near if any(r.startswith("sidelobe of a solar burst")
+                                       for r in c["rfi_reasons"])]
+        self.assertTrue(side, [(c["cls"], c["snr"], c["dm"], c["rfi_reasons"]) for c in near])
+        for c in side:
+            self.assertEqual(c["cls"], "rfi")
+            self.assertFalse(c["rfi_certain"])  # its data are kept
+            self.assertTrue(os.path.exists(c["files"]["npz"]))
+        self.assertFalse([c for c in near if c["cls"] == "candidate"],
+                         [(c["cls"], c["snr"], c["dm"], c["rfi_reasons"]) for c in near])
 
 
 if __name__ == "__main__":
