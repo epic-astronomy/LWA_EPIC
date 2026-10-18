@@ -1,0 +1,4 @@
+# built by tests/streamcal/tcc/build.sh
+tcc_correlate
+tcc_load
+test_tcc_tap

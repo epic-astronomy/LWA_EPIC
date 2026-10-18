@@ -30,6 +30,8 @@
 #include "./channel_descriptor.h"
 #include "./constants.h"
 #include "./metrics.hpp"
+#include "./rfi_stage.h"
+#include "./tcc_tap.h"
 #include "./types.hpp"
 
 /**
@@ -96,6 +98,21 @@ class MOFFCuHandler {
   /// @param p_nchan Number of channels
   /// @param p_phases_ptr Host pointer to the phases array
   void ResetPhases(int p_nchan, float* p_phases_ptr);
+
+  /// @brief Overwrite the device phases in place (same size as the last
+  /// ResetPhases), e.g. with calibration gains folded in. Synchronous; call
+  /// only between gulps (ProcessGulp returns after all streams finish).
+  void UpdatePhases(int p_nchan, const float* p_phases_ptr);
+
+  /// GPU calibration tap (null: off). Correlates the gulps from m_f_eng_cu.
+  std::unique_ptr<TccTap> m_tcc_tap{nullptr};
+
+  /// Interference projection and impulse detection before imaging (null:
+  /// off). When active the imaging kernel reads its output buffer instead of
+  /// m_f_eng_cu, which the calibration tap keeps reading raw.
+  std::unique_ptr<RfiStage> m_rfi{nullptr};
+  /// (stream, sequence) pairs zeroed by the impulse detector in the last image
+  uint64_t m_last_impulse_flagged{0};
 
   /// Number of streams to split a gulp into
   int m_nstreams;
@@ -252,6 +269,24 @@ class MOFFCuHandler {
    * low. Each extra launch costs ~0.17 ms per gulp on an RTX 4090.
    */
   void SetSeqChunk(int p_seq_chunk);
+
+  /// Start the GPU calibration tap (tensor-core correlator, tcc_tap.h) on the
+  /// first p_nchan channels of gulps of p_nseq sequences.
+  void EnableTccTap(const TccTapOptions& p_opts, int p_nchan, int p_nseq);
+
+  /// Enable the interference stage (projector uploads via SetProjector;
+  /// impulse detection when p_impulse_sigma > 0). Call before the first gulp.
+  void EnableRfiStage(float p_impulse_sigma);
+  /// Projector components in use (0: none)
+  int GetProjQ() const { return m_rfi ? m_rfi->Q() : 0; }
+  /// (stream, sequence) pairs zeroed by impulse detection in the last image
+  uint64_t GetImpulseFlagged() const { return m_last_impulse_flagged; }
+
+  /// Describe the next gulp to the GPU calibration tap; call before
+  /// ProcessGulp. Returns true if the gulp will be correlated.
+  bool ArmTccTap(uint64_t p_seq_start, int64_t p_chan0, int p_nchan, int p_nseq, float p_quality) {
+    return m_tcc_tap && m_tcc_tap->Arm(p_seq_start, p_chan0, p_nchan, p_nseq, p_quality);
+  }
 
   ~MOFFCuHandler();
 };

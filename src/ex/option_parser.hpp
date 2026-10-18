@@ -52,6 +52,28 @@ cxxopts::Options GetEpicOptions() {
       ("include_chans","Image only certain frequencies. Specify the value(s) of chan0.", cxxopts::value<std::vector<int>>());
   // ("utcstart", "F-Engine UDP Stream Start Time")
 
+  options.add_options("Benchmark (no F-engine, database, disk or video)")(
+      "bench", "Run the imager on generated gulps: generator -> correlator (with the calibration tap and gain table) -> sink",
+      cxxopts::value<bool>()->default_value("false"))(
+      "bench_data", "File of simulated gulps (CHAN_MAJOR CNib); empty: zero gulps",
+      cxxopts::value<std::string>()->default_value(""))(
+      "bench_chan0", "First channel of the generated gulps",
+      cxxopts::value<int64_t>()->default_value("3104"))(
+      "bench_seq0", "First F-engine sequence (from the Unix epoch); 0: now",
+      cxxopts::value<uint64_t>()->default_value("0"))(
+      "bench_ngulps", "Gulps to generate (0: unlimited)",
+      cxxopts::value<int64_t>()->default_value("2400"))(
+      "bench_realtime", "Pace the gulps at the F-engine rate instead of as fast as possible",
+      cxxopts::value<bool>()->default_value("false"))(
+      "bench_rotate", "Rotation of each channel's sequences per pass through the data file",
+      cxxopts::value<int>()->default_value("50"))(
+      "bench_dump", "Directory for image dumps (empty: none)",
+      cxxopts::value<std::string>()->default_value(""))(
+      "bench_dump_every", "Dump every Nth image",
+      cxxopts::value<int>()->default_value("0"))(
+      "bench_report", "Images per statistics line",
+      cxxopts::value<int>()->default_value("120"));
+
   options.add_options("Offline data processing")(
       "offline", "Load numpy-TBN data from disk",
       cxxopts::value<bool>()->default_value("false"))(
@@ -103,7 +125,57 @@ cxxopts::Options GetEpicOptions() {
       "(--accum_16bit) under-sums long runs (~24% low over 1000 sequences), "
       "so each gulp is imaged in launches of this many sequences. -1: 100 "
       "with --accum_16bit, otherwise the whole gulp.",
-      cxxopts::value<int>()->default_value("-1"))
+      cxxopts::value<int>()->default_value("-1"))(
+      "gain_table",
+      "Shared-memory gain table written by the CPU calibrator (streamcal), "
+      "e.g. /dev/shm/epic_gains_gpu{gpu}. Read at image boundaries and "
+      "multiplied into the per-antenna phases. Empty: no calibration.",
+      cxxopts::value<std::string>()->default_value(""))(
+      "proj_table",
+      "Shared-memory interference projector written by streamcal (daemon "
+      "--proj), e.g. /dev/shm/epic_proj_gpu{gpu}. Read at image boundaries; "
+      "every voltage sequence x becomes x - U (V^H x) before imaging, while "
+      "the calibration tap keeps the raw voltages. Empty: off.",
+      cxxopts::value<std::string>()->default_value(""))(
+      "impulse_sigma",
+      "Zero voltage sequences whose band power exceeds the gulp median by "
+      "this many robust standard deviations, per stream sub-band, before "
+      "imaging (broadband impulses). 0: off.",
+      cxxopts::value<float>()->default_value("0"))(
+      "caltap_nseq",
+      "Calibration tap: sequences of every gulp correlated on the CPU and "
+      "published for streamcal (0: off; 50 = 5% of a 1000-sequence gulp).",
+      cxxopts::value<int>()->default_value("0"))(
+      "caltap_out",
+      "Calibration tap output file ({gpu} is replaced by the device id).",
+      cxxopts::value<std::string>()->default_value("/dev/shm/epic_vis_gpu{gpu}"))(
+      "caltap_interval",
+      "Calibration tap integration per published table, in seconds.",
+      cxxopts::value<float>()->default_value("10"))(
+      "caltap_threads",
+      "Calibration tap X-engine threads.",
+      cxxopts::value<int>()->default_value("2"))(
+      "caltap_batch",
+      "Calibration tap: gulps staged per X-engine call (amortises the accumulator updates).",
+      cxxopts::value<int>()->default_value("8"))(
+      "caltap_gpu",
+      "Calibration tap on the GPU: correlate every gulp with the tensor-core "
+      "correlator (all samples, ~0.5 ms per gulp beside the imaging kernels) "
+      "instead of --caltap_nseq sequences on the CPU. Needs epic++ built with "
+      "-DEPIC_TCC_ROOT.",
+      cxxopts::value<bool>()->default_value("false"))(
+      "caltap_min_quality",
+      "GPU calibration tap: skip gulps with less valid data than this fraction.",
+      cxxopts::value<float>()->default_value("0.98"))(
+      "caltap_record_dir",
+      "GPU calibration tap: also write every published table to this directory "
+      "(vis_<version>.bin, 128-byte header + R). Empty: off.",
+      cxxopts::value<std::string>()->default_value(""))(
+      "vistap",
+      "Run only the F-Engine receiver and the GPU calibration tap (no imaging, "
+      "database or video) for --runtime seconds; tables go to --caltap_out "
+      "and --caltap_record_dir. For calibration data takes.",
+      cxxopts::value<bool>()->default_value("false"))
       ("out_dir","Output directory to store the long accumulation files. Defaults to the current directory.",cxxopts::value<std::string>()->default_value("./"));
 
   options.add_options("All-sky monitor")(
@@ -303,6 +375,12 @@ void InitInfoMetric(const cxxopts::ParseResult& result){
     {"wproj",std::to_string(result["wproj"].as<bool>())},
     {"remove_autocorr",std::to_string(result["remove_autocorr"].as<bool>())},
     {"seq_chunk",std::to_string(result["seq_chunk"].as<int>())},
+    {"gain_table",result["gain_table"].as<std::string>()},
+    {"proj_table",result["proj_table"].as<std::string>()},
+    {"impulse_sigma",std::to_string(result["impulse_sigma"].as<float>())},
+    {"caltap_nseq",std::to_string(result["caltap_nseq"].as<int>())},
+    {"caltap_interval",std::to_string(result["caltap_interval"].as<float>())},
+    {"caltap_gpu",std::to_string(result["caltap_gpu"].as<bool>())},
     {"nstreams",std::to_string(result["nstreams"].as<int>())},
     {"ngpus",std::to_string(result["ngpus"].as<int>())},
     {"gpu_ids",VJoin(result["gpu_ids"].as<iVec>())},

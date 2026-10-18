@@ -92,6 +92,28 @@ struct MOFFCorrelatorDesc {
   bool use_bf16_accum{false};
   /// @brief Use complex w-projected gridding kernels
   bool use_wproj{false};
+  /// Calibration gain table published by streamcal ("" = off). "{gpu}" is
+  /// replaced by the device id.
+  std::string gain_table_path;
+  /// Interference projector published by streamcal ("" = off; "{gpu}" as
+  /// above). Applied to the voltages before imaging (proj_table.hpp).
+  std::string proj_table_path;
+  /// Per-sequence impulse detection before imaging: sequences whose band power
+  /// exceeds the gulp median by this many robust standard deviations are
+  /// zeroed (0 = off)
+  float impulse_sigma{0.f};
+  /// Calibration tap: output file ("" = off), sequences per gulp, integration
+  /// (s) and X-engine threads.
+  std::string caltap_path;
+  int caltap_nseq{0};
+  float caltap_interval_s{10.f};
+  int caltap_threads{2};
+  int caltap_batch{8};
+  /// Correlate every gulp on the GPU with the tensor-core correlator instead
+  /// of a slice on the CPU
+  bool caltap_gpu{false};
+  float caltap_min_quality{0.98f};
+  std::string caltap_record_dir;
 };
 
 struct OutImgDesc {

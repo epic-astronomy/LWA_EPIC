@@ -42,6 +42,8 @@
 
 #include "./py_funcs.hpp"
 #include "./types.hpp"
+#include "./gain_table.hpp"
+#include "./proj_table.hpp"
 
 // namespace hn = hwy::HWY_NAMESPACE;
 
@@ -82,6 +84,17 @@ class MOFFCorrelator : public MOFFCuHandler {
 
   /// Array to store frequency dependent phases
   aux_t m_phases{nullptr};
+
+  /// Phases from GetLwasvPhases (geometry x cable model) before calibration
+  aux_t m_phases_nominal{nullptr};
+
+  /// Version of the calibration gain table folded into m_phases (0: none)
+  uint64_t m_gain_version{0};
+  /// Version of the interference projector in use (0: none)
+  uint64_t m_proj_version{0};
+
+  /// Calibration options (gain table and tap), from MOFFCorrelatorDesc
+  MOFFCorrelatorDesc m_cal_desc;
 
   /// Array to store the averaged gridding kernel
   aux_t m_correction_kernel_h{nullptr};
@@ -153,12 +166,44 @@ class MOFFCorrelator : public MOFFCuHandler {
 
   size_t GetNumSeqPerGulp() { return m_nseq_per_gulp; }
   size_t GetNumGulpsPerImg() { return m_ngulps_per_img; }
+  int GetNumStreams() const { return this->m_nstreams; }
   size_t GetGridSize() { return m_grid_size; }
   double GetGridRes() { return m_grid_res; }
   int GetNumPols() { return m_pol_mode & m_pol_mode; }
   int GetSupportSize() { return m_support_size; }
   int GetGcfKernelSize() { return m_gcf_tex_dim; }
   float GetScalingLen() { return m_delta; }
+  /// Calibration options (gain table path, tap settings)
+  const MOFFCorrelatorDesc& GetCalDesc() const { return m_cal_desc; }
+  /// Version of the gain table applied to the current phases (0: nominal)
+  uint64_t GetGainVersion() const { return m_gain_version; }
+  /// Fold a calibration table into the phases and upload them. Returns false
+  /// if the table does not match the current spectral window.
+  bool ApplyGainTable(const GainSnapshot& p_snap) {
+    if (!m_phases_nominal || p_snap.chan0 != m_chan0 || int(p_snap.nchan) != m_nchan_in) {
+      return false;
+    }
+    ApplyGainCorrections(m_phases_nominal.get(), p_snap, m_phases.get());
+    this->UpdatePhases(m_nchan_in, m_phases.get());
+    m_gain_version = p_snap.valid ? p_snap.version : 0;
+    return true;
+  }
+  /// Version of the projector applied to the voltages (0: none)
+  uint64_t GetProjVersion() const { return m_proj_version; }
+  /// Upload an interference projector (between images). Returns false if it
+  /// does not match the current spectral window.
+  bool ApplyProjTable(const ProjSnapshot& p_snap) {
+    if (!this->m_rfi || p_snap.chan0 != m_chan0 || int(p_snap.nchan) != m_nchan_in) {
+      return false;
+    }
+    if (p_snap.valid) {
+      this->m_rfi->SetProjector(p_snap.ut.data(), p_snap.vt.data(), p_snap.q, m_nchan_in);
+    } else {
+      this->m_rfi->ClearProjector();
+    }
+    m_proj_version = p_snap.valid ? p_snap.version : 0;
+    return true;
+  }
   payload_t GetEmptyBuf();
 };
 
@@ -212,6 +257,7 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc) {
   LOG_IF(FATAL, m_nseq_per_gulp <= 0)
       << "Number of sequences per gulp must be >0.";
 
+  m_cal_desc = p_desc;
   m_rm_autocorrs = p_desc.is_remove_autocorr;
   this->SetRemoveAutocorrs(m_rm_autocorrs);
   LOG_IF(INFO, m_rm_autocorrs) << "Removing antenna auto-correlations";
@@ -260,6 +306,17 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc) {
   this->use_bf16_accum = p_desc.use_bf16_accum;
   VLOG(3) << "Setting up GPU for imaging.";
   SetupGpu();
+  if (!p_desc.proj_table_path.empty() || p_desc.impulse_sigma > 0.f) {
+    this->EnableRfiStage(p_desc.impulse_sigma);
+  }
+  if (p_desc.caltap_gpu) {
+    TccTapOptions tap;
+    tap.path = p_desc.caltap_path;
+    tap.interval_s = p_desc.caltap_interval_s;
+    tap.min_quality = p_desc.caltap_min_quality;
+    tap.record_dir = p_desc.caltap_record_dir;
+    this->EnableTccTap(tap, m_nchan_out, int(m_nseq_per_gulp));
+  }
   VLOG(3) << "Done";
 }
 
@@ -287,6 +344,10 @@ bool MOFFCorrelator<Dtype, BuffMngr>::ResetImagingConfig(int p_nchan,
   }
 
   m_chan0 = p_chan0;
+  if (this->m_rfi) {
+    this->m_rfi->ClearProjector();  // a projector for the old window does not apply
+  }
+  m_proj_version = 0;
 
   // Reset the gridding kernel because effective area changes with freq
   auto aeff = GetAEff(p_chan0);
@@ -401,6 +462,13 @@ void MOFFCorrelator<Dtype, BuffMngr>::ResetPhases(int p_nchan, int p_chan0) {
       std::move(hwy::AllocateAligned<float>(pitch * LWA_SV_NPOLS * p_nchan));
 
   GetLwasvPhases<float>(m_phases.get(), p_nchan, p_chan0);
+  // keep the uncalibrated phases: calibration tables multiply these
+  m_phases_nominal.reset();
+  m_phases_nominal =
+      std::move(hwy::AllocateAligned<float>(pitch * LWA_SV_NPOLS * p_nchan));
+  std::copy(m_phases.get(), m_phases.get() + pitch * LWA_SV_NPOLS * p_nchan,
+            m_phases_nominal.get());
+  m_gain_version = 0;
   DLOG(INFO) << "Phases[0] cpu: " << m_phases[0] << " " << m_phases[1] << " "
              << m_phases[2] << " " << m_phases[3];
 }

@@ -156,6 +156,28 @@ struct Kernel<_CORRELATOR> : KernelTypeDefs {
     correlator_options.use_wproj = options["wproj"].as<bool>();
     correlator_options.is_remove_autocorr = options["remove_autocorr"].as<bool>();
     correlator_options.seq_chunk = options["seq_chunk"].as<int>();
+    auto with_gpu = [&](std::string p) {
+      auto pos = p.find("{gpu}");
+      if (pos != std::string::npos) {
+        p.replace(pos, 5, std::to_string(correlator_options.device_id));
+      }
+      return p;
+    };
+    correlator_options.gain_table_path = with_gpu(options["gain_table"].as<std::string>());
+    correlator_options.proj_table_path = with_gpu(options["proj_table"].as<std::string>());
+    correlator_options.impulse_sigma = options["impulse_sigma"].as<float>();
+    correlator_options.caltap_nseq = options["caltap_nseq"].as<int>();
+    correlator_options.caltap_gpu = options["caltap_gpu"].as<bool>();
+    correlator_options.caltap_min_quality = options["caltap_min_quality"].as<float>();
+    correlator_options.caltap_record_dir = options["caltap_record_dir"].as<std::string>();
+    LOG_IF(FATAL, correlator_options.caltap_gpu && correlator_options.caltap_nseq > 0)
+        << "--caltap_gpu and --caltap_nseq are alternatives";
+    correlator_options.caltap_path = correlator_options.caltap_nseq > 0 || correlator_options.caltap_gpu
+                                         ? with_gpu(options["caltap_out"].as<std::string>())
+                                         : "";
+    correlator_options.caltap_interval_s = options["caltap_interval"].as<float>();
+    correlator_options.caltap_threads = options["caltap_threads"].as<int>();
+    correlator_options.caltap_batch = options["caltap_batch"].as<int>();
     correlator_options.nstreams = options["nstreams"].as<int>();
     VLOG(2) << "Extracted options";
     auto corr_ptr = std::make_unique<MOFFCorrelator_t>(correlator_options);

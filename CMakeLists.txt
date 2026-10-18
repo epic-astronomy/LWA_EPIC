@@ -100,9 +100,25 @@ set(AV_LIBS -lavcodec -lavformat -lavutil -lswscale -lavfilter )
 #set(CUDA_NVCC_EXECUTABLE "/home/batman/miniconda3/envs/epic310/bin/nvcc")
 #set(CMAKE_CUDA_COMPILER "/home/batman/miniconda3/envs/epic310/bin/nvcc")
 
-add_library(epic_cu STATIC src/MOFF_cu_handler.cu src/ex/host_helpers.cu)
+add_library(epic_cu STATIC src/MOFF_cu_handler.cu src/ex/host_helpers.cu src/ex/tcc_tap.cu src/ex/rfi_stage.cu)
 target_compile_features(epic_cu PUBLIC cxx_std_17)
 target_link_libraries(epic_cu glog::glog prometheus-cpp::pull)
+
+# Optional GPU calibration tap (--caltap_gpu) with the ASTRON Tensor-Core
+# Correlator: EPIC_TCC_ROOT is a built checkout of
+# https://git.astron.nl/RD/tensor-core-correlator (libtcc in build/libtcc) and
+# EPIC_CUDAWRAPPERS_INCLUDE the include directory of the cudawrappers it was
+# built with (1.0.0 for CUDA < 12.4).
+set(EPIC_TCC_ROOT "" CACHE PATH "Tensor-Core Correlator checkout (empty: no --caltap_gpu)")
+set(EPIC_CUDAWRAPPERS_INCLUDE "" CACHE PATH "cudawrappers include directory")
+if(EPIC_TCC_ROOT)
+  find_library(EPIC_TCC_LIB tcc PATHS ${EPIC_TCC_ROOT}/build/libtcc NO_DEFAULT_PATH REQUIRED)
+  find_package(CUDAToolkit REQUIRED)
+  target_compile_definitions(epic_cu PRIVATE EPIC_WITH_TCC)
+  target_include_directories(epic_cu PRIVATE ${EPIC_TCC_ROOT} ${EPIC_CUDAWRAPPERS_INCLUDE})
+  target_link_libraries(epic_cu ${EPIC_TCC_LIB} CUDA::cuda_driver CUDA::nvrtc)
+  message(STATUS "GPU calibration tap: ${EPIC_TCC_LIB}")
+endif()
 target_compile_options(epic_cu PRIVATE -O3 -use_fast_math --ptxas-options=-v  -Xptxas -v -extra-device-vectorization -Wall)
 
 set_target_properties( epic_cu
@@ -125,7 +141,7 @@ set_target_properties(epic++ PROPERTIES CUDA_ARCHITECTURES "89")
 
 add_dependencies(epic++ raft hwy epiclib)
 #add_compile_definitions(EPIC_VERSION="${CMAKE_PROJECT_VERSION}")
-target_link_libraries(epic++ PRIVATE pybind11::embed raft hwy epiclib epic_cu cudart
+target_link_libraries(epic++ PRIVATE OpenMP::OpenMP_CXX pybind11::embed raft hwy epiclib epic_cu cudart
 glog::glog nvidia-ml pqxx pq ibverbs prometheus-cpp::pull cmake_git_version_tracking ${AV_LIBS}  
 )
 

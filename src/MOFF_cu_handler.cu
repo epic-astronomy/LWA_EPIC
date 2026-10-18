@@ -56,6 +56,17 @@ MOFFCuHandler::ResetAntpos(int p_nchan, float* p_antpos_ptr)
 }
 
 void
+MOFFCuHandler::UpdatePhases(int p_nchan, const float* p_phases_ptr)
+{
+    cuda_check_err(cudaSetDevice(m_device_id));
+    if (!is_phases_set) {
+        return;
+    }
+    auto nbytes = LWA_SV_NSTANDS * p_nchan * LWA_SV_NPOLS * 2 * sizeof(float);
+    cuda_check_err(cudaMemcpy(m_phases_cu, p_phases_ptr, nbytes, cudaMemcpyHostToDevice));
+}
+
+void
 MOFFCuHandler::ResetPhases(int p_nchan, float* p_phases_ptr)
 {
     cuda_check_err(cudaSetDevice(m_device_id));
@@ -303,6 +314,10 @@ MOFFCuHandler::AllocateFEngGpu(size_t nbytes)
     cudaMalloc(&m_f_eng_cu, nbytes);
     m_f_eng_bytes = nbytes;
     is_f_eng_cu_allocated = true;
+    if (m_rfi) {
+        // m_nseq_per_gulp is set later (ResetData); the gulp size gives it
+        m_rfi->Resize(m_nchan_in, int(nbytes / (size_t(m_nchan_in) * LWA_SV_INP_PER_CHAN)));
+    }
 }
 
 void
@@ -339,6 +354,12 @@ MOFFCuHandler::ProcessGulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, 
 
     VLOG(2)<<"FEng bytes per stream: "<<m_nbytes_f_eng_per_stream<<". OutImg bytes per stream: "<<m_nbytes_out_img_per_stream<<". Chan per stream: "<<m_nchan_per_stream<<". NStreams: "<<m_nstreams<<"\n";
     VLOG(2)<<"Nseq per gulp: "<<m_nseq_per_gulp<<"\n";
+    // the interference stage writes a second buffer, which the imaging kernel then reads
+    const bool rfi = m_rfi && m_rfi->Active();
+    uint8_t* img_in = rfi ? m_rfi->Out() : m_f_eng_cu;
+    if (rfi) {
+        m_rfi->NextGulp();
+    }
     for (int i = 0; i < m_nstreams; ++i) {
         int f_eng_dat_offset = i * m_nbytes_f_eng_per_stream;
         int output_img_offset = i * m_nbytes_out_img_per_stream/sizeof(float);
@@ -346,6 +367,9 @@ MOFFCuHandler::ProcessGulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, 
         int chan_offset = i * m_nchan_per_stream;
 
 
+        if (m_tcc_tap) {
+            m_tcc_tap->BeforeCopy(stream_i);  // the tap has read the previous gulp
+        }
         cuda_check_err(
           cudaMemcpyAsync(
             (void*)(m_f_eng_cu + f_eng_dat_offset),
@@ -353,6 +377,12 @@ MOFFCuHandler::ProcessGulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, 
             m_nbytes_f_eng_per_stream,
             cudaMemcpyHostToDevice,
             stream_i));
+        if (m_tcc_tap) {
+            m_tcc_tap->AfterCopy(i, stream_i);
+        }
+        if (rfi) {
+            m_rfi->Run(m_f_eng_cu, chan_offset, m_nchan_per_stream, stream_i, i);
+        }
         VLOG(2)<<"Launching the kernel\n";
         if(m_imaging_kernel==nullptr){
             VLOG(2)<<"Null imaging kernel\n";
@@ -366,7 +396,7 @@ MOFFCuHandler::ProcessGulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, 
             int seq_end = std::min(m_nseq_per_gulp, seq_begin + chunk);
             bool first = p_first && seq_begin == 0;
             void* args[] = {
-                &m_f_eng_cu, &m_antpos_cu, &m_phases_cu, &m_nseq_per_gulp, &m_nchan_in, &m_gcf_tex, &m_output_cu, &chan_offset, &first, &m_gcf_elem, &m_correction_grid_d, &m_gcf_elem_cplx, &m_acorr_kernels, &seq_begin, &seq_end, &m_acorr_power
+                &img_in, &m_antpos_cu, &m_phases_cu, &m_nseq_per_gulp, &m_nchan_in, &m_gcf_tex, &m_output_cu, &chan_offset, &first, &m_gcf_elem, &m_correction_grid_d, &m_gcf_elem_cplx, &m_acorr_kernels, &seq_begin, &seq_end, &m_acorr_power
             };
             cuda_check_err(cudaLaunchKernel(m_imaging_kernel, m_img_grid_dim, m_img_block_dim, args, m_shared_mem_size, stream_i));
         }
@@ -376,7 +406,14 @@ MOFFCuHandler::ProcessGulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, 
         VLOG(2)<<i<<" "<<output_img_offset<<" "<<"\n";
         if (p_last) {
             cuda_check_err(cudaMemcpyAsync((void*)(p_out_ptr + output_img_offset), (void*)(m_output_cu + output_img_offset), m_nbytes_out_img_per_stream, cudaMemcpyDeviceToHost, stream_i));
+            if (m_rfi) {
+                m_rfi->EndImage(i, stream_i);
+            }
         }
+    }
+
+    if (m_tcc_tap) {
+        m_tcc_tap->Launch(m_f_eng_cu);  // runs on its own stream beside the imaging kernels
     }
 
     if (p_last) {
@@ -386,6 +423,7 @@ MOFFCuHandler::ProcessGulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, 
         }
         VLOG(2)<<"Syncing done\n";
         cuda_check_err(cudaPeekAtLastError());
+        m_last_impulse_flagged = m_rfi ? m_rfi->CollectFlagged() : 0;
     }
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
@@ -399,6 +437,23 @@ MOFFCuHandler::ProcessGulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, 
 }
 
 void
+MOFFCuHandler::EnableTccTap(const TccTapOptions& p_opts, int p_nchan, int p_nseq)
+{
+    cuda_check_err(cudaSetDevice(m_device_id));
+    m_tcc_tap = std::make_unique<TccTap>(p_opts, m_device_id, p_nchan, p_nseq, m_nstreams);
+}
+
+void
+MOFFCuHandler::EnableRfiStage(float p_impulse_sigma)
+{
+    cuda_check_err(cudaSetDevice(m_device_id));
+    m_rfi = std::make_unique<RfiStage>(m_device_id, p_impulse_sigma);
+    if (is_f_eng_cu_allocated) {
+        m_rfi->Resize(m_nchan_in, int(m_f_eng_bytes / (size_t(m_nchan_in) * LWA_SV_INP_PER_CHAN)));
+    }
+}
+
+void
 MOFFCuHandler::DestroyTextures(cudaArray_t& p_tex_arr, cudaTextureObject_t& p_tex_obj)
 {
     cuda_check_err(cudaSetDevice(m_device_id));
@@ -409,6 +464,8 @@ MOFFCuHandler::DestroyTextures(cudaArray_t& p_tex_arr, cudaTextureObject_t& p_te
 MOFFCuHandler::~MOFFCuHandler()
 {
     cuda_check_err(cudaSetDevice(m_device_id));
+    m_tcc_tap.reset();  // its streams may still read the gulp buffer
+    m_rfi.reset();
     // DestroyTextures(m_antpos_tex_arr, m_antpos_tex);
     // DestroyTextures(m_phases_tex_arr, m_phases_tex);
     if (is_antpos_set) {
