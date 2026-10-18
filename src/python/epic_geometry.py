@@ -167,6 +167,83 @@ def apply_wcs(header, obstime, grid_size, grid_res, mode=None):
     return header
 
 
+def _setup_threads():
+    """Threads for the set-up computations: the CPUs this process may use"""
+    import os
+    try:
+        return max(1, len(os.sched_getaffinity(0)))
+    except (AttributeError, OSError):
+        return max(1, os.cpu_count() or 1)
+
+
+def cached_geometry(key, arrays, compute):
+    """
+    compute(), or its result from an earlier run with the same inputs. The
+    imager's set-up for a frequency window (w-projected weights, gridding
+    correction) takes minutes for 192 channels at 256 x 256; the result depends
+    only on key and the input arrays, whose digest names the file. Files go to
+    EPIC_GEOMETRY_CACHE (default /var/tmp/epic-geometry-cache; empty: no
+    cache) and are written under a temporary name and renamed, so concurrent
+    imagers never read a partial file. A cache that cannot be read or written
+    only costs the computation.
+    """
+    import hashlib
+    import json
+    import os
+
+    cache_dir = os.environ.get("EPIC_GEOMETRY_CACHE", "/var/tmp/epic-geometry-cache")
+    if not cache_dir:
+        return compute()
+    h = hashlib.sha256(json.dumps(key, sort_keys=True).encode())
+    for a in arrays:
+        a = np.ascontiguousarray(a)
+        h.update(str((a.dtype.str, a.shape)).encode())
+        h.update(a.tobytes())
+    path = os.path.join(cache_dir, f"{key['kind']}_{h.hexdigest()[:24]}.npy")
+    try:
+        out = np.load(path, allow_pickle=False)
+        print(f"epic_geometry: {key['kind']} for {key.get('nchan')} channels from {path}", flush=True)
+        return out
+    except (OSError, ValueError):
+        pass
+    out = compute()
+    try:
+        os.makedirs(cache_dir, mode=0o775, exist_ok=True)
+        tmp = f"{path}.{os.getpid()}.tmp"
+        with open(tmp, "wb") as f:
+            np.save(f, out, allow_pickle=False)
+        os.replace(tmp, path)
+    except OSError as e:
+        print(f"epic_geometry: {key['kind']} not cached in {cache_dir}: {e}", flush=True)
+    return out
+
+
+def _wproj_channel(gcf_c, pos_c, lam, w_m, dx, dy, nm1, grid_size):
+    """wproj_kernel_weights for one channel: all stands in one batched transform"""
+    from scipy import fft as sfft
+
+    nstand, nel = gcf_c.shape
+    out = np.zeros((nstand, nel), dtype=np.complex64)
+    live = np.flatnonzero(np.any(gcf_c != 0, axis=1))
+    if live.size == 0:
+        return out
+    xp = np.trunc(pos_c[live, 0:1] + dx).astype(np.int64)  # [stand][elem]
+    yp = np.trunc(pos_c[live, 1:2] + dy).astype(np.int64)
+    valid = (xp >= 0) & (xp < grid_size) & (yp >= 0) & (yp < grid_size)
+    g = np.zeros((live.size, grid_size, grid_size), dtype=np.complex128)
+    sidx, eidx = np.nonzero(valid)
+    np.add.at(g, (sidx, yp[sidx, eidx], xp[sidx, eidx]), gcf_c[live][sidx, eidx])
+    g = sfft.ifft2(g, axes=(-2, -1), overwrite_x=True)
+    g *= np.exp(-2j * np.pi * (w_m[live] / lam)[:, None, None] * nm1[None])
+    g = sfft.fft2(g, axes=(-2, -1), overwrite_x=True)
+    kw = np.where(valid, g[np.arange(live.size)[:, None], np.where(valid, yp, 0), np.where(valid, xp, 0)], 0)
+    # Truncating to the support loses ~8% of the kernel. Rescale so the
+    # response at the phase centre is 1, like the real kernel (sum = 1).
+    s0 = np.abs(kw.sum(axis=1, keepdims=True))
+    out[live] = np.where(s0 > 0, kw / np.where(s0 > 0, s0, 1), kw)
+    return out
+
+
 def wproj_kernel_weights(gcf_elems, antpos_freq, chan0, nchan, support, grid_size, grid_res, mode=None):
     """
     Fold each stand's residual w-term into its gridding kernel.
@@ -176,38 +253,40 @@ def wproj_kernel_weights(gcf_elems, antpos_freq, chan0, nchan, support, grid_siz
     Returns complex64 weights of the same shape: K_a = FFT[ IFFT(K_a) * exp(-2 pi i w_a (n - 1)) ],
     truncated to the same support x support cells the gridder writes (cell indices follow the
     gridder exactly: dy = half - e / S, dx = e % S - half, pix = int(pos + d) in float32).
+
+    The stands of a channel go through one batched transform, and the channels
+    run in parallel threads (the transforms release the interpreter lock); the
+    result is cached on disk (cached_geometry), so a restart or a return to a
+    frequency window reuses it.
     """
+    from concurrent.futures import ThreadPoolExecutor
+
     _, _, w_m = array_frame(mode)
     gcf_elems = np.asarray(gcf_elems, dtype=np.float32).reshape(nchan, -1, support * support)
     antpos_freq = np.asarray(antpos_freq, dtype=np.float32).reshape(nchan, -1, 3)
-    nstand = gcf_elems.shape[1]
-    half = support // 2
-    e = np.arange(support * support)
-    dy = (half - e // support).astype(np.float32)
-    dx = (e % support - half).astype(np.float32)
-    dl = 2 * np.sin(np.radians(grid_res) / 2)
-    kk = np.fft.fftfreq(grid_size) * grid_size
-    r2 = (kk[None, :] * dl) ** 2 + (kk[:, None] * dl) ** 2
-    nm1 = np.sqrt(np.clip(1 - r2, 0, 1)) - 1.0
-    out = np.zeros(gcf_elems.shape, dtype=np.complex64)
-    for c in range(nchan):
-        lam = SOL / ((chan0 + c) * CHAN_BW)
-        for a in range(nstand):
-            k = gcf_elems[c, a]
-            if not np.any(k):
-                continue
-            xp = np.trunc(antpos_freq[c, a, 0] + dx).astype(np.int64)
-            yp = np.trunc(antpos_freq[c, a, 1] + dy).astype(np.int64)
-            valid = (xp >= 0) & (xp < grid_size) & (yp >= 0) & (yp < grid_size)
-            g = np.zeros((grid_size, grid_size), dtype=np.complex128)
-            np.add.at(g, (yp[valid], xp[valid]), k[valid])
-            g = np.fft.fft2(np.fft.ifft2(g) * np.exp(-2j * np.pi * (w_m[a] / lam) * nm1))
-            kw = g[yp[valid], xp[valid]]
-            # Truncating to the support loses ~8% of the kernel. Rescale so the
-            # response at the phase centre is 1, like the real kernel (sum = 1).
-            s0 = np.abs(kw.sum())
-            out[c, a, valid] = kw / s0 if s0 > 0 else kw
-    return out
+    key = dict(kind="wproj", chan0=int(chan0), nchan=int(nchan), support=int(support),
+               grid_size=int(grid_size), grid_res=float(grid_res), mode=str(mode))
+
+    def compute():
+        half = support // 2
+        e = np.arange(support * support)
+        dy = (half - e // support).astype(np.float32)
+        dx = (e % support - half).astype(np.float32)
+        dl = 2 * np.sin(np.radians(grid_res) / 2)
+        kk = np.fft.fftfreq(grid_size) * grid_size
+        r2 = (kk[None, :] * dl) ** 2 + (kk[:, None] * dl) ** 2
+        nm1 = np.sqrt(np.clip(1 - r2, 0, 1)) - 1.0
+        out = np.zeros(gcf_elems.shape, dtype=np.complex64)
+
+        def one(c):
+            out[c] = _wproj_channel(gcf_elems[c], antpos_freq[c], SOL / ((chan0 + c) * CHAN_BW), w_m,
+                                    dx, dy, nm1, grid_size)
+
+        with ThreadPoolExecutor(max_workers=_setup_threads()) as pool:
+            list(pool.map(one, range(nchan)))
+        return out
+
+    return cached_geometry(key, (gcf_elems, antpos_freq, np.asarray(w_m)), compute)
 
 
 def gridding_correction(gcf_elems, antpos_freq, chan0, nchan, support, grid_size, oversample=4):
@@ -234,6 +313,14 @@ def gridding_correction(gcf_elems, antpos_freq, chan0, nchan, support, grid_size
     nel = S * S
     gcf_elems = np.asarray(gcf_elems, dtype=np.float32).reshape(nchan, -1, nel)
     antpos_freq = np.asarray(antpos_freq, dtype=np.float32).reshape(nchan, -1, 3)
+    key = dict(kind="correction", chan0=int(chan0), nchan=int(nchan), support=int(S),
+               grid_size=int(grid_size), oversample=int(oversample))
+    return cached_geometry(key, (gcf_elems, antpos_freq),
+                           lambda: _gridding_correction(gcf_elems, antpos_freq, nchan, S, grid_size, oversample))
+
+
+def _gridding_correction(gcf_elems, antpos_freq, nchan, S, grid_size, oversample):
+    nel = S * S
     half = S // 2
     e = np.arange(nel)
     dy = (half - e // S).astype(np.float32)
@@ -241,7 +328,8 @@ def gridding_correction(gcf_elems, antpos_freq, chan0, nchan, support, grid_size
     k = (np.fft.fftfreq(grid_size) * grid_size).astype(np.float32)
     scale = float(grid_size * oversample) ** 4
     out = np.empty((nchan, grid_size, grid_size), dtype=np.float32)
-    for c in range(nchan):
+
+    def one(c):
         w = gcf_elems[c]
         live = np.any(w != 0, axis=1)
         pos = antpos_freq[c, live, :2]
@@ -257,4 +345,9 @@ def gridding_correction(gcf_elems, antpos_freq, chan0, nchan, support, grid_size
         resp = np.abs(kmean) ** 2
         resp /= resp[0, 0]
         out[c] = scale / np.maximum(resp, 1e-6)
+
+    # channels in parallel threads (the exponentials and products release the lock)
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=_setup_threads()) as pool:
+        list(pool.map(one, range(nchan)))
     return out
