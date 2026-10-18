@@ -179,7 +179,13 @@ void RunEpicBench(const KernelTypeDefs::opt_t& p_options) {
   RftManip<4, 1>::bind(corr);
   RftManip<5, 1>::bind(sink_img);
   RftManip<6, 1>::bind(sink_stream);
-  m += gen >> corr["gulp"]["img"] >> sink_img;
+  // The production ChanReducer (with --sky_shm, the sky ring) between the correlator and the sink
+  auto reducer = get_chan_reducer_k<0>(p_options);
+  BenchSeqSink seq_sink;
+  RftManip<7, 1>::bind(reducer);
+  RftManip<8, 1>::bind(seq_sink);
+  m += gen >> corr["gulp"]["img"] >> reducer["in_img"]["out_img"] >> sink_img;
+  m += reducer["seq_start_id"] >> seq_sink;
   m += corr["img_stream"] >> sink_stream;
   LOG(INFO) << "bench: chan0 " << bo.chan0 << ", seq0 " << bo.seq0 << ", " << bo.ngulps << " gulps"
             << (bo.realtime ? ", real-time pacing" : ", unpaced");

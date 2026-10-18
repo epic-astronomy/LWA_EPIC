@@ -227,4 +227,15 @@ class BenchSink : public raft::kernel {
   std::vector<double> m_imp;
 };
 
+/// Consumes the ChanReducer's seq_start_id port in benchmark mode.
+class BenchSeqSink : public raft::kernel {
+ public:
+  BenchSeqSink() : raft::kernel() { input.addPort<uint64_t>("in"); }
+  raft::kstatus run() override {
+    uint64_t v;
+    input["in"].pop(v);
+    return raft::proceed;
+  }
+};
+
 #endif  // SRC_RAFT_KERNELS_BENCH_KERNELS_HPP_
