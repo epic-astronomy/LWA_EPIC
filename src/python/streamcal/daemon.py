@@ -32,6 +32,7 @@ import numpy as np
 from astropy.time import Time
 
 from . import forward as F
+from . import rfi
 from . import geometry as E
 from . import shm
 from . import solvers as C
@@ -54,17 +55,114 @@ def _solve_job(job):
     R, Md, srcs, W, r, f, g0, solve_pos, passes, fixed_pos, ac, ok, T, max_chi2 = job[:14]
     prior = job[14] if len(job) > 14 else None
     neff = job[15] if len(job) > 15 else 100.0
-    if g0 is None:  # cold start: gains against the nominal sky before freeing the sky parameters
-        M0 = Md + sum(C.point_matrix(r, f, s_[0], s_[1]) for s_ in srcs)
-        g0, _, _ = C.stefcal(R, M0, W, niter=60)
+    rcfg = job[16] if len(job) > 16 else None  # interference projection (rfi.py), or None
     bounds = [(0.1, 1000.0) if s_[2] == "Sun" else (0.25, 4.0) for s_ in srcs]
-    g, sc, off, info = C.stefcal_sky(R, Md, [(s_[0], s_[1]) for s_ in srcs], W, r, f, g0=g0, solve_pos=solve_pos,
-                                     fixed_pos=fixed_pos, n_outer=passes, scale_bounds=bounds,
-                                     prior_off_deg=prior, prior_neff=neff, prior_nsamp=T)
-    dirs = [C.shift_direction(s_[0], off[j]) for j, s_ in enumerate(srcs)]
-    Mfit = Md + sum(sc[j] * C.point_matrix(r, f, dirs[j], srcs[j][1]) for j in range(len(srcs)))
+    src2 = [(s_[0], s_[1]) for s_ in srcs]
+    M0 = Md + sum(C.point_matrix(r, f, s_[0], s_[1]) for s_ in srcs)
+
+    def sky(Rd, g_init, n_outer, pos=None):
+        g_, sc_, off_, info_ = C.stefcal_sky(Rd, Md, src2, W, r, f, g0=g_init, solve_pos=solve_pos if pos is None else pos,
+                                             fixed_pos=fixed_pos, n_outer=n_outer, scale_bounds=bounds,
+                                             prior_off_deg=prior, prior_neff=neff, prior_nsamp=T)
+        dirs_ = [C.shift_direction(s_[0], off_[j]) for j, s_ in enumerate(srcs)]
+        return g_, sc_, off_, info_, Md + sum(sc_[j] * C.point_matrix(r, f, dirs_[j], srcs[j][1]) for j in range(len(srcs)))
+
+    def pchi(P_, g_, Mfit_):
+        """Median per-stand chi^2/dof of the projected residual."""
+        res_ = R - np.outer(g_, g_.conj()) * Mfit_
+        if P_ is not None:
+            res_ = P_.apply(res_)
+        d_ = np.maximum(ac, 1e-30)
+        ca = (np.abs(res_) ** 2 / (np.outer(d_, d_) / T) * W).sum(1) / np.maximum(W.sum(1), 1)
+        return float(np.median(ca[ok])) if ok.any() else np.inf
+
+    keep = None  # (projector, gains, model) solved with the previous subspace, before a refresh
+    Pj = None
+    if rcfg is not None:
+        rcfg = dict(rcfg, cold_start=g0 is None)
+    if rcfg is None:
+        if g0 is None:  # cold start: gains against the nominal sky before freeing the sky parameters
+            g0, _, _ = C.stefcal(R, M0, W, niter=60)
+        g, sc, off, info, Mfit = sky(R, g0, passes)
+    else:
+        # Interference projection: R = G M G^H + V V^H + Sigma. The subspace U of the station-fixed
+        # interference is carried between tables (rcfg["U"]) and re-estimated from the whitened
+        # residual when rcfg["refresh"]; the gains minimise ||W o P (R - G M G^H) P^H|| by a
+        # majorise-minimise loop around stefcal_sky on R_fill = R_mod + P (R - R_mod) P^H.
+        dh = np.sqrt(np.maximum(np.real(np.diag(R)), 1e-30))
+        kmax, nmm = rcfg.get("kmax", 4), rcfg.get("mm", 4)
+        Mfit = M0
+        if g0 is None:  # cold start: amplitudes from the autocorrelations, subspace from the whitened data
+            g = np.sqrt(np.real(np.diag(R)) / np.maximum(np.real(np.diag(M0)), 1e-30)).astype(complex)
+            w, v = rfi.lowrank_offdiag(R / np.outer(dh, dh), kmax=kmax + 2)
+            # Gain phases are a unitary similarity (diag(g), |g| = 1), so the whitened eigenvalues
+            # of the sky part do not depend on them: a component is interference only if it is far
+            # stronger than anything the sky model predicts (sky focus is no test here, since
+            # unknown gain phases scramble the geometry of sky sources too).
+            # sky coherence from the model alone (an upper bound: receiver noise only lowers it);
+            # scaling the model to the data's cross-power would let the interference set the scale
+            dm = np.sqrt(np.maximum(np.real(np.diag(M0)), 1e-30))
+            Mw = M0 / np.outer(dm, dm)
+            np.fill_diagonal(Mw, 0)
+            wm = np.linalg.eigvalsh(Mw)[::-1]
+            k = int(min(kmax, np.sum(w[:kmax] > max(4.0, 3.0 * wm[0]))))
+            log.debug("rfi cold start: whitened eigenvalues %s, sky bound %.2f, k %d", np.round(w[:kmax + 2], 2), wm[0], k)
+            Pj = rfi.Projector(v[:, :k], dh, np.clip(w[:k], 0, None))
+            # gains against the nominal sky first (as without projection); stefcal_sky from far-off
+            # gains drives the source fluxes astray
+            Rp, Iest = Pj.apply(R), Pj.interference()
+            for _ in range(3):
+                Rmod = rfi.model_cov(g, M0, R, Iest)
+                g, _, _ = C.stefcal(Rmod + Rp - Pj.apply(Rmod), M0, W, g0=g, niter=60)
+            refresh = False  # the residual test needs solved gains; it runs on the next scheduled refresh
+        else:
+            # sanitise the starting gains (the tracker fills unsolved stands with placeholders):
+            # magnitudes more than 10x from the median are reset to it, keeping the phase
+            g = np.array(g0, complex)
+            mag = np.abs(g)
+            med = np.median(mag[ok & np.isfinite(mag) & (mag > 0)]) if np.any(ok & (mag > 0)) else 1.0
+            bad = ~np.isfinite(g) | (mag > 10 * med) | (mag < med / 10)
+            g[bad] = med * np.exp(1j * np.angle(np.where(np.isfinite(g[bad]), g[bad], 1.0)))
+            refresh = rcfg.get("refresh", False) or rcfg.get("U") is None
+            if rcfg.get("U") is not None:
+                Pj = rfi.Projector(rcfg["U"], dh, rcfg.get("lam"))
+                if refresh:
+                    # solve with the previous subspace first, so the residual that re-estimates it
+                    # comes from solved gains
+                    Rp0, I0 = Pj.apply(R), Pj.interference()
+                    for _ in range(nmm):
+                        Rmod = rfi.model_cov(g, Mfit, R, I0)
+                        g, _, _, _, Mfit = sky(Rmod + Rp0 - Pj.apply(Rmod), g, 2, pos=False)
+                    keep = (Pj, g.copy(), Mfit)
+        if refresh:
+            # warm: the residual after the model with the current gains; only components that no
+            # sky direction explains (the gains are good, so sky sources stay focused)
+            Rmod = rfi.model_cov(g, Mfit, R, Pj.interference() if Pj is not None else None)
+            th = rcfg.get("thresh", 0.5)  # < 0: relative to the residual's model-error floor
+            # flagged stands (diag R ~ 0) carry model but no data: keep them out of the whitened residual
+            okf = ok.astype(float)
+            Ew = (R - Rmod) / np.outer(np.maximum(dh, 1e-30), np.maximum(dh, 1e-30)) * np.outer(okf, okf)
+            kd, w, v = rfi.detect(Ew, T, th if th > 0 else 0.0, kmax=kmax,
+                                  rel=-th if th < 0 else None)
+            fmax = rcfg.get("focus", 0.3)
+            j = [i for i in range(kd) if fmax >= 1 or rfi.sky_focus(v[:, i], r, f) < fmax]
+            Pj = rfi.Projector(v[:, j], dh, np.clip(w[j], 0, None))
+            log.debug("rfi refresh: %d detected, eigenvalues %s, kept %s", kd, np.round(w[:kmax + 2], 2), j)
+        Rp, Iest = Pj.apply(R), Pj.interference()
+        sc, off, info = np.ones(len(srcs)), np.zeros((len(srcs), 2)), dict(frozen=[])
+        # a new subspace (cold start or refresh) changes the problem: give it time to converge
+        for _ in range(nmm if (g0 is not None and not refresh) else 3 * nmm):
+            Rmod = rfi.model_cov(g, Mfit, R, Iest)
+            # source positions held (catalogue or the band law) inside the projected loop: fitting them
+            # against model-filled data is unstable; fluxes stay free
+            g, sc, off, info, Mfit = sky(Rmod + Rp - Pj.apply(Rmod), g, 2 if g0 is not None else passes, pos=False)
+        if keep is not None and pchi(keep[0], keep[1], keep[2]) < pchi(Pj, g, Mfit):
+            # do no harm: the re-estimated subspace fits worse than the previous one; keep that
+            Pj, g, Mfit = keep
     d = np.maximum(ac, 1e-30)
     res = R - np.outer(g, g.conj()) * Mfit
+    if Pj is not None:
+        res = Pj.apply(res)
     chi_ant = (np.abs(res) ** 2 / (np.outer(d, d) / T) * W).sum(1) / np.maximum(W.sum(1), 1)
     chi = float(np.median(chi_ant[ok])) if ok.any() else float("nan")
     den = np.sum(np.abs(g[None, :] * Mfit) ** 2 * W, axis=1)
@@ -72,7 +170,10 @@ def _solve_job(job):
     # stands are judged against the channel's median: at full correlation rates the thermal
     # noise falls below the sky-model error, and chi^2/dof rises above 1 in every channel
     return dict(g=g, scale=sc, off=off, chi=chi, good=ok & (chi_ant < max_chi2 * 3 * max(chi, 1.0)),
-                var=sig2 / np.maximum(den, 1e-30), frozen=info["frozen"])
+                var=sig2 / np.maximum(den, 1e-30), frozen=info["frozen"],
+                rfi_U=None if Pj is None else Pj.U.astype(np.complex64),
+                rfi_lam=None if Pj is None or Pj.lam is None else Pj.lam.astype(np.float32),
+                rfi_k=0 if Pj is None else Pj.k, rfi_cold=bool(rcfg is not None and (rcfg.get("cold_start") or rcfg.get("was_cold"))))
 
 
 class StreamCal:
@@ -153,8 +254,22 @@ class StreamCal:
         passes = a.passes_warm if warm else a.passes
         pred = [self.trackers[p].gains() if self.trackers[p].initialised else None for p in range(2)]
         prep, jobs = {}, []
+        # interference projection: subspace carried per (pol, channel), re-estimated every
+        # --rfi-refresh tables (the LWA-SV interferer's signature is steady for hours)
+        use_rfi = getattr(a, "rfi", "auto") != "off"
+        self.rfi_count = getattr(self, "rfi_count", 0) + 1
+        refresh = (self.rfi_count - 1) % max(int(getattr(a, "rfi_refresh", 6)), 1) == 0
+        rstate = getattr(self, "rfi_state", {})
+        rcfgs = {}
         for p in range(2):
             for k in range(nk):
+                if use_rfi:
+                    st = rstate.get((p, k), {})
+                    # a subspace from a cold start (whitened data, unsolved gains) is only a first
+                    # guess: re-estimate it from the residual on the next table
+                    rcfgs[(p, k)] = dict(U=st.get("U"), lam=st.get("lam"), refresh=refresh or st.get("cold", True),
+                                         kmax=getattr(a, "rfi_kmax", 4), mm=getattr(a, "rfi_mm", 4),
+                                         thresh=getattr(a, "rfi_thresh", 0.5), focus=getattr(a, "rfi_focus", 0.3))
                 R, ac, ok, W = prep[(p, k)] = self._prepare(tab, p, k)
                 powered[p, :, k] = ok
                 g0 = None
@@ -165,7 +280,7 @@ class StreamCal:
                 jobs.append((R, Md, [(s_[0], s_[1], s_[2]) for s_ in srcs], W, self.r, self.freq[k], g0,
                              K > 0 and not a.no_positions, passes, None, ac, ok, tab.nsamp, a.max_chi2,
                              getattr(a, "refraction_prior_deg", 0.05) * (74e6 / self.freq[k]) ** 2 or None,
-                             getattr(a, "refraction_prior_neff", 100.0)))
+                             getattr(a, "refraction_prior_neff", 100.0), rcfgs.get((p, k))))
         # pass 1: gains, fluxes and per-channel positions
         res1 = list(self.pool.map(_solve_job, jobs)) if self.pool else [_solve_job(j) for j in jobs]
         for (p, k), r_ in zip(prep, res1):
@@ -195,11 +310,18 @@ class StreamCal:
         # pass 2: gains and fluxes with the positions fixed to the law, warm-started from pass 1
         jobs2 = []
         for (p, k), j1, r_ in zip(prep, jobs, res1):
-            jobs2.append(j1[:6] + (r_["g"], False, passes, law * x[k]) + j1[10:])
+            r2cfg = None if j1[16] is None else dict(j1[16], U=r_["rfi_U"], lam=r_["rfi_lam"], refresh=False,
+                                                       was_cold=r_.get("rfi_cold", False))
+            jobs2.append(j1[:6] + (r_["g"], False, passes, law * x[k]) + j1[10:16] + (r2cfg,))
         res2 = list(self.pool.map(_solve_job, jobs2)) if self.pool else [_solve_job(j) for j in jobs2]
+        self.rfi_k = np.zeros((2, nk), int)
         for (p, k), r_ in zip(prep, res2):
             scale[p, k] = r_["scale"]
             chi[p, k] = r_["chi"]
+            if r_.get("rfi_U") is not None:
+                rstate[(p, k)] = dict(U=r_["rfi_U"], lam=r_["rfi_lam"], cold=r_.get("rfi_cold", False))
+                self.rfi_k[p, k] = r_["rfi_k"]
+        self.rfi_state = rstate
         # RFI shows as channels far above the band's median chi^2/dof; the median itself exceeds 1
         # once the noise falls below the sky-model error (long integrations, full-rate GPU tap)
         self.chi_cut = a.max_chi2 * max(1.0, float(np.nanmedian(chi)) if np.isfinite(chi).any() else 1.0)
@@ -283,7 +405,8 @@ class StreamCal:
         nbad = int(np.sum(~np.isfinite(chi) | (chi > self.chi_cut)))
         nflag = [int(x) for x in self.power_flag.sum(axis=1)]
         msg = (f"table v{tab.version} {t.isot} nsamp {tab.nsamp} (skipped {tab.nskipped}); chi2/dof median "
-               f"{np.nanmedian(chi):.2f}, RFI channels {nbad}/{chi.size}; power-flagged X/Y {nflag[0]}/{nflag[1]}; "
+               f"{np.nanmedian(chi):.2f}, RFI channels {nbad}/{chi.size}; interference components removed (median) "
+               f"{float(np.median(getattr(self, 'rfi_k', np.zeros(1)))):.0f}; power-flagged X/Y {nflag[0]}/{nflag[1]}; "
                "sky " + ", ".join(f"{nm} x{sc:.2f} ({o[0]:+.2f},{o[1]:+.2f})deg" for nm, sc, o in
                                   zip(sky["names"], sky["scale"], sky["offset_deg"])) + "; "
                f"solve {time.time() - T0:.1f} s")
@@ -298,7 +421,7 @@ class StreamCal:
         return True
 
 
-def main(argv=None):
+def build_parser():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--vis", default="/dev/shm/epic_vis_gpu0")
     ap.add_argument("--gains", default="/dev/shm/epic_gains_gpu0")
@@ -331,12 +454,26 @@ def main(argv=None):
                          "more than (d/prior)^2/neff of the misfit (1 pins the sources)")
     ap.add_argument("--refraction-tau", type=float, default=600.0,
                     help="time constant (s) for pooling the refraction law over tables (0: no pooling)")
+    ap.add_argument("--rfi", default="auto", choices=("auto", "off"),
+                    help="project out interference components from each table (rfi.py) before solving")
+    ap.add_argument("--rfi-kmax", type=int, default=4, help="most interference components removed")
+    ap.add_argument("--rfi-mm", type=int, default=4, help="majorise-minimise iterations per solve")
+    ap.add_argument("--rfi-refresh", type=int, default=6, help="re-estimate the interference subspace every N tables")
+    ap.add_argument("--rfi-focus", type=float, default=0.3,
+                    help="drop refreshed components whose sky-focus ratio reaches this (>= 1: keep all)")
+    ap.add_argument("--rfi-thresh", type=float, default=0.5,
+                    help="detection threshold on whitened residual eigenvalues; negative: that multiple of the "
+                         "residual's model-error floor (median of eigenvalues 5-10)")
     ap.add_argument("--free-frame", action="store_true",
                     help="do not anchor the mean source offset to zero (default: anchored to the catalogue)")
     ap.add_argument("--plain-weights", action="store_true",
                     help="publish 1/g (default: 1/g x relative sky fraction, the noise-optimal weights)")
     ap.add_argument("--fixed-time", default="", help="evaluate the sky model at this time (tests on static data)")
-    a = ap.parse_args(argv)
+    return ap
+
+
+def main(argv=None):
+    a = build_parser().parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     sc = StreamCal(a)
     log.info("waiting for %s", a.vis)

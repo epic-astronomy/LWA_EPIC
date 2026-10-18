@@ -1,4 +1,4 @@
-# 10. Calibration methodology on real data: weights, source frame, refraction prior
+# 10. Calibration methodology on real data: weights, source frame, refraction prior, interference
 
 Sections 3.6, 8 and 9 measured the LWA-SV instrument on the EPIC Memo 12 TBF captures. This section records how the solution is turned into imaging weights and how the sky-model source positions are handled, as tested on the same captures imaged with the exact EPIC operator. It also records what the FRB science case requires of calibration.
 
@@ -132,3 +132,39 @@ Under investigation, with train/test separation on the TBF captures:
 3. the beam correction of section 9.7 in the solve;
 4. the sky model near Cas A (Galactic plane): the inpainting radius, the local diffuse gradient and nearby sources;
 5. position metrics free of the peak-finder bias: a point-source fit in the visibilities, and PSF-matched correlation in the image.
+
+## 10.8 Station-fixed interference at 75.8 MHz: subspace projection
+
+**Data.** GPU-tap tables were recorded with `epic++ --vistap` on epic2 (75.8 MHz, 128 channels, 10 s tables of 240 000 spectra): 113 daytime tables from 2026-10-17 21:54 UTC and 29 night tables from 2026-10-18 02:10 UTC. Without mitigation, the daemon fits these tables to χ²/dof 510–570 by day and 360–440 at night, with 6–14 of 64 channel solutions rejected as RFI.
+
+**The interferer.**
+- It is broadband and always on, modulated at 120 Hz, and carries none of the cable delays: it couples into the signal path at the ARX boards, downstream of the antennas.
+- In the whitened covariance its top eigenvalue is about 14 both by day and by night, and the day and night eigenvectors overlap to 0.994. Its spatial signature is fixed for hours.
+- No sky direction explains it: the largest fraction of a component's power that a single sky direction captures (`rfi.sky_focus`) is 0.03–0.05, against values near 1 for compact sky sources.
+
+**Method.** The interference occupies a low-rank subspace $`U`$ of the whitened covariance $`D^{-1/2} R D^{-1/2}`$, $`D = \mathrm{diag}(R)`$. The daemon solves the gains against the projected data with the oblique projector $`P = D^{1/2}(I - UU^H)D^{-1/2}`$, in a majorise–minimise loop that fills the projected-out part from the model:
+$$R_{\rm fill} = R_{\rm mod} + P\,(R - R_{\rm mod})\,P^H,\qquad R_{\rm mod} = G M G^H\ \text{(diagonal: } \mathrm{diag}\,R - \mathrm{diag}\,\hat I).$$
+`stefcal_sky` runs on $`R_{\rm fill}`$ with the source positions held; the fluxes stay free.
+
+- **Cold start.** Without gains, a component is accepted only when its whitened eigenvalue exceeds both 4 and three times the largest eigenvalue of the whitened model (gain phases are a unitary similarity, so the sky's eigenvalues do not depend on them). On these tables this accepts one component.
+- **Refresh.** On the next table, and then every `--rfi-refresh` tables (default 6), the subspace is re-estimated from the whitened residual $`D^{-1/2}(R - R_{\rm mod})D^{-1/2}`$ with the solved gains. Components above `--rfi-thresh` (default 0.5) and the sampling-noise edge, up to `--rfi-kmax` (default 4), are kept if their sky focus is below `--rfi-focus` (0.3). Flagged inputs are excluded from this residual: they carry model but no data. A refreshed subspace is accepted only if it lowers the projected χ²; otherwise the previous one is kept.
+- Between refreshes the subspace is carried from table to table, and only `--rfi-mm` (default 4) MM iterations are run.
+
+**Result** (18 consecutive tables, daemon replay with `research/replay_tables.py`):
+
+| | Projection off | Projection on |
+|---|---|---|
+| Day, χ²/dof median | 508–569 | 35 (cold table), then 8.2–8.8 |
+| Night, χ²/dof median | 360–441 | 40 (cold table), then 8.1–11.6 |
+| Channel solutions rejected as RFI | 6–14 / 64 | 0–8 / 64 (median 0–1) |
+| Components removed (median) | 0 | 4 |
+
+The remaining χ²/dof of about 8 is consistent with the prototype study (5.9 with three components on a single table) and with the sky-model error floor at the full tap rate.
+
+**Cost.** With 8 worker processes for 32 channels × 2 polarisations, a table solves in 2.0–2.5 s of wall time (about 1.6–2.5 s without projection), a refresh table in 5–10 s, and the cold table in 13–28 s. This is within the 10 s table interval on 8 cores, and leaves the remaining cores of a worker for the imager and the all-sky monitor.
+
+**Limits.**
+- The projection removes the interference from the calibration, not from the images. The images need the same projection applied to the voltages before gridding (about 0.7 ms per gulp on the GPU).
+- 38–49 inputs per polarisation are still power-flagged, because the interference inflates the autocorrelations (section 4.7).
+- The subspace is assumed fixed between refreshes. A transmitter that moves or switches faster than `--rfi-refresh` tables is caught only by the χ² channel rejection.
+- The interferer itself should be located and removed at the station.

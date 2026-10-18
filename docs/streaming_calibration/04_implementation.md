@@ -101,13 +101,15 @@ The visibility table holds raw F-engine correlations, before cable model and pha
 | `beamcorr.py` | Beam-correction basis and `Table` (section 9.7) |
 | `solvers.py` | `stefcal` (with free fluxes), `stefcal_sky` (source fluxes and positions, guard rails, the refraction prior `prior_off_deg`/`prior_neff`/`prior_nsamp`), `anchor_offsets`, `sky_fraction`, `gridcal` (grid-domain Gauss-Newton/CG), `Tracker` (Kalman filter on phase and delay, amplitude and bandpass smoothing, jump detection) |
 | `epicop.py` | Exact epic++ image operator (scatter and gather, numba) for the grid-domain solver and the image monitor |
+| `rfi.py` | Interference subspace detection on the whitened residual (`detect`, `lowrank_offdiag`, noise edges), the oblique projector $`P = D^{1/2}(I - UU^H)D^{-1/2}`$ (`Projector`), the model fill `model_cov`, and the sky-focus test `sky_focus` (section 10.8) |
 | `shm.py` | `GainTableWriter`, `VisTableReader` |
 | `daemon.py` | `python -m streamcal.daemon --vis … --gains … [--dry-run]`. Two passes per table. The first solves gains, fluxes and positions per channel; on a cold start, gains are solved first against the nominal sky. The source offsets are then fitted to $`(f_c/f)^2`$ across the band. The second pass re-solves gains and fluxes with positions fixed. Channel jobs run in a process pool (`--workers`, default 8). The Kalman time step comes from the data timestamps. Section 10 adds:
   - the anchored source frame (`--free-frame` to disable);
   - the refraction prior (`--refraction-prior-deg`, `--refraction-prior-neff`, `--refraction-tau`);
   - matched-filter weights (`--plain-weights` to disable);
-  - the diffuse map choice (`--diffuse-model`, default `auto`). |
-| `research/` | Every simulation and real-data script behind sections 3, 6 and 7, including the benchmark tools (`make_bench_model.py`, `make_bench_gulps.py`, `bench_run.sh`, `bench_watch.py`, `bench_images.py`) |
+  - the diffuse map choice (`--diffuse-model`, default `auto`);
+  - the interference projection (`--rfi auto|off`, `--rfi-kmax`, `--rfi-mm`, `--rfi-refresh`, `--rfi-thresh`, `--rfi-focus`; section 10.8). |
+| `research/` | Every simulation and real-data script behind sections 3, 6, 7 and 10 (including `replay_tables.py`, which replays recorded GPU-tap tables through the daemon, and `vistable_to_npz.py`), including the benchmark tools (`make_bench_model.py`, `make_bench_gulps.py`, `bench_run.sh`, `bench_watch.py`, `bench_images.py`) |
 
 Dependencies beyond the epic310 environment: `pygdsm`, plus `numba` for `epicop` only. `lsl` provides the dipole beam and the cable model. The daemon imports neither numba nor the GPU stack.
 
@@ -159,4 +161,5 @@ None of these steps has been carried out. Each starts or reconfigures the imager
   - Cache model matrices on an LST grid for every band.
 - **Tracker tuning.** The process noise ($`2^\circ/\sqrt{\rm s}`$, $`0.05\ \mathrm{ns}/\sqrt{\rm s}`$) was chosen for simulated drifts. The measured drifts (section 3.6) are about 10× slower, so $`Q`$ can be lowered and the effective integration lengthened.
 - **Gridding correction.** `gridding_correction` takes its live-stand mask from non-zero kernels, not from flags. Stands flagged by calibration remain in the correction's mean kernel, which is a small, smooth image-plane effect.
+- **Power flagging under interference.** On the 75.8 MHz tables 38–49 inputs per polarisation are power-flagged, because the station-fixed interferer inflates the autocorrelations beyond the ±3× limits. The limits should be applied to the autocorrelations after the interference estimate is removed (section 10.8).
 - **Prometheus metrics.** Export χ², flags, Sun scale, gain version and tap `nskipped` from the daemon. The image metadata already carries `gain_version`. The FITS writer should copy it into a `GAINVER` header keyword.

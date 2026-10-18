@@ -126,7 +126,7 @@ The benchmark also found and fixed six defects, among them a buffer-release race
 | [07_benchmark.md](07_benchmark.md) | epic++ benchmark mode, timing with and without calibration, end-to-end calibration of simulated F-engine data through the imager, defects found |
 | [08_direction_dependent.md](08_direction_dependent.md) | Per-antenna direction-dependent gains: kernel formalism, representability, cost of uncorrected errors, measurement method, LWA-SV measurements (TBF 2023, TBN 2021), why kernels cannot apply them in a dirty imager, kernel-StEFCal and the real-data pilot, image-domain prediction, tensor-core correlator and the GPU calibration tap (`--caltap_gpu`) |
 | [09_primary_beam.md](09_primary_beam.md) | Primary-beam correction: what EPIC images contain, beam variation for the watched sources (×3–8 over a day), when it is needed (flux, fluence, light curves; not detection), how to apply it, beam-model accuracy, the beam correction fitted to the TBF captures |
-| [10_real_data_methodology.md](10_real_data_methodology.md) | Matched-filter imaging weights, the catalogue-anchored source frame and the refraction prior; before/after images of the TBF captures; FRB-driven calibration requirements; validity in the upper band; open work on the direction-dependent position excess |
+| [10_real_data_methodology.md](10_real_data_methodology.md) | Matched-filter imaging weights, the catalogue-anchored source frame and the refraction prior; before/after images of the TBF captures; FRB-driven calibration requirements; validity in the upper band; open work on the direction-dependent position excess; projection of the station-fixed interferer at 75.8 MHz |
 
 ## Code
 
