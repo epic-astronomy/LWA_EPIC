@@ -26,9 +26,11 @@
 #include <stdint.h>
 
 #include <memory>
+#include <vector>
 
 #include "./channel_descriptor.h"
 #include "./constants.h"
+#include "./fx_imager.h"
 #include "./metrics.hpp"
 #include "./rfi_stage.h"
 #include "./tcc_tap.h"
@@ -106,6 +108,11 @@ class MOFFCuHandler {
 
   /// GPU calibration tap (null: off). Correlates the gulps from m_f_eng_cu.
   std::unique_ptr<TccTap> m_tcc_tap{nullptr};
+  /// FX imaging (--imager fx): replaces the E-field kernel when set
+  std::unique_ptr<FxImager> m_fx{nullptr};
+  int m_fx_size{0};
+  /// Recorded on each gulp stream once its part of the gulp is on the GPU
+  std::vector<cudaEvent_t> m_stream_ready;
 
   /// Interference projection and impulse detection before imaging (null:
   /// off). When active the imaging kernel reads its output buffer instead of
@@ -273,6 +280,16 @@ class MOFFCuHandler {
   /// Start the GPU calibration tap (tensor-core correlator, tcc_tap.h) on the
   /// first p_nchan channels of gulps of p_nseq sequences.
   void EnableTccTap(const TccTapOptions& p_opts, int p_nchan, int p_nseq);
+  /// Image with the FX imager at p_size x p_size instead of the E-field kernel
+  void EnableFx(int p_size) { m_fx_size = p_size; }
+  bool UsesFx() const { return m_fx_size > 0; }
+  /// (Re)create the FX imager for the current channels and hand it the
+  /// geometry (stand cells, kernel weights, gridding correction)
+  void SetupFx(int p_nchan, int p_nseq);
+ private:
+  void ProcessGulpFx(uint8_t* p_data_ptr, uint8_t* p_img_in, bool p_rfi, float* p_out_ptr, bool p_first,
+                     bool p_last);
+ public:
 
   /// Enable the interference stage (projector uploads via SetProjector;
   /// impulse detection when p_impulse_sigma > 0). Call before the first gulp.

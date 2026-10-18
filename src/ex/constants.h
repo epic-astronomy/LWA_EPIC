@@ -92,7 +92,7 @@ enum PKT_DATA_ORDER {
 
 enum IMAGING_POL_MODE { SINGLE_POL, DUAL_POL };
 
-enum IMAGE_SIZE { HALF = 64, FULL = 128 };
+enum IMAGE_SIZE { HALF = 64, FULL = 128, DOUBLE = 256 };  // 256: FX imaging only
 
 /**
  * @brief Parameters for the prolate spheroid GCF

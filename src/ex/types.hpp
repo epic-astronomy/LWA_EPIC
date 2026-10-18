@@ -72,6 +72,8 @@ struct MOFFCorrelatorDesc {
   int nseq_per_gulp{1000};
   IMAGING_POL_MODE pol_mode{DUAL_POL};
   IMAGE_SIZE img_size{FULL};
+  /// Image with the FX imager (Tensor-Core Correlator, lag grid, cuFFT) instead of the E-field kernel
+  bool use_fx{false};
   float grid_res_deg{1};
   int support_size{3};
   bool is_remove_autocorr{false};

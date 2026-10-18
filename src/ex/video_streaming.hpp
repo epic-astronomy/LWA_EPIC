@@ -117,6 +117,8 @@ class Streamer {
   int64_t m_chan0{0};
   int m_chan_stream_no{1};
   int m_grid_size{128};
+  /// image pixel at the centre (deg); sets the horizon circle of the video
+  float m_grid_res{1.056f};
   int m_vid_size{512};
   // int m_fps{10};
   std::string m_stream_key;
@@ -161,8 +163,10 @@ class Streamer {
   Streamer(float p_fps = 6.25, int p_vid_width = 512, int p_vid_height = 512,
            int p_grid_size = 128, float p_time_base_den = 6.25,
            std::string p_stream_url = "rtmp://127.0.0.1:1857/live/epic",
-           std::string p_cmap = "magma", int p_log_level = AV_LOG_ERROR)
+           std::string p_cmap = "magma", int p_log_level = AV_LOG_ERROR,
+           float p_grid_res_deg = 0.f)
       : m_fps(p_fps),
+        m_grid_res(p_grid_res_deg > 0.f ? p_grid_res_deg : 1.056f * 128.f / p_grid_size),
         m_width(p_vid_width),
         m_height(p_vid_height),
         m_grid_size(p_grid_size),
@@ -491,8 +495,8 @@ Streamer::Status_t Streamer::InitFilterGraph() {
                 m_height);
 
   char geq_buf[1024];
-  // assume the resolution is 1.056 deg at 128
-  float sll = 1./(2 * m_grid_size * std::sin( PI * 1.056 * m_grid_size/128.f/360.f));
+  // aperture cell (wavelengths) of the image; the horizon is grid_size * sll pixels out
+  float sll = 1./(2 * m_grid_size * std::sin( PI * m_grid_res/360.f));
   int sky_size = m_width * sll;//360/(2*3.14) /(m_grid_size/128 * 1 ) * m_width/m_grid_size;
   int boundary_color = 32+1.5*m_width/2; //start with this value and go to black color at the edge
   std::snprintf(geq_buf,sizeof(geq_buf),"'if(gt(sqrt((X-W/2)^2+(Y-H/2)^2),%d),(%d-sqrt((X-W/2)^2+(Y-H/2)^2)),p(X,Y))'", sky_size,boundary_color);

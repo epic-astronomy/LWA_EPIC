@@ -360,6 +360,9 @@ MOFFCuHandler::ProcessGulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, 
     if (rfi) {
         m_rfi->NextGulp();
     }
+    if (m_fx) {
+        ProcessGulpFx(p_data_ptr, img_in, rfi, p_out_ptr, p_first, p_last);
+    } else
     for (int i = 0; i < m_nstreams; ++i) {
         int f_eng_dat_offset = i * m_nbytes_f_eng_per_stream;
         int output_img_offset = i * m_nbytes_out_img_per_stream/sizeof(float);
@@ -421,6 +424,9 @@ MOFFCuHandler::ProcessGulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, 
         for (int i = 0; i < m_nstreams; ++i) {
             cuda_check_err(cudaStreamSynchronize(*(m_gulp_custreams.get() + i)));
         }
+        if (m_fx) {
+            m_fx->Sync();
+        }
         VLOG(2)<<"Syncing done\n";
         cuda_check_err(cudaPeekAtLastError());
         m_last_impulse_flagged = m_rfi ? m_rfi->CollectFlagged() : 0;
@@ -434,6 +440,61 @@ MOFFCuHandler::ProcessGulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, 
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
 
+}
+
+void
+MOFFCuHandler::ProcessGulpFx(uint8_t* p_data_ptr, uint8_t* p_img_in, bool p_rfi, float* p_out_ptr, bool p_first,
+                             bool p_last)
+{
+    // Each stream copies (and projects) its channels; the FX imager then
+    // correlates the whole gulp once they are all in, and images the
+    // integrated visibilities after the last gulp of the image. The next
+    // gulp's copies wait until the imager has read this one.
+    for (int i = 0; i < m_nstreams; ++i) {
+        const int f_eng_dat_offset = i * m_nbytes_f_eng_per_stream;
+        auto stream_i = *(m_gulp_custreams.get() + i);
+        const int chan_offset = i * m_nchan_per_stream;
+        cuda_check_err(cudaStreamWaitEvent(stream_i, m_fx->InputFree(), 0));
+        if (m_tcc_tap) {
+            m_tcc_tap->BeforeCopy(stream_i);
+        }
+        cuda_check_err(cudaMemcpyAsync((void*)(m_f_eng_cu + f_eng_dat_offset), (void*)(p_data_ptr + f_eng_dat_offset),
+                                       m_nbytes_f_eng_per_stream, cudaMemcpyHostToDevice, stream_i));
+        if (m_tcc_tap) {
+            m_tcc_tap->AfterCopy(i, stream_i);
+        }
+        if (p_rfi) {
+            m_rfi->Run(m_f_eng_cu, chan_offset, m_nchan_per_stream, stream_i, i);
+        }
+        if (p_last && m_rfi) {
+            m_rfi->EndImage(i, stream_i);
+        }
+        cuda_check_err(cudaEventRecord(m_stream_ready[i], stream_i));
+    }
+    m_fx->Correlate(p_img_in, m_stream_ready.data(), m_nstreams, !p_first);
+    if (p_last) {
+        m_fx->Image(m_phases_cu, m_output_cu, p_out_ptr);
+    }
+}
+
+void
+MOFFCuHandler::SetupFx(int p_nchan, int p_nseq)
+{
+    if (m_fx_size <= 0) {
+        return;
+    }
+    cuda_check_err(cudaSetDevice(m_device_id));
+    LOG_IF(FATAL, p_nchan != m_nchan_in)
+        << "FX imaging needs as many output as input channels (" << p_nchan << " against " << m_nchan_in << ")";
+    m_fx.reset();
+    m_fx = std::make_unique<FxImager>(m_device_id, p_nchan, p_nseq, m_fx_size, m_support_size, m_remove_autocorrs);
+    m_fx->SetGeometry(m_antpos_cu, m_gcf_elem, m_gcf_elem_cplx, is_correction_grid_set ? m_correction_grid_d : nullptr);
+    if (m_stream_ready.empty()) {
+        m_stream_ready.resize(m_nstreams);
+        for (auto& e : m_stream_ready) {
+            cuda_check_err(cudaEventCreateWithFlags(&e, cudaEventDisableTiming));
+        }
+    }
 }
 
 void
@@ -465,6 +526,10 @@ MOFFCuHandler::~MOFFCuHandler()
 {
     cuda_check_err(cudaSetDevice(m_device_id));
     m_tcc_tap.reset();  // its streams may still read the gulp buffer
+    m_fx.reset();
+    for (auto e : m_stream_ready) {
+        cudaEventDestroy(e);
+    }
     m_rfi.reset();
     // DestroyTextures(m_antpos_tex_arr, m_antpos_tex);
     // DestroyTextures(m_phases_tex_arr, m_phases_tex);

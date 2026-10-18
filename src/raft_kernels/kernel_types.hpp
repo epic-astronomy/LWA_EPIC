@@ -143,6 +143,19 @@ struct Kernel<_CORRELATOR> : KernelTypeDefs {
     correlator_options.nchan_out = options["channels"].as<int>();
     if (options["imagesize"].as<int>() == 64) {
       correlator_options.img_size = HALF;  // defaults to full
+    } else if (options["imagesize"].as<int>() == 256) {
+      correlator_options.img_size = DOUBLE;
+    }
+    correlator_options.use_fx = options["imager"].as<std::string>() == "fx";
+    {
+      // one image per buffer (floats): XX, YY, XY* for every channel; larger
+      // images get fewer of these page-locked buffers (25 x 134 MB at 256)
+      const int n = options["imagesize"].as<int>();
+      const size_t img = size_t(correlator_options.nchan_out) * n * n * 4;
+      if (img > size_t(correlator_options.buf_size)) {
+        correlator_options.buf_size = int(img);
+        correlator_options.nbuffers = 25;
+      }
     }
     VLOG(2) << "here";
     correlator_options.grid_res_deg = options["imageres"].as<float>();
@@ -326,6 +339,7 @@ std::unique_ptr<Streamer> GetStreamer(const KernelTypeDefs::opt_t& options) {
   std::string cmap = options["stream_cmap"].as<std::string>();
 
   return std::make_unique<Streamer>(fps, vid_size, vid_size, grid_size, fps,
-                                    url, cmap);
+                                    url, cmap, AV_LOG_ERROR,
+                                    options["imageres"].as<float>());
 }
 #endif  // SRC_RAFT_KERNELS_KERNEL_TYPES_HPP_

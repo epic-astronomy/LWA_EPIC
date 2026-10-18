@@ -25,6 +25,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <set>
@@ -58,7 +59,9 @@ class ChanReducerRft : public raft::kernel {
   float m_norm{1};
   bool m_is_chan_avg{false};
   std::unique_ptr<BufferMngr> m_buf_mngr{nullptr};
-  static constexpr size_t m_nbufs{300};
+  // images held for the downstream kernels: 300 at 128 x 128 (12 s at 24
+  // images/s), fewer for larger images so the pool stays near 5 GB
+  size_t m_nbufs{300};
   static constexpr size_t m_max_buf_reqs{10};
   size_t m_xdim{128};
   size_t m_ydim{128};
@@ -176,6 +179,7 @@ class ChanReducerRft : public raft::kernel {
     }
 
     m_out_nchan = m_in_nchan / m_ncombine;
+    m_nbufs = std::max<size_t>(64, 300 * (128 * 128) / std::max<size_t>(1, m_xdim * m_ydim));
     m_buf_mngr.reset(new BufferMngr(m_nbufs,
                                     m_xdim * m_ydim * m_out_nchan * NSTOKES,
                                     m_max_buf_reqs, false));

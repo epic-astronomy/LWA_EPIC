@@ -305,6 +305,11 @@ MOFFCorrelator<Dtype, BuffMngr>::MOFFCorrelator(MOFFCorrelatorDesc p_desc) {
   VLOG(3) << "Done setting up the correlator";
 
   this->use_bf16_accum = p_desc.use_bf16_accum;
+  if (p_desc.use_fx) {
+    this->EnableFx(m_grid_size);
+  }
+  LOG_IF(FATAL, !p_desc.use_fx && m_grid_size > 128)
+      << "Images larger than 128 x 128 need --imager fx";
   VLOG(3) << "Setting up GPU for imaging.";
   SetupGpu();
   if (!p_desc.proj_table_path.empty() || p_desc.impulse_sigma > 0.f) {
@@ -413,6 +418,8 @@ bool MOFFCorrelator<Dtype, BuffMngr>::ResetImagingConfig(int p_nchan,
   } else {
     this->SetGcfElemCplx(nullptr, m_nchan_out, m_support_size);
   }
+  // the FX imager takes the geometry just computed
+  this->SetupFx(m_nchan_out, m_nseq_per_gulp);
 
   return true;
 }
@@ -506,7 +513,9 @@ void MOFFCorrelator<Dtype, BuffMngr>::SetupGpu() {
 
   VLOG(2) << "Setting up streams and initializing the imaging kernel";
   CreateGulpCuStreams();
-  SetImagingKernel();
+  if (!this->UsesFx()) {
+    SetImagingKernel();
+  }
   SetImgGridDim();
 }
 

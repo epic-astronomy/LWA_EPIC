@@ -80,7 +80,7 @@ cxxopts::Options GetEpicOptions() {
       "npytbnfile", "numpy-TBN data path", cxxopts::value<std::string>());
 
   options.add_options("Imaging options")(
-      "imagesize", "1-D image size (can only be 64 or 128)",
+      "imagesize", "1-D image size: 64 or 128, or 256 with --imager fx (then --imageres 0.528 keeps the field and halves the pixel)",
       cxxopts::value<int>()->default_value("128"))(
       "imageres", "Pixel resolution in degrees",
       cxxopts::value<float>()->default_value("1.0"))(
@@ -204,6 +204,12 @@ cxxopts::Options GetEpicOptions() {
       cxxopts::value<std::string>()->default_value("127.0.0.1:8080"))(
       "disable_metrics", "Disable writing metrics to the Prometheus endpoint",
       cxxopts::value<bool>()->default_value("false"))(
+      "imager",
+      "epic: the E-field (MOFF) kernel. fx: Tensor-Core Correlator visibilities "
+      "gridded onto a lag grid and transformed once per image (needs epic++ "
+      "built with -DEPIC_TCC_ROOT); its cost hardly depends on the image "
+      "length, and it can make 256 x 256 images",
+      cxxopts::value<std::string>()->default_value("epic"))(
       "cpu_layout",
       "CPUs of the pipeline kernels for GPU 0 (GPU g adds g times the block "
       "size). wide: one CPU per kernel on 3-11. compact: 3-7, with capture "
@@ -247,9 +253,16 @@ std::optional<std::string> ValidateOptions(const cxxopts::ParseResult& result) {
   }
 
   int image_size = result["imagesize"].as<int>();
-  if (!(image_size == 64 || image_size == 128)) {
+  const std::string imager = result["imager"].as<std::string>();
+  if (imager != "epic" && imager != "fx") {
+    return "--imager must be epic or fx"s;
+  }
+  if (!(image_size == 64 || image_size == 128 || (image_size == 256 && imager == "fx"))) {
     return "Invalid image size: "s + std::to_string(image_size) +
-           ". Image size can only be 64 or 128"s;
+           ". Image size can only be 64 or 128, or 256 with --imager fx"s;
+  }
+  if (imager == "fx" && (image_size < 128 || result["support"].as<int>() != 5)) {
+    return "--imager fx needs an image size of 128 or 256 and support 5"s;
   }
 
   int nts = result["nts"].as<int>() * SAMPLING_LEN_uS * 1e-3;

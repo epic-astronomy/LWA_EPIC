@@ -100,7 +100,8 @@ set(AV_LIBS -lavcodec -lavformat -lavutil -lswscale -lavfilter )
 #set(CUDA_NVCC_EXECUTABLE "/home/batman/miniconda3/envs/epic310/bin/nvcc")
 #set(CMAKE_CUDA_COMPILER "/home/batman/miniconda3/envs/epic310/bin/nvcc")
 
-add_library(epic_cu STATIC src/MOFF_cu_handler.cu src/ex/host_helpers.cu src/ex/tcc_tap.cu src/ex/rfi_stage.cu)
+add_library(epic_cu STATIC src/MOFF_cu_handler.cu src/ex/host_helpers.cu src/ex/tcc_tap.cu src/ex/rfi_stage.cu
+            src/ex/fx_imager.cu)
 target_compile_features(epic_cu PUBLIC cxx_std_17)
 target_link_libraries(epic_cu glog::glog prometheus-cpp::pull)
 
@@ -109,15 +110,15 @@ target_link_libraries(epic_cu glog::glog prometheus-cpp::pull)
 # https://git.astron.nl/RD/tensor-core-correlator (libtcc in build/libtcc) and
 # EPIC_CUDAWRAPPERS_INCLUDE the include directory of the cudawrappers it was
 # built with (1.0.0 for CUDA < 12.4).
-set(EPIC_TCC_ROOT "" CACHE PATH "Tensor-Core Correlator checkout (empty: no --caltap_gpu)")
+set(EPIC_TCC_ROOT "" CACHE PATH "Tensor-Core Correlator checkout (empty: no --caltap_gpu or --imager fx)")
 set(EPIC_CUDAWRAPPERS_INCLUDE "" CACHE PATH "cudawrappers include directory")
 if(EPIC_TCC_ROOT)
   find_library(EPIC_TCC_LIB tcc PATHS ${EPIC_TCC_ROOT}/build/libtcc NO_DEFAULT_PATH REQUIRED)
   find_package(CUDAToolkit REQUIRED)
   target_compile_definitions(epic_cu PRIVATE EPIC_WITH_TCC)
   target_include_directories(epic_cu PRIVATE ${EPIC_TCC_ROOT} ${EPIC_CUDAWRAPPERS_INCLUDE})
-  target_link_libraries(epic_cu ${EPIC_TCC_LIB} CUDA::cuda_driver CUDA::nvrtc)
-  message(STATUS "GPU calibration tap: ${EPIC_TCC_LIB}")
+  target_link_libraries(epic_cu ${EPIC_TCC_LIB} CUDA::cuda_driver CUDA::nvrtc CUDA::cufft)
+  message(STATUS "GPU calibration tap and FX imager: ${EPIC_TCC_LIB}")
 endif()
 target_compile_options(epic_cu PRIVATE -O3 -use_fast_math --ptxas-options=-v  -Xptxas -v -extra-device-vectorization -Wall)
 
