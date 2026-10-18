@@ -203,7 +203,14 @@ cxxopts::Options GetEpicOptions() {
       "Address to expose Prometheus metrics. Defaults to 127.0.0.1:8080",
       cxxopts::value<std::string>()->default_value("127.0.0.1:8080"))(
       "disable_metrics", "Disable writing metrics to the Prometheus endpoint",
-      cxxopts::value<bool>()->default_value("false"));
+      cxxopts::value<bool>()->default_value("false"))(
+      "cpu_layout",
+      "CPUs of the pipeline kernels for GPU 0 (GPU g adds g times the block "
+      "size). wide: one CPU per kernel on 3-11. compact: 3-7, with capture "
+      "on 3, correlator on 4, channel reducer on 5, video on 6 and the "
+      "pixel extractor, watch-list fetcher, database writer, accumulator and "
+      "disk writer sharing 7, which leaves 8-11 to other programs",
+      cxxopts::value<std::string>()->default_value("wide"));
 
   options.add_options("Database Operations")(
       "elev_limit_deg",
@@ -321,6 +328,10 @@ std::optional<std::string> ValidateOptions(const cxxopts::ParseResult& result) {
 
   if (result["elev_limit_deg"].as<float>() < 0) {
     return "Elevation limit must be between 0 and 90 degrees";
+  }
+
+  if (auto l = result["cpu_layout"].as<std::string>(); l != "wide" && l != "compact") {
+    return "cpu_layout must be wide or compact";
   }
 
   return {};

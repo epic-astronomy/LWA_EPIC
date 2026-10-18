@@ -55,6 +55,24 @@ class EPICKernels {
  protected:
   raft::map* m_map;
   void BindKernels2Cpu(const KernelTypeDefs::opt_t& p_options) {
+    if (p_options["cpu_layout"].as<std::string>() == "compact") {
+      // 3-7 for GPU 0: the busy kernels alone, the light ones together
+      constexpr unsigned int b = (_GpuId)*5 + 3;
+      if (m_is_offline) {
+        RftManip<b, 1 + _GpuId>::bind(m_dpkt_gen);
+      } else {
+        RftManip<b, 1 + _GpuId>::bind(*(m_pkt_gen.get()));
+      }
+      RftManip<b + 1, 1 + _GpuId>::bind(m_correlator);
+      RftManip<b + 2, 1 + _GpuId>::bind(m_chan_reducer);
+      RftManip<b + 3, 1 + _GpuId>::bind(m_live_streamer);
+      RftManip<b + 4, 1 + _GpuId>::bind(m_pixel_extractor);
+      RftManip<b + 4, 1 + _GpuId>::bind(m_index_fetcher);
+      RftManip<b + 4, 1 + _GpuId>::bind(m_db_ingester);
+      RftManip<b + 4, 1 + _GpuId>::bind(m_accumulator);
+      RftManip<b + 4, 1 + _GpuId>::bind(m_disk_saver);
+      return;
+    }
     // use an additional offset of 2 for the runtime
     constexpr unsigned int cpu_ofst = (_GpuId)*m_nkernels + 2;
     // ensure the cpu ID is always non-zero.
