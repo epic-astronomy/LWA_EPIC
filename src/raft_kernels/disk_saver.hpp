@@ -50,12 +50,16 @@
  * bounded queue (m_queue_len entries) served by a writer thread and returns at
  * once. A full queue (the writer stalled, e.g. on a hung NFS mount) drops the
  * accumulation with a rate-limited warning, so the imager never stalls or
- * stops because of the long-integration archive. Write and database errors
- * are logged (rate-limited) and the accumulation is dropped.
+ * stops because of the long-integration archive. Write errors are logged
+ * (rate-limited) and the accumulation is dropped.
+ *
+ * The registration goes through a PgLink: it is written off the writer's
+ * thread, kept while the node's database is unavailable and dropped (with
+ * rate-limited logs) when too many wait. A database error never stops the
+ * imager.
  */
 template <class Payload>
-class DiskSaverRft : public raft::kernel,
-                     protected PgDbConnectMixin
+class DiskSaverRft : public raft::kernel
 /* ,protected EpicLiveStream */ {
  private:
   struct Job {
@@ -75,31 +79,9 @@ class DiskSaverRft : public raft::kernel,
 
   RateLimit m_drop_log{std::chrono::seconds(300)};
   RateLimit m_write_log{std::chrono::seconds(300)};
-  RateLimit m_db_log{std::chrono::seconds(300)};
-  std::chrono::steady_clock::time_point m_next_reconnect{};
-  bool m_db_ok{true};
+  std::unique_ptr<PgLink> m_db;
   // last: constructed after, and destroyed before, everything the writer uses
   std::unique_ptr<BoundedWorker<Job>> m_writer;
-
-  /// Reconnect after a database failure, at most once a minute.
-  bool EnsureDb() {
-    if (m_db_ok) return true;
-    auto now = std::chrono::steady_clock::now();
-    if (now < m_next_reconnect) return false;
-    m_next_reconnect = now + std::chrono::seconds(60);
-    try {
-      m_pg_conn = std::make_unique<pqxx::connection>(m_conn_str);
-      m_pg_conn->prepare(m_file_stmt_id, m_db_insert_stmt);
-      m_db_ok = true;
-      LOG(INFO) << "disk saver: database connection restored";
-    } catch (const std::exception& e) {
-      size_t held;
-      if (m_db_log.Due(&held)) {
-        LOG(WARNING) << "disk saver: database unavailable: " << e.what();
-      }
-    }
-    return m_db_ok;
-  }
 
   void Write(Job& job) {
     auto filename = SaveImageToDisk(job.imsize, job.nchan, job.data.data(),
@@ -113,40 +95,25 @@ class DiskSaverRft : public raft::kernel,
       return;
     }
     job.meta["filename"] = filename;
-    if (!EnsureDb()) return;
-    try {
-      pqxx::work tx(*m_pg_conn);
-      InsertFileMetaToDb(job.meta, &tx, m_file_stmt_id);
-      tx.commit();
-    } catch (const std::exception& e) {
-      m_db_ok = false;
-      size_t held;
-      if (m_db_log.Due(&held)) {
-        LOG(ERROR) << "disk saver: " << filename
-                   << " not registered in epic_files_metadata2: " << e.what()
-                   << " (" << held << " more since the last report)";
-      }
-    }
+    auto meta = std::make_shared<dict_t>(std::move(job.meta));
+    auto stmt_id = m_file_stmt_id;
+    m_db->Submit("file " + filename, {{m_file_stmt_id, m_db_insert_stmt}},
+                 [meta, stmt_id](pqxx::work& tx) {
+                   InsertFileMetaToDb(*meta, &tx, stmt_id);
+                 });
   }
 
  public:
   explicit DiskSaverRft(std::string p_db_schema = "public",
                         std::string p_out_dir = "./",
                         std::string p_db_conn_str = "", size_t p_queue_len = 4)
-      : raft::kernel(),
-        PgDbConnectMixin(p_db_conn_str) /* , EpicLiveStream() */ {
+      : raft::kernel() /* , EpicLiveStream() */ {
     input.addPort<Payload>("image");
     m_filename_db_schema = p_db_schema != "" ? p_db_schema : "public";
     m_db_insert_stmt = GetFileMetaInsertStmt(m_filename_db_schema);
     m_out_dir = p_out_dir;
-    LOG(INFO) << "Preparing stmt";
-    this->prepare_stmt(m_file_stmt_id, m_db_insert_stmt);
-    try {
-      // a statement that hangs must not hold the writer forever
-      pqxx::nontransaction(*m_pg_conn).exec("SET statement_timeout = 30000");
-    } catch (const std::exception& e) {
-      LOG(WARNING) << "disk saver: " << e.what();
-    }
+    // a few files a minute: 256 cover hours of an unavailable database
+    m_db = std::make_unique<PgLink>("disk saver", p_db_conn_str, 256);
 
     m_rt_gauge_id = PrometheusExporter::AddRuntimeSummaryLabel(
         {{"type", "exec_time"},

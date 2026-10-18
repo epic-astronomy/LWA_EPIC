@@ -116,11 +116,12 @@ class TestSaveOutput(unittest.TestCase):
             def connect(self):
                 return Conn()
 
-        orig = dd.get_pixel_indices2, dd._get_engine
+        orig = dd.get_pixel_indices2, dd._engine
         dd.get_pixel_indices2 = lambda ih, ph, el: dict(
             nsrc=np.array([1]), ncoords=np.array([4]), src_ids=["sun"] * 4,
             pix_x=np.array([1, 2, 1, 2]), pix_y=np.array([1, 1, 2, 2]))
-        dd._get_engine = lambda: Engine()
+        dd._engine = lambda: Engine()
+        dd._state["pending"].clear()
         try:
             one = np.ones((4, 3, 8, 8), dtype=np.float32)  # one image: XX = YY = 1
             out = {}
@@ -132,7 +133,7 @@ class TestSaveOutput(unittest.TestCase):
             self.assertEqual(out[100], out[40])
             self.assertEqual(out[100], [8.0, 8.0, 8.0])  # 2 pols x 4 pixels, per image
         finally:
-            dd.get_pixel_indices2, dd._get_engine = orig
+            dd.get_pixel_indices2, dd._engine = orig
 
 
 

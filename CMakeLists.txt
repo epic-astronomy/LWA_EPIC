@@ -145,6 +145,19 @@ target_link_libraries(epic++ PRIVATE OpenMP::OpenMP_CXX pybind11::embed raft hwy
 glog::glog nvidia-ml pqxx pq ibverbs prometheus-cpp::pull cmake_git_version_tracking ${AV_LIBS}  
 )
 
+# Database tests (tests/cpp/node_db_test.cpp): CPU only, against a throwaway
+# PostgreSQL server; see the file for how to run them.
+option(EPIC_BUILD_DB_TESTS "Build the node database test" OFF)
+if(EPIC_BUILD_DB_TESTS)
+  add_executable(node_db_test tests/cpp/node_db_test.cpp)
+  target_compile_options(node_db_test PRIVATE -O2 -pthread -Wall -Wextra)
+  add_dependencies(node_db_test hwy)
+  # types.hpp names CUDA types; the test makes no CUDA calls
+  target_include_directories(node_db_test PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+  target_link_libraries(node_db_test PRIVATE pybind11::embed hwy glog::glog
+    pqxx pq cmake_git_version_tracking)
+endif()
+
 # file(GLOB PY_FILES "src/python/*.py")
 # file(COPY ${PY_FILES} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 

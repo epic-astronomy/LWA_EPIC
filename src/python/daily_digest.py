@@ -1,3 +1,8 @@
+import collections
+import os
+import sys
+import time
+
 from pixel_extractor import get_pixel_indices2
 from astropy.io import fits
 from pixel_extract_utils import DynSources
@@ -27,6 +32,70 @@ meta_obj = MetaData(schema="sevilleta")
 Base = declarative_base()
 
 
+# Rows go to the node's own database: EPIC_NODE_DSN (a libpq connection
+# string) if set, otherwise the libpq PG* environment variables. A database
+# that is down or slow must not cost the imager its long-integration files:
+# every write has short time limits, rows that could not be written wait in
+# memory (up to PENDING_MAX) and go with the next write, and errors are logged
+# at most once per LOG_EVERY_S. Nothing here raises.
+PENDING_MAX = 20000
+LOG_EVERY_S = 300.0
+_state = {"engine": None, "pending": collections.deque(maxlen=PENDING_MAX),
+          "log_at": {}, "dropped": 0}
+
+
+def _log_limited(key, msg):
+    now = time.monotonic()
+    if now - _state["log_at"].get(key, -1e9) >= LOG_EVERY_S:
+        _state["log_at"][key] = now
+        print(f"daily_digest: {msg}", file=sys.stderr, flush=True)
+
+
+def _engine():
+    if _state["engine"] is None:
+        import psycopg2
+
+        dsn = os.environ.get("EPIC_NODE_DSN", "")  # "": libpq PG* variables
+
+        def connect():
+            return psycopg2.connect(dsn, connect_timeout=5,
+                                    options="-c statement_timeout=10000",
+                                    application_name="epic-imager-digest")
+
+        _state["engine"] = create_engine(
+            "postgresql+psycopg2://", creator=connect,
+            pool_pre_ping=True, pool_size=1, max_overflow=0)
+    return _state["engine"]
+
+
+def write_digest_rows(rows):
+    """
+    Insert digest rows, with any left from earlier failures. Returns the
+    number written; on failure keeps them (the oldest are dropped beyond
+    PENDING_MAX) and returns 0.
+    """
+    pending = _state["pending"]
+    for r in rows:
+        if len(pending) == pending.maxlen:
+            _state["dropped"] += 1
+        pending.append(r)
+    if not pending:
+        return 0
+    batch = list(pending)
+    try:
+        with _engine().connect() as conn:
+            conn.execute(insert(EpicDailyDigestTable).values(batch))
+            conn.commit()
+    except Exception as e:
+        _log_limited("write", f"{len(batch)} rows waiting for the database "
+                     f"({_state['dropped']} dropped so far): "
+                     f"{str(e).strip().splitlines()[0] if str(e) else type(e).__name__}")
+        return 0
+    for _ in batch:
+        pending.popleft()
+    return len(batch)
+
+
 class EpicDailyDigestTable(Base):
     __tablename__ = "epic_daily_digest"
     metadata = meta_obj
@@ -35,21 +104,6 @@ class EpicDailyDigestTable(Base):
     stokes_i = Column(ARRAY(Float), nullable=False)
     stokes_v = Column(ARRAY(Float), nullable=False)
     cfreq = Column(Float, nullable=False, primary_key=True)
-
-_engine = None
-
-
-def _get_engine():
-    """One engine per process, with time limits so a dead database cannot hang the writer"""
-    global _engine
-    if _engine is None:
-        _engine = create_engine(
-            "postgresql:///", pool_pre_ping=True,
-            connect_args=dict(connect_timeout=10, keepalives=1, keepalives_idle=30,
-                              keepalives_interval=10, keepalives_count=3,
-                              options="-c statement_timeout=30000"))
-    return _engine
-
 
 def digest_spectra(data, pix_y, pix_x, nimg=1):
     """
@@ -69,26 +123,18 @@ def digest_spectra(data, pix_y, pix_x, nimg=1):
     return stokes_i, stokes_v
 
 
-def ingest_daily_digest(ihdu, phdu, data, cfreq, nimg=1):
+def _digest_rows(ihdu, phdu, data, cfreq, nimg=1):
     """
-    Extract pixel values for each source in the watch list,
-    create stokes I and V spectra by adding the kernel's pixels in each
-    channel (digest_spectra),
-    and ingest it into the DB.
-
-    data is the sum of nimg images; the spectra are divided by nimg (means per
-    image), so that partial and full accumulations, and accumulations of any
-    length, are on the same scale.
+    Digest rows of the sources in the watch list: Stokes I and V spectra from
+    the kernel's pixels in each channel (digest_spectra), as means per image.
     """
     indices = get_pixel_indices2(ihdu, phdu, 0)
     if indices["nsrc"][0] <= 0:
-        return
+        return []
     nsrc = indices["nsrc"][0]
     ncoords = indices["ncoords"][0]//nsrc
-    
 
     rows = []
-    # loop over each source and insert
     for i in range(nsrc):
         sl = slice(i * ncoords, (i + 1) * ncoords)
         stokes_i, stokes_v = digest_spectra(
@@ -102,11 +148,25 @@ def ingest_daily_digest(ihdu, phdu, data, cfreq, nimg=1):
                 cfreq=cfreq
             )
         )
+    return rows
 
-    insert_stmnt = insert(EpicDailyDigestTable).values(rows)
-    with _get_engine().connect() as conn:
-        conn.execute(insert_stmnt)
-        conn.commit()
+
+def ingest_daily_digest(ihdu, phdu, data, cfreq, nimg=1):
+    """
+    Extract pixel values for each source in the watch list and ingest the
+    Stokes I and V spectra into the DB. Never raises.
+
+    data is the sum of nimg images; the spectra are divided by nimg (means per
+    image), so that partial and full accumulations, and accumulations of any
+    length, are on the same scale.
+    """
+    try:
+        rows = _digest_rows(ihdu, phdu, data, cfreq, nimg)
+    except Exception as e:
+        _log_limited("extract", f"digest not computed: {e!r}")
+        return 0
+    return write_digest_rows(rows)
+
 
 def test_extraction(
     file="accumulated_files/EPIC_1729064709.560_87.875MHz.fits",
