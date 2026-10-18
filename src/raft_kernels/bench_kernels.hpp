@@ -47,6 +47,9 @@ struct BenchOptions {
   int rotate{50};             // per-pass rotation of each channel's sequences
   std::string dump_dir;       // empty: no image dumps
   int dump_every{0};
+  /// > 0: end the process this many seconds after the last gulp (the full
+  /// pipeline, whose kernels RaftLib never finishes; see packet_gen.hpp)
+  int exit_grace_s{0};
   int report_every{120};      // images per statistics line
 };
 
@@ -158,6 +161,14 @@ class BenchGulpGen : public raft::kernel {
       }
     }
     LOG(INFO) << "bench gen: done";
+    if (m_opts.exit_grace_s > 0) {
+      std::thread([grace_s = m_opts.exit_grace_s]() {
+        std::this_thread::sleep_for(std::chrono::seconds(grace_s));
+        LOG(INFO) << "bench: " << grace_s << " s after the last gulp; exiting";
+        google::FlushLogFiles(google::GLOG_INFO);
+        std::_Exit(0);
+      }).detach();
+    }
     return raft::stop;
   }
 

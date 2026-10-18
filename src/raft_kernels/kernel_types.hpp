@@ -23,6 +23,7 @@
 #ifndef SRC_RAFT_KERNELS_KERNEL_TYPES_HPP_
 #define SRC_RAFT_KERNELS_KERNEL_TYPES_HPP_
 #include <cmath>
+#include <chrono>
 #include <memory>
 #include <raftmanip>
 #include <string>
@@ -232,6 +233,21 @@ using EpicLiveStream_kt = Kernel<_LIVE_STREAMER>::ktype;
 template <unsigned int _GpuId>
 auto& get_epic_live_stream_k = Kernel<_LIVE_STREAMER>::get_kernel<_GpuId>;
 
+/// First sequence of the generated gulps (--bench_seq0, or now rounded to a
+/// gulp), the same for every caller in the process
+inline uint64_t BenchFirstSeq(const KernelTypeDefs::opt_t& p_options) {
+  static const uint64_t seq0 = [&] {
+    uint64_t s = p_options["bench_seq0"].as<uint64_t>();
+    if (s == 0) {
+      const int nseq = p_options["nts"].as<int>();
+      double now = std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
+      s = uint64_t(now / (SEQ_MULT_S / double(FS))) / nseq * nseq;
+    }
+    return s;
+  }();
+  return seq0;
+}
+
 template <>
 struct Kernel<_PIX_EXTRACTOR> : KernelTypeDefs {
   using ktype = PixelExtractor<payload_float_t, pixel_pld_t, pixel_buf_t,
@@ -251,10 +267,12 @@ struct Kernel<_PIX_EXTRACTOR> : KernelTypeDefs {
     auto port = options["port"].as<std::vector<int>>();
     auto watchdog_addr = options["watchdog_addr"].as<std::string>();
 
-    // fetch intial pixel indices;
+    // fetch intial pixel indices; generated gulps (--bench --bench_full)
+    // give the first sequence without listening to the network
     LOG(INFO) << "Getting watch indices";
+    const bool bench = options["bench"].as<bool>() && options["bench_full"].as<bool>();
     auto initial_watch_indices =
-        GetWatchIndices(GetFirstSeqIdVerbs(ip[_GpuId], port[_GpuId]), grid_size,
+        GetWatchIndices(bench ? BenchFirstSeq(options) : GetFirstSeqIdVerbs(ip[_GpuId], port[_GpuId]), grid_size,
                           grid_res, elev_limit_deg, watchdog_addr);
     initial_watch_indices.print();
     config.nchan = reduced_nchan;

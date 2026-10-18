@@ -55,6 +55,9 @@ cxxopts::Options GetEpicOptions() {
   options.add_options("Benchmark (no F-engine, database, disk or video)")(
       "bench", "Run the imager on generated gulps: generator -> correlator (with the calibration tap and gain table) -> sink",
       cxxopts::value<bool>()->default_value("false"))(
+      "bench_full", "With --bench: the whole production pipeline after the generator (pixel extraction, database, "
+      "accumulations and FITS files, video), in place of the packet capture",
+      cxxopts::value<bool>()->default_value("false"))(
       "bench_data", "File of simulated gulps (CHAN_MAJOR CNib); empty: zero gulps",
       cxxopts::value<std::string>()->default_value(""))(
       "bench_chan0", "First channel of the generated gulps",

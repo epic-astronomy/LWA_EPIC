@@ -35,11 +35,31 @@
 
 // #include "./epic_live_streamer.hpp"
 
+/// Benchmark settings from the --bench_* options
+inline BenchOptions GetBenchOptions(const KernelTypeDefs::opt_t& p_options) {
+  BenchOptions bo;
+  bo.data_path = p_options["bench_data"].as<std::string>();
+  bo.chan0 = p_options["bench_chan0"].as<int64_t>();
+  bo.nchan = NDP_NCHAN_SELECT;
+  bo.nseq = p_options["nts"].as<int>();
+  bo.seq0 = BenchFirstSeq(p_options);
+  bo.ngulps = p_options["bench_ngulps"].as<int64_t>();
+  bo.realtime = p_options["bench_realtime"].as<bool>();
+  bo.rotate = p_options["bench_rotate"].as<int>();
+  bo.dump_dir = p_options["bench_dump"].as<std::string>();
+  bo.dump_every = p_options["bench_dump_every"].as<int>();
+  bo.report_every = p_options["bench_report"].as<int>();
+  return bo;
+}
+using BenchGen_t = BenchGulpGen<KernelTypeDefs::payload_u8_t, LFBufMngr<AlignedBuffer<uint8_t>>>;
+
 template <unsigned int _GpuId>
 class EPICKernels {
  private:
   std::unique_ptr<Streamer> m_streamer;
   bool m_is_offline{false};
+  /// --bench --bench_full: generated gulps in place of the packet capture
+  std::unique_ptr<BenchGen_t> m_bench_gen;
   static constexpr unsigned int m_nkernels{9};
   PktGen_kt m_pkt_gen;
   DummyPktGen_kt m_dpkt_gen;
@@ -58,7 +78,9 @@ class EPICKernels {
     if (p_options["cpu_layout"].as<std::string>() == "compact") {
       // 3-7 for GPU 0: the busy kernels alone, the light ones together
       constexpr unsigned int b = (_GpuId)*5 + 3;
-      if (m_is_offline) {
+      if (m_bench_gen) {
+        RftManip<b, 1 + _GpuId>::bind(*m_bench_gen);
+      } else if (m_is_offline) {
         RftManip<b, 1 + _GpuId>::bind(m_dpkt_gen);
       } else {
         RftManip<b, 1 + _GpuId>::bind(*(m_pkt_gen.get()));
@@ -77,7 +99,9 @@ class EPICKernels {
     constexpr unsigned int cpu_ofst = (_GpuId)*m_nkernels + 2;
     // ensure the cpu ID is always non-zero.
     // Setting it to zero causes instability
-    if (m_is_offline) {
+    if (m_bench_gen) {
+      RftManip<1 + cpu_ofst, 1 + _GpuId>::bind(*m_bench_gen);
+    } else if (m_is_offline) {
       RftManip<1 + cpu_ofst, 1 + _GpuId>::bind(m_dpkt_gen);
     } else {
       RftManip<1 + cpu_ofst, 1 + _GpuId>::bind(*(m_pkt_gen.get()));
@@ -95,7 +119,10 @@ class EPICKernels {
   void InitMap(const KernelTypeDefs::opt_t& p_options) {
     auto& m = *m_map;
     // m += m_dpkt_gen >> m_correlator >> m_disk_saver;
-    if (m_is_offline) {
+    if (m_bench_gen) {
+      m += *m_bench_gen >> m_correlator["gulp"]["img"] >>
+           m_chan_reducer["in_img"]["out_img"] >> m_pixel_extractor["in_img"];
+    } else if (m_is_offline) {
       m += m_dpkt_gen >> m_correlator["gulp"]["img"] >>
            m_chan_reducer["in_img"]["out_img"] >> m_pixel_extractor["in_img"];
     } else {
@@ -129,7 +156,13 @@ class EPICKernels {
     m_is_offline = p_options["offline"].as<bool>();
     // auto streamer = std::make_unique<Streamer>();
     LOG(INFO) << "Before pkt_gen";
-    if (!m_is_offline) {
+    if (p_options["bench"].as<bool>() && p_options["bench_full"].as<bool>()) {
+      auto bo = GetBenchOptions(p_options);
+      bo.exit_grace_s = 10;
+      m_bench_gen = std::make_unique<BenchGen_t>(bo);
+      LOG(INFO) << "bench: the full pipeline on generated gulps, chan0 " << bo.chan0 << ", seq0 " << bo.seq0 << ", "
+                << bo.ngulps << " gulps" << (bo.realtime ? ", real-time pacing" : ", unpaced");
+    } else if (!m_is_offline) {
       m_pkt_gen = std::move(get_pkt_gen_k<_GpuId>(p_options));
     }
     // m_disk_saver.SetStreamer(m_streamer.get());
@@ -170,23 +203,8 @@ class EPIC<1> : public EPICKernels<0> {
 /// Only these kernels are constructed, so nothing connects to the database,
 /// the video server or the network.
 void RunEpicBench(const KernelTypeDefs::opt_t& p_options) {
-  BenchOptions bo;
-  bo.data_path = p_options["bench_data"].as<std::string>();
-  bo.chan0 = p_options["bench_chan0"].as<int64_t>();
-  bo.nchan = NDP_NCHAN_SELECT;
-  bo.nseq = p_options["nts"].as<int>();
-  bo.seq0 = p_options["bench_seq0"].as<uint64_t>();
-  if (bo.seq0 == 0) {
-    double now = std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
-    bo.seq0 = uint64_t(now / (SEQ_MULT_S / double(FS))) / bo.nseq * bo.nseq;
-  }
-  bo.ngulps = p_options["bench_ngulps"].as<int64_t>();
-  bo.realtime = p_options["bench_realtime"].as<bool>();
-  bo.rotate = p_options["bench_rotate"].as<int>();
-  bo.dump_dir = p_options["bench_dump"].as<std::string>();
-  bo.dump_every = p_options["bench_dump_every"].as<int>();
-  bo.report_every = p_options["bench_report"].as<int>();
-  using gen_t = BenchGulpGen<KernelTypeDefs::payload_u8_t, LFBufMngr<AlignedBuffer<uint8_t>>>;
+  BenchOptions bo = GetBenchOptions(p_options);
+  using gen_t = BenchGen_t;
   using sink_t = BenchSink<KernelTypeDefs::moffcorr_t::payload_t>;
   raft::map m;
   gen_t gen(bo);
@@ -270,7 +288,7 @@ void RunEpic(int argc, char** argv) {
 
   InitInfoMetric(options);
 
-  if (options["bench"].as<bool>()) {
+  if (options["bench"].as<bool>() && !options["bench_full"].as<bool>()) {
     RunEpicBench(options);
     return;
   }
