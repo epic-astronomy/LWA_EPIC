@@ -16,6 +16,9 @@ monitor records a sample:
                           noisier than it was over the last hour
   rfi_rate, cand_rate     RFI-class and all blind-search candidates per minute,
                           over the last minute of data
+  solar, solar_rate       solar bursts (groups at the Sun, and flashes seen
+                          over the sky at the same time), counted apart from
+                          RFI, and their rate per minute
   sky_fraction_triggered  fraction of the tracked pixels with a hit in the
                           search blocks completed during the interval
   missing_fraction        fraction of the interval's images that were missing
@@ -28,7 +31,8 @@ monitor records a sample:
                           scintillation and passage through the beam raise the
                           noise at those widths
   disturbed               noise_ratio > noise_ratio_max, rfi_rate >
-                          rfi_rate_max or sky_fraction_triggered >
+                          rfi_rate_max, solar_rate > rfi_rate_max (reason
+                          "solar") or sky_fraction_triggered >
                           sky_fraction_max; the reasons are listed
 
 The samples of the last `hours` stay in memory (status, HTTP) and are queued
@@ -88,6 +92,7 @@ class Conditions:
         self.n_missing = 0
         self.n_rfi = 0
         self.n_cand = 0
+        self.n_solar = 0
         self.hit_slots = set()
         self.n_gain_changes = 0
 
@@ -116,7 +121,9 @@ class Conditions:
         self.n_gain_changes += 1
 
     def note_candidate(self, cls):
-        if cls in BLIND_CLASSES:
+        if cls == "solar":  # a solar burst: counted apart from RFI and candidates
+            self.n_solar += 1
+        elif cls in BLIND_CLASSES:
             self.n_cand += 1
             self.n_rfi += cls == "rfi"
 
@@ -134,6 +141,7 @@ class Conditions:
         rec = dict(t=t, interval_s=self.interval, images=n_all, missing=self.n_missing,
                    missing_fraction=self.n_missing / n_all if n_all else None,
                    noise_ratio=noise_ratio, rfi=self.n_rfi, candidates=self.n_cand,
+                   solar=self.n_solar,
                    sky_fraction_triggered=frac_trig, tracked=int(tracked),
                    gain_changes=self.n_gain_changes)
         if extra:
@@ -144,12 +152,16 @@ class Conditions:
         n_rfi = self.n_rfi + sum(s["rfi"] for s in recent)
         n_cand = self.n_cand + sum(s["candidates"] for s in recent)
         minutes = (len(recent) + 1) * self.interval / 60.0
-        rec.update(rfi_rate=n_rfi / minutes, cand_rate=n_cand / minutes)
+        n_solar = self.n_solar + sum(s.get("solar", 0) for s in recent)
+        rec.update(rfi_rate=n_rfi / minutes, cand_rate=n_cand / minutes,
+                   solar_rate=n_solar / minutes)
         reasons = []
         if noise_ratio is not None and noise_ratio > self.noise_ratio_max:
             reasons.append("noise")
         if rec["rfi_rate"] > self.rfi_rate_max:
             reasons.append("rfi_rate")
+        if rec["solar_rate"] > self.rfi_rate_max:
+            reasons.append("solar")
         if frac_trig > self.sky_fraction_max:
             reasons.append("sky_triggered")
         rec.update(disturbed=bool(reasons), reasons=reasons)

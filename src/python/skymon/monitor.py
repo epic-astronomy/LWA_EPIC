@@ -549,6 +549,18 @@ class Monitor:
             apart[np.arange(apart.shape[0]), np.arange(a, a + apart.shape[0])] = True
             overlap = (h_lo[None, :] <= h_hi[b, None]) & (h_hi[None, :] >= h_lo[b, None])
             sites[b] = np.count_nonzero(overlap & apart, axis=1)
+        # solar bursts: groups whose brightest hit is at the Sun (known.py's
+        # radius for bodies), and flashes over the sky (seen at once by much of
+        # it, or at several separate positions) during one of them, which are
+        # the burst seen through the sidelobes. They are labelled, kept apart
+        # from RFI in the conditions, and capped like certain RFI
+        sun_ra, sun_dec = self.known.body_positions(hits[0].t_bottom)["Sun"]
+        at_sun = separation_deg(ra[heads], dec[heads], sun_ra, sun_dec) <= \
+            self.known.body_beams * elevation_radius(self.beam, el_hits[heads])
+        solar_time = np.zeros(len(groups), bool)
+        if at_sun.any():
+            solar_time = ((h_lo[:, None] <= h_hi[at_sun][None, :]) &
+                          (h_hi[:, None] >= h_lo[at_sun][None, :])).any(1)
         for gi, g in enumerate(groups):
             b = hits[g[0]]
             flash = bool(busy[g[0]]) or sites[gi] >= self.cfg.rfi_min_sites
@@ -570,15 +582,24 @@ class Monitor:
             # primary beam, which a wide boxcar at low DM takes for a pulse
             if b.width > tier.narrow_max and el < self.cfg.el_min + self.cfg.wide_el_margin:
                 reasons.append("wide pulse near the horizon")
+            solar = bool(at_sun[gi])
+            sidelobe = not solar and bool(solar_time[gi]) and (
+                "much of the sky at once" in reasons or "several separate positions at once" in reasons)
+            if sidelobe:
+                reasons.append("solar burst at the same time")
             # certain: terrestrial (no dispersion) or seen over much of the sky
-            certain = "DM near zero" in reasons or "much of the sky at once" in reasons
-            cls = "rfi" if reasons else "candidate"
-            if certain:  # groups come brightest first
+            certain = not solar and ("DM near zero" in reasons or "much of the sky at once" in reasons)
+            cls = "known" if solar else ("rfi" if reasons else "candidate")
+            counted = "solar" if (solar or sidelobe) else cls
+            if certain or solar:  # groups come brightest first
                 n_certain += 1
                 if n_certain > self.cfg.rfi_records_max:
-                    self.cond.note_candidate("rfi")
-                    self.metrics["rfi_unrecorded"] += 1
+                    self.cond.note_candidate(counted)
+                    self.metrics["solar_unrecorded" if counted == "solar" else "rfi_unrecorded"] += 1
                     continue
+            if solar:
+                # the tests that would have called it RFI, kept as notes
+                solar_notes, reasons = reasons, []
             xy = self.grid.xy[b.slot]
             cid = f"{time.strftime('%Y%m%dT%H%M%S', time.gmtime(b.t_inf))}_" \
                   f"{self.band.f_centre:.0f}MHz_{uuid.uuid4().hex[:6]}"
@@ -593,7 +614,7 @@ class Monitor:
                 members=[[int(hp[i]), round(hits[i].snr, 2)] for i in g[:64]],
                 rfi_reasons=reasons, rfi_certain=certain)
             if cls == "rfi" and not self.cfg.store_rfi:
-                self.cond.note_candidate(cls)  # counted in the RFI rate though not stored
+                self.cond.note_candidate(counted)  # counted in the RFI rate though not stored
                 continue
             # keep the data of everything that is not certainly RFI (this also
             # measures the candidate's quality)
@@ -607,19 +628,24 @@ class Monitor:
                 if not self.cfg.store_rfi:
                     self.cond.note_candidate(cls)
                     continue
-            if cls != "rfi":
+            if solar:
+                c.known_source = dict(kind="solar", name="Sun", burst=True,
+                                      sep_deg=round(float(separation_deg(c.ra, c.dec, sun_ra,
+                                                                         sun_dec)), 3))
+                c.quality["rfi_tests"] = solar_notes
+            elif cls != "rfi":
                 inj = self.injector.match(c, float(elevation_radius(self.radius, c.el)))
                 if inj is not None:
                     c.cls = "injection"
                     c.injection_id = inj.id
                     self.injector.record(inj, c)
-            if not certain:
+            if not certain and not solar:
                 self._label_known(c)
             c.quality["conditions"] = self.cond.around(c.t_bottom)
             c.quality["calibration"] = self._calibration_around(c)
             stored = self.store.add(c, products, self.beam)  # repeats peak within a beam
             if stored is not None:
-                self.cond.note_candidate(stored.cls)
+                self.cond.note_candidate("solar" if (solar or sidelobe) else stored.cls)
                 found.append(stored)
                 print(f"skymon: {stored.cls} {stored.id} S/N {stored.snr:.1f} DM {stored.dm:.1f} "
                       f"RA {stored.ra:.2f} Dec {stored.dec:.2f} tier {tier.level} "
@@ -944,6 +970,7 @@ class Monitor:
                   missing_images=int(m.get("missing_images", 0)),
                   late_images=int(m.get("late_images", 0)),
                   rfi_unrecorded=int(m.get("rfi_unrecorded", 0)),
+                  solar_unrecorded=int(m.get("solar_unrecorded", 0)),
                   tracked=int(m.get("tracked", 0)),
                   last_image_unix=self.last_image_unix,
                   lag_s=(time.time() - self.last_image_unix) if self.last_image_unix else None,

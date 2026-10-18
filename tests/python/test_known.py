@@ -188,17 +188,27 @@ class TestEndToEnd(unittest.TestCase):
                                                     (83.633, 22.014), (187.706, 12.391),
                                                     (252.784, 4.993), (139.524, -12.096)]
         cls.carrier = _high_position(T0, avoid)
+        # a solar burst: the "Sun" is put at a high position clear of the
+        # others, and a burst with no dispersion goes off there
+        cls.sun = _high_position(T0, avoid + [cls.carrier])
+        sim.frb_list.append(dict(id="sim-sun", ra=cls.sun[0], dec=cls.sun[1], dm=0.0, snr=40.0,
+                                 width_s=0.2, t_inf=T0 + 130.0))
         src = CarrierSimulator(sim, *cls.carrier, chan=[40, 41, 42], t_start=T0 + 100.0, duration_s=8.0)
         cls.mon = Monitor(Config(out_dir=cls.out, nside=32, dm_max=300.0, block0=64, nthreads=4,
                                  warmup_images=32, inject_interval_s=0, seed=7, accum_hours=0.5))
+        cls._body_positions = KnownSources.body_positions
+        KnownSources.body_positions = lambda self, unix: {"Sun": cls.sun, "Jupiter": (0.0, -89.0)}
         for _ in range(int(170 / sim.dt)):
             meta, img = src.next_image()
             cls.mon.process(meta, img)
         cls.mon.store.flush()
         cls.cands = [c.to_dict() for c in cls.mon.store.list()]
+        cond = cls.mon.cond
+        cls.n_solar = cond.n_solar + sum(x.get("solar", 0) for x in cond.series)
 
     @classmethod
     def tearDownClass(cls):
+        KnownSources.body_positions = cls._body_positions
         shutil.rmtree(cls.out, ignore_errors=True)
 
     def _near(self, ra, dec, radius):
@@ -227,6 +237,20 @@ class TestEndToEnd(unittest.TestCase):
             self.assertTrue(os.path.exists(c["files"]["npz"]))
         self.assertFalse([c for c in near if c["cls"] in ("candidate", "known")],
                          [(c["cls"], c["quality"]) for c in near])
+
+    def test_solar_burst_is_labelled_not_rfi(self):
+        near = self._near(*self.sun, 3 * self.mon.beam)
+        solar = [c for c in near if c["cls"] == "known" and
+                 (c.get("known_source") or {}).get("kind") == "solar"]
+        self.assertTrue(solar, [(c["cls"], c["dm"], c["rfi_reasons"]) for c in near])
+        best = max(solar, key=lambda c: c["snr"])
+        self.assertTrue(best["known_source"]["burst"])
+        self.assertIn("DM near zero", best["quality"]["rfi_tests"])  # kept as a note
+        self.assertFalse(best["rfi_reasons"])
+        self.assertTrue(os.path.exists(best["files"]["npz"]))  # its data are kept
+        self.assertFalse([c for c in near if c["cls"] in ("rfi", "candidate")],
+                         [(c["cls"], c["dm"], c["rfi_reasons"]) for c in near])
+        self.assertGreaterEqual(self.n_solar, 1)  # counted apart from RFI
 
 
 if __name__ == "__main__":
