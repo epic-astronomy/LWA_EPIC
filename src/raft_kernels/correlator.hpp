@@ -210,7 +210,8 @@ class CorrelatorRft : public raft::kernel {
         if (auto snap = m_proj_reader->Poll(chan0, nchan, m_seq_start_id)) {
           if (m_correlator.get()->ApplyProjTable(*snap)) {
             LOG_EVERY_N(INFO, 30) << "Applied interference projector version " << snap->version << " (" << snap->q
-                                  << " components per polarisation)";
+                                  << " components per polarisation" << (snap->sun.empty() ? "" : ", Sun exemption")
+                                  << ")";
           }
         } else if (!m_proj_reader->LastError().empty()) {
           LOG_EVERY_N(WARNING, 100) << "Projector rejected: " << m_proj_reader->LastError();

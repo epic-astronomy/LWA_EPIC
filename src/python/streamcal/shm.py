@@ -7,6 +7,8 @@ VisTableReader   reads the visibility matrices published by the epic++ calibrati
 ProjTableWriter  publishes the interference projector (src/ex/proj_table.hpp): per channel
                  qmax pairs of vectors (Ut, Vt) over the 512 inputs (input 2 stand + pol);
                  epic++ replaces every voltage sequence x by x - Ut (Vt^H x) before imaging.
+                 Optionally also the Sun's (projected, unit-norm per polarisation) response,
+                 which exempts solar bursts from epic++'s impulse detection.
 All use a seqlock: an odd `seq` means a write is in progress.
 """
 from __future__ import annotations
@@ -89,7 +91,7 @@ class ProjTableWriter:
 
     def __init__(self, path: str, chan0: int, nchan: int, qmax: int = 4, solver: str = "streamcal"):
         self.path, self.chan0, self.nchan, self.qmax = path, int(chan0), int(nchan), int(qmax)
-        self.size = PROJ_HDR.size + 2 * nchan * qmax * NINPUT * 8
+        self.size = PROJ_HDR.size + (2 * qmax + 1) * nchan * NINPUT * 8
         fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
         try:
             if os.fstat(fd).st_size != self.size:
@@ -107,10 +109,17 @@ class ProjTableWriter:
                                                     self.solver)
 
     def publish(self, Ut: np.ndarray | None, Vt: np.ndarray | None = None, valid_from_seq: int = 0,
-                t_solved_unix: float | None = None):
-        """Ut, Vt: complex [nchan, qmax, 512], or None to switch the projection off."""
+                t_solved_unix: float | None = None, sun: np.ndarray | None = None):
+        """Ut, Vt: complex [nchan, qmax, 512], or None to switch the projection off.
+        sun: complex [nchan, 512], the Sun's response on the raw inputs after projection, unit norm
+        over each polarisation's inputs (zero: none), or None."""
         valid = Ut is not None
         q = 0
+        if sun is not None:
+            sun = np.asarray(sun, np.complex64)
+            assert sun.shape == (self.nchan, NINPUT)
+            if not np.all(np.isfinite(sun)):
+                raise ValueError("Sun vector has non-finite values")
         if valid:
             Ut, Vt = np.asarray(Ut, np.complex64), np.asarray(Vt, np.complex64)
             assert Ut.shape == Vt.shape == (self.nchan, self.qmax, NINPUT)
@@ -124,9 +133,13 @@ class ProjTableWriter:
             n = self.nchan * self.qmax * NINPUT * 8
             self.mm[PROJ_HDR.size:PROJ_HDR.size + n] = Ut.tobytes()
             self.mm[PROJ_HDR.size + n:PROJ_HDR.size + 2 * n] = Vt.tobytes()
+            if sun is not None:
+                o = PROJ_HDR.size + 2 * n
+                self.mm[o:o + self.nchan * NINPUT * 8] = sun.tobytes()
         self.version += 1
+        flags = (1 if valid else 0) | (2 if valid and sun is not None else 0)
         hdr = PROJ_HDR.pack(b"EPICPROJ", 1, PROJ_HDR.size, self.seq, self.version, self.chan0, self.nchan, NINPUT,
-                            self.qmax, q, 1 if valid else 0, 0, int(valid_from_seq),
+                            self.qmax, q, flags, 0, int(valid_from_seq),
                             float(t_solved_unix if t_solved_unix is not None else time.time()), self.solver)
         self.mm[:PROJ_HDR.size] = hdr
         self.seq += 1  # even: stable

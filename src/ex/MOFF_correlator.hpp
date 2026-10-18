@@ -197,7 +197,8 @@ class MOFFCorrelator : public MOFFCuHandler {
       return false;
     }
     if (p_snap.valid) {
-      this->m_rfi->SetProjector(p_snap.ut.data(), p_snap.vt.data(), p_snap.q, m_nchan_in);
+      this->m_rfi->SetProjector(p_snap.ut.data(), p_snap.vt.data(), p_snap.q, m_nchan_in,
+                                p_snap.sun.empty() ? nullptr : p_snap.sun.data());
     } else {
       this->m_rfi->ClearProjector();
     }

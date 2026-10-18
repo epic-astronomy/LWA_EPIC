@@ -39,18 +39,20 @@ __device__ __forceinline__ uint8_t Pack(int p_re, int p_im) { return uint8_t(((p
 
 // One block per (sequence, channel), one thread per stand (its X and Y inputs).
 // Q = 0: copy and band power only.
+// The recorded power is the band power of the output minus, with a Sun vector, its Sun-beam power.
 template <int Q>
 __global__ void RfiProject(const uint8_t* __restrict__ p_in, uint8_t* __restrict__ p_out,
-                           const float2* __restrict__ p_ut, const float2* __restrict__ p_vt, int p_nseq,
-                           float* __restrict__ p_power, uint32_t p_key) {
+                           const float2* __restrict__ p_ut, const float2* __restrict__ p_vt,
+                           const float2* __restrict__ p_sun, int p_nseq, float* __restrict__ p_power,
+                           uint32_t p_key) {
   const int t = blockIdx.x, c = blockIdx.y, s = threadIdx.x;
   const size_t base = (size_t(c) * p_nseq + t) * kIn;
   const uint16_t w = *reinterpret_cast<const uint16_t*>(p_in + base + 2 * s);
   uint16_t o = w;
-  float pw;
+  float2 xo, yo;  // output voltages of this stand
   if constexpr (Q == 0) {
-    const float2 x = Unpack(uint8_t(w & 0xFF)), y = Unpack(uint8_t(w >> 8));
-    pw = x.x * x.x + x.y * x.y + y.x * y.x + y.y * y.y;
+    xo = Unpack(uint8_t(w & 0xFF));
+    yo = Unpack(uint8_t(w >> 8));
   } else {
     float2 x = Unpack(uint8_t(w & 0xFF)), y = Unpack(uint8_t(w >> 8));
     __shared__ float2 red[Q][2][kStands / 32];
@@ -95,20 +97,38 @@ __global__ void RfiProject(const uint8_t* __restrict__ p_in, uint8_t* __restrict
     const int xr = Q4(x.x + Dither(a, 4 * s)), xi = Q4(x.y + Dither(a, 4 * s + 1));
     const int yr = Q4(y.x + Dither(a, 4 * s + 2)), yi = Q4(y.y + Dither(a, 4 * s + 3));
     o = uint16_t(Pack(xr, xi)) | uint16_t(uint16_t(Pack(yr, yi)) << 8);
-    pw = float(xr * xr + xi * xi + yr * yr + yi * yi);
+    xo = make_float2(float(xr), float(xi));
+    yo = make_float2(float(yr), float(yi));
   }
   *reinterpret_cast<uint16_t*>(p_out + base + 2 * s) = o;
-  // band power of this (channel, sequence)
+  // band power of this (channel, sequence) and the Sun beams w^H x of the two polarisations
+  float r[5] = {xo.x * xo.x + xo.y * xo.y + yo.x * yo.x + yo.y * yo.y, 0.f, 0.f, 0.f, 0.f};
+  if (p_sun) {
+    const float2 wx = p_sun[size_t(c) * kIn + 2 * s], wy = p_sun[size_t(c) * kIn + 2 * s + 1];
+    r[1] = wx.x * xo.x + wx.y * xo.y;
+    r[2] = wx.x * xo.y - wx.y * xo.x;
+    r[3] = wy.x * yo.x + wy.y * yo.y;
+    r[4] = wy.x * yo.y - wy.y * yo.x;
+  }
 #pragma unroll
-  for (int off = 16; off > 0; off >>= 1) pw += __shfl_xor_sync(0xffffffff, pw, off);
-  __shared__ float pred[kStands / 32];
-  if ((s & 31) == 0) pred[s >> 5] = pw;
+  for (int j = 0; j < 5; ++j) {
+#pragma unroll
+    for (int off = 16; off > 0; off >>= 1) r[j] += __shfl_xor_sync(0xffffffff, r[j], off);
+  }
+  __shared__ float pred[5][kStands / 32];
+  if ((s & 31) == 0) {
+#pragma unroll
+    for (int j = 0; j < 5; ++j) pred[j][s >> 5] = r[j];
+  }
   __syncthreads();
   if (s == 0) {
-    float sum = 0.f;
+    float sum[5] = {0.f, 0.f, 0.f, 0.f, 0.f};
 #pragma unroll
-    for (int i = 0; i < kStands / 32; ++i) sum += pred[i];
-    p_power[size_t(c) * p_nseq + t] = sum;
+    for (int j = 0; j < 5; ++j) {
+#pragma unroll
+      for (int i = 0; i < kStands / 32; ++i) sum[j] += pred[j][i];
+    }
+    p_power[size_t(c) * p_nseq + t] = sum[0] - (sum[1] * sum[1] + sum[2] * sum[2] + sum[3] * sum[3] + sum[4] * sum[4]);
   }
 }
 
@@ -185,6 +205,7 @@ RfiStage::~RfiStage() {
   cudaFree(m_ut);
   cudaFree(m_vt);
   cudaFree(m_power);
+  cudaFree(m_sun);
   cudaFree(m_cnt_d);
   cudaFreeHost(m_cnt_h);
 }
@@ -197,26 +218,33 @@ void RfiStage::Resize(int p_nchan, int p_nseq) {
   cudaFree(m_ut);
   cudaFree(m_vt);
   cudaFree(m_power);
+  cudaFree(m_sun);
   m_nchan = p_nchan;
   m_nseq = p_nseq;
   Check(cudaMalloc(&m_out, size_t(p_nchan) * p_nseq * kIn), "cudaMalloc gulp");
   Check(cudaMalloc(&m_ut, size_t(p_nchan) * kProjQmax * kIn * sizeof(float2)), "cudaMalloc projector");
   Check(cudaMalloc(&m_vt, size_t(p_nchan) * kProjQmax * kIn * sizeof(float2)), "cudaMalloc projector");
   Check(cudaMalloc(&m_power, size_t(p_nchan) * p_nseq * sizeof(float)), "cudaMalloc power");
+  Check(cudaMalloc(&m_sun, size_t(p_nchan) * kIn * sizeof(float2)), "cudaMalloc Sun vector");
   m_q = 0;
+  m_has_sun = false;
   LOG(INFO) << "RfiStage: " << p_nchan << " channels x " << p_nseq << " sequences, projector up to " << kProjQmax
             << " components per polarisation"
             << (m_sigma > 0.f ? ", impulse detection at " + std::to_string(m_sigma) + " sigma" : "");
 }
 
 void RfiStage::SetProjector(const std::complex<float>* p_ut, const std::complex<float>* p_vt, int p_q,
-                            int p_nchan) {
+                            int p_nchan, const std::complex<float>* p_sun) {
   Check(cudaSetDevice(m_device), "cudaSetDevice");
   LOG_IF(FATAL, p_nchan != m_nchan) << "RfiStage: projector for " << p_nchan << " channels, gulps have " << m_nchan;
   const size_t n = size_t(p_nchan) * kProjQmax * kIn * sizeof(float2);
   Check(cudaMemcpy(m_ut, p_ut, n, cudaMemcpyHostToDevice), "upload Ut");
   Check(cudaMemcpy(m_vt, p_vt, n, cudaMemcpyHostToDevice), "upload Vt");
   m_q = std::max(0, std::min(p_q, kProjQmax));
+  m_has_sun = p_sun != nullptr;
+  if (m_has_sun) {
+    Check(cudaMemcpy(m_sun, p_sun, size_t(p_nchan) * kIn * sizeof(float2), cudaMemcpyHostToDevice), "upload Sun");
+  }
 }
 
 void RfiStage::Run(const uint8_t* p_gulp, int p_chan_offset, int p_nchan, cudaStream_t p_stream, int p_si) {
@@ -225,13 +253,15 @@ void RfiStage::Run(const uint8_t* p_gulp, int p_chan_offset, int p_nchan, cudaSt
   const float2* ut = m_ut + size_t(p_chan_offset) * kProjQmax * kIn;
   const float2* vt = m_vt + size_t(p_chan_offset) * kProjQmax * kIn;
   float* pw = m_power + size_t(p_chan_offset) * m_nseq;
+  // the Sun beam matters only to the impulse detector
+  const float2* sun = m_has_sun && m_sigma > 0.f ? m_sun + size_t(p_chan_offset) * kIn : nullptr;
   const uint32_t key = m_gulp * 0x9E3779B9u ^ uint32_t(p_chan_offset) * 0x85EBCA6Bu;
   switch (m_q) {
-    case 0: RfiProject<0><<<grid, kStands, 0, p_stream>>>(p_gulp + off, m_out + off, ut, vt, m_nseq, pw, key); break;
-    case 1: RfiProject<1><<<grid, kStands, 0, p_stream>>>(p_gulp + off, m_out + off, ut, vt, m_nseq, pw, key); break;
-    case 2: RfiProject<2><<<grid, kStands, 0, p_stream>>>(p_gulp + off, m_out + off, ut, vt, m_nseq, pw, key); break;
-    case 3: RfiProject<3><<<grid, kStands, 0, p_stream>>>(p_gulp + off, m_out + off, ut, vt, m_nseq, pw, key); break;
-    default: RfiProject<4><<<grid, kStands, 0, p_stream>>>(p_gulp + off, m_out + off, ut, vt, m_nseq, pw, key); break;
+    case 0: RfiProject<0><<<grid, kStands, 0, p_stream>>>(p_gulp + off, m_out + off, ut, vt, sun, m_nseq, pw, key); break;
+    case 1: RfiProject<1><<<grid, kStands, 0, p_stream>>>(p_gulp + off, m_out + off, ut, vt, sun, m_nseq, pw, key); break;
+    case 2: RfiProject<2><<<grid, kStands, 0, p_stream>>>(p_gulp + off, m_out + off, ut, vt, sun, m_nseq, pw, key); break;
+    case 3: RfiProject<3><<<grid, kStands, 0, p_stream>>>(p_gulp + off, m_out + off, ut, vt, sun, m_nseq, pw, key); break;
+    default: RfiProject<4><<<grid, kStands, 0, p_stream>>>(p_gulp + off, m_out + off, ut, vt, sun, m_nseq, pw, key); break;
   }
   Check(cudaGetLastError(), "RfiProject launch");
   if (m_sigma > 0.f) {

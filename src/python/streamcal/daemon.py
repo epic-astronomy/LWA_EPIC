@@ -376,6 +376,40 @@ class StreamCal:
                 Vt[c][:k, inp] = np.where(live[:, None], np.conj(cc)[:, None] * U / dh[:, None], 0).T
         return Ut, Vt
 
+    def sun_vector(self, Ut, Vt):
+        """The Sun's response on the raw inputs after projection, for the imager's impulse detector.
+
+        With R = G M G^H (cable-corrected basis, M = A diag(S) A^H, a = exp(2 pi i f r.s / c)), a
+        compact source in direction s enters the raw voltages along v = g a(s) / c. Projected, it
+        is P v = v - Ut (Vt^H v). Normalised per polarisation, w = P v / |P v| beamforms the
+        projected voltages onto the Sun: |w^H x|^2 is the Sun's share of the band power, which
+        epic++ removes before testing for impulses, so solar bursts are not zeroed. None when the
+        Sun is not in the model (below the horizon) or the gains are not yet tracked."""
+        if self.models is None or not all(tr.initialised for tr in self.trackers):
+            return None
+        sun = [s_ for s_ in self.models[0][1][0] if s_[2] == "Sun"]
+        if not sun:
+            return None
+        s_dir = np.asarray(sun[0][0], float).reshape(3)
+        tau = (F.stand_enu()[np.asarray(self.ant)] @ s_dir) / SOL
+        S = np.zeros((self.nchan, shm.NINPUT), np.complex64)
+        for p in range(2):
+            inp = 2 * np.asarray(self.ant) + p
+            gt = self.trackers[p].gains(self.freq_all)  # [ant, nchan]
+            ok = ~self.power_flag[p] if getattr(self, "power_flag", None) is not None else np.ones(len(self.ant), bool)
+            for c in range(self.nchan):
+                g = gt[:, c]
+                use = ok & np.isfinite(g) & (np.abs(g) > 0)
+                if use.sum() < 16:
+                    continue
+                v = np.where(use, g * np.exp(2j * np.pi * self.freq_all[c] * tau) / self.cc_all[p][c], 0)
+                U, V = Ut[c][:, inp].T, Vt[c][:, inp].T  # [ant, qmax]
+                v = v - U @ (V.conj().T @ v)
+                nv = np.linalg.norm(v)
+                if nv > 0:
+                    S[c, inp] = v / nv
+        return S
+
     def update_skyfrac(self, skyfrac):
         """Per-stand sky fraction (median over the solved channels), smoothed over tables."""
         with np.errstate(all="ignore"):
@@ -449,7 +483,8 @@ class StreamCal:
             v = self.writer.publish(self.table(), t_solved_unix=tab.t_mid_unix)
             msg += f"; published gains v{v}"
             if self.proj_writer is not None:
-                vp = self.proj_writer.publish(*self.projector(tab), t_solved_unix=tab.t_mid_unix)
+                Ut, Vt = self.projector(tab)
+                vp = self.proj_writer.publish(Ut, Vt, t_solved_unix=tab.t_mid_unix, sun=self.sun_vector(Ut, Vt))
                 msg += f", projector v{vp}"
         log.info(msg)
         self.history.append(dict(t=tab.t_mid_unix, chi=chi, sky=sky, x=[tr.x.copy() for tr in self.trackers],

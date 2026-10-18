@@ -11,8 +11,12 @@
 //   ProjTableHeader (128 bytes)
 //   std::complex<float> Ut[nchan][qmax][ninput]
 //   std::complex<float> Vt[nchan][qmax][ninput]
+//   std::complex<float> Sun[nchan][ninput]   (when flags bit 1 is set)
 // Each component acts on the inputs of one polarisation; unused components
-// are zero. Writers use a seqlock: `seq` is odd while the table is written.
+// are zero. Sun is the Sun's response on the raw inputs after projection, unit
+// norm over each polarisation's inputs: the impulse detector removes the
+// Sun-beam power |Sun^H x|^2 before its test, so solar bursts are not zeroed.
+// Writers use a seqlock: `seq` is odd while the table is written.
 
 #ifndef SRC_EX_PROJ_TABLE_HPP_
 #define SRC_EX_PROJ_TABLE_HPP_
@@ -46,7 +50,7 @@ struct ProjTableHeader {
   uint32_t ninput;          // LWA_SV_NSTANDS * LWA_SV_NPOLS
   uint32_t qmax;            // components stored per channel
   uint32_t q;               // components in use (the first q; 0: identity)
-  uint32_t flags;           // bit 0: table valid (0 = projection off)
+  uint32_t flags;           // bit 0: table valid (0 = projection off); bit 1: Sun vector present
   uint32_t reserved0;
   uint64_t valid_from_seq;  // apply only to gulps starting at or after this F-engine seq
   double t_solved_unix;     // time of the data the subspace is based on
@@ -62,6 +66,8 @@ struct ProjSnapshot {
   bool valid{false};
   /// [nchan][kProjQmax][ninput], components beyond q are zero
   std::vector<std::complex<float>> ut, vt;
+  /// [nchan][ninput] Sun response after projection (empty: none)
+  std::vector<std::complex<float>> sun;
 };
 
 /**
@@ -98,7 +104,9 @@ class ProjTableReader {
       return std::nullopt;
     }
     const size_t per = size_t(h.qmax) * kIn;
-    size_t need = sizeof(ProjTableHeader) + 2 * size_t(h.nchan) * per * sizeof(std::complex<float>);
+    const bool has_sun = (h.flags & 2u) != 0;
+    size_t need = sizeof(ProjTableHeader) + (2 * size_t(h.nchan) * per + (has_sun ? size_t(h.nchan) * kIn : 0)) *
+                                                sizeof(std::complex<float>);
     if (need > m_size) {
       Unmap();
       if (!Map() || need > m_size) {
@@ -109,7 +117,7 @@ class ProjTableReader {
     }
     ProjSnapshot snap;
     snap.version = h.version;
-    snap.valid = (h.flags & 1u) != 0 && h.q > 0;
+    snap.valid = (h.flags & 1u) != 0 && (h.q > 0 || has_sun);
     snap.chan0 = p_chan0;
     snap.nchan = p_nchan;
     snap.q = snap.valid ? std::min<int>(int(h.q), kProjQmax) : 0;
@@ -127,6 +135,10 @@ class ProjTableReader {
         const size_t dst = size_t(c) * kProjQmax * kIn;
         std::memcpy(&snap.ut[dst], ut + src, size_t(snap.q) * kIn * sizeof(std::complex<float>));
         std::memcpy(&snap.vt[dst], vt + src, size_t(snap.q) * kIn * sizeof(std::complex<float>));
+      }
+      if (has_sun) {
+        const auto* sun = vt + size_t(h.nchan) * per;
+        snap.sun.assign(sun + size_t(p_chan0 - h.chan0) * kIn, sun + (size_t(p_chan0 - h.chan0) + p_nchan) * kIn);
       }
     }
     std::atomic_thread_fence(std::memory_order_acquire);
@@ -152,6 +164,12 @@ class ProjTableReader {
       if (!std::isfinite(a.real()) || !std::isfinite(a.imag()) || !std::isfinite(b.real()) ||
           !std::isfinite(b.imag())) {
         m_last_error = "non-finite projector";
+        return false;
+      }
+    }
+    for (size_t i = 0; i < p_snap.sun.size(); ++i) {
+      if (!std::isfinite(p_snap.sun[i].real()) || !std::isfinite(p_snap.sun[i].imag())) {
+        m_last_error = "non-finite Sun vector";
         return false;
       }
     }

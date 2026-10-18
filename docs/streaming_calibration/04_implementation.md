@@ -37,7 +37,7 @@ F-engine packets ──> packet assembler ──> gulp [chan 128][seq 1000][stan
 | `CMakeLists.txt` | Links `OpenMP::OpenMP_CXX` into epic++, for the X-engine. |
 | `src/ex/buffer.hpp` (fix) | `Payload::unlock` released the buffer (`m_lock = 0`) before `ResetBuf()` cleared its metadata. A producer acquiring the buffer in that window wrote metadata concurrently with the reset and crashed in `unordered_map::operator[]`. It reproduced reliably with the benchmark generator under backpressure; the production packet assembler is exposed to the same race. Fixed by resetting first, then releasing with release ordering. |
 | `src/ex/proj_table.hpp` (new) | `ProjTableHeader` (128 bytes) and `ProjTableReader` for the interference projector (section 10.8). Same seqlock and validity rules as the gain table; in addition a table is rejected unless, in each polarisation, $`\tilde V^H \tilde U`$ is the identity on the components in use to 5%. |
-| `src/ex/rfi_stage.{h,cu}` (new) | `RfiStage`, on the imaging GPU after each stream's host-to-device copy. `RfiProject` (one block per channel and sequence, one thread per stand) replaces $`x`$ by $`x - \tilde U(\tilde V^H x)`$ per polarisation, re-quantises to 4+4 bits with a uniform counter-based dither (symmetric clip ±7), writes a second gulp buffer and records the power of every channel and sequence. `ImpulseFlag` (one block per stream) zeroes the sequences whose sub-band power exceeds the gulp median by `--impulse_sigma` robust standard deviations (bitonic sort for median and MAD). The raw buffer is untouched, so the calibration tap keeps correlating unprojected voltages. |
+| `src/ex/rfi_stage.{h,cu}` (new) | `RfiStage`, on the imaging GPU after each stream's host-to-device copy. `RfiProject` (one block per channel and sequence, one thread per stand) replaces $`x`$ by $`x - \tilde U(\tilde V^H x)`$ per polarisation, re-quantises to 4+4 bits with a uniform counter-based dither (symmetric clip ±7), writes a second gulp buffer and records the power of every channel and sequence. `ImpulseFlag` (one block per stream) zeroes the sequences whose sub-band power exceeds the gulp median by `--impulse_sigma` robust standard deviations (bitonic sort for median and MAD). With a Sun vector in the table, the power tested is the band power minus the Sun-beam power, so solar bursts are kept (section 10.8). The raw buffer is untouched, so the calibration tap keeps correlating unprojected voltages. |
 | `src/raft_kernels/bench_kernels.hpp` (new), `epic_executor.hpp` | `epic++ --bench`: `BenchGulpGen` → `CorrelatorRft` (with tap and gain table) → `ChanReducer` (with `--sky_shm`, the sky ring) → `BenchSink`. Only these kernels are constructed, so nothing connects to the database, video server or network. The generator plays simulated gulps from a file, rotating each channel's sequences on every pass so the tap sees new samples, or sends empty gulps; it runs unpaced or at the real-time rate. The sink reports image cadence and gain version and dumps sampled images. |
 
 New options:
@@ -104,11 +104,11 @@ The visibility table holds raw F-engine correlations, before cable model and pha
 | 16 | `seq` (u64) |
 | 24 | `version` (u64) |
 | 32 | `chan0` (i64) |
-| 40 | `nchan`, `ninput` (512), `qmax`, `q`, `flags` (bit 0 = valid), reserved (u32 each) |
+| 40 | `nchan`, `ninput` (512), `qmax`, `q`, `flags` (bit 0 = valid, bit 1 = Sun vector present), reserved (u32 each) |
 | 64 | `valid_from_seq` (u64) |
 | 72 | `t_solved_unix` (f64) |
 | 80 | `solver[48]` |
-| 128 | data: complex64 $`\tilde U`$ `[nchan][qmax][512]`, then $`\tilde V`$ `[nchan][qmax][512]` |
+| 128 | data: complex64 $`\tilde U`$ `[nchan][qmax][512]`, then $`\tilde V`$ `[nchan][qmax][512]`, then the Sun vector `[nchan][512]` (projected, unit norm per polarisation; space always allocated, valid when flags bit 1 is set) |
 
 ## 4.4 streamcal (Python)
 
@@ -138,7 +138,7 @@ Dependencies beyond the epic310 environment: `pygdsm`, plus `numba` for `epicop`
 |---|---|
 | `tests/streamcal/test_io.cpp selftest` (epic1, g++ 11.4) | 13/13 pass: the tap R (batched, two threads) matches a scalar reference; the gain reader handles a missing file, slicing, repeated versions, a torn seqlock, deferral by `valid_from_seq`, coverage, NaN, clamping and unnormalised tables; application and zero flags are correct |
 | `tests/streamcal/test_shm_roundtrip.py` (epic1, epic310 Python) | Pass: Python writer → C++ reader, and C++ tap → Python reader |
-| `tests/streamcal/test_rfi_stage.py` with `rfi/rfi_stage_driver` (epic2, RTX 4090; 2026-10-18) | Pass: `ProjTableWriter` → `ProjTableReader` → `RfiStage`. A table that is not a projector pair is rejected; without a projector the output equals the input bit for bit; with one, the interference power in the projected subspace falls to 3.5×10⁻⁴ of the input and the output differs from the floating-point projection by the dithered rounding only (mean 0.001, rms 0.408 per component against √(1/6) = 0.408); impulse detection at 6σ zeroes exactly the injected sequences in every stream |
+| `tests/streamcal/test_rfi_stage.py` with `rfi/rfi_stage_driver` (epic2, RTX 4090; 2026-10-18) | Pass: `ProjTableWriter` → `ProjTableReader` → `RfiStage`. A table that is not a projector pair is rejected; without a projector the output equals the input bit for bit; with one, the interference power in the projected subspace falls to 3.5×10⁻⁴ of the input and the output differs from the floating-point projection by the dithered rounding only (mean 0.001, rms 0.408 per component against √(1/6) = 0.408); impulse detection at 6σ zeroes exactly the injected sequences in every stream; a short solar burst is zeroed without a Sun vector and kept with one |
 | `tests/streamcal/test_daemon.py` | End to end on synthetic tap tables: see section 3.5 |
 | `research/test_epicop.py` | epicop against literal MOFF: relative error 2.5×10⁻⁸; adjoint exact |
 | Full epic++ build (epic1, CUDA 12.3, `build-streamcal/`) | Builds; no new warnings |
