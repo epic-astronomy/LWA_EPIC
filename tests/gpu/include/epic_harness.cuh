@@ -364,6 +364,48 @@ class ImagerHarness {
     LaunchChunks(stream, 0, cfg_.nchan, first);
   }
 
+  // All channels in one launch with explicit complex weights, auto-correlation
+  // kernels (from AcorrFor; nullptr keeps the auto-correlations) and output
+  // (nchan x N x N x 4 floats). Several images of the same F-engine data, such
+  // as the polyphase parts of a larger image, can run side by side this way.
+  void LaunchAllWith(cudaStream_t stream, float* gcf_cplx, float2* acorr, float* out, bool first) {
+    int nseq = cfg_.nseq, nchan = cfg_.nchan, chan_offset = 0, seq_begin = 0, seq_end = cfg_.nseq;
+    void* args[] = {&d_f_eng_, &d_antpos_, &d_phases_, &nseq, &nchan, &gcf_tex_,
+                    &out, &chan_offset, &first, &d_gcf_elem_, &d_corr_grid_,
+                    &gcf_cplx, &acorr, &seq_begin, &seq_end, &d_acorr_power_};
+    EPIC_CHECK(cudaLaunchKernel(kernel_, dim3(nchan, 1, 1), block_dim_, args, smem_, stream));
+  }
+
+  // Device copy of complex weights (interleaved re/im). The caller frees it.
+  float* UploadComplex(const std::vector<float>& cplx) const {
+    float* d = nullptr;
+    EPIC_CHECK(cudaMalloc(&d, cplx.size() * sizeof(float)));
+    EPIC_CHECK(cudaMemcpy(d, cplx.data(), cplx.size() * sizeof(float), cudaMemcpyHostToDevice));
+    return d;
+  }
+
+  // Auto-correlation kernels of complex weights, as UpdateAcorr. The caller frees it.
+  float2* AcorrFor(const std::vector<float>& cplx) const {
+    const int S = cfg_.support, ncell = (2 * S - 1) * (2 * S - 1);
+    float2* d_c = reinterpret_cast<float2*>(UploadComplex(cplx));
+    float2* d_a = nullptr;
+    EPIC_CHECK(cudaMalloc(&d_a, size_t(cfg_.nchan) * LWA_SV_NSTANDS * ncell * sizeof(float2)));
+    ComputeAcorrKernels<<<cfg_.nchan, 256>>>(d_gcf_elem_, d_c, S, d_a, LWA_SV_NSTANDS);
+    EPIC_CHECK(cudaGetLastError());
+    EPIC_CHECK(cudaDeviceSynchronize());
+    cudaFree(d_c);
+    return d_a;
+  }
+
+  const uint8_t* device_f_eng() const { return d_f_eng_; }
+
+  // Calibration phases as uploaded, [chan][stand][Xre, Xim, Yre, Yim]
+  std::vector<float> Phases() const {
+    std::vector<float> ph(size_t(cfg_.nchan) * LWA_SV_NSTANDS * 4);
+    EPIC_CHECK(cudaMemcpy(ph.data(), d_phases_, ph.size() * sizeof(float), cudaMemcpyDeviceToHost));
+    return ph;
+  }
+
   void Sync() {
     for (auto& s : streams_) EPIC_CHECK(cudaStreamSynchronize(s));
     EPIC_CHECK(cudaGetLastError());
