@@ -334,7 +334,7 @@ struct Kernel<_ACCUMULATOR> : KernelTypeDefs {
     int im_naccum = options["nimg_accum"].as<int>();
     int im_min_accum = options["nimg_accum_min"].as<int>();
 
-    return ktype(imsize, imsize, reduced_nchan, im_naccum, im_min_accum);
+    return ktype(imsize, imsize, reduced_nchan, im_naccum, im_min_accum, options["accum_max_gap"].as<int>());
   }
 };
 using Accumulator_kt = Kernel<_ACCUMULATOR>::ktype;

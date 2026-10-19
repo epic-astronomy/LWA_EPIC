@@ -207,6 +207,10 @@ cxxopts::Options GetEpicOptions() {
       cxxopts::value<std::string>()->default_value("127.0.0.1:8080"))(
       "disable_metrics", "Disable writing metrics to the Prometheus endpoint",
       cxxopts::value<bool>()->default_value("false"))(
+      "accum_max_gap",
+      "Images that may be missing between two of a long integration (lost packets leave single gulps "
+      "empty); a longer gap ends it as a partial sum. NIMGACC records the images summed",
+      cxxopts::value<int>()->default_value("48"))(
       "imager",
       "epic: the E-field (MOFF) kernel. fx: Tensor-Core Correlator visibilities "
       "gridded onto a lag grid and transformed once per image (needs epic++ "

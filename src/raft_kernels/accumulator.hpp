@@ -51,6 +51,9 @@ class AccumulatorRft : public raft::kernel {
   size_t m_naccum{4};
   // Fewest images for a partial sum to be written
   size_t m_min_accum{1};
+  // Images that may be missing between two in a sum (lost packets leave
+  // single gulps empty); a longer gap ends the sum
+  size_t m_max_gap{48};
   static constexpr size_t m_nbuffers{20};
   size_t m_xdim{128};
   size_t m_ydim{128};
@@ -91,12 +94,13 @@ class AccumulatorRft : public raft::kernel {
    * of frequency) must hold to be written; <= 0 means 10% of p_naccum.
    */
   AccumulatorRft(size_t p_xdim, size_t p_ydim, size_t p_nchan, size_t p_naccum,
-                 int p_min_accum = -1)
+                 int p_min_accum = -1, int p_max_gap = 48)
       : raft::kernel(),
         m_naccum(p_naccum),
         m_min_accum(p_min_accum > 0
                         ? static_cast<size_t>(p_min_accum)
                         : std::max<size_t>(1, (p_naccum + 9) / 10)),
+        m_max_gap(static_cast<size_t>(std::max(0, p_max_gap))),
         m_xdim(p_xdim),
         m_ydim(p_ydim),
         m_in_nchan(p_nchan),
@@ -152,16 +156,16 @@ class AccumulatorRft : public raft::kernel {
       // is written as a partial sum (with the number of images it holds) when
       // it holds at least m_min_accum images, otherwise dropped; the new image
       // starts the next sum.
-      if (chan0 != m_init_chan0 || (new_seq_end - _seq_end) > nseqs) {
+      if (chan0 != m_init_chan0 || (new_seq_end - _seq_end) > uint64_t(nseqs) * (1 + m_max_gap)) {
         m_in_tensor.dissociate_data();
         m_out_tensor.dissociate_data();
+        // why the sum ends: a change of frequency, or a gap in the images
+        LOG(INFO) << "accumulator: sum of " << m_accum_count << " of " << m_naccum << " images ended by "
+                  << (chan0 != m_init_chan0 ? "a change of frequency" : "a gap") << " (seq_end " << _seq_end
+                  << " -> " << new_seq_end << ", step " << int64_t(new_seq_end - _seq_end) << " for " << nseqs
+                  << " sequences per image); " << (m_accum_count >= m_min_accum ? "written" : "dropped");
         if (m_accum_count >= m_min_accum) {
-          VLOG(2) << "accumulator: partial sum of " << m_accum_count << " of "
-                  << m_naccum << " images written at a gap";
           Emit();
-        } else {
-          VLOG(2) << "accumulator: " << m_accum_count
-                  << " images dropped at a gap";
         }
         StartSum(pld2);
         pld2 = _Pld();
