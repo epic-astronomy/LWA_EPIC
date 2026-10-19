@@ -302,15 +302,17 @@ class Monitor:
     def _write_table(self, unix):
         """
         The pixel table for the imager's GPU regridding (shm.SkyTableWriter).
-        The imager works ahead of the monitor by the monitor's lag, so the
-        table spans twice the update interval: positions at unix and at unix +
-        2 interval, between which it interpolates (the sky's motion is linear
-        to a small fraction of a pixel over that time).
+        The imager works ahead of the monitor by the monitor's lag (tens of
+        seconds while it starts), so the table spans 120 s, positions at unix
+        and at unix + 120 s, between which the imager interpolates and up to
+        half a span beyond; the sky's motion is linear over it to 0.01 pixel
+        (the curvature of a 0.5 deg arc on an image of 0.53 deg pixels). The
+        table is rewritten at every update of the pixels.
         """
         from .geometry import image_wcs
 
         g = self.grid
-        t_b = unix + 2 * self.cfg.regrid_interval_s
+        t_b = unix + 120.0
         xy_b = np.full_like(g.xy_a, np.nan)
         act = np.nonzero(np.isfinite(g.xy_a[:, 0]))[0]
         if len(act):
