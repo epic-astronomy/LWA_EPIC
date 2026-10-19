@@ -173,7 +173,8 @@ class Searcher:
                  chan_flag_sigma=1.6, flag_tau_s=30.0, mask_on=0.5, mask_off=0.2,
                  hold_s=30.0, clip_nbr_min=3, clip_nbr_frac=0.3, hp_factor=4.0,
                  detrend_len=0, detrend_factor=0.0, detrend="linear", far_matched=False,
-                 stride_div=0, noise_every=1, settle_hp=3.0, narrow_max=8):
+                 stride_div=0, noise_every=1, settle_hp=3.0, narrow_max=8,
+                 history_dtype="float32"):
         """
         widths: boxcar widths in tier samples, for every tier (a sequence of
         ints), per tier (a sequence of sequences, the last repeated for the
@@ -227,12 +228,19 @@ class Searcher:
         channel, and the rates at which a channel is masked and released.
         hold_s: longest time for which the statistics of a flagged or clipped
         cell are withheld; after it they follow again (skymon_normalise).
+        history_dtype: "float32", or "float16" to keep the tiers' histories in
+        half precision: half the memory and memory traffic, with every sum
+        formed in single precision (a stored sample carries a relative
+        rounding error of at most 2^-11 against unit noise).
         """
         self.edges = np.asarray(edges_mhz, float)
         self.C = len(self.edges) - 1
         self.P = capacity
         self.dt = dt_img
         self.D = max_delay or self.C
+        self.history_dtype = np.dtype(history_dtype)
+        if self.history_dtype not in (np.float32, np.float16):
+            raise ValueError(f"history_dtype must be float32 or float16, not {history_dtype}")
         self.seg = seg
         self.threshold_ref = threshold
         self.threshold = threshold
@@ -288,7 +296,7 @@ class Searcher:
                        int(math.ceil(detrend_factor * wmax)))
             W = max(self.D + t.block, span)
             t.f0 = W - (self.D + t.block)  # samples before the transform's window
-            t.history = np.zeros((C, W, P), np.float32)
+            t.history = np.zeros((C, W, P), self.history_dtype)
             t.base = np.zeros((C, P), np.float32)
             t.acc = np.zeros((C, P), np.float32)
             t.acc_n = 0

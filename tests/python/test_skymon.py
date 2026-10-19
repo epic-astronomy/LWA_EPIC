@@ -92,8 +92,10 @@ class TestDedispersion(unittest.TestCase):
             best, info, sumsq, cnt = kernels.search(x, flat, D, row0, nb, widths, sigma, seg,
                                                     clip=5.0, nthreads=3, ptile=8, detrend=False)
             rows = fdmt(x, plan)  # [D + 1, W, P]
-            cs = np.concatenate([np.zeros((D + 1, 1, P), np.float32),
-                                 np.cumsum(rows, axis=1, dtype=np.float32)], 1)
+            # prefix sums from the first sample of the widest boxcar
+            t0 = W - nb + 1 - int(widths.max())
+            cs = np.zeros((D + 1, W + 1, P), np.float32)
+            cs[:, t0 + 1:] = np.cumsum(rows[:, t0:], axis=1, dtype=np.float32)
             nseg = nb // seg
             ref = np.full((P, nseg), -np.inf, np.float32)
             rinfo = np.full((P, nseg, 3), -1, np.int32)
@@ -155,6 +157,320 @@ class TestDedispersion(unittest.TestCase):
             self.assertAlmostEqual(b.dm_per_delay, 2 * a.dm_per_delay)
             self.assertLessEqual(b.dm_min, a.dm_max + b.dm_per_delay)
             self.assertEqual(b.decim, 2 * a.decim)
+
+
+BAND192 = Band(chan0=3072, nchan=192)  # 73.49-78.08 MHz: all channels of an NDP stream
+
+
+def _edges(C, f_lo=73.4880, width=4.5938):
+    return f_lo + np.arange(C + 1) * (width / C)
+
+
+class TestAnyNumberOfChannels(unittest.TestCase):
+    """
+    The FDMT for any number of channels (192 for the FX imager's streams): a
+    level with an odd number of subbands passes its lowest subband on
+    unmerged, and nothing is padded
+    """
+
+    def test_plan_of_192_channels(self):
+        init, levels = fdmt_plan(BAND192.edges_mhz(), 384)
+        self.assertEqual(len(init), 192)
+        self.assertEqual([len(level) for level in levels], [96, 48, 24, 12, 6, 3, 2, 1])
+        # three subbands of 64: the lowest is passed on and merged last
+        self.assertIsNone(levels[6][0][1])
+        self.assertIsNotNone(levels[6][1][1])
+        self.assertEqual(levels[-1][0][0], 384)
+        # a power of two has no pass
+        _, lv = fdmt_plan(BAND.edges_mhz(), 128)
+        self.assertTrue(all(d_lo is not None for level in lv for _, d_lo, _ in level))
+
+    def test_kernel_matches_numpy_for_any_number_of_channels(self):
+        rng = np.random.default_rng(21)
+        for C in (1, 2, 3, 5, 6, 7, 12, 96, 192):
+            D = 2 * C
+            plan = fdmt_plan(_edges(C), D)
+            x = rng.standard_normal((C, 40 + D, 5)).astype(np.float32)
+            ref = fdmt(x, plan)
+            got = kernels.fdmt(x, kernels.flatten_plan(plan), D, nthreads=3, ptile=4)
+            self.assertEqual(ref.shape, (D + 1, 40 + D, 5))
+            np.testing.assert_array_equal(ref, got, err_msg=f"{C} channels")
+
+    def test_search_matches_reference_with_192_channels(self):
+        """kernels.search, all rows or only those of a tier above 0, against numpy"""
+        rng = np.random.default_rng(22)
+        C, D, W, nb, P, seg = 192, 384, 420, 32, 9, 16
+        plan = fdmt_plan(BAND192.edges_mhz(), D)
+        flat = kernels.flatten_plan(plan)
+        x = rng.standard_normal((C, W, P)).astype(np.float32)
+        widths = np.array([1, 2, 4, 8], np.int32)
+        sigma = (8 + rng.random((D + 1, 4))).astype(np.float32)
+        rows = fdmt(x, plan)
+        t0 = W - nb + 1 - int(widths.max())  # the first sample a boxcar reads
+        cs = np.zeros((D + 1, W + 1, P), np.float32)
+        cs[:, t0 + 1:] = np.cumsum(rows[:, t0:], axis=1, dtype=np.float32)
+        for row0 in (0, D // 2 + 1, D):
+            best, info, _, _ = kernels.search(x, flat, D, row0, nb, widths, sigma, seg,
+                                              clip=5.0, nthreads=3, ptile=8, detrend=False)
+            nseg = nb // seg
+            ref = np.full((P, nseg), -np.inf, np.float32)
+            rinfo = np.full((P, nseg, 3), -1, np.int32)
+            for d in range(row0, D + 1):
+                for wi, w in enumerate(widths):
+                    inv = np.float32(1) / sigma[d, wi]
+                    for t in range(W - nb, W):
+                        snr = (cs[d, t + 1] - cs[d, t + 1 - w]) * inv
+                        sg = (t - (W - nb)) // seg
+                        up = snr > ref[:, sg]
+                        ref[up, sg] = snr[up]
+                        rinfo[up, sg] = (d, t, wi)
+            np.testing.assert_array_equal(best, ref)
+            np.testing.assert_array_equal(info, rinfo)
+
+    def test_pulse_keeps_its_fluence_in_192_channels(self):
+        """
+        A dispersed pulse is summed at its delay with the same fraction of its
+        fluence in 192 channels as in 128: the unequal last merge loses nothing
+        """
+        dt = 0.0418
+        frac = {}
+        for band in (Band(3104, 128), BAND192):
+            e = band.edges_mhz()
+            C, D = band.nchan, 2 * band.nchan
+            plan = fdmt_plan(e, D)
+            s = K_DM * (e[0] ** -2 - e[-1] ** -2)
+            got = []
+            for f in (0.3, 0.55, 0.9):
+                for phase in (0.0, 0.25, 0.5, 0.75):
+                    delay = int(f * D)
+                    dm = delay * dt / s
+                    dyn = dispersed(e, dt, D + 80, dm, t_top=(40 + phase) * dt)
+                    out = fdmt(dyn[:, :, None].astype(np.float32), plan)[:, :, 0]
+                    d, t = np.unravel_index(np.argmax(out), out.shape)
+                    self.assertLessEqual(abs(d - delay), 1, (C, delay, d))
+                    got.append(float(out.max()) / C)  # the fraction of the fluence summed
+            frac[C] = np.array(got)
+        self.assertTrue(np.all(frac[192] > 0.8), frac)
+        self.assertAlmostEqual(frac[192].mean(), frac[128].mean(), delta=0.01, msg=str(frac))
+
+    def test_searcher_uses_the_real_band_edges(self):
+        from skymon.search import Searcher
+        se = Searcher(BAND192.edges_mhz(), 0.0418, 8, dm_max=3000.0, max_delay=384, block0=512,
+                      nthreads=1)
+        self.assertEqual(se.C, 192)
+        self.assertAlmostEqual(se.f_lo, 3071.5 * 196 / 8192, places=6)
+        self.assertAlmostEqual(se.f_hi, 3263.5 * 196 / 8192, places=6)
+        # the delay rows span the real band: tier 0 reaches DM 183 at 41.8 ms
+        self.assertAlmostEqual(se.tiers[0].dm_max, 182.9, delta=0.2)
+
+    def test_snr_grows_as_the_square_root_of_the_channels(self):
+        """
+        The same bursts per channel, searched in 128 and in 192 channels of the
+        same width: S/N in the ratio sqrt(192 / 128), as for a full band
+        """
+        from skymon.search import Searcher
+        dt, P = 0.0418, 16
+        snr = {}
+        for band in (Band(3104, 128), BAND192):
+            rng = np.random.default_rng(23)
+            e = band.edges_mhz()
+            se = Searcher(e, dt, P, dm_max=40.0, block0=64, max_delay=2 * band.nchan,
+                          threshold=6.0, nthreads=2, warmup_images=16, rng=rng,
+                          widths=(1, 2, 4, 8))
+            se.set_live(np.ones(P, bool))
+            dm = 20.0
+            # eight bursts at eight arrival phases, in every other pixel
+            bursts = [Burst("x", 0, 0, dm, 70.0 + k * dt / 8 - K_DM * dm / e[-1] ** 2,
+                            width_s=0.0) for k in range(8)]
+            best = np.zeros(P)
+            for n in range(int(140 / dt)):
+                raw = rng.standard_normal((band.nchan, P)).astype(np.float32) + 10.0
+                for k, b in enumerate(bursts):
+                    raw[:, 2 * k] += 3.0 * channel_fractions(b, e, n * dt, dt)
+                for res in se.push(raw):
+                    for h in res.hits:
+                        best[h.slot] = max(best[h.slot], h.snr)
+                se.finish_block()
+            self.assertTrue(np.all(best[::2] > 10), best)
+            snr[band.nchan] = best[::2].mean()
+        self.assertAlmostEqual(snr[192] / snr[128], math.sqrt(1.5), delta=0.08, msg=str(snr))
+
+
+class TestHalfPrecisionHistory(unittest.TestCase):
+    """Tier histories in float16: the sums are formed in single precision"""
+
+    def test_search_of_half_equals_search_of_its_single_values(self):
+        rng = np.random.default_rng(24)
+        for C, D in ((64, 128), (192, 384)):
+            e = _edges(C)
+            flat = kernels.flatten_plan(fdmt_plan(e, D))
+            W, nb, P = D + 64, 64, 21
+            h = (3 * rng.standard_normal((C, W, P))).astype(np.float16)
+            sigma = (5 + rng.random((D + 1, 3))).astype(np.float32)
+            for detrend, zerodm in ((2, False), (1, True)):
+                a = kernels.search(h, flat, D, D // 2 + 1, nb, [1, 4, 16], sigma, 16,
+                                   nthreads=3, detrend=detrend, zerodm=zerodm)
+                b = kernels.search(h.astype(np.float32), flat, D, D // 2 + 1, nb, [1, 4, 16],
+                                   sigma, 16, nthreads=3, detrend=detrend, zerodm=zerodm)
+                for u, v in zip(a, b):
+                    np.testing.assert_array_equal(u, v)
+
+    def test_cascade_and_shift_in_half(self):
+        from types import SimpleNamespace as NS
+        rng = np.random.default_rng(25)
+        C, P, W, n = 5, 37, 9, 3
+        k = float(np.float32(1 / math.sqrt(2)))
+        a_hp = np.array([1 / 32, 1 / 64, 1 / 128], np.float32)
+        a = [NS(base=rng.standard_normal((C, P)).astype(np.float32),
+                history=np.zeros((C, W, P), np.float32), pos=2 + j,
+                acc=rng.standard_normal((C, P)).astype(np.float32)) for j in range(n)]
+        b = [NS(base=t.base.copy(), history=t.history.astype(np.float16), pos=t.pos,
+                acc=t.acc.copy()) for t in a]
+        for _ in range(3):
+            x = (10 * rng.standard_normal((C, P))).astype(np.float32)
+            kernels.tier_cascade(x, a, a_hp, k, last_dec=True, nthreads=2)
+            kernels.tier_cascade(x, b, a_hp, k, last_dec=True, nthreads=2)
+            for u, v in zip(a, b):
+                u.pos += 1
+                v.pos += 1
+        for u, v in zip(a, b):
+            np.testing.assert_array_equal(u.base, v.base)
+            np.testing.assert_array_equal(u.acc, v.acc)
+            np.testing.assert_array_equal(u.history.astype(np.float16), v.history)
+        h = b[0].history.copy()
+        kernels.shift(b[0].history, 0, 4, 5, nthreads=2)
+        np.testing.assert_array_equal(b[0].history[:, :5], h[:, 4:9])
+        np.testing.assert_array_equal(b[0].history[:, 5:], h[:, 5:])
+        with self.assertRaises(ValueError):
+            kernels.shift(b[0].history.astype(np.float64), 0, 1, 1)
+
+    def test_searcher_in_half_finds_the_same_burst(self):
+        from skymon.search import Searcher
+        dt, P = 0.0836, 16
+        e = BAND.edges_mhz()
+        found = {}
+        for dtype in ("float32", "float16"):
+            rng = np.random.default_rng(26)
+            se = Searcher(e, dt, P, dm_max=150.0, block0=64, threshold=7.0, nthreads=2,
+                          warmup_images=16, rng=rng, history_dtype=dtype)
+            self.assertEqual(se.tiers[0].history.dtype, np.dtype(dtype))
+            se.set_live(np.ones(P, bool))
+            dm, t_top = 60.0, 150.0
+            b = Burst("x", 0, 0, dm, t_top - K_DM * dm / e[-1] ** 2, width_s=0.0)
+            hits = []
+            for n in range(int(260 / dt)):
+                raw = rng.standard_normal((BAND.nchan, P)).astype(np.float32) + 10.0
+                raw[:, 7] += 2.0 * channel_fractions(b, e, n * dt, dt)
+                for res in se.push(raw):
+                    hits += res.hits
+                se.finish_block()
+            found[dtype] = max(hits, key=lambda h: h.snr)
+            mem = se.memory_bytes()
+            found[dtype + "_mem"] = sum(t.history.nbytes for t in se.tiers)
+        a, b = found["float32"], found["float16"]
+        self.assertEqual((a.slot, a.row, a.tier, a.t_end, a.width), (b.slot, b.row, b.tier,
+                                                                     b.t_end, b.width))
+        self.assertAlmostEqual(b.snr / a.snr, 1.0, delta=2e-3)
+        self.assertEqual(found["float16_mem"] * 2, found["float32_mem"])
+        self.assertGreater(mem, 0)
+
+
+class TestCompiledIngest(unittest.TestCase):
+    """The vector paths of the regridding and the normalisation against references"""
+
+    def test_regrid_matches_reference(self):
+        rng = np.random.default_rng(27)
+        for C, G, P in ((192, 64, 999), (5, 32, 77)):
+            img = rng.standard_normal((C, G, G)).astype(np.float32)
+            xy_a = rng.uniform(-1, G + 1, (P, 2))
+            xy_a[::40] = np.nan  # free slots: zero weights
+            xy, idx = np.zeros((P, 2)), np.zeros((P, 16), np.int32)
+            w = np.zeros((P, 16), np.float32)
+            kernels.taps(xy_a, xy_a, 0.0, G, xy, idx, w, nthreads=2)
+            # a few pixels with taps that are not a 4 x 4 block take the general loop
+            idx[3] = rng.integers(0, G * G, 16)
+            idx[10] = idx[10][::-1]
+            out = np.full((C, P), np.nan, np.float32)
+            kernels.regrid(img, idx, w, out, nthreads=3)
+            ref = np.einsum("pk,cpk->cp", w.astype(np.float64), img.reshape(C, -1)[:, idx])
+            np.testing.assert_allclose(out, ref, rtol=1e-5, atol=1e-5)
+            self.assertTrue(np.all(out[:, ::40] == 0))
+            # other tap counts (bilinear)
+            i4, w4 = bilinear(rng.uniform(2, G - 2, P), rng.uniform(2, G - 2, P), G)
+            out4 = np.zeros((C, P), np.float32)
+            kernels.regrid(img, i4.astype(np.int32), w4.astype(np.float32), out4, nthreads=2)
+            ref4 = np.einsum("pk,cpk->cp", w4.astype(np.float64), img.reshape(C, -1)[:, i4])
+            np.testing.assert_allclose(out4, ref4, rtol=1e-5, atol=1e-5)
+
+    def _norm_state(self, C, P, rng):
+        st = dict(mu=rng.standard_normal((C, P)).astype(np.float32),
+                  var=(0.5 + rng.random((C, P))).astype(np.float32),
+                  prev=rng.standard_normal((C, P)).astype(np.float32),
+                  age=np.full(P, 1000, np.int32), held=np.zeros((C, P), np.uint16),
+                  acc=np.zeros((C, P), np.float32))
+        st["var"][0, :3] = 0.0  # no variance yet: output 0
+        return st
+
+    def _normalise(self, raw, st, live, sub, nbr):
+        C = raw.shape[0]
+        med, flags = np.zeros(C, np.float32), np.zeros(C, np.uint8)
+        kernels.normalise(raw, st["mu"], st["var"], st["prev"], st["age"], live, st["acc"], sub,
+                          16, 0.01, 0.003, 6.0, med, 3, chan_flag_sigma=1.6,
+                          chan_mask=np.zeros(C, np.uint8), flags=flags,
+                          spread=np.zeros(C, np.float32), held=st["held"], max_hold=10, nbr=nbr)
+        return med, flags
+
+    def test_normalise_vector_and_scalar_paths_agree(self):
+        """
+        The same cells through the vector path (groups of 8 live pixels) and
+        through the scalar path (each group broken by a pixel that is not
+        live) give the same output and statistics, bit for bit; and both
+        agree with a numpy reference
+        """
+        rng = np.random.default_rng(28)
+        C, P = 24, 160
+        st_a = self._norm_state(C, P, rng)
+        raws = [(st_a["mu"] + rng.standard_normal((C, P)) * np.sqrt(st_a["var"]))
+                .astype(np.float32) for _ in range(4)]
+        raws[2][:, 50] += 40.0  # beyond the clip
+        # layout b: a pixel that is not live before every 7 of layout a
+        pos = np.arange(P) + np.arange(P) // 7 + 1
+        Pb = int(pos[-1]) + 1
+        live_a, live_b = np.ones(P, np.uint8), np.zeros(Pb, np.uint8)
+        live_b[pos] = 1
+        st_b = {}
+        for k, v in st_a.items():
+            if v.ndim == 2:
+                st_b[k] = np.zeros((C, Pb), v.dtype)
+                st_b[k][:, pos] = v
+            else:
+                st_b[k] = np.zeros(Pb, v.dtype)
+                st_b[k][pos] = v
+        st_b["age"][:] = np.where(live_b, 1000, 0)
+        sub_a = np.arange(0, P, 2, dtype=np.int32)
+        sub_b = pos[sub_a].astype(np.int32)
+        nbr_a = np.full((P, 8), -1, np.int32)
+        nbr_b = np.full((Pb, 8), -1, np.int32)
+        for k, raw in enumerate(raws):
+            ref_mu, ref_var = st_a["mu"].copy(), st_a["var"].copy()
+            ref_raw = raw.copy()
+            ra = raw.copy()
+            rb = np.zeros((C, Pb), np.float32)
+            rb[:, pos] = raw
+            med_a, _ = self._normalise(ra, st_a, live_a, sub_a, nbr_a)
+            med_b, _ = self._normalise(rb, st_b, live_b, sub_b, nbr_b)
+            np.testing.assert_array_equal(med_a, med_b)
+            np.testing.assert_array_equal(ra, rb[:, pos])
+            self.assertTrue(np.all(rb[:, live_b == 0] == 0))
+            for f in ("mu", "var", "prev", "held", "acc"):
+                np.testing.assert_array_equal(st_a[f], st_b[f][:, pos], err_msg=f)
+            # numpy reference of the steady state (no flag; one clipped cell)
+            dev = np.where(ref_var > 0, (ref_raw - ref_mu) / np.sqrt(np.maximum(ref_var, 1e-30)),
+                           0).astype(np.float32)
+            y = dev - med_a[:, None]
+            out = np.where(np.abs(y) > 6.0, 0, y)
+            np.testing.assert_allclose(ra, out, rtol=1e-5, atol=1e-5)
+            self.assertEqual(k == 2, bool(np.all(ra[:, 50] == 0)))
 
 
 class TestClusterHits(unittest.TestCase):
@@ -471,15 +787,15 @@ class TestSharedFrbList(unittest.TestCase):
 
 
 def _sim_and_monitor(out, duration, frb_per_hour, inject_every_s, snr=(25, 40), dm=(10, 120),
-                     seed=5, **cfg):
+                     seed=5, chan0=2336, nchan=64, **cfg):
     from skymon.monitor import Config, Monitor
     from skymon.simulate import SkySimulator, tier_dt_function
 
-    sim = SkySimulator(chan0=2336, nchan=64, start_unix=T0, frb_per_hour=frb_per_hour, snr=snr,
-                       dm=dm, rfi_per_hour=20, truth_path=os.path.join(out, "truth.jsonl"),
+    sim = SkySimulator(chan0=chan0, nchan=nchan, start_unix=T0, frb_per_hour=frb_per_hour,
+                       snr=snr, dm=dm, rfi_per_hour=20, truth_path=os.path.join(out, "truth.jsonl"),
                        seed=seed, el_min=25.0,
-                       tier_dt=tier_dt_function(Band(2336, 64).edges_mhz(), 0.083592, 64, 300.0,
-                                                64))
+                       tier_dt=tier_dt_function(Band(chan0, nchan).edges_mhz(), 0.083592, nchan,
+                                                300.0, 64))
     mon = Monitor(Config(out_dir=out, nside=32, dm_max=300.0, block0=64, nthreads=4,
                          warmup_images=32, inject_interval_s=inject_every_s,
                          inject_snr=(25, 40), inject_dm=(10, 120), seed=seed,
@@ -538,6 +854,39 @@ class TestEndToEnd(unittest.TestCase):
             finally:
                 httpd.shutdown()
                 httpd.server_close()
+        finally:
+            shutil.rmtree(out, ignore_errors=True)
+
+    def test_all_channels_of_a_stream(self):
+        """
+        192 channels of 23.9 kHz (not a power of two), D = 2C, histories in
+        half precision: bursts are found with their S/N, and the products
+        hold every channel
+        """
+        from skymon.evaluate import report
+
+        out = tempfile.mkdtemp()
+        try:
+            sim, mon = _sim_and_monitor(out, 420, frb_per_hour=40, inject_every_s=0, chan0=3072,
+                                        nchan=192, delay_factor=2.0)
+            se = mon.searcher
+            self.assertEqual((se.C, se.D), (192, 384))
+            self.assertEqual(se.tiers[0].history.dtype, np.float16)
+            e = BAND192.edges_mhz()
+            self.assertEqual((se.f_lo, se.f_hi), (float(e[0]), float(e[-1])))
+            self.assertGreater(len(sim.truth), 0)
+            rep = report(os.path.join(out, "truth.jsonl"), out, t_end=sim._t(sim.n),
+                         latency_s=120)
+            found = sum(c is not None for _, c in rep["rows"])
+            self.assertGreaterEqual(found, max(1, int(0.7 * len(rep["truth"]))), rep["text"])
+            self.assertLessEqual(len(rep["false"]), 2, rep["text"])
+            ratio = [c["snr"] / t["snr"] for t, c in rep["rows"] if c is not None]
+            self.assertGreater(float(np.median(ratio)), 0.7, rep["text"])
+            stored = [c for _, c in rep["rows"] if c is not None]
+            with np.load(stored[0]["files"]["npz"]) as z:
+                self.assertEqual(z["dynspec"].shape[0], 192)
+                self.assertEqual(z["dynspec"].dtype, np.float32)
+                self.assertEqual(z["dmt"].shape[0], 385)
         finally:
             shutil.rmtree(out, ignore_errors=True)
 

@@ -61,6 +61,8 @@ def add_monitor_args(p):
                         "0: every sample); the S/N loss is 1/(4N) on average")
     p.add_argument("--noise-every", type=int, default=d.noise_every,
                    help="measure the search noise in one block of this many per tier")
+    p.add_argument("--history-dtype", choices=("float16", "float32"), default=d.history_dtype,
+                   help="precision of the tiers' histories (float16: half the memory)")
     p.add_argument("--threads", type=int, default=d.nthreads)
     p.add_argument("--block", type=int, default=d.block0, help="tier-0 samples per search")
     p.add_argument("--max-delay-factor", type=float, default=d.delay_factor,
@@ -130,6 +132,7 @@ def make_config(a) -> Config:
                   inject_unscattered_fraction=a.inject_unscattered,
                   hp_factor=a.hp_factor, boxcar_stride_div=a.boxcar_stride,
                   noise_every=a.noise_every, detrend_factor=a.detrend_factor, detrend=a.detrend,
+                  history_dtype=a.history_dtype,
                   **{k: v for k, v in (("widths", a.widths), ("hp_tau", a.hp_tau),
                                        ("detrend_len", a.detrend_len)) if v is not None})
 

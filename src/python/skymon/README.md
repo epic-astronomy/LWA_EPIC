@@ -26,18 +26,20 @@ epic++ (ChanReducer) ──Stokes I──▶ /dev/shm/<ring> ──▶ skymon ru
    - **Interference flagging** (`skymon_normalise` in `_kernels.c`). After the median, the spread of each channel over the sky (1.4826 × the median absolute deviation over a subset of up to 2048 pixels) is about 1 for noise. A narrowband carrier seen over much of the sky (aircraft or meteor scatter of a distant transmitter) widens it, while a burst, confined to a beam, does not. A channel whose spread exceeds `chan_flag_sigma` (1.6) times that of the band (the median spread over the channels, or 1 if smaller) is set to zero for every pixel in that image. A rise of noise over the whole band (a thunderstorm, a solar burst, a change of gain) widens every channel alike; it is not flagged, but searched and recorded in the conditions (step 8).
    - A channel flagged persistently is masked: its flag rate (exponential, 30 s) above 0.5 sets it to zero in every image until the rate falls below 0.2.
    - A single cell (pixel and channel) beyond `clip` (12) is set to zero, unless it is sky-shaped: at least 3 of its 8 HEALPix neighbours deviate the same way, in the same channel and image, by at least 0.3 of its deviation (`clip_sky_neighbours`, `clip_sky_fraction`).
-     - A burst whose signal in a channel falls into one image adds S/N × sqrt(n_eff / nchan) to that cell. Here n_eff, about 1.7 at the top of a tier, is the number of samples per channel in the S/N's definition. The clip is therefore reached at S/N 73 for 64 channels and 104 for 128.
+     - A burst whose signal in a channel falls into one image adds S/N × sqrt(n_eff / nchan) to that cell. Here n_eff, about 1.7 at the top of a tier, is the number of samples per channel in the S/N's definition. The clip is therefore reached at S/N 73 for 64 channels, 104 for 128 and 127 for 192.
      - Anything from the sky reaches the image through the synthesised beam, wider than a sky pixel, so a neighbour sees 0.5–0.8 of a point source's peak. A bright burst therefore keeps its cells, while a glitch in a single cell is still removed.
      - Before this exemption, a burst of S/N 120 in 64 channels lost its core pixels: it was found 1.5° away at S/N 54 with 0.45 of its fluence.
    - Flagged channels and cells beyond the clip, kept or not, do not update the running statistics. A cell withheld for 30 s in a row is updated again (deviations limited to 5σ), so a lasting change of level is followed in the end.
    - `/api/status` reports `rfi_flagging`: the fraction of channels zeroed over the last minute, the masked channels and the flags per channel. Each candidate's `quality.flagged_fraction` is the fraction zeroed along its sweep.
 4. **Dedispersion in tiers** (`search.py`, `dedisp.py`).
    - Tier j averages 2^j images and runs the fast dispersion measure transform (FDMT) over delays 0..D samples, with D equal to the number of channels times `--max-delay-factor`.
+   - The transform takes any number of channels; the number comes from the ring (`nchan`). It merges adjacent subbands in pairs; at a level with an odd number of subbands the lowest is passed on unmerged and joins one level later. The FX imager's 192 channels of 23.9 kHz (`--sky_nbin 1`) form three subbands of 64, of which the upper two are merged first. Nothing is padded, and the band edges are the real ones.
    - Each tier high-passes its input with a time constant of at least 32 of its samples (`--hp-tau`) and at least 4 times its widest boxcar (`--hp-factor`).
    - The dispersion delay is linear in DM, so tier j covers DMs 2^j times those of tier 0. The tiers together cover 0–`--dm-max` in octaves.
    - At the top of each tier, a pulse is smeared by about one sample per channel, so averaging further would lose signal.
-   - Every tier keeps only D + block samples of history, whatever its DM. All tiers together take about 0.7 MB per pixel for 128 channels (14 GB at nside 64), and the accumulation (step 7) another 12 GB.
+   - Every tier keeps only D + block samples of history, whatever its DM. The histories are kept in half precision (`--history-dtype float16`, the default; every sum is formed in single precision, and a stored sample carries a relative rounding error of at most 2^-11). For 192 channels with D = 2C and a block of 512, all tiers together take 1.3 MB per pixel (26 GiB at nside 64, against 51 GiB in single precision), and the accumulation (step 7) another 16.5 GiB.
    - The FDMT and the boxcar search are compiled (`skymon_search` in `_kernels.c`). Each thread transforms a tile of 16 pixels depth first, so that the small subbands stay in the core's cache, and searches each final delay row as soon as it is formed.
+   - Only the rows and samples that the boxcars read are formed. Above tier 0 only delays above D/2 are reported, and each subband forms only the rows its parent reads: about half of them. A final row is read from the first sample of the widest boxcar ending in the block on, and each subband is formed from the first sample its parent reads.
 5. **Search.**
    - The mean over the window is removed from every channel of every pixel before the FDMT (`--detrend mean`; `linear` removes a fitted straight line, which takes up to 4w/W of a pulse of w samples at the end of a window of W). `--detrend-len` and `--detrend-factor` lengthen a tier's history beyond the transform's window, for the trend fit only. Above tier 0 the mean over channels at each time is removed too (zero-DM filter), which takes out broadband variations; a pulse of w samples loses about w/S of its signal, S being its sweep in tier samples, so a pulse longer than its sweep is lost in the higher tiers.
    - **Wide pulses.** FRBs at 57–76 MHz are broadened to seconds or minutes by scattering. Tiers 0–4 search boxcars of 1, 2, 4, …, 128 samples, and the tiers above 1, 2, 4 and 8 (`--widths`, one list or per tier range, e.g. `0-4:1,2,4,8,16,32,64,128;5-:1,2,4,8`). A boxcar of w samples is evaluated at every (w/8)-th end sample (`--boxcar-stride` 8), at an average cost of 1/32 of a matched pulse's S/N. Against the boxcars to 8 samples, this raises the FRB rate by a factor of 1.52–1.59 at 57–76 MHz for the reference population, at 0.004 of real time (docs/skymon/DESIGN.md, §3.3 and §10.1c).
@@ -195,7 +197,7 @@ python -m skymon evaluate --truth simtest/truth.jsonl --out simtest
 
 With 8 threads on 12 cores the monitor takes 0.57 of real time at 41.8 ms images with `--max-delay-factor 2 --block 512` (0.32 at 83.6 ms) on a Threadripper PRO 5965WX; 12 threads take 0.52, and more threads add nothing, since they then compete for memory bandwidth. Confined to 8 cores and their siblings (the production layout), it takes 0.66 before and 0.67 with the wide-pulse search; confined to one L3 group of 6 cores it takes 0.87 (docs/skymon/DESIGN.md, §10.1c). The default OpenMP wait policy is faster than `OMP_WAIT_POLICY=passive` by about 15% (docs/skymon/DESIGN.md, §10.1b).
 
-`epic++` needs `--sky_shm epic_sky0` to publish. The ring holds 64 images by default (5.3 s, 537 MB for 128 channels).
+`epic++` needs `--sky_shm epic_sky0` to publish. The ring holds 64 images by default (5.3 s at 83.6 ms, 537 MB for 128 channels of 128 × 128 pixels; 2.7 s and 3.2 GB for 192 channels of 256 × 256 pixels).
 
 ## HTTP interface
 
@@ -221,6 +223,8 @@ cd tests/python && python -m unittest -v test_known test_chanflag test_skymon te
 
 The tests cover:
 - the FDMT against numpy and brute force;
+- the FDMT for any number of channels: the plan of 192 channels, the kernel against numpy for 1 to 192 channels, the search against a reference, a pulse keeping the same fraction of its fluence in 192 channels as in 128, the S/N rising as sqrt(192/128), and the real band edges;
+- tier histories in half precision (search, cascade and shift against single precision; a burst found with its S/N within 0.2%), and the vector paths of the regridding and the normalisation against references;
 - tier coverage;
 - the shared-memory ring, including overruns and writer restarts;
 - the C++ publisher's pixel order against `epic_utils.save_output`;
@@ -228,7 +232,7 @@ The tests cover:
 - detection by the searcher;
 - the wide-pulse search: the trend fitted over a longer history than the transform, the high-pass per tier, the tier settings and the false-alarm threshold, the gain on a scattered burst without loss on a short one, rising pixels with the wide boxcars, and the noise at fixed widths; the exponential scattering model and the scattered live injections;
 - interference flagging (`test_chanflag.py`): one channel and one image, noise without flags, the persistent mask and its release, and a moving carrier in a simulated sky that leaves no candidate while a burst is found;
-- an end-to-end simulated sky with stored candidates and the HTTP interface;
+- an end-to-end simulated sky with stored candidates and the HTTP interface, in 64 channels and in 192;
 - live injections;
 - known-source labels (Sun, pulsars, bright sources) and the narrowband classification (`test_known`);
 - a monitor that waits for a missing imager and survives a restart and a gap;
