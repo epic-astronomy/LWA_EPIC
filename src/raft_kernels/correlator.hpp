@@ -77,6 +77,8 @@ class CorrelatorRft : public raft::kernel {
   FILE* m_trace{nullptr};
 
   uint64_t m_trace_gain_v{0}, m_trace_proj_v{0};
+  int m_trace_short{0}, m_trace_zero{0};
+  double m_trace_vmin{1.0};
   /// FX: the all-sky monitor's pixel table
   std::unique_ptr<SkyTableReader> m_sky_table{nullptr};
   uint64_t m_sky_table_version{0};
@@ -278,22 +280,35 @@ class CorrelatorRft : public raft::kernel {
         const size_t words = mask.size() / sizeof(uint64_t) / (NROACH_BOARDS * NDP_CHAN_BLOCKS);
         m_correlator.get()->SetGulpValidity(reinterpret_cast<const uint64_t*>(mask.data()), words,
                                             reinterpret_cast<const uint8_t*>(block.data()));
+        if (m_trace) {  // per source: the packets that arrived
+          const auto* m = reinterpret_cast<const uint64_t*>(mask.data());
+          const int nsrc = int(NROACH_BOARDS * NDP_CHAN_BLOCKS);
+          const int nseq = MetaOr<int>(gulp_metadata, "nseqs", 0);
+          m_trace_short = m_trace_zero = 0;
+          m_trace_vmin = 1.0;
+          for (int src = 0; src < nsrc; ++src) {
+            int n = 0;
+            for (size_t w = 0; w < words; ++w) n += __builtin_popcountll(m[src * words + w]);
+            const double v = nseq > 0 ? double(n) / nseq : 1.0;
+            m_trace_short += v < 1.0;
+            m_trace_zero += n == 0;
+            m_trace_vmin = std::min(m_trace_vmin, v);
+          }
+        }
+        // binary, and copied above: not for the image's metadata (FITS headers)
+        gulp_metadata.erase(vm);
+        gulp_metadata.erase(vb);
       } else {
         m_correlator.get()->SetGulpValidity(nullptr, 0, nullptr);
+        m_trace_short = m_trace_zero = 0;
+        m_trace_vmin = 1.0;
       }
     }
     if (m_trace) {
-      // seq_start quality sources_short min_valid_frac sources_zeroed gain_version proj_version first_of_image
-      int nshort = 0, nzero = 0;
-      double vmin = 1.0;
-      for (int src = 1; src <= 256; ++src) {
-        const auto it = gulp_metadata.find("src" + std::to_string(src) + "_valid_frac");
-        if (it == gulp_metadata.end()) break;
-        const double v = std::get<double>(it->second);
-        nshort += v < 1.0;
-        nzero += v < ALLOWED_PKT_DROP * 0.01;
-        vmin = std::min(vmin, v);
-      }
+      // seq_start quality sources_short min_valid_frac sources_without_packets gain_version proj_version
+      // first_of_image (sources: board and channel block, from the validity mask)
+      const int nshort = m_trace_short, nzero = m_trace_zero;
+      const double vmin = m_trace_vmin;
       std::fprintf(m_trace, "%lu %.5f %d %.4f %d %lu %lu %d\n",
                    static_cast<unsigned long>(std::get<uint64_t>(gulp_metadata["seq_start"])), quality, nshort, vmin,
                    nzero, static_cast<unsigned long>(m_trace_gain_v), static_cast<unsigned long>(m_trace_proj_v),
