@@ -14,8 +14,10 @@
 //
 // The correlation runs once per gulp (about 0.5 ms for 128 channels x 1000
 // sequences on an RTX 4090), the gridding, transform and combination once per
-// image (about 20 ms at N = 256), so the cost hardly depends on the image
-// length. The image has the E-field imager's layout and scale:
+// image (about 9 ms for 192 channels at N = 256: each lag-grid tile summed in
+// shared memory from the pairs' kernel cross-correlations, tabulated once per
+// geometry), so the cost hardly depends on the image length. The image has
+// the E-field imager's layout and scale:
 // out[chan][x][y] = {XX, YY, Re XY*, Im XY*} times the gridding correction.
 #ifndef SRC_EX_FX_IMAGER_H_
 #define SRC_EX_FX_IMAGER_H_

@@ -2,10 +2,12 @@
 // tests/gpu/fx_imager.cu, which checks them against the E-field imager.
 #include "./fx_imager.h"
 
+#include <cuda_fp16.h>
 #include <cufft.h>
 #include <glog/logging.h>
 
 #include <algorithm>
+#include <cstdlib>
 #include <iomanip>
 #include <stdexcept>
 #include <string>
@@ -126,6 +128,190 @@ __global__ void GridLags(const int2* __restrict__ vis, const int2* __restrict__ 
   }
 }
 
+// The pair kernel table in single or half precision
+__device__ __forceinline__ void StoreC(float2* p, float2 v) { *p = v; }
+__device__ __forceinline__ void StoreC(__half2* p, float2 v) { *p = __float22half2_rn(v); }
+__device__ __forceinline__ float2 LoadC(const float2* p) { return __ldg(p); }
+__device__ __forceinline__ float2 LoadC(const __half2* p) { return __half22float2(__ldg(p)); }
+
+// Per channel, the largest |K_a|^2 = sum_i |K_a(i)|^2 over the stands: by
+// Cauchy-Schwarz it bounds every |C_ab(dd)|, so C / scale fits half precision.
+template <int S>
+__global__ void KernelScale(const float2* __restrict__ K, float* __restrict__ scale) {
+  constexpr int nel = S * S;
+  const int c = blockIdx.x, a = threadIdx.x;  // one thread per stand
+  float n2 = 0.f;
+  for (int i = 0; i < nel; ++i) {
+    const float2 k = K[(size_t(c) * kStands + a) * nel + i];
+    n2 += k.x * k.x + k.y * k.y;
+  }
+  for (int o = 16; o > 0; o >>= 1) n2 = fmaxf(n2, __shfl_xor_sync(0xffffffffu, n2, o));
+  __shared__ float wmax[kStands / 32];
+  if ((a & 31) == 0) wmax[a >> 5] = n2;
+  __syncthreads();
+  if (a == 0) {
+    float m = 0.f;
+    for (int w = 0; w < kStands / 32; ++w) m = fmaxf(m, wmax[w]);
+    scale[c] = m > 0.f ? m : 1.f;
+  }
+}
+
+// Kernel cross-correlations of every pair, once per geometry:
+//   ctab[chan][bl][(ddy + S - 1) (2S - 1) + ddx + S - 1] = sum K_a(i) K_b*(i - dd) / scale[chan],
+// halved for a = b (bl = b (b + 1) / 2 + a, a <= b).
+template <int S, typename T>
+__global__ void PairKernels(const float2* __restrict__ K, const float* __restrict__ scale, T* __restrict__ ctab) {
+  constexpr int h = S / 2, s2 = 2 * S - 1, nel = S * S;
+  const int bl = blockIdx.x, c = blockIdx.y, d = threadIdx.x;
+  int b = int((sqrtf(8.f * bl + 1.f) - 1.f) / 2.f);
+  while (b * (b + 1) / 2 > bl) --b;
+  while ((b + 1) * (b + 2) / 2 <= bl) ++b;
+  const int a = bl - b * (b + 1) / 2;
+  __shared__ float2 ka[nel], kb[nel];
+  if (d < nel) {
+    ka[d] = K[(size_t(c) * kStands + a) * nel + d];
+    kb[d] = K[(size_t(c) * kStands + b) * nel + d];
+  }
+  __syncthreads();
+  if (d >= s2 * s2) return;
+  const int ddy = d / s2 - (S - 1), ddx = d % s2 - (S - 1);
+  float2 C{0.f, 0.f};
+  for (int dyi = max(-h, ddy - h); dyi <= min(h, ddy + h); ++dyi) {
+    const int dyj = dyi - ddy;
+    for (int dxi = max(-h, ddx - h); dxi <= min(h, ddx + h); ++dxi) {
+      const int dxj = dxi - ddx;
+      const float2 x = ka[(h - dyi) * S + dxi + h], y = kb[(h - dyj) * S + dxj + h];
+      C.x += x.x * y.x + x.y * y.y;
+      C.y += x.y * y.x - x.x * y.y;
+    }
+  }
+  const float f = (a == b ? 0.5f : 1.f) / scale[c];
+  StoreC(ctab + (size_t(c) * kNbl + bl) * (s2 * s2) + d, float2{f * C.x, f * C.y});
+}
+
+// Tiled gridding: the same sums as GridLags, accumulated per lag-grid tile
+// in shared memory instead of with atomics on the global grid (4 x 10^9 of
+// them per image for 192 channels at 256 x 256). Block (tile, channel), eight
+// warps; list[off[c][tile] ..] holds the pairs whose footprint ((2S - 1)^2
+// lag cells) touches the tile, packed bl | a << 16 | b << 24. Each warp takes
+// one pair at a time, its lanes the lag offsets, with the pair's kernel
+// cross-correlation from ctab (PairKernels); the tile is written whole (zeros
+// too), so the grid needs no clearing. A tile row's columns are rotated by
+// 9 x row in shared memory: a warp's 32 lags span three to four footprint rows,
+// which would otherwise fall on the same banks.
+constexpr int kTile = 32;
+constexpr int kTileThreads = 256;  // eight warps
+__device__ __forceinline__ int TileIndex(int ux, int uy) { return uy * kTile + ((ux + 9 * uy) & (kTile - 1)); }
+template <int S, typename T>
+__global__ void __launch_bounds__(kTileThreads) GridLagsTiled(const int2* __restrict__ vis, const int2* __restrict__ base,
+                                                      const T* __restrict__ ctab, const float* __restrict__ cscale,
+                                                      const float4* __restrict__ g,
+                                                      const uint32_t* __restrict__ list, const int* __restrict__ off,
+                                                      float2* __restrict__ lag, int N) {
+  constexpr int s2 = 2 * S - 1;
+  __shared__ float sre[4][kTile * kTile];
+  __shared__ float sim[4][kTile * kTile];
+  const int c = blockIdx.y, tile = blockIdx.x, ntx = N / kTile;
+  const int tx0 = (tile % ntx) * kTile, ty0 = (tile / ntx) * kTile;
+  for (int i = threadIdx.x; i < kTile * kTile; i += blockDim.x)
+#pragma unroll
+    for (int k = 0; k < 4; ++k) sre[k][i] = sim[k][i] = 0.f;
+  __syncthreads();
+  constexpr int nd = (s2 * s2 + 31) / 32;  // lag offsets per lane
+  const int lane = threadIdx.x & 31, warp = threadIdx.x >> 5;
+  const int beg = off[c * gridDim.x + tile], end = off[c * gridDim.x + tile + 1];
+  // The lanes' lag offsets relative to the footprint corner
+  int ldx[nd], ldy[nd];
+#pragma unroll
+  for (int q = 0; q < nd; ++q) {
+    const int d = q * 32 + lane;
+    ldy[q] = d / s2;
+    ldx[q] = d % s2;
+  }
+  // Warps take 32 entries at a time: every lane looks up one pair (its
+  // gains, cells and visibilities), so the dependent loads overlap; the
+  // pairs are then gridded one by one, broadcast with shuffles, the next
+  // pair's cross-correlations loaded while the current one's are added.
+  for (int e0 = beg + warp * 32; e0 < end; e0 += kTileThreads) {
+    const int e = e0 + lane;
+    float2 P[4] = {};
+    int bl = 0, ox = 1 << 20, oy = 0;  // corner of the footprint in the tile; far away: nothing
+    if (e < end) {
+      const uint32_t ent = list[e];
+      bl = int(ent & 0xffff);
+      const int a = int((ent >> 16) & 0xff), b = int(ent >> 24);
+      const float4 ga = g[c * kStands + a], gb = g[c * kStands + b];
+      const int2 pa = base[c * kStands + a], pb = base[c * kStands + b];
+      const int4* v = reinterpret_cast<const int4*>(vis + (size_t(c) * kNbl + bl) * 4);
+      const int4 v01 = v[0], v23 = v[1];  // [polY][polX]: xx, xy | yx, yy
+      if (!((ga.x == 0.f && ga.y == 0.f && ga.z == 0.f && ga.w == 0.f) ||
+            (gb.x == 0.f && gb.y == 0.f && gb.z == 0.f && gb.w == 0.f))) {
+        const float sc = cscale[c];
+        const float2 gax{sc * ga.x, sc * ga.y}, gay{sc * ga.z, sc * ga.w}, gbx{gb.x, gb.y}, gby{gb.z, gb.w};
+        P[0] = cmul(cmulc(gax, gbx), float2{float(v01.x), float(v01.y)});
+        P[1] = cmul(cmulc(gay, gby), float2{float(v23.z), float(v23.w)});
+        P[2] = cmul(cmulc(gax, gby), float2{float(v01.z), float(v01.w)});
+        P[3] = cmul(cmulc(gay, gbx), float2{float(v23.x), float(v23.y)});
+        // the footprint's corner (lag pa - pb - (S - 1)) relative to the
+        // tile, in [-(2S - 2) - tile, N - tile) so lags wrap at most once
+        int lx = (pa.x - pb.x - (S - 1) - tx0) % N, ly = (pa.y - pb.y - (S - 1) - ty0) % N;
+        lx += lx < -(s2 - 1) ? N : 0;
+        ly += ly < -(s2 - 1) ? N : 0;
+        lx -= lx >= kTile ? N : 0;
+        ly -= ly >= kTile ? N : 0;
+        ox = lx;
+        oy = ly;
+      }
+    }
+    const int np = min(32, end - e0);
+    // the cross-correlations of pair j that fall in the tile (else zero)
+    auto load = [&](int j, float2* C, int* idx) {
+      const int jbl = __shfl_sync(0xffffffffu, bl, j), jx = __shfl_sync(0xffffffffu, ox, j),
+                jy = __shfl_sync(0xffffffffu, oy, j);
+      const T* Cp = ctab + (size_t(c) * kNbl + jbl) * (s2 * s2);
+#pragma unroll
+      for (int q = 0; q < nd; ++q) {
+        const int ux = jx + ldx[q], uy = jy + ldy[q];
+        const bool in = q * 32 + lane < s2 * s2 && ux >= 0 && ux < kTile && uy >= 0 && uy < kTile;
+        idx[q] = in ? TileIndex(ux, uy) : -1;
+        C[q] = in ? LoadC(Cp + q * 32 + lane) : float2{0.f, 0.f};
+      }
+    };
+    float2 C[nd], Cn[nd];
+    int idx[nd], idxn[nd];
+    load(0, C, idx);
+    for (int j = 0; j < np; ++j) {
+      if (j + 1 < np) load(j + 1, Cn, idxn);
+      float2 Pj[4];
+#pragma unroll
+      for (int k = 0; k < 4; ++k)
+        Pj[k] = float2{__shfl_sync(0xffffffffu, P[k].x, j), __shfl_sync(0xffffffffu, P[k].y, j)};
+#pragma unroll
+      for (int q = 0; q < nd; ++q) {
+        if (idx[q] < 0 || (C[q].x == 0.f && C[q].y == 0.f)) continue;
+#pragma unroll
+        for (int k = 0; k < 4; ++k) {
+          const float2 t = cmul(Pj[k], C[q]);
+          atomicAdd(&sre[k][idx[q]], t.x);
+          atomicAdd(&sim[k][idx[q]], t.y);
+        }
+      }
+#pragma unroll
+      for (int q = 0; q < nd; ++q) {
+        C[q] = Cn[q];
+        idx[q] = idxn[q];
+      }
+    }
+  }
+  __syncthreads();
+  for (int i = threadIdx.x; i < kTile * kTile; i += blockDim.x) {
+    const int ux = i % kTile, uy = i / kTile, j = TileIndex(ux, uy);
+    const size_t o = (size_t(c) * 4 * N + ty0 + uy) * N + tx0 + ux;
+#pragma unroll
+    for (int k = 0; k < 4; ++k) lag[o + size_t(k) * N * N] = float2{sre[k][j], sim[k][j]};
+  }
+}
+
 // Transformed lag grids F[chan][4][ky][kx] -> out[chan][kx][ky][XX, YY, Re XY*, Im XY*]:
 //   XX = 2 Re F(L+xx), YY = 2 Re F(L+yy), XY* = F(L+xy) + conj F(L+yx),
 // scaled like the E-field imager and multiplied by the gridding correction
@@ -222,6 +408,15 @@ struct FxImager::Impl {
   float2* d_K{};
   float* d_corr{};
   float2* d_lag{};
+  // tiled gridding: the pairs touching every (channel, tile)
+  bool tiled{true};
+  uint32_t* d_list{};
+  // the pairs' kernel cross-correlations [chan][bl][(2S - 1)^2] (float2, or
+  // __half2 with half_ctab) over the per-channel scale d_cscale
+  void* d_ctab{};
+  float* d_cscale{};
+  bool half_ctab{false};
+  int* d_off{};
   float4* d_img[2]{};  // the images being combined and copied out, alternately
   cufftHandle plan{};
   cudaStream_t s{}, s_copy{};
@@ -255,6 +450,12 @@ struct FxImager::Impl {
     Check(cudaMalloc(&d_base, size_t(nchan) * kStands * sizeof(int2)), "cells");
     Check(cudaMalloc(&d_K, size_t(nchan) * kStands * S * S * sizeof(float2)), "weights");
     Check(cudaMalloc(&d_lag, size_t(nchan) * 4 * N * N * sizeof(float2)), "lag grid");
+    if (const char* e = std::getenv("EPIC_FX_GRIDDER")) tiled = std::string(e) != "atomic";
+    if (N % kTile) tiled = false;
+    // as much shared memory as the SM allows, for more resident tiles
+    cudaFuncSetAttribute(GridLagsTiled<kSupport, float2>, cudaFuncAttributePreferredSharedMemoryCarveout, 100);
+    cudaFuncSetAttribute(GridLagsTiled<kSupport, __half2>, cudaFuncAttributePreferredSharedMemoryCarveout, 100);
+    if (const char* e = std::getenv("EPIC_FX_CTAB")) half_ctab = std::string(e) == "half";
     for (auto& p : d_img) Check(cudaMalloc(&p, size_t(nchan) * N * N * sizeof(float4)), "image");
     int dims[2] = {N, N};
     CheckFft(cufftPlanMany(&plan, 2, dims, nullptr, 1, N * N, nullptr, 1, N * N, CUFFT_C2C, nchan * 4), "plan");
@@ -277,7 +478,8 @@ struct FxImager::Impl {
     cufftDestroy(plan);
     for (void* p : {static_cast<void*>(d_tcc_in), static_cast<void*>(d_vis), static_cast<void*>(d_base),
                     static_cast<void*>(d_K), static_cast<void*>(d_corr), static_cast<void*>(d_lag),
-                    static_cast<void*>(d_img[0]), static_cast<void*>(d_img[1]), static_cast<void*>(d_xy_a),
+                    static_cast<void*>(d_img[0]), static_cast<void*>(d_img[1]), static_cast<void*>(d_list), d_ctab, static_cast<void*>(d_cscale),
+                    static_cast<void*>(d_off), static_cast<void*>(d_xy_a),
                     static_cast<void*>(d_xy_b), static_cast<void*>(d_pix[0]), static_cast<void*>(d_pix[1])})
       if (p) cudaFree(p);
     for (auto e : {ev_free, ev_combined, ev_copied[0], ev_copied[1], t_grid, t_comb, t_copy}) cudaEventDestroy(e);
@@ -312,6 +514,62 @@ void FxImager::SetGeometry(const float* p_antpos, const float* p_gcf_real, const
   }
   Check(cudaStreamSynchronize(m->s), "geometry");
   Check(cudaGetLastError(), "geometry");
+  if (m->tiled) {
+    const int s2 = 2 * m->S - 1;
+    if (!m->d_ctab) {
+      const size_t el = m->half_ctab ? sizeof(__half2) : sizeof(float2);
+      Check(cudaMalloc(&m->d_ctab, size_t(m->nchan) * kNbl * s2 * s2 * el), "pair kernels");
+      Check(cudaMalloc(&m->d_cscale, m->nchan * sizeof(float)), "pair kernels");
+    }
+    KernelScale<kSupport><<<m->nchan, kStands, 0, m->s>>>(m->d_K, m->d_cscale);
+    if (m->half_ctab)
+      PairKernels<kSupport><<<dim3(kNbl, m->nchan), 96, 0, m->s>>>(m->d_K, m->d_cscale,
+                                                                  static_cast<__half2*>(m->d_ctab));
+    else
+      PairKernels<kSupport><<<dim3(kNbl, m->nchan), 96, 0, m->s>>>(m->d_K, m->d_cscale,
+                                                                  static_cast<float2*>(m->d_ctab));
+    Check(cudaGetLastError(), "pair kernels");
+    // the pairs whose footprint touches each tile of each channel's lag grid
+    std::vector<int2> base(static_cast<size_t>(ns));
+    Check(cudaMemcpy(base.data(), m->d_base, base.size() * sizeof(int2), cudaMemcpyDeviceToHost), "cells");
+    const int N = m->N, ntx = N / kTile, nt = ntx * ntx, r = m->S - 1;
+    std::vector<uint32_t> list;
+    list.reserve(size_t(m->nchan) * kNbl * 2);
+    std::vector<std::vector<uint32_t>> per(nt);
+    std::vector<int> off(size_t(m->nchan) * nt + 1, 0);
+    for (int c = 0; c < m->nchan; ++c) {
+      for (auto& v : per) v.clear();
+      for (int b = 0; b < kStands; ++b)
+        for (int a = 0; a <= b; ++a) {
+          if (a == b && !m->keep_auto) continue;
+          const int2 pa = base[c * kStands + a], pb = base[c * kStands + b];
+          const int dx = pa.x - pb.x, dy = pa.y - pb.y;
+          int tiles[4], nt4 = 0;
+          for (int ey : {dy - r, dy + r})
+            for (int ex : {dx - r, dx + r}) {
+              const int t = (((ey % N) + N) % N / kTile) * ntx + (((ex % N) + N) % N / kTile);
+              bool seen = false;
+              for (int q = 0; q < nt4; ++q) seen |= tiles[q] == t;
+              if (!seen) tiles[nt4++] = t;
+            }
+          const uint32_t ent = uint32_t(b * (b + 1) / 2 + a) | (uint32_t(a) << 16) | (uint32_t(b) << 24);
+          for (int q = 0; q < nt4; ++q) per[tiles[q]].push_back(ent);
+        }
+      for (int t = 0; t < nt; ++t) {
+        off[size_t(c) * nt + t] = int(list.size());
+        list.insert(list.end(), per[t].begin(), per[t].end());
+      }
+    }
+    off[size_t(m->nchan) * nt] = int(list.size());
+    if (m->d_list) cudaFree(m->d_list);
+    if (m->d_off) cudaFree(m->d_off);
+    Check(cudaMalloc(&m->d_list, list.size() * sizeof(uint32_t)), "pair lists");
+    Check(cudaMalloc(&m->d_off, off.size() * sizeof(int)), "pair lists");
+    Check(cudaMemcpy(m->d_list, list.data(), list.size() * sizeof(uint32_t), cudaMemcpyHostToDevice), "lists");
+    Check(cudaMemcpy(m->d_off, off.data(), off.size() * sizeof(int), cudaMemcpyHostToDevice), "lists");
+    LOG(INFO) << "FxImager: tiled gridding, " << list.size() << " pair entries in " << nt << " tiles x "
+              << m->nchan << " channels";
+  }
   m->geometry = true;
 }
 
@@ -356,10 +614,23 @@ void FxImager::Image(const float* p_phases, float* p_host, double p_unix, float*
   const int N = m->N;
   const size_t nlag = size_t(m->nchan) * 4 * N * N;
   Check(cudaEventRecord(m->t_grid, m->s), "event");
-  Check(cudaMemsetAsync(m->d_lag, 0, nlag * sizeof(float2), m->s), "clear");
-  const dim3 blk((2 * kSupport - 1) * (2 * kSupport - 1), kPairs), grd((kNbl + kPairs - 1) / kPairs, m->nchan);
-  GridLags<kSupport><<<grd, blk, 0, m->s>>>(m->d_vis, m->d_base, m->d_K, reinterpret_cast<const float4*>(p_phases),
-                                            m->d_lag, N, m->keep_auto);
+  if (m->tiled) {
+    const int nt = (N / kTile) * (N / kTile);
+    const auto* g = reinterpret_cast<const float4*>(p_phases);
+    if (m->half_ctab)
+      GridLagsTiled<kSupport><<<dim3(nt, m->nchan), kTileThreads, 0, m->s>>>(
+          m->d_vis, m->d_base, static_cast<const __half2*>(m->d_ctab), m->d_cscale, g, m->d_list, m->d_off, m->d_lag,
+          N);
+    else
+      GridLagsTiled<kSupport><<<dim3(nt, m->nchan), kTileThreads, 0, m->s>>>(
+          m->d_vis, m->d_base, static_cast<const float2*>(m->d_ctab), m->d_cscale, g, m->d_list, m->d_off, m->d_lag,
+          N);
+  } else {
+    Check(cudaMemsetAsync(m->d_lag, 0, nlag * sizeof(float2), m->s), "clear");
+    const dim3 blk((2 * kSupport - 1) * (2 * kSupport - 1), kPairs), grd((kNbl + kPairs - 1) / kPairs, m->nchan);
+    GridLags<kSupport><<<grd, blk, 0, m->s>>>(m->d_vis, m->d_base, m->d_K, reinterpret_cast<const float4*>(p_phases),
+                                              m->d_lag, N, m->keep_auto);
+  }
   Check(cudaGetLastError(), "grid");
   CheckFft(cufftExecC2C(m->plan, reinterpret_cast<cufftComplex*>(m->d_lag),
                         reinterpret_cast<cufftComplex*>(m->d_lag), CUFFT_INVERSE),
