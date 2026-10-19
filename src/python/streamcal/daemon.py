@@ -31,6 +31,7 @@ import time
 import numpy as np
 from astropy.time import Time
 
+from . import calinfo
 from . import forward as F
 from . import rfi
 from . import geometry as E
@@ -599,6 +600,7 @@ class StreamCal:
                 log.info("model snapshot to %s built in %.1f s", Time(self.snap_b[0], format="unix").isot, dtb)
         T0 = time.time()
         g, var, chi, sky, powered = self.solve(tab)
+        self.last_sky = sky
         self.power_frac = powered.mean(axis=2)  # [pol, stand]: channels with normal power
         self.power_flag = self.power_frac < 0.5
         # tracker time step from the data timestamps (not the model time, which --fixed-time freezes)
@@ -624,6 +626,11 @@ class StreamCal:
             self.published = corr
             self.published_t = tab.t_mid_unix
             msg += f"; published gains v{v} ({why})"
+            if getattr(self.a, "calinfo", ""):
+                try:
+                    calinfo.write(self.a.calinfo, calinfo.record(self, v, tab.t_mid_unix, chi, self.chi_cut))
+                except Exception as e:  # the monitor then leaves candidates without a flux
+                    log.warning("calibration record not written: %s", e)
             if self.proj_writer is not None:
                 Ut, Vt = self.projector(tab)
                 vp = self.proj_writer.publish(Ut, Vt, t_solved_unix=tab.t_mid_unix, sun=self.sun_vector(Ut, Vt))
@@ -662,6 +669,9 @@ def build_parser():
     ap.add_argument("--q-delay-ns", type=float, default=0.05, help="delay random walk, ns/sqrt(s)")
     ap.add_argument("--interval", type=float, default=10.0)
     ap.add_argument("--save", default="", help="np.save the solution history here")
+    ap.add_argument("--calinfo", default="",
+                    help="write the all-sky monitor's calibration record here with every published table "
+                         "(docs/skymon/streamcal-interface.md), e.g. /dev/shm/epic_calinfo_gpu0.json")
     ap.add_argument("--model-interp", default="on", choices=("on", "off"),
                     help="interpolate the sky model between snapshots --model-refresh apart (off: hold each)")
     ap.add_argument("--amp-tau", type=float, default=300.0,

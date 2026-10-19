@@ -38,8 +38,8 @@ def write_vis(path, version, chan0, nchan, R, nsamp, seq_first, seq_last, gulp_n
 
 def main(d):
     os.makedirs(d, exist_ok=True)
-    vis, gains = f"{d}/vis", f"{d}/gains"
-    for p in (vis, gains):
+    vis, gains, calinfo_path = f"{d}/vis", f"{d}/gains", f"{d}/calinfo.json"
+    for p in (vis, gains, calinfo_path):
         if os.path.exists(p):
             os.remove(p)
     rng = np.random.default_rng(7)
@@ -48,7 +48,8 @@ def main(d):
     a = D.argparse.Namespace(vis=vis, gains=gains, dry_run=False, nside=64, model_refresh=60.0, chan_stride=stride,
                              umin=1.0, niter=40, max_chi2=3.0, min_power=0.3, max_power=3.0, flag_amp=0.15,
                              max_abs=32.0, q_phase_deg=2.0, q_delay_ns=0.05, interval=10.0, save="",
-                             passes=12, passes_warm=4, workers=4, no_positions=False, fixed_time="")
+                             passes=12, passes_warm=4, workers=4, no_positions=False, fixed_time="",
+                             calinfo=calinfo_path)
     sc = D.StreamCal(a)
     ant = sc.ant
     n = len(ant)
@@ -100,6 +101,22 @@ def main(d):
               f"dead flagged {err[2]};  Y: {err[3]:.2f} deg, {err[4]:.1f}%, dead flagged {err[5]}", flush=True)
     last = errs[-1]
     ok = last[0] < 3 and last[3] < 3 and last[1] < 5 and last[4] < 5 and last[2] and last[5]
+    # the monitor's calibration record: the absolute scale removed from the table is the
+    # gains' median amplitude (data counts per Jy^1/2), the calibrators those of the model
+    import json
+    rec = json.load(open(calinfo_path))
+    live = np.setdiff1d(np.arange(n), dead)
+    for p, key in enumerate("XY"):
+        fs = np.asarray(rec["flux_scale"][key])[solve_idx]
+        true = np.median(np.abs(eps[p][live]), axis=0)
+        r = fs / true
+        print(f"calinfo {key}: absolute scale / true median gain {np.median(r):.4f} (spread {np.std(r):.4f})")
+        ok &= abs(np.median(r) - 1) < 0.05
+    names = [c["name"] for c in rec["calibrators"]]
+    print("calinfo: version", rec["gain_version"], "calibrators", names,
+          "scales", [c["scale"] for c in rec["calibrators"]])
+    ok &= rec["gain_version"] == hdr[4] and len(names) > 0 and all(len(c["model_jy"]) == len(solve_idx)
+                                                                  for c in rec["calibrators"])
     print("PASS" if ok else "FAIL")
     return 0 if ok else 1
 
