@@ -810,8 +810,12 @@ class Combiner:
         for name, node in self.nodes.items():
             if not node["up"]:
                 continue
+            # the lookback on the monitor's own clock as well: a monitor whose images lag
+            # (a backlog, a clock behind, a replay) still has its candidates read
+            last = (node.get("status") or {}).get("last_image_unix")
+            node_since = min(since, last - self.cfg.lookback_s) if last else since
             try:
-                cands = self._candidates(node, since)
+                cands = self._candidates(node, node_since)
             except Exception as e:
                 node.update(up=False, error=type(e).__name__)
                 continue
