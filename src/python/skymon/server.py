@@ -11,6 +11,9 @@ HTTP interface of a running monitor (standard library only).
   GET /api/candidates/<id>             one candidate
   GET /api/candidates/<id>/npz         its data products
   GET /api/sky                         tracked pixels with their age and noise
+  GET /api/skymap?seconds=300          the sky over the last seconds of the accumulation: every
+                                       tracked pixel's raw value, averaged in time and the median
+                                       over channels (base64 int32 hpix, float32 values)
   GET /api/injections                  live injection summary
   GET /api/watches?event=              watches requested by the combiner, and their results
   GET /api/conditions?since=<unix>     data-quality samples (conditions.py), every 10 s of
@@ -29,6 +32,7 @@ monitor and shows whichever answer; one being down does not affect the others.
 """
 from __future__ import annotations
 
+import base64
 import hmac
 import io
 import json
@@ -36,6 +40,7 @@ import math
 import os
 import threading
 import urllib.parse
+import warnings
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import numpy as np
@@ -59,6 +64,52 @@ def _jsonable(o):
     if isinstance(o, (list, tuple)):
         return [_jsonable(v) for v in o]
     return o
+
+
+def skymap(monitor, seconds=300.0):
+    """
+    The sky the monitor sees over the last `seconds` of its accumulation (rows of
+    accum_interval_s): the raw value of every tracked pixel, averaged over the rows,
+    then the median over channels, which is robust to a few channels of interference.
+    Reads under the accumulator's lock only, never the processing lock.
+    """
+    grid, acc = monitor.grid, monitor.accum
+    if grid is None or acc is None:
+        return None
+    with monitor.grid_lock:
+        hpix_of = grid.hpix_of.copy()
+        nside = grid.nside
+    with acc.lock:
+        idx = (acc.head - acc.filled + np.arange(acc.filled)) % acc.nslots
+        t = acc.times[idx]
+        last = np.nanmax(t) if len(t) and np.isfinite(t).any() else None
+        sel = idx[t >= last - seconds + 0.5 * acc.interval] if last is not None else idx[:0]
+        tot = np.zeros(acc.ring.shape[1:], np.float32)
+        cnt = np.zeros(acc.ring.shape[1:], np.int16)
+        for i in sel:  # one row at a time: the whole span in float32 would take GBs
+            r = acc.ring[i].astype(np.float32)
+            ok = np.isfinite(r)
+            tot += np.where(ok, r, 0)
+            cnt += ok
+        tt = acc.times[sel]
+    act = np.nonzero(hpix_of >= 0)[0]
+    with np.errstate(invalid="ignore", divide="ignore"):
+        mean = tot[:, act] / cnt[:, act]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        val = np.nanmedian(mean, axis=0).astype(np.float32) if len(act) else np.zeros(0, np.float32)
+    ok = np.isfinite(val)
+    hp_ = hpix_of[act][ok].astype(np.int32)
+    val = val[ok]
+    band = monitor.band
+    return dict(nside=nside, n=int(len(val)), seconds=seconds, rows=int(len(sel)),
+                interval_s=acc.interval,
+                t_start=float(tt.min()) if len(tt) else None,
+                t_end=float(tt.max() + acc.interval) if len(tt) else None,
+                el_min=monitor.cfg.el_min,
+                f_lo=band.f_lo if band else None, f_hi=band.f_hi if band else None,
+                hpix_b64=base64.b64encode(hp_.tobytes()).decode(),
+                values_b64=base64.b64encode(val.tobytes()).decode())
 
 
 def make_handler(monitor):
@@ -97,9 +148,12 @@ def make_handler(monitor):
                         return self._json(dict(error="not running"), 503)
                     if q.get("format") == "npz":
                         buf = io.BytesIO()
+                        meta = {k: res[k] for k in ("hpix", "nside", "ra", "dec", "tracked", "el", "az",
+                                                     "kind", "interval_s") if k in res}
                         np.savez(buf, times=np.asarray(res["times"], float),
                                  data=np.asarray(res["data"], np.float32),
-                                 freqs_mhz=np.asarray(res["freqs_mhz"]))
+                                 freqs_mhz=np.asarray(res["freqs_mhz"]),
+                                 meta=np.asarray(json.dumps(_jsonable(meta))))
                         return self._send(200, buf.getvalue(), "application/octet-stream")
                     return self._json(res)
                 if parts[:2] == ["api", "candidates"]:
@@ -119,6 +173,12 @@ def make_handler(monitor):
                     return self._json(c.to_dict())
                 if parts[:2] == ["api", "sky"]:
                     return self._json(monitor.sky())
+                if parts[:2] == ["api", "skymap"]:
+                    sec = min(max(float(q.get("seconds", 300)), 10.0), 3600.0)
+                    res = skymap(monitor, sec)
+                    if res is None:
+                        return self._json(dict(error="not running"), 503)
+                    return self._json(res)
                 if parts[:2] == ["api", "injections"]:
                     return self._json(monitor.injector.summary())
                 if parts[:2] == ["api", "watches"]:
