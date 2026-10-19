@@ -25,6 +25,7 @@ ap.add_argument("--chan0", type=int, default=3104)
 ap.add_argument("--nchan", type=int, default=128)
 ap.add_argument("--time", default="2026-10-17T06:00:00")
 ap.add_argument("--seed", type=int, default=21)
+ap.add_argument("--perfect", action="store_true", help="no residual gain errors (eps = 1, no dead stands)")
 a = ap.parse_args()
 os.makedirs(a.out, exist_ok=True)
 rng = np.random.default_rng(a.seed)
@@ -41,6 +42,8 @@ eps = amp[:, :, None] * np.exp(1j * (ph0[:, :, None] + 2 * np.pi * (freq - nu_c)
 used = np.flatnonzero(G.eg.used_stands())
 dead = rng.choice(used, 3, replace=False)
 eps[:, dead, :] *= 0.02
+if a.perfect:
+    eps = np.ones_like(eps)
 L = np.zeros((a.nchan, 2, 256, 256), np.complex64)
 ex = F.random_extra_sources()
 for p, pol in enumerate(("XX", "YY")):

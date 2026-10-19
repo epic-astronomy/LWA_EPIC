@@ -67,6 +67,13 @@ class FxImager {
   /// correlated like the voltages and each visibility divided by its average
   /// weight before gridding (environment EPIC_FX_WEIGHTS=0: not).
   void SetGulpValidity(const uint64_t* p_mask, size_t p_words, const uint8_t* p_block);
+  /// Peel the bright compact sources (A-team, Sun) above 10 deg: fit their
+  /// fluxes to every image's calibrated visibilities (per channel, XX and YY,
+  /// on baselines longer than p_umin_lambda) and subtract them before
+  /// gridding. p_frame: rows grid x, grid y and phase centre in (east, north,
+  /// up) (epic_geometry.array_frame); p_dl: the pixel in direction cosine.
+  /// Null p_frame: no peeling.
+  void SetPeel(const double* p_frame, double p_dl, double p_umin_lambda);
   /// The impulse detector's flags [chan][seq] on the device (null: none)
   void SetImpulseFlags(const uint8_t* p_flags);
   /// Pixel slots of the table in use (0: none)

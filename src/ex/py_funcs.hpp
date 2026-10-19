@@ -226,6 +226,16 @@ inline void GetGriddingCorrection(const float* p_gcf_elems,
   std::copy(res.data(), res.data() + n, out_ptr);
 }
 
+/// The array frame of the phase centre (epic_geometry.array_frame): rows grid x,
+/// grid y and phase centre in (east, north, up), row-major into p_out[9]
+inline void GetArrayFrame(double* p_out) {
+  py::gil_scoped_acquire acquire;
+  auto res = py::module_::import("epic_geometry").attr("array_frame")();
+  auto F = res.cast<py::tuple>()[1].cast<py::array_t<double, py::array::c_style | py::array::forcecast>>();
+  LOG_IF(FATAL, F.size() != 9) << "array_frame returned a frame of " << F.size() << " values";
+  std::copy(F.data(), F.data() + 9, p_out);
+}
+
 inline void GetWprojGcfElems(const float* p_gcf_elems, const float* p_antpos_freq,
                              int nchan, int chan0, int support, int grid_size,
                              double grid_res, float* out_ptr) {

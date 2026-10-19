@@ -7,13 +7,16 @@
 #include <glog/logging.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <iomanip>
 #include <stdexcept>
+#include <sstream>
 #include <string>
 #include <vector>
 
 #include "./constants.h"
+#include "./sky_sources.hpp"
 
 #ifdef EPIC_WITH_TCC
 #include "libtcc/Correlator.h"
@@ -224,6 +227,162 @@ __global__ void PairKernels(const float2* __restrict__ K, const float* __restric
   StoreC(ctab + (size_t(c) * kNbl + bl) * (s2 * s2) + d, float2{f * C.x, f * C.y});
 }
 
+// Peeling: the bright compact sources (sky_sources.hpp) are fitted to every
+// image's calibrated visibilities and subtracted before gridding, so neither
+// they nor their sidelobes (which follow their scintillation and bursts)
+// reach the image. A source k in direction (l, m, n) of the array frame
+// enters stand a's corrected voltage with the phasor
+//   e_a,k = exp(2 pi i (x_a l + y_a m + w_a (n - 1)) / (N dl)),
+// (x, y, w) the stand's grid position (cells of this channel), dl the pixel
+// in direction cosine: the geometric delay relative to the phase centre. Per
+// channel and polarisation (XX, YY) the complex fluxes x_k minimise
+// sum_ab |V_ab - sum_k x_k e_a,k e_b,k*|^2 over the pairs longer than umin;
+// the gridder subtracts sum_k x_k e_a,k e_b,k* from every pair.
+constexpr int kPeelMax = 5;
+struct PeelDirs {
+  float3 q[kPeelMax];  // 2 pi / (N dl) (l, m, n - 1)
+};
+__global__ void PeelPhasors(const float* __restrict__ antpos, PeelDirs dirs, int K, float2* __restrict__ e, int n) {
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;  // chan * kStands + stand
+  if (i >= n) return;
+  const float x = antpos[size_t(i) * 3], y = antpos[size_t(i) * 3 + 1], w = antpos[size_t(i) * 3 + 2];
+  for (int k = 0; k < kPeelMax; ++k) {
+    float sn, cs;
+    if (k < K) {
+      sincosf(x * dirs.q[k].x + y * dirs.q[k].y + w * dirs.q[k].z, &sn, &cs);
+    } else {
+      sn = cs = 0.f;
+    }
+    e[size_t(i) * kPeelMax + k] = float2{cs, sn};
+  }
+}
+
+// One block per (channel, polarisation XX / YY): the normal equations of the
+// fit summed over the pairs, then solved by the first thread
+constexpr int kPeelThreads = 256;
+__global__ void __launch_bounds__(kPeelThreads) PeelFit(const int2* __restrict__ vis, const int2* __restrict__ wvis,
+                                                       float nimg, const float4* __restrict__ g,
+                                                       const float* __restrict__ antpos, const float2* __restrict__ e,
+                                                       int K, float umin2, float2* __restrict__ x) {
+  constexpr int nG = kPeelMax * (kPeelMax + 1) / 2;
+  const int c = blockIdx.x, p = blockIdx.y;
+  __shared__ float2 se[kStands][kPeelMax];
+  __shared__ float2 sg[kStands];
+  __shared__ float2 sxy[kStands];
+  for (int a = threadIdx.x; a < kStands; a += blockDim.x) {
+    const float4 ga = g[c * kStands + a];
+    sg[a] = p == 0 ? float2{ga.x, ga.y} : float2{ga.z, ga.w};
+    sxy[a] = float2{antpos[(size_t(c) * kStands + a) * 3], antpos[(size_t(c) * kStands + a) * 3 + 1]};
+    for (int k = 0; k < kPeelMax; ++k) se[a][k] = e[(size_t(c) * kStands + a) * kPeelMax + k];
+  }
+  __syncthreads();
+  float2 bk[kPeelMax] = {}, G[nG] = {};
+  for (int bl = threadIdx.x; bl < kNbl; bl += blockDim.x) {
+    int b = int((sqrtf(8.f * bl + 1.f) - 1.f) * 0.5f);
+    if ((b + 1) * (b + 2) / 2 <= bl) ++b;
+    if (b * (b + 1) / 2 > bl) --b;
+    const int a = bl - b * (b + 1) / 2;
+    if (a == b) continue;
+    const float2 ga = sg[a], gb = sg[b];
+    if ((ga.x == 0.f && ga.y == 0.f) || (gb.x == 0.f && gb.y == 0.f)) continue;
+    const float dx = sxy[a].x - sxy[b].x, dy = sxy[a].y - sxy[b].y;
+    if (dx * dx + dy * dy < umin2) continue;  // short baselines: the diffuse sky
+    const int2 r = vis[(size_t(c) * kNbl + bl) * 4 + (p == 0 ? 0 : 3)];
+    float wf = 1.f;
+    if (wvis) wf = WeightFactor(wvis[(size_t(c) * kNbl + bl) * 4 + (p == 0 ? 0 : 3)].x, nimg);
+    if (wf == 0.f) continue;
+    float2 V = cmul(cmulc(ga, gb), float2{float(r.x), float(r.y)});
+    V = float2{wf * V.x, wf * V.y};
+    float2 F[kPeelMax];
+#pragma unroll
+    for (int k = 0; k < kPeelMax; ++k) F[k] = cmulc(se[a][k], se[b][k]);
+    int i = 0;
+#pragma unroll
+    for (int k = 0; k < kPeelMax; ++k) {
+      const float2 t = cmulc(V, F[k]);  // conj(F_k) V
+      bk[k].x += t.x;
+      bk[k].y += t.y;
+#pragma unroll
+      for (int j = k; j < kPeelMax; ++j, ++i) {
+        const float2 u = cmulc(F[j], F[k]);  // conj(F_k) F_j
+        G[i].x += u.x;
+        G[i].y += u.y;
+      }
+    }
+  }
+  // sum over the block: warps by shuffles, then across the warps
+  __shared__ float2 red[kPeelThreads / 32][kPeelMax + nG];
+  const int lane = threadIdx.x & 31, warp = threadIdx.x >> 5;
+#pragma unroll
+  for (int i = 0; i < kPeelMax + nG; ++i) {
+    float2 v = i < kPeelMax ? bk[i] : G[i - kPeelMax];
+    for (int o = 16; o > 0; o >>= 1) {
+      v.x += __shfl_xor_sync(0xffffffffu, v.x, o);
+      v.y += __shfl_xor_sync(0xffffffffu, v.y, o);
+    }
+    if (lane == 0) red[warp][i] = v;
+  }
+  __syncthreads();
+  if (threadIdx.x != 0) return;
+  // the system [G | b] (K x K, Hermitian), solved by elimination with partial pivoting
+  float2 A[kPeelMax][kPeelMax + 1];
+  for (int k = 0, i = 0; k < kPeelMax; ++k)
+    for (int j = k; j < kPeelMax; ++j, ++i) {
+      float2 s{0.f, 0.f};
+      for (int w = 0; w < kPeelThreads / 32; ++w) {
+        s.x += red[w][kPeelMax + i].x;
+        s.y += red[w][kPeelMax + i].y;
+      }
+      A[k][j] = s;
+      A[j][k] = float2{s.x, -s.y};
+    }
+  for (int k = 0; k < kPeelMax; ++k) {
+    float2 s{0.f, 0.f};
+    for (int w = 0; w < kPeelThreads / 32; ++w) {
+      s.x += red[w][k].x;
+      s.y += red[w][k].y;
+    }
+    A[k][kPeelMax] = s;
+  }
+  float2* out = x + (size_t(c) * 2 + p) * kPeelMax;
+  for (int k = 0; k < kPeelMax; ++k) out[k] = float2{0.f, 0.f};
+  if (K <= 0) return;
+  for (int col = 0; col < K; ++col) {
+    int piv = col;
+    for (int r = col + 1; r < K; ++r)
+      if (A[r][col].x * A[r][col].x + A[r][col].y * A[r][col].y >
+          A[piv][col].x * A[piv][col].x + A[piv][col].y * A[piv][col].y)
+        piv = r;
+    if (piv != col)
+      for (int j = 0; j <= kPeelMax; ++j) {
+        const float2 t = A[col][j];
+        A[col][j] = A[piv][j];
+        A[piv][j] = t;
+      }
+    const float2 d = A[col][col];
+    const float dd = d.x * d.x + d.y * d.y;
+    if (!(dd > 0.f)) return;  // singular: subtract nothing
+    const float2 inv{d.x / dd, -d.y / dd};
+    for (int r = 0; r < K; ++r) {
+      if (r == col) continue;
+      const float2 f = cmul(A[r][col], inv);
+      for (int j = col; j < K; ++j) {
+        const float2 t = cmul(f, A[col][j]);
+        A[r][j].x -= t.x;
+        A[r][j].y -= t.y;
+      }
+      const float2 t = cmul(f, A[col][kPeelMax]);
+      A[r][kPeelMax].x -= t.x;
+      A[r][kPeelMax].y -= t.y;
+    }
+  }
+  for (int k = 0; k < K; ++k) {
+    const float2 d = A[k][k];
+    const float dd = d.x * d.x + d.y * d.y;
+    out[k] = dd > 0.f ? cmul(A[k][kPeelMax], float2{d.x / dd, -d.y / dd}) : float2{0.f, 0.f};
+  }
+}
+
 // Tiled gridding: the same sums as GridLags, accumulated per lag-grid tile
 // in shared memory instead of with atomics on the global grid (4 x 10^9 of
 // them per image for 192 channels at 256 x 256). Block (tile, channel), eight
@@ -243,7 +402,9 @@ __global__ void __launch_bounds__(kTileThreads) GridLagsTiled(const int2* __rest
                                                       const int2* __restrict__ wvis, float nimg,
                                                       const float4* __restrict__ g,
                                                       const uint32_t* __restrict__ list, const int* __restrict__ off,
-                                                      float2* __restrict__ lag, int N) {
+                                                      float2* __restrict__ lag, int N,
+                                                      const float2* __restrict__ peel_e,
+                                                      const float2* __restrict__ peel_x, int peel_k) {
   constexpr int s2 = 2 * S - 1;
   __shared__ float sre[4][kTile * kTile];
   __shared__ float sim[4][kTile * kTile];
@@ -297,6 +458,23 @@ __global__ void __launch_bounds__(kTileThreads) GridLagsTiled(const int2* __rest
           P[1] = float2{f1 * P[1].x, f1 * P[1].y};
           P[2] = float2{f2 * P[2].x, f2 * P[2].y};
           P[3] = float2{f3 * P[3].x, f3 * P[3].y};
+        }
+        if (peel_k > 0 && a != b) {
+          // the fitted sources (PeelFit), in the units of P (the table scale sc)
+          const float2* ea = peel_e + (size_t(c) * kStands + a) * kPeelMax;
+          const float2* eb = peel_e + (size_t(c) * kStands + b) * kPeelMax;
+          const float2* xc = peel_x + size_t(c) * 2 * kPeelMax;
+          float2 m0{0.f, 0.f}, m1{0.f, 0.f};
+          for (int k = 0; k < peel_k; ++k) {
+            const float2 f = cmulc(ea[k], eb[k]);
+            const float2 t0 = cmul(xc[k], f), t1 = cmul(xc[kPeelMax + k], f);
+            m0.x += t0.x;
+            m0.y += t0.y;
+            m1.x += t1.x;
+            m1.y += t1.y;
+          }
+          P[0] = float2{P[0].x - sc * m0.x, P[0].y - sc * m0.y};
+          P[1] = float2{P[1].x - sc * m1.x, P[1].y - sc * m1.y};
         }
         // the footprint's corner (lag pa - pb - (S - 1)) relative to the
         // tile, in [-(2S - 2) - tile, N - tile) so lags wrap at most once
@@ -472,6 +650,18 @@ struct FxImager::Impl {
   int mask_words{0};
   bool have_mask{false};
   const uint8_t* flags{};  // impulse flags [chan][seq] on the device (RfiStage), or none
+  // peeling (PeelFit): grid positions of the stands, phasors and fluxes of the
+  // sources, the array frame (rows: grid x, grid y, phase centre in east,
+  // north, up) and the pixel in direction cosine
+  bool peel{false};
+  float* d_antpos{};
+  float2* d_peel_e{};
+  float2* d_peel_x{};
+  float2* h_peel_x{};
+  double frame[9]{1, 0, 0, 0, 1, 0, 0, 0, 1};
+  double dl{0}, umin_lambda{4.0}, peel_min_el_deg{10.0};
+  std::vector<std::string> peel_names;
+  int peel_k{0};
   double img_nseq{0};      // sequences of the image so far
   float* d_cscale{};
   bool half_ctab{false};
@@ -545,11 +735,12 @@ struct FxImager::Impl {
     cufftDestroy(plan);
     for (void* p : {static_cast<void*>(d_tcc_in), static_cast<void*>(d_vis), static_cast<void*>(d_base),
                     static_cast<void*>(d_K), static_cast<void*>(d_corr), static_cast<void*>(d_lag),
-                    static_cast<void*>(d_img[0]), static_cast<void*>(d_img[1]), static_cast<void*>(d_list), static_cast<void*>(d_wtcc_in), static_cast<void*>(d_wvis), static_cast<void*>(d_mask), static_cast<void*>(d_block), d_ctab, static_cast<void*>(d_cscale),
+                    static_cast<void*>(d_img[0]), static_cast<void*>(d_img[1]), static_cast<void*>(d_list), static_cast<void*>(d_antpos), static_cast<void*>(d_peel_e), static_cast<void*>(d_peel_x), static_cast<void*>(d_wtcc_in), static_cast<void*>(d_wvis), static_cast<void*>(d_mask), static_cast<void*>(d_block), d_ctab, static_cast<void*>(d_cscale),
                     static_cast<void*>(d_off), static_cast<void*>(d_xy_a),
                     static_cast<void*>(d_xy_b), static_cast<void*>(d_pix[0]), static_cast<void*>(d_pix[1])})
       if (p) cudaFree(p);
     for (auto e : {ev_free, ev_combined, ev_copied[0], ev_copied[1], t_grid, t_comb, t_copy}) cudaEventDestroy(e);
+    if (h_peel_x) cudaFreeHost(h_peel_x);
     cudaStreamDestroy(s);
     cudaStreamDestroy(s_copy);
   }
@@ -564,6 +755,9 @@ void FxImager::SetGeometry(const float* p_antpos, const float* p_gcf_real, const
   Check(cudaSetDevice(m->device), "device");
   const int ns = m->nchan * kStands;
   BaseCells<<<(ns + 255) / 256, 256, 0, m->s>>>(p_antpos, m->d_base, ns);
+  if (!m->d_antpos) Check(cudaMalloc(&m->d_antpos, size_t(ns) * 3 * sizeof(float)), "positions");
+  Check(cudaMemcpyAsync(m->d_antpos, p_antpos, size_t(ns) * 3 * sizeof(float), cudaMemcpyDeviceToDevice, m->s),
+        "positions");
   const size_t nk = size_t(ns) * m->S * m->S;
   if (p_gcf_cplx) {
     Check(cudaMemcpyAsync(m->d_K, p_gcf_cplx, nk * sizeof(float2), cudaMemcpyDeviceToDevice, m->s), "weights");
@@ -696,6 +890,26 @@ void FxImager::SetGulpValidity(const uint64_t* p_mask, size_t p_words, const uin
 
 void FxImager::SetImpulseFlags(const uint8_t* p_flags) { m->flags = p_flags; }
 
+void FxImager::SetPeel(const double* p_frame, double p_dl, double p_umin_lambda) {
+  Check(cudaSetDevice(m->device), "device");
+  if (!p_frame || !(p_dl > 0)) {
+    m->peel = false;
+    return;
+  }
+  std::copy(p_frame, p_frame + 9, m->frame);
+  m->dl = p_dl;
+  m->umin_lambda = p_umin_lambda;
+  if (!m->d_peel_e) {
+    Check(cudaMalloc(&m->d_peel_e, size_t(m->nchan) * kStands * kPeelMax * sizeof(float2)), "peel phasors");
+    Check(cudaMalloc(&m->d_peel_x, size_t(m->nchan) * 2 * kPeelMax * sizeof(float2)), "peel fluxes");
+    Check(cudaMallocHost(&m->h_peel_x, size_t(m->nchan) * 2 * kPeelMax * sizeof(float2)), "peel fluxes");
+  }
+  m->peel = m->tiled;
+  LOG_IF(WARNING, !m->tiled) << "FxImager: peeling needs the tiled gridder; not peeling";
+  LOG_IF(INFO, m->peel) << "FxImager: peeling the bright sources above " << m->peel_min_el_deg
+                        << " deg (fluxes fitted on baselines longer than " << p_umin_lambda << " wavelengths)";
+}
+
 int FxImager::SkyPixels() const { return m->sky_p; }
 bool FxImager::SkyDone() const { return m->sky_done; }
 
@@ -705,18 +919,46 @@ void FxImager::Image(const float* p_phases, float* p_host, double p_unix, float*
   const size_t nlag = size_t(m->nchan) * 4 * N * N;
   const int2* wv = m->weights ? m->d_wvis : nullptr;
   const float nimg = float(m->img_nseq);
-  Check(cudaEventRecord(m->t_grid, m->s), "event");
+  Check(cudaEventRecord(m->t_grid, m->s), "event");  // the timing includes peeling
+  int peel_k = 0;
+  if (m->peel && m->tiled) {
+    // the sources above the elevation limit at the middle of the image
+    const double t_mid = p_unix + 0.5 * m->img_nseq * double(SEQ_MULT_S) / double(FS);
+    const double f = 2 * sky::kPi / (double(N) * m->dl);
+    PeelDirs dirs{};
+    m->peel_names.clear();
+    for (const auto& src : sky::BrightSources()) {
+      if (peel_k == kPeelMax) break;
+      const auto e = sky::Direction(src, t_mid);
+      if (e[2] < std::sin(m->peel_min_el_deg * sky::kDeg)) continue;
+      double lmn[3];
+      for (int r = 0; r < 3; ++r) lmn[r] = m->frame[3 * r] * e[0] + m->frame[3 * r + 1] * e[1] + m->frame[3 * r + 2] * e[2];
+      dirs.q[peel_k] = make_float3(float(f * lmn[0]), float(f * lmn[1]), float(f * (lmn[2] - 1.0)));
+      m->peel_names.push_back(src.name);
+      ++peel_k;
+    }
+    const int ns = m->nchan * kStands;
+    PeelPhasors<<<(ns + 255) / 256, 256, 0, m->s>>>(m->d_antpos, dirs, peel_k, m->d_peel_e, ns);
+    const float umin_cells = float(m->umin_lambda * N * m->dl);
+    PeelFit<<<dim3(m->nchan, 2), kPeelThreads, 0, m->s>>>(m->d_vis, wv, nimg, reinterpret_cast<const float4*>(p_phases),
+                                                         m->d_antpos, m->d_peel_e, peel_k, umin_cells * umin_cells,
+                                                         m->d_peel_x);
+    Check(cudaGetLastError(), "peel");
+    Check(cudaMemcpyAsync(m->h_peel_x, m->d_peel_x, size_t(m->nchan) * 2 * kPeelMax * sizeof(float2),
+                          cudaMemcpyDeviceToHost, m->s), "peel fluxes");
+  }
+  m->peel_k = peel_k;
   if (m->tiled) {
     const int nt = (N / kTile) * (N / kTile);
     const auto* g = reinterpret_cast<const float4*>(p_phases);
     if (m->half_ctab)
       GridLagsTiled<kSupport><<<dim3(nt, m->nchan), kTileThreads, 0, m->s>>>(
           m->d_vis, m->d_base, static_cast<const __half2*>(m->d_ctab), m->d_cscale, wv, nimg, g, m->d_list, m->d_off, m->d_lag,
-          N);
+          N, m->d_peel_e, m->d_peel_x, peel_k);
     else
       GridLagsTiled<kSupport><<<dim3(nt, m->nchan), kTileThreads, 0, m->s>>>(
           m->d_vis, m->d_base, static_cast<const float2*>(m->d_ctab), m->d_cscale, wv, nimg, g, m->d_list, m->d_off, m->d_lag,
-          N);
+          N, m->d_peel_e, m->d_peel_x, peel_k);
   } else {
     Check(cudaMemsetAsync(m->d_lag, 0, nlag * sizeof(float2), m->s), "clear");
     const dim3 blk((2 * kSupport - 1) * (2 * kSupport - 1), kPairs), grd((kNbl + kPairs - 1) / kPairs, m->nchan);
@@ -798,6 +1040,23 @@ void FxImager::Sync() {
     stat(m->copy_ms, &cm, &cp);
     LOG(INFO) << "FxImager: grid + transform + combine " << im << " ms (p99 " << ip << "), copy to host " << cm
               << " ms (p99 " << cp << ") per image, over 240 images";
+    if (m->peel && m->peel_k > 0 && m->h_peel_x) {
+      // the last image's fitted fluxes: per source the median over the channels of |x| (XX, YY), in the
+      // units of the calibrated visibilities
+      std::ostringstream os;
+      for (int k = 0; k < m->peel_k; ++k) {
+        std::vector<float> ax, ay;
+        for (int c = 0; c < m->nchan; ++c) {
+          const float2 x = m->h_peel_x[(size_t(c) * 2) * kPeelMax + k], y = m->h_peel_x[(size_t(c) * 2 + 1) * kPeelMax + k];
+          ax.push_back(std::hypot(x.x, x.y));
+          ay.push_back(std::hypot(y.x, y.y));
+        }
+        std::nth_element(ax.begin(), ax.begin() + ax.size() / 2, ax.end());
+        std::nth_element(ay.begin(), ay.begin() + ay.size() / 2, ay.end());
+        os << (k ? ", " : "") << m->peel_names[k] << " " << ax[ax.size() / 2] << " / " << ay[ay.size() / 2];
+      }
+      LOG(INFO) << "FxImager: peeled " << os.str();
+    }
   }
 }
 cudaEvent_t FxImager::InputFree() const { return m->ev_free; }
@@ -817,6 +1076,7 @@ void FxImager::Image(const float*, float*, double, float*) {}
 void FxImager::SetSkyTable(const double*, const double*, int, double, double, int) {}
 void FxImager::SetGulpValidity(const uint64_t*, size_t, const uint8_t*) {}
 void FxImager::SetImpulseFlags(const uint8_t*) {}
+void FxImager::SetPeel(const double*, double, double) {}
 int FxImager::SkyPixels() const { return 0; }
 bool FxImager::SkyDone() const { return false; }
 void FxImager::Sync() {}
