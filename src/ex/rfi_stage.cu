@@ -154,7 +154,8 @@ __device__ void BitonicSort(float* p_v, int p_n2) {
 // One block per stream: band power over the stream's channels per sequence,
 // robust threshold, zero the sequences above it.
 __global__ void ImpulseFlag(const float* __restrict__ p_power, int p_nchan, int p_nseq, int p_n2, float p_sigma,
-                            uint8_t* __restrict__ p_out, uint32_t* __restrict__ p_count) {
+                            uint8_t* __restrict__ p_out, uint32_t* __restrict__ p_count,
+                            uint8_t* __restrict__ p_flag) {
   extern __shared__ float sh[];
   float* band = sh;        // [p_n2]
   float* work = sh + p_n2;  // [p_n2]
@@ -184,6 +185,7 @@ __global__ void ImpulseFlag(const float* __restrict__ p_power, int p_nchan, int 
         uint4* d = reinterpret_cast<uint4*>(p_out + (size_t(c) * p_nseq + t) * kIn);
 #pragma unroll
         for (int i = 0; i < kIn / 16; ++i) d[i] = make_uint4(0, 0, 0, 0);
+        p_flag[size_t(c) * p_nseq + t] = 1;  // weight 0 (FxImager)
       }
     }
   }
@@ -207,6 +209,7 @@ RfiStage::~RfiStage() {
   cudaFree(m_power);
   cudaFree(m_sun);
   cudaFree(m_cnt_d);
+  cudaFree(m_flag);
   cudaFreeHost(m_cnt_h);
 }
 
@@ -219,6 +222,8 @@ void RfiStage::Resize(int p_nchan, int p_nseq) {
   cudaFree(m_vt);
   cudaFree(m_power);
   cudaFree(m_sun);
+  cudaFree(m_flag);
+  m_flag = nullptr;
   m_nchan = p_nchan;
   m_nseq = p_nseq;
   Check(cudaMalloc(&m_out, size_t(p_nchan) * p_nseq * kIn), "cudaMalloc gulp");
@@ -226,6 +231,10 @@ void RfiStage::Resize(int p_nchan, int p_nseq) {
   Check(cudaMalloc(&m_vt, size_t(p_nchan) * kProjQmax * kIn * sizeof(float2)), "cudaMalloc projector");
   Check(cudaMalloc(&m_power, size_t(p_nchan) * p_nseq * sizeof(float)), "cudaMalloc power");
   Check(cudaMalloc(&m_sun, size_t(p_nchan) * kIn * sizeof(float2)), "cudaMalloc Sun vector");
+  if (m_sigma > 0.f) {
+    Check(cudaMalloc(&m_flag, size_t(p_nchan) * p_nseq), "cudaMalloc flags");
+    Check(cudaMemset(m_flag, 0, size_t(p_nchan) * p_nseq), "cudaMemset flags");
+  }
   m_q = 0;
   m_has_sun = false;
   LOG(INFO) << "RfiStage: " << p_nchan << " channels x " << p_nseq << " sequences, projector up to " << kProjQmax
@@ -267,8 +276,10 @@ void RfiStage::Run(const uint8_t* p_gulp, int p_chan_offset, int p_nchan, cudaSt
   if (m_sigma > 0.f) {
     int n2 = 1;
     while (n2 < m_nseq) n2 <<= 1;
+    uint8_t* flag = m_flag + size_t(p_chan_offset) * m_nseq;
+    Check(cudaMemsetAsync(flag, 0, size_t(p_nchan) * m_nseq, p_stream), "flags reset");
     ImpulseFlag<<<1, kFlagThreads, 2 * n2 * sizeof(float), p_stream>>>(pw, p_nchan, m_nseq, n2, m_sigma, m_out + off,
-                                                                        m_cnt_d + p_si);
+                                                                        m_cnt_d + p_si, flag);
     Check(cudaGetLastError(), "ImpulseFlag launch");
   }
 }

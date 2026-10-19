@@ -72,10 +72,44 @@ __device__ inline float2 cmulc(float2 a, float2 b) { return {a.x * b.x + a.y * b
 // (pairs / kPairs, chan). TCC visibilities [chan][bl][polY][polX],
 // bl = x (x + 1) / 2 + y, y <= x, holding sum s_y conj(s_x) (checked in
 // tests/gpu/fx_imager.cu), i.e. R_yx = sum V_y conj(V_x) as used here.
+// Sample weights, correlated like the voltages: a sample of an input has
+// weight 1 if valid, 0 if its packet was lost (packet_processor.hpp
+// ApplySampleWeights) or impulse detection zeroed it (rfi_stage.cu). They go
+// through the Tensor-Core Correlator as int8 samples (w, 0), so the weight
+// "visibility" of a pair and polarisation product is the number of sequences
+// in which both samples were valid. The gridders scale each visibility by
+// the image's sequences over that number (0 if none), i.e. divide by the
+// average weight, so lost and flagged samples do not change the image.
+constexpr int kInputsPerBoard = kInputs / NROACH_BOARDS;
+__global__ void WeightsToTccI8(const uint64_t* __restrict__ mask, const uint8_t* __restrict__ block,
+                               const uint8_t* __restrict__ flags, int8_t* __restrict__ out, int nseq, int ntb,
+                               int words) {
+  const int i = threadIdx.x, tb = blockIdx.x, c = blockIdx.y;
+  const uint64_t* m = mask ? mask + size_t((i / kInputsPerBoard) * NDP_CHAN_BLOCKS + block[c]) * words : nullptr;
+  const uint8_t* f = flags ? flags + size_t(c) * nseq : nullptr;
+  alignas(16) int8_t v[2 * kT];
+#pragma unroll
+  for (int tt = 0; tt < kT; ++tt) {
+    const int t = tb * kT + tt;
+    bool w = t < nseq;
+    if (w && m) w = (m[t / 64] >> (t % 64)) & 1;
+    if (w && f) w = !f[t];
+    v[2 * tt] = int8_t(w);
+    v[2 * tt + 1] = 0;
+  }
+  uint4* dst = reinterpret_cast<uint4*>(out + ((size_t(c) * ntb + tb) * kInputs + i) * 2 * kT);
+  dst[0] = reinterpret_cast<const uint4*>(v)[0];
+  dst[1] = reinterpret_cast<const uint4*>(v)[1];
+}
+
+// The factor of a visibility with weight count r (WeightsToTccI8)
+__device__ __forceinline__ float WeightFactor(int r, float nimg) { return r > 0 ? nimg / float(r) : 0.f; }
+
 template <int S>
 __global__ void GridLags(const int2* __restrict__ vis, const int2* __restrict__ base,
                          const float2* __restrict__ K, const float4* __restrict__ g,
-                         float2* __restrict__ lag, int N, bool keep_auto) {
+                         const int2* __restrict__ wvis, float nimg, float2* __restrict__ lag, int N,
+                         bool keep_auto) {
   constexpr int h = S / 2, s2 = 2 * S - 1, nel = S * S;
   const int c = blockIdx.y;
   const int bl = blockIdx.x * kPairs + threadIdx.y;
@@ -120,7 +154,8 @@ __global__ void GridLags(const int2* __restrict__ vis, const int2* __restrict__ 
 #pragma unroll
   for (int k = 0; k < 4; ++k) {
     const int2 r = v[pp[k] * 2 + qq[k]];
-    const float2 R{float(r.x), float(r.y)};
+    const float wf = wvis ? WeightFactor(wvis[(size_t(c) * kNbl + bl) * 4 + pp[k] * 2 + qq[k]].x, nimg) : 1.f;
+    const float2 R{wf * float(r.x), wf * float(r.y)};
     const float2 gp = pp[k] ? gay : gax, gq = qq[k] ? gby : gbx;
     const float2 t = cmul(cmulc(gp, gq), cmul(R, C));
     atomicAdd(&out[size_t(k) * N * N].x, t.x);
@@ -205,6 +240,7 @@ __device__ __forceinline__ int TileIndex(int ux, int uy) { return uy * kTile + (
 template <int S, typename T>
 __global__ void __launch_bounds__(kTileThreads) GridLagsTiled(const int2* __restrict__ vis, const int2* __restrict__ base,
                                                       const T* __restrict__ ctab, const float* __restrict__ cscale,
+                                                      const int2* __restrict__ wvis, float nimg,
                                                       const float4* __restrict__ g,
                                                       const uint32_t* __restrict__ list, const int* __restrict__ off,
                                                       float2* __restrict__ lag, int N) {
@@ -252,6 +288,16 @@ __global__ void __launch_bounds__(kTileThreads) GridLagsTiled(const int2* __rest
         P[1] = cmul(cmulc(gay, gby), float2{float(v23.z), float(v23.w)});
         P[2] = cmul(cmulc(gax, gby), float2{float(v01.z), float(v01.w)});
         P[3] = cmul(cmulc(gay, gbx), float2{float(v23.x), float(v23.y)});
+        if (wvis) {
+          const int4* wv = reinterpret_cast<const int4*>(wvis + (size_t(c) * kNbl + bl) * 4);
+          const int4 w01 = wv[0], w23 = wv[1];
+          const float f0 = WeightFactor(w01.x, nimg), f1 = WeightFactor(w23.z, nimg), f2 = WeightFactor(w01.z, nimg),
+                      f3 = WeightFactor(w23.x, nimg);
+          P[0] = float2{f0 * P[0].x, f0 * P[0].y};
+          P[1] = float2{f1 * P[1].x, f1 * P[1].y};
+          P[2] = float2{f2 * P[2].x, f2 * P[2].y};
+          P[3] = float2{f3 * P[3].x, f3 * P[3].y};
+        }
         // the footprint's corner (lag pa - pb - (S - 1)) relative to the
         // tile, in [-(2S - 2) - tile, N - tile) so lags wrap at most once
         int lx = (pa.x - pb.x - (S - 1) - tx0) % N, ly = (pa.y - pb.y - (S - 1) - ty0) % N;
@@ -414,6 +460,19 @@ struct FxImager::Impl {
   // the pairs' kernel cross-correlations [chan][bl][(2S - 1)^2] (float2, or
   // __half2 with half_ctab) over the per-channel scale d_cscale
   void* d_ctab{};
+  // sample weights (WeightsToTccI8): the gulp's validity mask and channel
+  // blocks from the receiver, their TCC input and the correlated weights
+  bool weights{true};
+  int8_t* d_wtcc_in{};
+  int2* d_wvis{};
+  uint64_t* d_mask{};
+  uint8_t* d_block{};
+  std::vector<uint64_t> mask;
+  std::vector<uint8_t> block;
+  int mask_words{0};
+  bool have_mask{false};
+  const uint8_t* flags{};  // impulse flags [chan][seq] on the device (RfiStage), or none
+  double img_nseq{0};      // sequences of the image so far
   float* d_cscale{};
   bool half_ctab{false};
   int* d_off{};
@@ -450,6 +509,14 @@ struct FxImager::Impl {
     Check(cudaMalloc(&d_base, size_t(nchan) * kStands * sizeof(int2)), "cells");
     Check(cudaMalloc(&d_K, size_t(nchan) * kStands * S * S * sizeof(float2)), "weights");
     Check(cudaMalloc(&d_lag, size_t(nchan) * 4 * N * N * sizeof(float2)), "lag grid");
+    if (const char* e = std::getenv("EPIC_FX_WEIGHTS")) weights = std::string(e) != "0";
+    if (weights) {
+      Check(cudaMalloc(&d_wtcc_in, size_t(nchan) * nseq_pad * kInputs * 2), "weights input");
+      Check(cudaMalloc(&d_wvis, size_t(nchan) * kNbl * 4 * sizeof(int2)), "weights");
+      mask_words = (nseq + 63) / 64;
+      Check(cudaMalloc(&d_mask, size_t(NROACH_BOARDS) * NDP_CHAN_BLOCKS * mask_words * sizeof(uint64_t)), "mask");
+      Check(cudaMalloc(&d_block, size_t(nchan)), "blocks");
+    }
     if (const char* e = std::getenv("EPIC_FX_GRIDDER")) tiled = std::string(e) != "atomic";
     if (N % kTile) tiled = false;
     // as much shared memory as the SM allows, for more resident tiles
@@ -478,7 +545,7 @@ struct FxImager::Impl {
     cufftDestroy(plan);
     for (void* p : {static_cast<void*>(d_tcc_in), static_cast<void*>(d_vis), static_cast<void*>(d_base),
                     static_cast<void*>(d_K), static_cast<void*>(d_corr), static_cast<void*>(d_lag),
-                    static_cast<void*>(d_img[0]), static_cast<void*>(d_img[1]), static_cast<void*>(d_list), d_ctab, static_cast<void*>(d_cscale),
+                    static_cast<void*>(d_img[0]), static_cast<void*>(d_img[1]), static_cast<void*>(d_list), static_cast<void*>(d_wtcc_in), static_cast<void*>(d_wvis), static_cast<void*>(d_mask), static_cast<void*>(d_block), d_ctab, static_cast<void*>(d_cscale),
                     static_cast<void*>(d_off), static_cast<void*>(d_xy_a),
                     static_cast<void*>(d_xy_b), static_cast<void*>(d_pix[0]), static_cast<void*>(d_pix[1])})
       if (p) cudaFree(p);
@@ -577,9 +644,23 @@ void FxImager::Correlate(const uint8_t* p_gulp, cudaEvent_t const* p_ready, int 
   for (int i = 0; i < p_nready; ++i) Check(cudaStreamWaitEvent(m->s, p_ready[i], 0), "wait");
   const int ntb = m->nseq_pad / kT;
   ReorderToTccI8<<<dim3(ntb, m->nchan), kInputs, 0, m->s>>>(p_gulp, m->d_tcc_in, m->nseq, ntb);
-  Check(cudaEventRecord(m->ev_free, m->s), "event");
+  if (!m->weights) Check(cudaEventRecord(m->ev_free, m->s), "event");
   m->corr->launchAsync(reinterpret_cast<CUstream>(m->s), reinterpret_cast<CUdeviceptr>(m->d_vis),
                        reinterpret_cast<CUdeviceptr>(m->d_tcc_in), p_add);
+  m->img_nseq = (p_add ? m->img_nseq : 0.0) + m->nseq;
+  if (m->weights) {
+    if (m->have_mask) {  // pageable source: staged before the call returns
+      Check(cudaMemcpyAsync(m->d_mask, m->mask.data(), m->mask.size() * sizeof(uint64_t), cudaMemcpyHostToDevice,
+                            m->s), "mask");
+      Check(cudaMemcpyAsync(m->d_block, m->block.data(), m->block.size(), cudaMemcpyHostToDevice, m->s), "blocks");
+    }
+    WeightsToTccI8<<<dim3(ntb, m->nchan), kInputs, 0, m->s>>>(m->have_mask ? m->d_mask : nullptr, m->d_block,
+                                                              m->flags, m->d_wtcc_in, m->nseq, ntb, m->mask_words);
+    // the gulp and its impulse flags have been read
+    Check(cudaEventRecord(m->ev_free, m->s), "event");
+    m->corr->launchAsync(reinterpret_cast<CUstream>(m->s), reinterpret_cast<CUdeviceptr>(m->d_wvis),
+                         reinterpret_cast<CUdeviceptr>(m->d_wtcc_in), p_add);
+  }
 }
 
 void FxImager::SetSkyTable(const double* p_xy_a, const double* p_xy_b, int p_capacity, double p_t_a, double p_t_b,
@@ -606,6 +687,15 @@ void FxImager::SetSkyTable(const double* p_xy_a, const double* p_xy_b, int p_cap
   m->sky_nbin = p_nbin;
 }
 
+void FxImager::SetGulpValidity(const uint64_t* p_mask, size_t p_words, const uint8_t* p_block) {
+  m->have_mask = p_mask && p_block && int(p_words) == m->mask_words;
+  if (!m->have_mask) return;
+  m->mask.assign(p_mask, p_mask + size_t(NROACH_BOARDS) * NDP_CHAN_BLOCKS * p_words);
+  m->block.assign(p_block, p_block + m->nchan);
+}
+
+void FxImager::SetImpulseFlags(const uint8_t* p_flags) { m->flags = p_flags; }
+
 int FxImager::SkyPixels() const { return m->sky_p; }
 bool FxImager::SkyDone() const { return m->sky_done; }
 
@@ -613,23 +703,25 @@ void FxImager::Image(const float* p_phases, float* p_host, double p_unix, float*
   if (!m->geometry) throw std::logic_error("FxImager: Image before SetGeometry");
   const int N = m->N;
   const size_t nlag = size_t(m->nchan) * 4 * N * N;
+  const int2* wv = m->weights ? m->d_wvis : nullptr;
+  const float nimg = float(m->img_nseq);
   Check(cudaEventRecord(m->t_grid, m->s), "event");
   if (m->tiled) {
     const int nt = (N / kTile) * (N / kTile);
     const auto* g = reinterpret_cast<const float4*>(p_phases);
     if (m->half_ctab)
       GridLagsTiled<kSupport><<<dim3(nt, m->nchan), kTileThreads, 0, m->s>>>(
-          m->d_vis, m->d_base, static_cast<const __half2*>(m->d_ctab), m->d_cscale, g, m->d_list, m->d_off, m->d_lag,
+          m->d_vis, m->d_base, static_cast<const __half2*>(m->d_ctab), m->d_cscale, wv, nimg, g, m->d_list, m->d_off, m->d_lag,
           N);
     else
       GridLagsTiled<kSupport><<<dim3(nt, m->nchan), kTileThreads, 0, m->s>>>(
-          m->d_vis, m->d_base, static_cast<const float2*>(m->d_ctab), m->d_cscale, g, m->d_list, m->d_off, m->d_lag,
+          m->d_vis, m->d_base, static_cast<const float2*>(m->d_ctab), m->d_cscale, wv, nimg, g, m->d_list, m->d_off, m->d_lag,
           N);
   } else {
     Check(cudaMemsetAsync(m->d_lag, 0, nlag * sizeof(float2), m->s), "clear");
     const dim3 blk((2 * kSupport - 1) * (2 * kSupport - 1), kPairs), grd((kNbl + kPairs - 1) / kPairs, m->nchan);
     GridLags<kSupport><<<grd, blk, 0, m->s>>>(m->d_vis, m->d_base, m->d_K, reinterpret_cast<const float4*>(p_phases),
-                                              m->d_lag, N, m->keep_auto);
+                                              wv, nimg, m->d_lag, N, m->keep_auto);
   }
   Check(cudaGetLastError(), "grid");
   CheckFft(cufftExecC2C(m->plan, reinterpret_cast<cufftComplex*>(m->d_lag),
@@ -723,6 +815,8 @@ void FxImager::SetGeometry(const float*, const float*, const float*, const float
 void FxImager::Correlate(const uint8_t*, cudaEvent_t const*, int, bool) {}
 void FxImager::Image(const float*, float*, double, float*) {}
 void FxImager::SetSkyTable(const double*, const double*, int, double, double, int) {}
+void FxImager::SetGulpValidity(const uint64_t*, size_t, const uint8_t*) {}
+void FxImager::SetImpulseFlags(const uint8_t*) {}
 int FxImager::SkyPixels() const { return 0; }
 bool FxImager::SkyDone() const { return false; }
 void FxImager::Sync() {}

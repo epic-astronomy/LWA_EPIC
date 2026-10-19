@@ -75,6 +75,10 @@ class PacketAssembler : public PktProcessor {
   typename PktProcessor::header_t m_recent_hdr;
   dtype* m_recent_pkt;
   std::vector<std::shared_ptr<std::atomic_ullong>> m_valid_pkt_stats;
+  // bit t of word src * m_mask_words + t / 64: the packet of source src at
+  // sequence t of the gulp arrived (PktProcessor::weigh_samples)
+  std::vector<uint64_t> m_valid_mask;
+  size_t m_mask_words{0};
   size_t m_n_valid_pkts;
   size_t m_n_valid_bytes;
   size_t m_min_pkt_limit;
@@ -107,6 +111,8 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::PacketAssembler(
   for (int i = 0; i < PktProcessor::nsrc; ++i) {
     m_valid_pkt_stats.push_back(std::make_shared<std::atomic_ullong>(0));
   }
+  m_mask_words = (m_nseq_per_gulp + 63) / 64;
+  m_valid_mask.assign(PktProcessor::nsrc * m_mask_words, 0);
   m_reset_pkt_stats();
   m_recent_hdr.seq = 0;
   m_seq_end = m_seq_start + m_nseq_per_gulp;
@@ -139,6 +145,7 @@ void PacketAssembler<BufferMngr, Receiver, PktProcessor>::m_reset_pkt_stats() {
   for (auto stats : m_valid_pkt_stats) {
     stats->exchange(0);
   }
+  std::fill(m_valid_mask.begin(), m_valid_mask.end(), uint64_t(0));
   m_n_valid_pkts = 0;
   m_n_valid_bytes = 0;
 }
@@ -244,6 +251,8 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::get_gulp() {
                                    m_time_tag0);
         PktProcessor::nullify_ill_sources(mbuf, m_recent_hdr, m_valid_pkt_stats,
                                           m_nseq_per_gulp);
+        PktProcessor::weigh_samples(mbuf, m_recent_hdr, m_valid_pkt_stats,
+                                    m_valid_mask, m_nseq_per_gulp);
 
         m_n_valid_pkts = 0;
         // DLOG(INFO)<<"Returning payload";
@@ -259,6 +268,11 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::get_gulp() {
     }
     start = high_resolution_clock::now();
 
+    {
+      const size_t t = m_recent_hdr.seq - m_seq_start;
+      const size_t src = size_t(PktProcessor::source_index(m_recent_hdr));
+      m_valid_mask[src * m_mask_words + t / 64] |= uint64_t(1) << (t % 64);
+    }
     PktProcessor::copy_to_buffer(
         m_recent_hdr, m_recent_data, mbuf->GetDataPtr(), m_valid_pkt_stats,
         m_recent_hdr.seq - m_seq_start, m_nseq_per_gulp);

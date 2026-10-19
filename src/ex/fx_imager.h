@@ -59,6 +59,16 @@ class FxImager {
   /// p_pix_host. Bicubic taps (Keys, a = -0.75) on the image in FITS order.
   void SetSkyTable(const double* p_xy_a, const double* p_xy_b, int p_capacity, double p_t_a, double p_t_b,
                    int p_nbin);
+  /// Sample validity of the next gulp (call before Correlate): bit t of
+  /// p_mask[(board * NDP_CHAN_BLOCKS + block) * p_words + t / 64] is set if
+  /// the packet of sequence t of that board (16 stands) and channel block
+  /// arrived; p_block[chan] the block of each channel. Null: all arrived.
+  /// The weights (1 valid, 0 not, or zeroed by impulse detection) are
+  /// correlated like the voltages and each visibility divided by its average
+  /// weight before gridding (environment EPIC_FX_WEIGHTS=0: not).
+  void SetGulpValidity(const uint64_t* p_mask, size_t p_words, const uint8_t* p_block);
+  /// The impulse detector's flags [chan][seq] on the device (null: none)
+  void SetImpulseFlags(const uint8_t* p_flags);
   /// Pixel slots of the table in use (0: none)
   int SkyPixels() const;
   /// The last image was regridded (its time inside the table's span)

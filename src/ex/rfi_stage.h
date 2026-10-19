@@ -64,6 +64,9 @@ class RfiStage {
   uint64_t CollectFlagged();
   /// The processed gulp, same layout as the raw one
   uint8_t* Out() const { return m_out; }
+  /// Sequences zeroed by impulse detection in the last gulp, [chan][seq]
+  /// (1: zeroed), on the device; null without impulse detection
+  const uint8_t* Flags() const { return m_flag; }
 
  private:
   int m_device;
@@ -74,6 +77,7 @@ class RfiStage {
   float2* m_sun{nullptr};
   uint32_t m_gulp{0};
   uint8_t* m_out{nullptr};
+  uint8_t* m_flag{nullptr};
   float2* m_ut{nullptr};
   float2* m_vt{nullptr};
   float* m_power{nullptr};

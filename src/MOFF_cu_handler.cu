@@ -469,6 +469,7 @@ MOFFCuHandler::ProcessGulpFx(uint8_t* p_data_ptr, uint8_t* p_img_in, bool p_rfi,
         }
         cuda_check_err(cudaEventRecord(m_stream_ready[i], stream_i));
     }
+    m_fx->SetImpulseFlags(p_rfi ? m_rfi->Flags() : nullptr);
     m_fx->Correlate(p_img_in, m_stream_ready.data(), m_nstreams, !p_first);
     if (p_last) {
         // returns at once; the correlator kernel waits (FinishFxImage) before

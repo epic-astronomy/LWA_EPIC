@@ -117,6 +117,13 @@ class PacketProcessor<chips_hdr_type, uint8_t, Copier, Order>
       Buffer* p_mbuf, header_t& p_hdr,
       std::vector<std::shared_ptr<std::atomic_ullong>>& p_pkt_stats,
       size_t p_exp_pkts_per_source);
+  /// Index of the packet's source in the packet statistics
+  inline static int source_index(const header_t& p_hdr) { return p_hdr.roach; }
+  /// Sample weights (see the NDP processor); not implemented for CHIPS
+  template <class Buffer>
+  inline static void weigh_samples(
+      Buffer*, header_t&, std::vector<std::shared_ptr<std::atomic_ullong>>&,
+      const std::vector<uint64_t>&, size_t) {}
   // ~PacketProcessor(){
   //     DLOG(INFO)<<"D PktProcessor";
   // }
@@ -317,6 +324,46 @@ inline int Snap2SelChan0(const snap2_hdr_type& p_hdr) {
   return (p_hdr.nchan_tot - NDP_NCHAN_SELECT) / 2;
 }
 
+/**
+ * Zero the samples of an NDP gulp whose packets are missing and record which
+ * are valid (see PacketProcessor<snap2_hdr_type>::weigh_samples).
+ * p_valid: bit t of word src * words + t / 64 is set if the packet of source
+ * src = board * NDP_CHAN_BLOCKS + block at sequence t is valid; p_sel0: the
+ * stream channel of the gulp's first channel; p_block_nchan: channels per
+ * block. Writes valid_mask (p_valid as bytes) and valid_block to p_meta.
+ */
+template <PKT_DATA_ORDER Order, class Meta>
+inline void ApplySampleWeights(uint8_t* p_data, const std::vector<uint64_t>& p_valid, size_t p_nseq,
+                               int p_sel0, int p_block_nchan, Meta& p_meta) {
+  constexpr size_t kLane = LWA_SV_INP_PER_CHAN / NROACH_BOARDS;  // bytes of one board
+  const size_t words = (p_nseq + 63) / 64;
+  const uint64_t last = p_nseq % 64 ? (uint64_t(1) << (p_nseq % 64)) - 1 : ~uint64_t(0);
+  for (int src = 0; src < NROACH_BOARDS * NDP_CHAN_BLOCKS; ++src) {
+    const uint64_t* m = p_valid.data() + size_t(src) * words;
+    int nvalid = 0;
+    for (size_t w = 0; w < words; ++w) nvalid += __builtin_popcountll(m[w] & (w + 1 == words ? last : ~uint64_t(0)));
+    if (size_t(nvalid) == p_nseq) continue;
+    const int board = src / NDP_CHAN_BLOCKS, block = src % NDP_CHAN_BLOCKS;
+    const int chan_ofst = block * p_block_nchan - p_sel0;
+    const int chan_beg = std::max(chan_ofst, 0);
+    const int chan_end = std::min(chan_ofst + p_block_nchan, int(NDP_NCHAN_SELECT));
+    for (size_t t = 0; t < p_nseq; ++t) {
+      if ((m[t / 64] >> (t % 64)) & 1) continue;
+      for (int chan = chan_beg; chan < chan_end; ++chan) {
+        const size_t cell = Order == TIME_MAJOR ? (t * NDP_NCHAN_SELECT + chan) : (size_t(chan) * p_nseq + t);
+        std::memset(p_data + (cell * NROACH_BOARDS + board) * kLane, 0, kLane);
+      }
+    }
+  }
+  std::string mask(reinterpret_cast<const char*>(p_valid.data()), p_valid.size() * sizeof(uint64_t));
+  std::string blocks(NDP_NCHAN_SELECT, '\0');
+  for (int c = 0; c < int(NDP_NCHAN_SELECT); ++c) {
+    blocks[c] = char(std::min((p_sel0 + c) / p_block_nchan, int(NDP_CHAN_BLOCKS) - 1));
+  }
+  p_meta["valid_mask"] = std::move(mask);
+  p_meta["valid_block"] = std::move(blocks);
+}
+
 template <template <class, class, PKT_DATA_ORDER> class Copier,
           PKT_DATA_ORDER Order>
 class PacketProcessor<snap2_hdr_type, uint8_t, Copier, Order>
@@ -338,6 +385,25 @@ class PacketProcessor<snap2_hdr_type, uint8_t, Copier, Order>
       Buffer* p_mbuf, header_t& p_hdr,
       std::vector<std::shared_ptr<std::atomic_ullong>>& p_pkt_stats,
       size_t p_exp_pkts_per_source);
+  /// Index of the packet's source (board, channel block) in the statistics
+  inline static int source_index(const header_t& p_hdr);
+  /**
+   * Sample weights: a sample is valid (weight 1) if its packet arrived, else
+   * its slot is zeroed (the buffers are reused, so it would hold an earlier
+   * gulp's voltages) and its weight is 0. A packet holds one sequence of one
+   * board (16 stands) and one channel block. Recorded as metadata, for the
+   * imager to correlate the weights like the voltages (FxImager):
+   *   valid_mask   uint64 [board * NDP_CHAN_BLOCKS + block][(nseq + 63) / 64],
+   *                bit t: the packet of sequence t arrived
+   *   valid_block  uint8 [NDP_NCHAN_SELECT]: the block of each gulp channel
+   * p_mask: bit t of word src * words + t / 64 is set if the packet of source
+   * src at sequence t arrived. Run after nullify_ill_sources.
+   */
+  template <class Buffer>
+  inline static void weigh_samples(
+      Buffer* p_mbuf, header_t& p_hdr,
+      std::vector<std::shared_ptr<std::atomic_ullong>>& p_pkt_stats,
+      const std::vector<uint64_t>& p_mask, size_t p_exp_pkts_per_source);
 };
 
 template <template <class, class, PKT_DATA_ORDER> class Copier,
@@ -500,6 +566,32 @@ void PacketProcessor<snap2_hdr_type, uint8_t, Copier, Order>::
 
   metadata["data_quality"] =
       double(npkts) / double(p_exp_pkts_per_source * p_pkt_stats.size());
+}
+
+template <template <class, class, PKT_DATA_ORDER> class Copier,
+          PKT_DATA_ORDER Order>
+int PacketProcessor<snap2_hdr_type, uint8_t, Copier, Order>::source_index(
+    const snap2_hdr_type& p_hdr) {
+  return Snap2SrcIdx(p_hdr);
+}
+
+template <template <class, class, PKT_DATA_ORDER> class Copier,
+          PKT_DATA_ORDER Order>
+template <class Buffer>
+void PacketProcessor<snap2_hdr_type, uint8_t, Copier, Order>::weigh_samples(
+    Buffer* p_mbuf, snap2_hdr_type& p_hdr,
+    std::vector<std::shared_ptr<std::atomic_ullong>>& p_pkt_stats,
+    const std::vector<uint64_t>& p_mask, size_t p_nseq) {
+  const size_t words = (p_nseq + 63) / 64;
+  static const float allowed = ALLOWED_PKT_DROP * 0.01;
+  // the valid sequences of every source (none for a nullified one)
+  std::vector<uint64_t> valid(size_t(nsrc) * words, 0);
+  for (size_t src = 0; src < nsrc; ++src) {
+    if (p_pkt_stats[src]->load() < allowed * p_nseq) continue;  // zeroed whole
+    std::copy_n(p_mask.begin() + src * words, words, valid.begin() + src * words);
+  }
+  ApplySampleWeights<Order>(p_mbuf->GetDataPtr(), valid, p_nseq, Snap2SelChan0(p_hdr), int(p_hdr.nchan),
+                            p_mbuf->GetMetadataRef());
 }
 
 void copy_tester() {

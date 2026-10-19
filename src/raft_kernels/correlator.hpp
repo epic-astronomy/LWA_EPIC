@@ -27,6 +27,8 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <memory>
 #include <set>
 #include <utility>
@@ -69,6 +71,12 @@ class CorrelatorRft : public raft::kernel {
   std::string m_session_id; //changes with frequency
   /// Calibration gains from streamcal (null: off)
   std::unique_ptr<GainTableReader> m_gain_reader{nullptr};
+  // Diagnostics (environment EPIC_GULP_TRACE=<file>): one line per gulp with
+  // the packet statistics and the calibration in force, to tell data loss,
+  // gain and projector changes apart in the images
+  FILE* m_trace{nullptr};
+
+  uint64_t m_trace_gain_v{0}, m_trace_proj_v{0};
   /// FX: the all-sky monitor's pixel table
   std::unique_ptr<SkyTableReader> m_sky_table{nullptr};
   uint64_t m_sky_table_version{0};
@@ -108,6 +116,13 @@ class CorrelatorRft : public raft::kernel {
     output.addPort<typename _Correlator::payload_t>("img");
     output.addPort<typename _Correlator::payload_t>("img_stream");
 
+    if (const char* path = std::getenv("EPIC_GULP_TRACE")) {
+      m_trace = std::fopen(path, "w");
+      if (m_trace) {
+        std::setvbuf(m_trace, nullptr, _IOLBF, 1 << 12);  // whole lines even if the process is killed
+        LOG(INFO) << "Gulp trace in " << path;
+      }
+    }
     const auto& cal = m_correlator.get()->GetCalDesc();
     if (!cal.gain_table_path.empty()) {
       m_gain_reader = std::make_unique<GainTableReader>(cal.gain_table_path);
@@ -210,6 +225,7 @@ class CorrelatorRft : public raft::kernel {
       if (m_gain_reader) {
         if (auto snap = m_gain_reader->Poll(chan0, nchan, m_seq_start_id)) {
           if (m_correlator.get()->ApplyGainTable(*snap)) {
+            m_trace_gain_v = snap->version;
             LOG(INFO) << "Applied calibration gain table version " << snap->version
                       << (snap->valid ? "" : " (revert to nominal phases)");
           }
@@ -237,6 +253,7 @@ class CorrelatorRft : public raft::kernel {
       if (m_proj_reader) {
         if (auto snap = m_proj_reader->Poll(chan0, nchan, m_seq_start_id)) {
           if (m_correlator.get()->ApplyProjTable(*snap)) {
+            m_trace_proj_v = snap->version;
             LOG_EVERY_N(INFO, 30) << "Applied interference projector version " << snap->version << " (" << snap->q
                                   << " components per polarisation" << (snap->sun.empty() ? "" : ", Sun exemption")
                                   << ")";
@@ -249,6 +266,38 @@ class CorrelatorRft : public raft::kernel {
     // The tap stages its slice while ProcessGulp runs (WaitCopied below).
     bool tapped = false;
     const float quality = float(MetaOr<double>(gulp_metadata, "data_quality", 1.0));
+    if (m_correlator.get()->UsesFx()) {
+      // which samples arrived (packet_processor.hpp ApplySampleWeights), for
+      // the FX imager to correlate the sample weights like the voltages
+      const auto vm = gulp_metadata.find("valid_mask");
+      const auto vb = gulp_metadata.find("valid_block");
+      if (vm != gulp_metadata.end() && vb != gulp_metadata.end()) {
+        const auto& mask = std::get<std::string>(vm->second);
+        const auto& block = std::get<std::string>(vb->second);
+        const size_t words = mask.size() / sizeof(uint64_t) / (NROACH_BOARDS * NDP_CHAN_BLOCKS);
+        m_correlator.get()->SetGulpValidity(reinterpret_cast<const uint64_t*>(mask.data()), words,
+                                            reinterpret_cast<const uint8_t*>(block.data()));
+      } else {
+        m_correlator.get()->SetGulpValidity(nullptr, 0, nullptr);
+      }
+    }
+    if (m_trace) {
+      // seq_start quality sources_short min_valid_frac sources_zeroed gain_version proj_version first_of_image
+      int nshort = 0, nzero = 0;
+      double vmin = 1.0;
+      for (int src = 1; src <= 256; ++src) {
+        const auto it = gulp_metadata.find("src" + std::to_string(src) + "_valid_frac");
+        if (it == gulp_metadata.end()) break;
+        const double v = std::get<double>(it->second);
+        nshort += v < 1.0;
+        nzero += v < ALLOWED_PKT_DROP * 0.01;
+        vmin = std::min(vmin, v);
+      }
+      std::fprintf(m_trace, "%lu %.5f %d %.4f %d %lu %lu %d\n",
+                   static_cast<unsigned long>(std::get<uint64_t>(gulp_metadata["seq_start"])), quality, nshort, vmin,
+                   nzero, static_cast<unsigned long>(m_trace_gain_v), static_cast<unsigned long>(m_trace_proj_v),
+                   int(m_is_first));
+    }
     if (m_cal_tap) {
       tapped = m_cal_tap->Offer(pld.get_mbuf()->GetDataPtr(), std::get<uint64_t>(gulp_metadata["seq_start"]), chan0,
                                 nchan, MetaOr<int>(gulp_metadata, "nseqs", 0), quality);

@@ -27,6 +27,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <random>
 #include <raft>
 #include <raftio>
 #include <string>
@@ -35,6 +36,7 @@
 #include <vector>
 
 #include "../ex/constants.h"
+#include "../ex/packet_processor.hpp"
 
 struct BenchOptions {
   std::string data_path;      // empty: zero gulps
@@ -51,6 +53,9 @@ struct BenchOptions {
   /// pipeline, whose kernels RaftLib never finishes; see packet_gen.hpp)
   int exit_grace_s{0};
   int report_every{120};      // images per statistics line
+  /// > 0: drop this fraction of the packets (one sequence of one board and
+  /// one channel block each) at random, as the receiver weighs lost ones
+  double drop{0};
 };
 
 namespace bench_detail {
@@ -136,6 +141,23 @@ class BenchGulpGen : public raft::kernel {
       mref["nbytes"] = int(m_gulp_bytes);
       mref["time_tag"] = seq_start * SEQ_MULT_S;
       mref["data_quality"] = 1.0;
+      if (m_opts.drop > 0) {
+        const size_t words = (size_t(m_opts.nseq) + 63) / 64;
+        std::vector<uint64_t> valid(size_t(NROACH_BOARDS) * NDP_CHAN_BLOCKS * words, 0);
+        std::bernoulli_distribution keep(1.0 - m_opts.drop);
+        size_t nvalid = 0;
+        for (size_t src = 0; src < size_t(NROACH_BOARDS) * NDP_CHAN_BLOCKS; ++src) {
+          for (int t = 0; t < m_opts.nseq; ++t) {
+            if (keep(m_rng)) {
+              valid[src * words + t / 64] |= uint64_t(1) << (t % 64);
+              ++nvalid;
+            }
+          }
+        }
+        const int block_nchan = (m_opts.nchan + NDP_CHAN_BLOCKS - 1) / NDP_CHAN_BLOCKS;
+        ApplySampleWeights<CHAN_MAJOR>(dst, valid, size_t(m_opts.nseq), 0, block_nchan, mref);
+        mref["data_quality"] = double(nvalid) / double(valid.size() / words * m_opts.nseq);
+      }
       if (m_opts.realtime) {
         auto due = t_start + std::chrono::duration_cast<clock::duration>(std::chrono::duration<double>(i * gulp_s));
         if (clock::now() - due > std::chrono::duration<double>(2 * gulp_s)) {
@@ -176,6 +198,7 @@ class BenchGulpGen : public raft::kernel {
   BenchOptions m_opts;
   size_t m_gulp_bytes{0};
   std::unique_ptr<BufferMngr> m_buf_mngr;
+  std::mt19937_64 m_rng{12345};  // packet losses (BenchOptions::drop)
   const uint8_t* m_data{nullptr};
   size_t m_map_bytes{0};
   int64_t m_nfile{0};

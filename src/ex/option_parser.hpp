@@ -75,7 +75,9 @@ cxxopts::Options GetEpicOptions() {
       "bench_dump_every", "Dump every Nth image",
       cxxopts::value<int>()->default_value("0"))(
       "bench_report", "Images per statistics line",
-      cxxopts::value<int>()->default_value("120"));
+      cxxopts::value<int>()->default_value("120"))(
+      "bench_drop", "Fraction of packets (one sequence of one board and channel block) lost at random",
+      cxxopts::value<double>()->default_value("0"));
 
   options.add_options("Offline data processing")(
       "offline", "Load numpy-TBN data from disk",

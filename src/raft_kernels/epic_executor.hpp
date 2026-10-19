@@ -49,6 +49,7 @@ inline BenchOptions GetBenchOptions(const KernelTypeDefs::opt_t& p_options) {
   bo.dump_dir = p_options["bench_dump"].as<std::string>();
   bo.dump_every = p_options["bench_dump_every"].as<int>();
   bo.report_every = p_options["bench_report"].as<int>();
+  bo.drop = p_options["bench_drop"].as<double>();
   return bo;
 }
 using BenchGen_t = BenchGulpGen<KernelTypeDefs::payload_u8_t, LFBufMngr<AlignedBuffer<uint8_t>>>;
