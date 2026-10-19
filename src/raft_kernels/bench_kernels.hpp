@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <random>
@@ -160,6 +161,16 @@ class BenchGulpGen : public raft::kernel {
         ApplySampleWeights<CHAN_MAJOR>(dst, valid, size_t(m_opts.nseq), 0, block_nchan, mref, true, 0x77);
         mref["data_quality"] = double(nvalid) / double(valid.size() / words * m_opts.nseq);
       }
+      if (m_tmaj) {
+        // the receiver's layout, time-major [seq][chan][input] (tests of MOFFCuHandler::UploadStream)
+        const size_t per = LWA_SV_INP_PER_CHAN;
+        m_tmp.resize(m_gulp_bytes);
+        for (int c = 0; c < m_opts.nchan; ++c)
+          for (int t = 0; t < m_opts.nseq; ++t)
+            std::memcpy(m_tmp.data() + (size_t(t) * m_opts.nchan + c) * per, dst + (size_t(c) * m_opts.nseq + t) * per, per);
+        std::memcpy(dst, m_tmp.data(), m_gulp_bytes);
+        mref["data_order"] = std::string("t_maj");
+      }
       if (m_opts.realtime) {
         auto due = t_start + std::chrono::duration_cast<clock::duration>(std::chrono::duration<double>(i * gulp_s));
         if (clock::now() - due > std::chrono::duration<double>(2 * gulp_s)) {
@@ -201,6 +212,8 @@ class BenchGulpGen : public raft::kernel {
   size_t m_gulp_bytes{0};
   std::unique_ptr<BufferMngr> m_buf_mngr;
   std::mt19937_64 m_rng{12345};  // packet losses (BenchOptions::drop)
+  bool m_tmaj{std::getenv("EPIC_BENCH_TMAJ") != nullptr};  // deliver time-major gulps
+  std::vector<uint8_t> m_tmp;
   const uint8_t* m_data{nullptr};
   size_t m_map_bytes{0};
   int64_t m_nfile{0};

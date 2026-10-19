@@ -269,6 +269,11 @@ class CorrelatorRft : public raft::kernel {
     bool tapped = false;
     const float quality = float(MetaOr<double>(gulp_metadata, "data_quality", 1.0));
     {
+      const auto order = gulp_metadata.find("data_order");
+      m_correlator.get()->SetGulpTimeMajor(order != gulp_metadata.end() &&
+                                           std::get<std::string>(order->second) == "t_maj");
+    }
+    {
       // which samples arrived (packet_processor.hpp ApplySampleWeights), for
       // the FX imager and the calibration tap to correlate the sample weights
       // like the voltages
@@ -314,7 +319,9 @@ class CorrelatorRft : public raft::kernel {
                    nzero, static_cast<unsigned long>(m_trace_gain_v), static_cast<unsigned long>(m_trace_proj_v),
                    int(m_is_first));
     }
-    if (m_cal_tap) {
+    if (m_cal_tap && MetaOr<std::string>(gulp_metadata, "data_order", std::string("c_maj")) == "t_maj") {
+      LOG_FIRST_N(WARNING, 1) << "The CPU calibration tap reads channel-major gulps only (use --caltap_gpu)";
+    } else if (m_cal_tap) {
       tapped = m_cal_tap->Offer(pld.get_mbuf()->GetDataPtr(), std::get<uint64_t>(gulp_metadata["seq_start"]), chan0,
                                 nchan, MetaOr<int>(gulp_metadata, "nseqs", 0), quality);
     }

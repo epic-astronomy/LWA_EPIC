@@ -374,14 +374,7 @@ MOFFCuHandler::ProcessGulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, 
         if (m_tcc_tap) {
             m_tcc_tap->BeforeCopy(stream_i);  // the tap has read the previous gulp
         }
-        cuda_check_err(
-          cudaMemcpyAsync(
-            (void*)(m_f_eng_cu + f_eng_dat_offset),
-            (void*)(p_data_ptr + f_eng_dat_offset),
-            m_nbytes_f_eng_per_stream,
-            cudaMemcpyHostToDevice,
-            stream_i));
-        ZeroLostPackets(chan_offset, stream_i);
+        UploadStream(i, p_data_ptr, stream_i);
         if (m_tcc_tap) {
             m_tcc_tap->AfterCopy(i, stream_i);
         }
@@ -461,6 +454,42 @@ __global__ void ZeroLostPacketsKernel(uint8_t* __restrict__ gulp, const uint64_t
 }
 }  // namespace
 
+// A stream's channels of a time-major gulp [seq][chan_s][input] (as copied)
+// into the channel-major device gulp [chan][seq][input]: one block per
+// (sequence, channel), 32 threads of 16 bytes
+__global__ void TimeToChanMajor(const uint4* __restrict__ in, uint4* __restrict__ out, int nchan_s, int chan0, int nseq) {
+  const int t = blockIdx.x, cs = blockIdx.y, i = threadIdx.x;
+  out[((size_t(chan0 + cs) * nseq + t) * LWA_SV_INP_PER_CHAN) / 16 + i] =
+      in[((size_t(t) * nchan_s + cs) * LWA_SV_INP_PER_CHAN) / 16 + i];
+}
+
+void
+MOFFCuHandler::UploadStream(int p_i, const uint8_t* p_host, cudaStream_t p_stream)
+{
+    const int chan_offset = p_i * m_nchan_per_stream;
+    if (!m_time_major) {
+        const size_t off = size_t(p_i) * m_nbytes_f_eng_per_stream;
+        cuda_check_err(cudaMemcpyAsync((void*)(m_f_eng_cu + off), (const void*)(p_host + off),
+                                       m_nbytes_f_eng_per_stream, cudaMemcpyHostToDevice, p_stream));
+    } else {
+        // the receiver writes each packet into one sequence's row (contiguous);
+        // the stream's columns of every row are copied, then transposed
+        if (!m_tmaj_cu) {
+            cuda_check_err(cudaMalloc(&m_tmaj_cu, m_f_eng_bytes));
+        }
+        const size_t row = size_t(m_nchan_in) * LWA_SV_INP_PER_CHAN;
+        const size_t width = size_t(m_nchan_per_stream) * LWA_SV_INP_PER_CHAN;
+        uint8_t* stage = m_tmaj_cu + size_t(p_i) * m_nbytes_f_eng_per_stream;
+        cuda_check_err(cudaMemcpy2DAsync(stage, width, p_host + size_t(chan_offset) * LWA_SV_INP_PER_CHAN, row, width,
+                                         m_nseq_per_gulp, cudaMemcpyHostToDevice, p_stream));
+        TimeToChanMajor<<<dim3(m_nseq_per_gulp, m_nchan_per_stream), LWA_SV_INP_PER_CHAN / 16, 0, p_stream>>>(
+            reinterpret_cast<const uint4*>(stage), reinterpret_cast<uint4*>(m_f_eng_cu), m_nchan_per_stream,
+            chan_offset, m_nseq_per_gulp);
+        cuda_check_err(cudaGetLastError());
+    }
+    ZeroLostPackets(chan_offset, p_stream);
+}
+
 void
 MOFFCuHandler::SetGulpValidity(const uint64_t* p_mask, size_t p_words, const uint8_t* p_block)
 {
@@ -519,9 +548,8 @@ MOFFCuHandler::ProcessGulpFx(uint8_t* p_data_ptr, uint8_t* p_img_in, bool p_rfi,
         if (m_tcc_tap) {
             m_tcc_tap->BeforeCopy(stream_i);
         }
-        cuda_check_err(cudaMemcpyAsync((void*)(m_f_eng_cu + f_eng_dat_offset), (void*)(p_data_ptr + f_eng_dat_offset),
-                                       m_nbytes_f_eng_per_stream, cudaMemcpyHostToDevice, stream_i));
-        ZeroLostPackets(chan_offset, stream_i);
+        (void)f_eng_dat_offset;
+        UploadStream(i, p_data_ptr, stream_i);
         if (m_tcc_tap) {
             m_tcc_tap->AfterCopy(i, stream_i);
         }
@@ -592,6 +620,9 @@ MOFFCuHandler::~MOFFCuHandler()
 {
     if (m_mask_ring_h) {
         cudaFreeHost(m_mask_ring_h);
+    }
+    if (m_tmaj_cu) {
+        cudaFree(m_tmaj_cu);
     }
     cuda_check_err(cudaSetDevice(m_device_id));
     m_tcc_tap.reset();  // its streams may still read the gulp buffer

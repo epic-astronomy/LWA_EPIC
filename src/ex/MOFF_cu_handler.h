@@ -119,6 +119,12 @@ class MOFFCuHandler {
   int m_mask_slot{0};
   bool m_have_mask{false};
   void ZeroLostPackets(int p_chan_offset, cudaStream_t p_stream);
+  // the host gulp is time-major [seq][chan][input] (the NDP receiver's
+  // layout): staged on the device and transposed to [chan][seq][input]
+  bool m_time_major{false};
+  uint8_t* m_tmaj_cu{nullptr};
+  /// Copy stream p_i's channels of the host gulp to the channel-major device gulp and zero its lost packets
+  void UploadStream(int p_i, const uint8_t* p_host, cudaStream_t p_stream);
   /// FX imaging (--imager fx): replaces the E-field kernel when set
   std::unique_ptr<FxImager> m_fx{nullptr};
   int m_fx_size{0};
@@ -303,6 +309,8 @@ class MOFFCuHandler {
   /// Which samples of the next gulp arrived, for the FX imager and the GPU
   /// calibration tap (FxImager::SetGulpValidity)
   void SetGulpValidity(const uint64_t* p_mask, size_t p_words, const uint8_t* p_block);
+  /// Layout of the next gulps on the host: time-major (t_maj) or channel-major
+  void SetGulpTimeMajor(bool p_time_major) { m_time_major = p_time_major; }
   int SkyPixels() const { return m_fx ? m_fx->SkyPixels() : 0; }
   bool SkyDone() const { return m_fx && m_fx->SkyDone(); }
   /// FX: start time (unix) of the image whose last gulp comes next, and

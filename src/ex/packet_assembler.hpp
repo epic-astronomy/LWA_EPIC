@@ -334,8 +334,11 @@ using verbs_receiver_t =
 using adp_pkt_processor_t =
     PacketProcessor<chips_hdr_type, uint8_t, AlignedCopier, CHAN_MAJOR>;
 // NDP (ZCU102) F-Engine packets
+// Time-major: a packet (one sequence, board and channel block) lands in one
+// sequence's row, 96 slots 512 bytes apart, instead of 96 rows 512 kB apart;
+// the GPU transposes after the copy (MOFFCuHandler::UploadStream)
 using default_pkt_processor_t =
-    PacketProcessor<snap2_hdr_type, uint8_t, AlignedCopier, CHAN_MAJOR>;
+    PacketProcessor<snap2_hdr_type, uint8_t, AlignedCopier, TIME_MAJOR>;
 
 template class PacketAssembler<default_buf_mngr_t, default_receiver_t,
                                default_pkt_processor_t>;
