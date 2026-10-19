@@ -279,6 +279,9 @@ class LiveInjector:
     def summary(self):
         s = dict(self.stats)
         s["active"] = len(self.active)
+        with self.lock:  # the injections still in progress, for comparing candidates with them
+            s["in_progress"] = [dict(id=b.id, ra=b.ra, dec=b.dec, dm=b.dm, t_inf=b.t_inf,
+                                     snr_target=b.snr, width_s=b.width_s) for b in self.active]
         s["next_at"] = self.next_at
         s["recent"] = self.done[-50:]
         return s

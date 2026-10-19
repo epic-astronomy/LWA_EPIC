@@ -53,11 +53,14 @@ epic++ (ChanReducer) ──Stokes I──▶ /dev/shm/<ring> ──▶ skymon ru
      - `pulsar`: within 2 beams of a bright low-frequency pulsar, with |DM − DM_psr| ≤ max(3 DM steps, 10%). The list is built in, and a CSV (`--known-pulsars`, columns name,ra_deg,dec_deg,dm,period_s) extends it or replaces entries of the same name.
      - The beam is that at the band centre, widened towards the horizon like the clustering radius.
    - A burst found again by another tier or block is stored once.
+   - A bright burst also passes the threshold at trial DMs far from its own: off by ΔDM, the pulse is smeared over K ΔDM (f_lo⁻² − f_hi⁻²), and its S/N falls as the square root of that widening. These arms of its DM–time plane are not stored as candidates of their own. A weaker candidate within a beam of a brighter one, arriving within the brighter burst's smeared sweep, and with at most twice the S/N of such an arm (`dm_arm_of` in `candidates.py`), is listed in the brighter candidate's `dm_arms`; one stored before the brighter burst keeps its files, marked as superseded by it. Bursts of S/N 250 at DMs 30–162 each gave 4 to 12 stored candidates before this rule, and one each with it.
 6. **Products.** Each candidate is a JSON record plus an `.npz` file under `<out>/candidates/YYYYMMDD/`. The `.npz` holds:
    - the pixel's dynamic spectrum at the tier's resolution;
    - its DM–time plane;
    - 30 min of the raw accumulated spectrum;
    - the noise table.
+
+   The search window ends with the block that completed the burst, so at detection the burst sits at the right edge of its dynamic spectrum. The monitor keeps appending the pixel's samples from the following blocks of the same tier until as many follow the burst as its sweep spans (at least 32 samples, at most the transform's delay range), then writes the `.npz` again with the DM–time plane over the longer span (`Monitor._extend_tails`; at most 10 min, and it stops if the pixel sets). The data before the burst are limited to the search window: for a DM near the top of its tier, the window begins about when the burst reaches the band.
 7. **Accumulation.** The raw spectrum of every tracked pixel, averaged over 10 s, is kept for 6 h in float16. This serves the spectrograms on the website.
 8. **Conditions** (`conditions.py`). Thunderstorms, solar activity and interference episodes raise the noise or the trigger rate for minutes to hours. Every 10 s of data (on the image clock) the monitor records a sample:
    - `noise_ratio`: the median over tracked pixels and channels of the running variance over its slow baseline (exponential average, 1 h; it starts at 1);

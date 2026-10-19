@@ -218,6 +218,8 @@ class Monitor:
         self.started = time.time()
         self.metrics = collections.defaultdict(float)
         self._fit_times = collections.deque()
+        # candidates whose data are still being extended past the burst (_extend_tails)
+        self._tails: list[dict] = []
         # set by the ring reader (run_ring): the pixel table for the imager's GPU regridding
         self.table_writer = None
         self.table_version = 0
@@ -479,6 +481,7 @@ class Monitor:
         found = []
         for res in results:
             self.cond.note_block(res)
+            self._extend_tails(res)
             found += self._candidates(res)
             found += self._measure_watches(res)
         self._expire_watches(unix)
@@ -818,6 +821,8 @@ class Monitor:
             if products is not None and c.cls in ("candidate", "injection", "known"):
                 c.burst_fit = self._burst_fit(c, res.tier, products)
             stored = self.store.add(c, products, self.beam)  # repeats peak within a beam
+            if stored is c and products is not None:
+                self._start_tail(c, products, res, b)
             if stored is not None:
                 self.cond.note_candidate("solar" if (solar or sidelobe) else stored.cls)
                 found.append(stored)
@@ -875,6 +880,58 @@ class Monitor:
             return f
         except Exception as e:  # for review: it must never stop the search
             return dict(error=repr(e)[:200])
+
+    # ------------------------------------------------------------ data after the burst
+    TAIL_MAX_S = 600.0  # a tail not complete by then is written as it is
+
+    def _start_tail(self, c, products, res, hit):
+        """
+        The window of a detection ends at the block that completed the burst,
+        so the burst sits at its right edge. Keep appending the pixel's samples
+        of the following blocks of the same tier until as many samples follow
+        the burst as its sweep spans (at least 32, at most the transform's
+        delay range), then write the data again (_extend_tails), so the burst
+        is seen in the middle of its dynamic spectrum and DM-time plane.
+        """
+        tier = res.tier
+        last = res.first_sample + res.window.shape[1] - 1
+        until = hit.t_end + min(self.searcher.D, max(32, hit.row + 4 * hit.width))
+        if until <= last:
+            return
+        self._tails.append(dict(c=c, products=dict(products), level=tier.level, slot=hit.slot,
+                                hpix=int(self.grid.hpix_of[hit.slot]), last=last, until=until,
+                                started=time.time()))
+
+    def _extend_tails(self, res):
+        if not self._tails:
+            return
+        tier = res.tier
+        first, W = res.first_sample, res.window.shape[1]
+        keep = []
+        for tl in self._tails:
+            done = time.time() - tl["started"] > self.TAIL_MAX_S or \
+                int(self.grid.hpix_of[tl["slot"]]) != tl["hpix"]  # the pixel set: its slot was reused
+            if not done and tl["level"] == tier.level:
+                a, b = max(tl["last"] + 1, first), min(tl["until"], first + W - 1)
+                if b >= a:
+                    p = tl["products"]
+                    seg = np.asarray(res.window[:, a - first:b - first + 1, tl["slot"]], np.float32)
+                    p["dynspec"] = np.concatenate([p["dynspec"], seg], 1)
+                    p["dynspec_t"] = np.concatenate([p["dynspec_t"],
+                                                     self.searcher.tier_time(tier, np.arange(a, b + 1))])
+                    tl["last"] = b
+                done = tl["last"] >= tl["until"]
+            if not done:
+                keep.append(tl)
+                continue
+            p = tl["products"]
+            try:  # the DM-time plane over the longer span
+                win = np.ascontiguousarray(p["dynspec"], np.float32)
+                p["dmt"] = kernels.fdmt(win[:, :, None], self.searcher.plan, self.searcher.D)[:, :, 0]
+            except Exception as e:  # never let a review product stop the search
+                print(f"skymon: DM-time plane of {tl['c'].id} not extended: {e!r}", flush=True)
+            self.store.q.put(("npz", tl["c"], p))
+        self._tails = keep
 
     def _products(self, res, hit, cand=None):
         """Data around a candidate: its pixel's window, DM-time plane, and accumulation"""

@@ -1455,5 +1455,42 @@ class TestDuplicates(unittest.TestCase):
         finally:
             shutil.rmtree(out, ignore_errors=True)
 
+    def test_dm_arms_of_a_bright_burst_merged_others_kept(self):
+        """
+        A bright burst also passes the threshold at trial DMs far from its own
+        (the arms of its DM-time plane). Those are merged into it, whichever
+        comes first; a faint burst at another DM elsewhere, a bright one at the
+        same place long after, and a detection stronger than an arm can be are kept.
+        """
+        from skymon.candidates import CandidateStore, dm_arm_snr
+
+        out = tempfile.mkdtemp()
+        try:
+            store = CandidateStore(out)
+            beam, t0 = 3.0, 1792008000.0
+            # arms seen first, at DMs 40 and 160 (S/N about 25 and 20), then the burst, DM 80 S/N 250
+            self.assertIsNotNone(store.add(self.cand("arm40", 25.0, 200.0, 34.0, t0 - 3.0, dm=40.0), None, beam))
+            self.assertIsNotNone(store.add(self.cand("arm160", 20.0, 200.5, 34.0, t0 + 6.0, dm=160.0), None, beam))
+            self.assertIsNotNone(store.add(self.cand("burst", 250.0, 200.0, 34.0, t0, dm=80.0), None, beam))
+            # an arm seen after the burst
+            self.assertIsNone(store.add(self.cand("arm10", 15.0, 199.5, 34.0, t0 - 8.0, dm=10.0), None, beam))
+            # kept: another burst 8 deg away; one at the same place 10 min later;
+            # and one too strong for an arm (S/N 120 at 40 DM units off)
+            self.assertGreater(120.0, 2 * dm_arm_snr(250.0, 0.17, 40.0, 55.9, 58.9))
+            self.assertIsNotNone(store.add(self.cand("far", 20.0, 208.0, 34.0, t0, dm=40.0), None, beam))
+            self.assertIsNotNone(store.add(self.cand("later", 30.0, 200.0, 34.0, t0 + 600.0, dm=40.0), None, beam))
+            self.assertIsNotNone(store.add(self.cand("strong", 120.0, 200.0, 34.0, t0 - 3.0, dm=40.0), None, beam))
+            store.flush()
+            self.assertEqual(sorted(c.id for c in store.list()), ["burst", "far", "later", "strong"])
+            burst = store.get("burst")
+            self.assertEqual(sorted(a["id"] for a in burst.dm_arms), ["arm10", "arm160", "arm40"])
+            self.assertEqual(store.counts["dm_arms"], 3)
+            # the arms stored before the burst keep their files, marked as superseded by it
+            with open(os.path.join(out, "candidates", time.strftime("%Y%m%d", time.gmtime(t0 - 33.0)),
+                                   "arm40.json")) as f:
+                self.assertEqual(json.load(f)["files"]["superseded_by"], "burst")
+        finally:
+            shutil.rmtree(out, ignore_errors=True)
+
 if __name__ == "__main__":
     unittest.main()
