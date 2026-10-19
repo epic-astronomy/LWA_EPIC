@@ -34,17 +34,25 @@ def sweep_per_dm(f_lo_mhz: float, f_hi_mhz: float) -> float:
 
 def fdmt_plan(f_edges: np.ndarray, max_delay: int):
     """
-    Precompute the FDMT merge plan for channel edges (MHz, ascending, power-of-two
-    channels) and a total delay of max_delay samples across the band.
+    Precompute the FDMT merge plan for channel edges (MHz, ascending, any
+    number of channels) and a total delay of max_delay samples across the band.
 
     Returns (init_nd, levels): init_nd[c] is the number of extra delays inside
     channel c; levels is a list of merge levels, each a list of
-    (nd, d_lo[], d_up[]) for every merged pair, in band order.
+    (nd, d_lo[], d_up[]) for every subband of the level, in band order.
+    Adjacent subbands are merged in pairs. When a level has an odd number of
+    subbands, its lowest subband is passed on unmerged, as (nd, None, None):
+    192 channels form three subbands of 64, of which the upper two are merged
+    and the lowest joins them in the last merge. The lowest subband has the
+    most delays, so passing it on rather than another saves the most work.
+    The delays of a merge are split in proportion to the dispersion delays of
+    its halves, whatever their widths, so the transform is exact to the same
+    rounding as with a power of two.
     """
     f_edges = np.asarray(f_edges, dtype=np.float64)
     n_chan = len(f_edges) - 1
-    if n_chan & (n_chan - 1):
-        raise ValueError("FDMT needs a power-of-two number of channels")
+    if n_chan < 1:
+        raise ValueError("FDMT needs at least one channel")
     inv2 = f_edges ** -2
     span = inv2[0] - inv2[-1]
 
@@ -56,7 +64,11 @@ def fdmt_plan(f_edges: np.ndarray, max_delay: int):
     levels = []
     while len(bands) > 1:
         merged, level = [], []
-        for (lo0, lo1, nd_lo), (up0, up1, nd_up) in zip(bands[0::2], bands[1::2]):
+        odd = len(bands) % 2
+        if odd:
+            level.append((bands[0][2], None, None))
+            merged.append(bands[0])
+        for (lo0, lo1, nd_lo), (up0, up1, nd_up) in zip(bands[odd::2], bands[odd + 1::2]):
             nd = n_delay(lo0, up1)
             frac = (inv2[lo0] - inv2[lo1]) / (inv2[lo0] - inv2[up1])
             d = np.arange(nd + 1)
@@ -90,7 +102,10 @@ def fdmt(data: np.ndarray, plan) -> np.ndarray:
         subs.append(a)
     for level in levels:
         merged = []
-        for (nd, d_lo, d_up), a_lo, a_up in zip(level, subs[0::2], subs[1::2]):
+        odd = len(subs) % 2
+        if odd:  # the lowest subband passes on unmerged
+            merged.append(subs[0])
+        for (nd, d_lo, d_up), a_lo, a_up in zip(level[odd:], subs[odd::2], subs[odd + 1::2]):
             a = np.empty((nd + 1, n_time, n_pix), dtype=np.float32)
             for d in range(nd + 1):
                 lo, up = d_lo[d], d_up[d]

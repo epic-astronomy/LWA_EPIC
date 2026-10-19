@@ -54,11 +54,11 @@ def lib():
         L.skymon_fdmt.argtypes = [f32p, ctypes.c_int, ctypes.c_int, ctypes.c_int, i32p, f32p,
                                   ctypes.c_int, ctypes.c_int]
         L.skymon_fdmt.restype = ctypes.c_int
-        L.skymon_search.argtypes = [f32p, ctypes.c_int, ctypes.c_int, ctypes.c_int, i32p,
+        L.skymon_search.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, i32p,
                                     ctypes.c_int, ctypes.c_int, i32p, ctypes.c_int, f32p,
                                     ctypes.c_int, ctypes.c_float, f32p, i32p, f64p, i64p,
                                     ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
-                                    ctypes.c_int, i32p, ctypes.c_int]
+                                    ctypes.c_int, i32p, ctypes.c_int, ctypes.c_int]
         L.skymon_search.restype = ctypes.c_int
         L.skymon_regrid.argtypes = [f32p, ctypes.c_int, ctypes.c_int, i32p, f32p, ctypes.c_int,
                                     ctypes.c_int, f32p, ctypes.c_int]
@@ -75,17 +75,19 @@ def lib():
         L.skymon_normalise.restype = ctypes.c_int
         L.skymon_tier_push.argtypes = [f32p, ctypes.c_int, ctypes.c_int, f32p, ctypes.c_void_p,
                                        ctypes.c_int, ctypes.c_int, ctypes.c_float,
-                                       ctypes.c_void_p, ctypes.c_int]
+                                       ctypes.c_void_p, ctypes.c_int, ctypes.c_int]
         L.skymon_tier_push.restype = None
-        L.skymon_shift.argtypes = [f32p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
-                                   ctypes.c_int, ctypes.c_int, ctypes.c_int]
+        L.skymon_shift.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                   ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                   ctypes.c_int]
         L.skymon_shift.restype = None
         L.skymon_taps.argtypes = [f64p, f64p, ctypes.c_double, ctypes.c_int, ctypes.c_int, f64p,
                                   i32p, f32p, ctypes.c_int]
         L.skymon_taps.restype = None
         pp = ctypes.POINTER(ctypes.c_void_p)
         L.skymon_tier_cascade.argtypes = [f32p, ctypes.c_int, ctypes.c_int, ctypes.c_int, pp, pp,
-                                          i32p, i32p, pp, f32p, ctypes.c_float, ctypes.c_int]
+                                          i32p, i32p, pp, f32p, ctypes.c_float, ctypes.c_int,
+                                          ctypes.c_int]
         L.skymon_tier_cascade.restype = None
         _lib = L
     return _lib
@@ -96,6 +98,9 @@ def flatten_plan(plan) -> np.ndarray:
     out = list(init_nd)
     for level in levels:
         for nd, d_lo, d_up in level:
+            if d_lo is None:  # a subband passed on unmerged: -(rows)
+                out.append(-(nd + 1))
+                continue
             out.append(nd)
             out.extend(int(v) for v in d_lo)
             out.extend(int(v) for v in d_up)
@@ -123,8 +128,10 @@ def search(data, flat_plan, max_delay, row0, nb, widths, sigma, seg, clip=5.0, n
     strides: per width, evaluate the boxcar at every strides[i]-th end sample
     only (ending on the window's last sample; each must divide nb).
     noise: accumulate the clipped noise sums (else sumsq and cnt are zero).
+    data: [C, W, P] float32, or float16 (a tier history kept in half precision).
     """
     C, W, P = data.shape
+    h16 = _hist_kind(data)
     nw = len(widths)
     widths = np.asarray(widths, np.int32)
     if f0 < 0 or f0 >= W or widths.min() < 1 or widths.max() > W - f0 - nb + 1:
@@ -138,11 +145,18 @@ def search(data, flat_plan, max_delay, row0, nb, widths, sigma, seg, clip=5.0, n
     info = np.empty((P, nseg, 3), np.int32)
     sumsq = np.empty((max_delay + 1, nw), np.float64)
     cnt = np.empty((max_delay + 1, nw), np.int64)
-    lib().skymon_search(data, C, W, P, flat_plan, row0, nb, widths, nw,
+    lib().skymon_search(data.ctypes.data, C, W, P, flat_plan, row0, nb, widths, nw,
                         np.ascontiguousarray(sigma, np.float32), seg, clip, best, info, sumsq,
                         cnt, nthreads, ptile, int(detrend), int(zerodm), int(f0), strides,
-                        int(bool(noise)))
+                        int(bool(noise)), h16)
     return best, info, sumsq, cnt
+
+
+def _hist_kind(a) -> int:
+    """1 for a C-contiguous float16 array, 0 for float32 (anything else is refused)"""
+    if a.dtype not in (np.float32, np.float16) or not a.flags.c_contiguous:
+        raise ValueError(f"a window must be C-contiguous float32 or float16, not {a.dtype}")
+    return int(a.dtype == np.float16)
 
 
 def regrid(img: np.ndarray, idx: np.ndarray, w: np.ndarray, out: np.ndarray, nthreads=1):
@@ -188,16 +202,18 @@ def normalise(raw, mu, var, prev, age, live, acc, sub, warmup, a_mu, a_var, clip
 
 def tier_push(x, base, hist, pos, a_hp, dec=None, nthreads=1):
     C, W, P = hist.shape
-    assert hist.flags.c_contiguous and x.shape == (C, P)
-    lib().skymon_tier_push(x, C, P, base, _ptr(hist), W, pos, a_hp, _ptr(dec), nthreads)
+    h16 = _hist_kind(hist)
+    assert x.shape == (C, P)
+    lib().skymon_tier_push(x, C, P, base, _ptr(hist), W, pos, a_hp, _ptr(dec), nthreads, h16)
 
 
 def shift(hist, dst, src, n, nthreads=1):
-    """hist[:, dst:dst + n] = hist[:, src:src + n] for a window [C, W, P], in parallel"""
+    """hist[:, dst:dst + n] = hist[:, src:src + n] for a window [C, W, P] (float32 or
+    float16), in parallel"""
     C, W, P = hist.shape
-    assert hist.flags.c_contiguous and hist.dtype == np.float32
+    _hist_kind(hist)
     assert 0 <= dst and 0 <= src and n >= 0 and dst + n <= W and src + n <= W
-    lib().skymon_shift(hist, C, W, P, dst, src, n, nthreads)
+    lib().skymon_shift(hist.ctypes.data, C, W, P, dst, src, n, nthreads, hist.itemsize)
 
 
 def taps(xy_a, xy_b, f, grid, xy, idx, w, nthreads=1):
@@ -217,13 +233,14 @@ def tier_cascade(x, tiers, a_hp, scale, last_dec=True, nthreads=1):
     all tiers or one per tier. Each tier needs .base, .history, .pos and .acc;
     the acc of every tier but the last is complete and is set to zero, the
     last tier's acc accumulates when last_dec is set. The caller updates the
-    counters.
+    counters. The histories are all float32 or all float16.
     """
     n = len(tiers)
     C, P = x.shape
     assert x.dtype == np.float32 and x.flags.c_contiguous
+    h16 = _hist_kind(tiers[0].history)
     for t in tiers:
-        assert t.history.flags.c_contiguous and t.history.shape[0] == C and \
+        assert _hist_kind(t.history) == h16 and t.history.shape[0] == C and \
             t.history.shape[2] == P and 0 <= t.pos < t.history.shape[1]
     V = ctypes.c_void_p * n
     base = V(*[t.base.ctypes.data for t in tiers])
@@ -235,4 +252,4 @@ def tier_cascade(x, tiers, a_hp, scale, last_dec=True, nthreads=1):
     a = np.ascontiguousarray(np.broadcast_to(np.asarray(a_hp, np.float32), (n,)))
     cast = ctypes.POINTER(ctypes.c_void_p)
     lib().skymon_tier_cascade(x, C, P, n, ctypes.cast(base, cast), ctypes.cast(hist, cast), W, pos,
-                              ctypes.cast(dec, cast), a, scale, nthreads)
+                              ctypes.cast(dec, cast), a, scale, nthreads, h16)

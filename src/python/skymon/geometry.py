@@ -161,8 +161,10 @@ def _keys(f, a=-0.75):
     running mean, the high-pass and the detrend.
     """
     t = np.stack([1 + f, f, 1 - f, 2 - f], -1)
-    near = (a + 2) * t ** 3 - (a + 3) * t ** 2 + 1
-    far = a * t ** 3 - 5 * a * t ** 2 + 8 * a * t - 4 * a
+    t2 = t * t
+    t3 = t2 * t  # as kernels.taps computes it (a product, not pow)
+    near = (a + 2) * t3 - (a + 3) * t2 + 1
+    far = a * t3 - 5 * a * t2 + 8 * a * t - 4 * a
     return np.where(t <= 1, near, far)
 
 

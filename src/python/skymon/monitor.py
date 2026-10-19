@@ -35,7 +35,7 @@ from .accumulate import Accumulator
 from .conditions import Conditions
 from .candidates import (Candidate, CandidateStore, FixedDirections, cluster_hits,
                          elevation_radius, separation_deg, unit_vectors, utc)
-from .dedisp import K_DM, fdmt, fdmt_plan
+from .dedisp import K_DM
 from .geometry import Band, SkyGrid, altaz, auto_nside, beam_fwhm_deg, image_wcs
 from .inject import LiveInjector
 from .known import KnownSources
@@ -95,6 +95,10 @@ class Config:
     # of el_min is classified as RFI (data kept): rising pixels at the horizon
     wide_el_margin: float = 3.0
     noise_every: int = 1  # the search noise is measured in one block of this many
+    # the tiers' histories in half precision ("float16"): half the memory of
+    # the search state and of its memory traffic; the sums are formed in
+    # single precision (search.Searcher history_dtype)
+    history_dtype: str = "float16"
     # a normalised cell beyond clip is set to zero unless at least
     # clip_sky_neighbours of its sky neighbours deviate the same way by
     # clip_sky_fraction of it (a source seen through the beam). A burst whose
@@ -244,7 +248,8 @@ class Monitor:
                                  detrend_len=cfg.detrend_len, detrend_factor=cfg.detrend_factor,
                                  detrend=cfg.detrend, far_matched=cfg.far_matched,
                                  stride_div=cfg.boxcar_stride_div,
-                                 noise_every=cfg.noise_every)
+                                 noise_every=cfg.noise_every,
+                                 history_dtype=cfg.history_dtype)
         self.accum = Accumulator(self.band.nchan, self.grid.capacity, self.dt,
                                  cfg.accum_interval_s, cfg.accum_hours)
         self.raw = np.zeros((self.band.nchan, self.grid.capacity), np.float32)
@@ -462,9 +467,9 @@ class Monitor:
                 vals = np.full(len(slots), np.nan)
             else:
                 e = self.band.edges_mhz()
-                vals = np.array([float(np.sum(channel_contributions(window[:, :, q], e, row, t_idx,
-                                                                    width, a_hp=a_hp)))
-                                 for q in slots])
+                vals = np.array([float(np.sum(channel_contributions(
+                    np.asarray(window[:, :, q], np.float32), e, row, t_idx, width, a_hp=a_hp)))
+                    for q in slots])
             sig = float(beam_sigma_pix([self.band.f_centre], self.grid.grid_res)[0])
             out = peak_fit(xy, vals, sig)
             out["n_pixels"] = len(slots)
@@ -766,9 +771,9 @@ class Monitor:
         """Data around a candidate: its pixel's window, DM-time plane, and accumulation"""
         tier = res.tier
         s = hit.slot
-        win = np.ascontiguousarray(res.window[:, :, s])  # [C, W]
-        plan = fdmt_plan(self.band.edges_mhz(), self.searcher.D)
-        dmt = fdmt(win[:, :, None], plan)[:, :, 0]
+        win = np.ascontiguousarray(res.window[:, :, s], np.float32)  # [C, W]
+        # the compiled transform (equal to dedisp.fdmt term by term)
+        dmt = kernels.fdmt(win[:, :, None], self.searcher.plan, self.searcher.D)[:, :, 0]
         if cand is not None:
             try:
                 cand.quality = candidate_quality(win, dmt, res.sigma, self.band.edges_mhz(),
@@ -848,7 +853,7 @@ class Monitor:
             r1 = int(np.ceil((w["dm"] + w["dm_err"]) / dpd)) + 1
             t0 = max(lo_s, new_lo) - first
             t1 = min(hi_s, new_hi) - first
-            win = res.window[:, :, slots]
+            win = res.window[:, :, slots].astype(np.float32)
             m = measure(win, self.searcher.plan, self.searcher.D, tier, res.sigma, widths,
                         (r0, r1), (t0, t1), detrend=self.searcher.detrend_mode,
                         zerodm=tier.level > 0)
@@ -861,7 +866,7 @@ class Monitor:
                 w["best"] = dict(snr=snr, dm=dm, row=row, t_bottom=t_bottom, width_s=wd * tier.dt,
                                  slot=slots[k], tier=tier.level, tier_dt=tier.dt, dm_step=dpd,
                                  t_inf=t_bottom - K_DM * dm / self.band.f_lo ** 2)
-                w["_win"] = np.ascontiguousarray(res.window[:, :, slots[k]])
+                w["_win"] = np.ascontiguousarray(res.window[:, :, slots[k]], np.float32)
                 w["_raw_sigma"] = np.sqrt(np.maximum(self.searcher.var[:, slots[k]], 0)).astype(
                     np.float32)
                 w["_track"] = (row, t, wd)
@@ -905,9 +910,10 @@ class Monitor:
                             contribution_noise(win, e, row, t_idx, wd, a_hp=a), peak)
         if peak is not None:
             c.quality["peak"] = peak
-        plan = fdmt_plan(self.band.edges_mhz(), self.searcher.D)
+        dmt = kernels.fdmt(np.ascontiguousarray(win[:, :, None], np.float32), self.searcher.plan,
+                           self.searcher.D)[:, :, 0]
         products = dict(dynspec=win.astype(np.float32), dynspec_t=w.pop("_t_win"),
-                        dmt=fdmt(win[:, :, None], plan)[:, :, 0].astype(np.float32),
+                        dmt=dmt,
                         dmt_dm=np.arange(self.searcher.D + 1) * b["dm_step"],
                         freqs_mhz=self.band.centres_mhz(), sigma=w.pop("_sigma"),
                         raw_sigma=raw_sigma, tier_images=np.int32(2 ** b["tier"]),
@@ -1115,7 +1121,7 @@ class Monitor:
             if fine:
                 tier = self.searcher.tiers[0]
                 n = tier.pos
-                win = tier.history[:, :n, slot].T.copy()
+                win = tier.history[:, :n, slot].T.astype(np.float32)
                 first = tier.pushed - n
                 t = self.searcher.tier_time(tier, first + np.arange(n))
                 out.update(kind="fine", units="normalised", times=t, data=win)
