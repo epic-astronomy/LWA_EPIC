@@ -204,6 +204,7 @@ class StreamCal:
         self.freq = self.freq_all[self.solve_idx]
         nu_c = self.freq_all[nchan // 2]
         self.trackers = [C.Tracker(len(self.ant), self.freq, nu_c, q_phase=np.radians(a.q_phase_deg) ** 2,
+                                   tau_amp=getattr(a, "amp_tau", 300.0),
                                    q_delay=a.q_delay_ns ** 2) for _ in range(2)]
         self.cc = [np.array([cable_correction(f, p)[self.ant] for f in self.freq]) for p in range(2)]
         self.models = None
@@ -216,17 +217,68 @@ class StreamCal:
             self.cc_all = [np.array([cable_correction(f_, p_)[self.ant] for f_ in self.freq_all]) for p_ in range(2)]
         log.info("spectral window chan0=%d nchan=%d: solving %d channels", chan0, nchan, len(self.solve_idx))
 
-    def refresh_model(self, t: Time):
+    def build_models(self, t: Time):
         """Fixed model part (diffuse sky) and the bright sources, per pol and solved channel."""
         chans = self.freq / E.CHAN_BW
-        self.models = []
+        models = []
         for pol in ("XX", "YY"):
             snap = F.build_snapshot(t, chans, pol=pol, nside=self.a.nside, diffuse_model=getattr(self.a, "diffuse_model", "auto"))
             Md = [snap.matrix(self.ant, i, names=["diffuse"]) for i in range(len(chans))]
             srcs = [[(c.enu[0], float(c.flux[0, i]), c.name) for c in snap.comps if c.name != "diffuse"]
                     for i in range(len(chans))]
+            models.append((Md, srcs))
+        return models
+
+    def refresh_model(self, t: Time):
+        """The model at t, built for it"""
+        self.models = self.build_models(t)
+        self.model_t = t
+
+    def model_at(self, t: Time):
+        """
+        The model at t, interpolated between snapshots --model-refresh apart.
+
+        A model held for a refresh interval falls behind the sky, which turns
+        0.25 deg a minute: the gains absorb the growing error and jump back at
+        every refresh, a sawtooth of 4 deg in phase and 0.5% in the brightness
+        of sources each minute on the 75.8 MHz recordings, which the all-sky
+        monitor sees. Between snapshot A at t_a and B at t_a + refresh the
+        source directions (normalised), their apparent fluxes and the diffuse
+        model are interpolated linearly; B becomes A once t passes it.
+        Returns the build time (s), 0 if nothing was built.
+        """
+        R = float(self.a.model_refresh)
+        u = float(t.unix)
+        T0 = time.time()
+        built = False
+        sa = getattr(self, "snap_a", None)
+        if sa is None or u < sa[0] - R or u > sa[0] + 3 * R:  # (re)start
+            self.snap_a = (u, self.build_models(t))
+            self.snap_b = (u + R, self.build_models(Time(u + R, format="unix")))
+            built = True
+        elif u > self.snap_b[0]:
+            self.snap_a = self.snap_b
+            tb = self.snap_a[0] + R
+            self.snap_b = (tb, self.build_models(Time(tb, format="unix")))
+            built = True
+        (ta, A), (tb, B) = self.snap_a, self.snap_b
+        w = float(np.clip((u - ta) / (tb - ta), 0.0, 1.5))
+        self.models = []
+        for (Mda, sra), (Mdb, srb) in zip(A, B):
+            Md = [(1 - w) * a_ + w * b_ for a_, b_ in zip(Mda, Mdb)]
+            srcs = []
+            for la, lb in zip(sra, srb):
+                if [x[2] for x in la] != [x[2] for x in lb]:  # a source rose or set
+                    srcs.append(la if w < 0.5 else lb)
+                    continue
+                cur = []
+                for (ea, fa, n), (eb, fb, _) in zip(la, lb):
+                    e = (1 - w) * np.asarray(ea) + w * np.asarray(eb)
+                    cur.append((e / np.linalg.norm(e), (1 - w) * fa + w * fb, n))
+                srcs.append(cur)
             self.models.append((Md, srcs))
         self.model_t = t
+        return time.time() - T0 if built else 0.0
 
     def _prepare(self, tab, p, k):
         a = self.a
@@ -341,7 +393,7 @@ class StreamCal:
             Md, srcs = self.models[p][0][k], self.models[p][1][k]
             m_ac = float(np.real(np.diag(Md)).mean()) + sum(float(sc_) * s_[1] for sc_, s_ in zip(r_["scale"], srcs))
             skyfrac[p, good, k] = C.sky_fraction(r_["g"], prep[(p, k)][1], m_ac)[good]
-        self.update_skyfrac(skyfrac)
+        self.update_skyfrac(skyfrac, None if self.last_t is None else max(tab.t_mid_unix - self.last_t, 1.0))
         sky = dict(names=names, scale=np.nanmedian(scale, axis=(0, 1)) if K else np.zeros(0),
                    offset_deg=np.degrees(law))  # offsets at the band centre
         return g, var, chi, sky, powered
@@ -410,15 +462,23 @@ class StreamCal:
                     S[c, inp] = v / nv
         return S
 
-    def update_skyfrac(self, skyfrac):
-        """Per-stand sky fraction (median over the solved channels), smoothed over tables."""
+    def update_skyfrac(self, skyfrac, dt=None):
+        """
+        Per-stand sky fraction (median over the solved channels), smoothed over
+        tables with time constant --weights-tau: it sets the matched-filter
+        weights of every table, and a fraction re-estimated from each noisy
+        table moved the images more than the gains did (0.08% of the diffuse
+        brightness per table against 0.015% with fixed weights).
+        """
         with np.errstate(all="ignore"):
             cur = np.nanmedian(skyfrac, axis=2)  # [pol, stand]
         prev = getattr(self, "skyfrac", None)
         if prev is None or prev.shape != cur.shape:
             self.skyfrac = cur
         else:
-            self.skyfrac = np.where(np.isfinite(cur), np.where(np.isfinite(prev), 0.7 * prev + 0.3 * cur, cur), prev)
+            tau = float(getattr(self.a, "weights_tau", 600.0))
+            k = 0.3 if tau <= 0 or dt is None else min(1.0, dt / tau)
+            self.skyfrac = np.where(np.isfinite(cur), np.where(np.isfinite(prev), (1 - k) * prev + k * cur, cur), prev)
 
     def table(self):
         """Relative corrections: per channel and polarisation the median |c| is 1.
@@ -431,9 +491,20 @@ class StreamCal:
         for p in range(2):
             gt = self.trackers[p].gains(self.freq_all)  # [ant, nchan]
             amp = np.abs(gt).mean(axis=1)
-            # flag: no or abnormal power in most channels, never solved, or low gain
+            # flag: no or abnormal power in most channels, never solved, or low gain;
+            # a flagged stand returns only once clearly back (power normal in 60%
+            # of the channels, gain above 1.3 x the limit), so a marginal one does
+            # not switch with every table (each switch is a new table to publish)
             flag = self.power_flag[p] | ~np.isfinite(amp)
-            flag |= amp < self.a.flag_amp * np.median(amp[~flag])
+            lim = self.a.flag_amp * np.median(amp[~flag])
+            flag |= amp < lim
+            prev = getattr(self, "flag_state", None)
+            if prev is not None and prev.shape == (2, len(amp)):
+                back = (self.power_frac[p] >= 0.6) & np.isfinite(amp) & (amp >= 1.3 * lim)
+                flag |= prev[p] & ~back
+            if prev is None or prev.shape != (2, len(amp)):
+                self.flag_state = np.zeros((2, len(amp)), bool)
+            self.flag_state[p] = flag
             c = np.where(flag[:, None], 0, 1.0 / np.where(np.abs(gt) > 0, gt, 1))
             # noise-optimal weighting: matched filter w = conj(g) / R_aa = (1/g) x sky fraction.
             # Relative to the median stand and capped at 1, so healthy (sky-noise-dominated)
@@ -452,6 +523,64 @@ class StreamCal:
             corr[:, self.ant, p] = c.T
         return np.clip(np.abs(corr), 0, self.a.max_abs) * np.exp(1j * np.angle(corr))
 
+    def publish_reason(self, corr, t_unix):
+        """
+        Why the table should be published, or None to hold it.
+
+        Every published table changes the images: the all-sky monitor sees a
+        change of 0.1% in a pixel's brightness. While the gains converge
+        (--publish-warmup seconds after the first table) every table is
+        published; then only one that differs from the last published one by
+        more than --publish-phase-deg (rms over the stands of the phase
+        change, without the common phase of each channel), changes the
+        band-summed brightness of a compact source or of the diffuse sky by
+        more than --publish-bright-pct (|sum_a r_a|^2 and sum_a |r_a|^2, r the
+        ratio of the corrections), or the amplitudes by more than
+        --publish-amp-pct (rms), flags a stand differently, or is
+        --publish-max-s newer.
+        """
+        a = self.a
+        self.pub_change = (0.0, 0.0, 0.0)
+        if getattr(self, "first_t", None) is None:
+            self.first_t = t_unix
+        t0 = self.first_t
+        prev = getattr(self, "published", None)
+        if prev is None or prev.shape != corr.shape:
+            return "first"
+        if t_unix - t0 < getattr(a, "publish_warmup", 300.0):
+            return "converging"
+        if t_unix - self.published_t >= getattr(a, "publish_max_s", 600.0):
+            return "age"
+        on_a, on_b = np.abs(prev) > 0, np.abs(corr) > 0
+        if np.any(on_a != on_b):
+            return "flags"
+        both = on_a & on_b  # [chan, stand, pol]
+        r = np.where(both, corr / np.where(both, prev, 1), 1)
+        ph, am, br = [], [], []
+        for p in range(r.shape[2]):
+            rp, bp = r[:, :, p], both[:, :, p]
+            if not bp.any():
+                continue
+            rz = np.where(bp, rp, 0)
+            n = bp.sum(1)
+            comp = np.sum(np.abs(rz.sum(1)) ** 2) / max(np.sum(n.astype(float) ** 2), 1) - 1
+            diff = np.sum(np.abs(rz) ** 2) / max(bp.sum(), 1) - 1
+            br.append(100 * max(abs(comp), abs(diff)))
+            common = np.angle(np.sum(np.where(bp, rp / np.maximum(np.abs(rp), 1e-30), 0), axis=1, keepdims=True))
+            d = np.angle(rp * np.exp(-1j * common))[bp]
+            ph.append(np.degrees(np.sqrt(np.mean(d ** 2))))
+            m = np.abs(rp)
+            mm = np.sum(np.where(bp, m, 0), axis=1, keepdims=True) / np.maximum(bp.sum(1, keepdims=True), 1)
+            am.append(100 * np.sqrt(np.mean((m / np.maximum(mm, 1e-30) - 1)[bp] ** 2)))
+        self.pub_change = (max(ph) if ph else 0.0, max(am) if am else 0.0, max(br) if br else 0.0)
+        if self.pub_change[0] > getattr(a, "publish_phase_deg", 1.0):
+            return "phase"
+        if self.pub_change[2] > getattr(a, "publish_bright_pct", 0.1):
+            return "brightness"
+        if self.pub_change[1] > getattr(a, "publish_amp_pct", 2.0):
+            return "amplitude"
+        return None
+
     def step(self):
         tab = self.reader.poll()
         if tab is None:
@@ -459,13 +588,19 @@ class StreamCal:
         t = Time(self.a.fixed_time) if self.a.fixed_time else Time(tab.t_mid_unix, format="unix")
         if tab.chan0 != self.chan0 or tab.nchan != getattr(self, "nchan", None):
             self.reset_window(tab.chan0, tab.nchan)
-        if self.models is None or abs((t - self.model_t).sec) > self.a.model_refresh:
-            T0 = time.time()
-            self.refresh_model(t)
-            log.info("model refreshed for %s in %.1f s", t.isot, time.time() - T0)
+        if self.a.fixed_time or getattr(self.a, "model_interp", "on") == "off":
+            if self.models is None or abs((t - self.model_t).sec) > self.a.model_refresh:
+                T0 = time.time()
+                self.refresh_model(t)
+                log.info("model refreshed for %s in %.1f s", t.isot, time.time() - T0)
+        else:
+            dtb = self.model_at(t)
+            if dtb > 0:
+                log.info("model snapshot to %s built in %.1f s", Time(self.snap_b[0], format="unix").isot, dtb)
         T0 = time.time()
         g, var, chi, sky, powered = self.solve(tab)
-        self.power_flag = powered.mean(axis=2) < 0.5  # [pol, stand]
+        self.power_frac = powered.mean(axis=2)  # [pol, stand]: channels with normal power
+        self.power_flag = self.power_frac < 0.5
         # tracker time step from the data timestamps (not the model time, which --fixed-time freezes)
         dt = self.a.interval if self.last_t is None else max(tab.t_mid_unix - self.last_t, 1.0)
         self.last_t = tab.t_mid_unix
@@ -479,17 +614,26 @@ class StreamCal:
                "sky " + ", ".join(f"{nm} x{sc:.2f} ({o[0]:+.2f},{o[1]:+.2f})deg" for nm, sc, o in
                                   zip(sky["names"], sky["scale"], sky["offset_deg"])) + "; "
                f"solve {time.time() - T0:.1f} s")
-        if not self.a.dry_run:
-            v = self.writer.publish(self.table(), t_solved_unix=tab.t_mid_unix)
-            msg += f"; published gains v{v}"
+        corr = self.table()
+        why = self.publish_reason(corr, tab.t_mid_unix)
+        if not self.a.dry_run and why is None:
+            msg += (f"; held ({self.pub_change[0]:.2f} deg, amplitude {self.pub_change[1]:.2f}%, brightness "
+                    f"{self.pub_change[2]:.3f}% since v{self.writer.version})")
+        elif not self.a.dry_run:
+            v = self.writer.publish(corr, t_solved_unix=tab.t_mid_unix)
+            self.published = corr
+            self.published_t = tab.t_mid_unix
+            msg += f"; published gains v{v} ({why})"
             if self.proj_writer is not None:
                 Ut, Vt = self.projector(tab)
                 vp = self.proj_writer.publish(Ut, Vt, t_solved_unix=tab.t_mid_unix, sun=self.sun_vector(Ut, Vt))
                 msg += f", projector v{vp}"
         log.info(msg)
         self.history.append(dict(t=tab.t_mid_unix, chi=chi, sky=sky, x=[tr.x.copy() for tr in self.trackers],
-                                 flux_scale=getattr(self, "flux_scale", None)))
-        if self.a.save and len(self.history) % 30 == 0:
+                                 flux_scale=getattr(self, "flux_scale", None), nsamp=tab.nsamp,
+                                 published=why is not None,
+                                 corr=corr.astype(np.complex64) if why is not None else None))
+        if self.a.save and len(self.history) % 10 == 0:
             np.save(self.a.save, self.history, allow_pickle=True)
         return True
 
@@ -518,6 +662,22 @@ def build_parser():
     ap.add_argument("--q-delay-ns", type=float, default=0.05, help="delay random walk, ns/sqrt(s)")
     ap.add_argument("--interval", type=float, default=10.0)
     ap.add_argument("--save", default="", help="np.save the solution history here")
+    ap.add_argument("--model-interp", default="on", choices=("on", "off"),
+                    help="interpolate the sky model between snapshots --model-refresh apart (off: hold each)")
+    ap.add_argument("--amp-tau", type=float, default=300.0,
+                    help="time constant (s) of the tracker's gain amplitudes")
+    ap.add_argument("--weights-tau", type=float, default=600.0,
+                    help="time constant (s) of the stands' sky fractions behind the matched-filter weights")
+    ap.add_argument("--publish-warmup", type=float, default=300.0,
+                    help="seconds after the first table during which every table is published")
+    ap.add_argument("--publish-phase-deg", type=float, default=1.0,
+                    help="then publish when the rms phase change since the last published table exceeds this")
+    ap.add_argument("--publish-bright-pct", type=float, default=0.1,
+                    help="or the band-summed brightness of a compact source or the diffuse sky changes by more "
+                         "than this (percent)")
+    ap.add_argument("--publish-amp-pct", type=float, default=2.0,
+                    help="or the rms relative amplitude change exceeds this (percent)")
+    ap.add_argument("--publish-max-s", type=float, default=600.0, help="or the last published table is this old")
     ap.add_argument("--passes", type=int, default=12, help="sky-then-StEFCal passes per solve (cold start)")
     ap.add_argument("--passes-warm", type=int, default=4, help="passes once the tracker predicts the gains")
     ap.add_argument("--workers", type=int, default=8, help="processes solving channels in parallel")

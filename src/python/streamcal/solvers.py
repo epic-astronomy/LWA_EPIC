@@ -244,8 +244,11 @@ class Tracker:
             k = min(1.0, dt / self.tau_bp)
             self.bp[a, m] += k * wrap(resid - self.bp[a, m])
         la = np.log(np.maximum(np.abs(np.nan_to_num(g)), 1e-6))
-        k = min(1.0, dt / self.tau_amp)
-        self.logamp = np.where(good, self.logamp + k * (la - self.logamp), self.logamp)
+        # the mean of the solutions so far until they span tau_amp, then an
+        # exponential average: fast from a cold start, smooth once converged
+        self.n_amp = np.where(good, self.n_amp + 1, self.n_amp)
+        k = np.maximum(dt / self.tau_amp, 1.0 / np.maximum(self.n_amp, 1))
+        self.logamp = np.where(good, self.logamp + np.minimum(k, 1.0) * (la - self.logamp), self.logamp)
 
     def _initialise(self, g, good):
         Hm = self.H(self.nu)
@@ -258,6 +261,7 @@ class Tracker:
             self.x[a, 0] = wrap(self.x[a, 0])
             self.P[a] = np.diag([np.radians(10) ** 2, 1.0])
         self.logamp = np.where(good, np.log(np.maximum(np.abs(np.nan_to_num(g)), 1e-6)), 0.0)
+        self.n_amp = np.zeros(good.shape, np.int64)  # solutions averaged per antenna and channel
         self.initialised = True
 
     def gains(self, nu=None):

@@ -63,11 +63,13 @@ def main(d):
     eps[:, dead, :] *= 0.01
     seq_s = 8192 / 196e6
     nsamp = int(0.05 * 10 / seq_s)  # 5% tap over 10 s
-    truth = [F.build_snapshot(t0, freq / G.CHAN_BW, pol=p, nside=128, extra_sources=F.random_extra_sources())
-             for p in ("XX", "YY")]
+    extra = F.random_extra_sources()
     errs = []
     for k in range(6):
         t = t0 + k * 10 / 86400
+        # the sky of each table at its time: it turns 0.04 deg in 10 s
+        truth = [F.build_snapshot(t, freq / G.CHAN_BW, pol=p, nside=128, extra_sources=extra)
+                 for p in ("XX", "YY")]
         R = np.zeros((nchan, 2, 256, 256), np.complex64)
         for p in range(2):
             for j, ci in enumerate(solve_idx):
