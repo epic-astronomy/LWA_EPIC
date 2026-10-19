@@ -32,7 +32,18 @@ Slot i at data_offset + i * slot_bytes, 256-byte header then data
  48  f64      img_len_ms
  56  u64      gain_version: version of the calibration gain table the image
               was made with (epic++ --gain_table; 0: nominal phases, no table)
+64  u32      layout: 0 the image below; 1 the monitor's pixel spectra
+              data[nchan][npix], regridded on the GPU by the imager (FX
+              imaging) with the pixel table this monitor writes
+              (SkyTableWriter)
+ 68  u32      npix (layout 1)
+ 72  u64      table_version (layout 1): the pixel table the spectra follow
 256  f32      data[nchan][grid][grid], FITS order ([y][x], as the saved images)
+
+Pixel table /dev/shm/<name>_table, written by the monitor and read by the
+imager (src/ex/sky_table.hpp, which documents the layout): the image position
+of every pixel slot at two times, between which both interpolate for each
+image (geometry.SkyGrid.taps).
 """
 from __future__ import annotations
 
@@ -73,6 +84,9 @@ class ImageMeta:
     grid_res: float
     img_len_ms: float
     gain_version: int = 0
+    layout: int = 0  # 1: data are pixel spectra [nchan][npix] (FX imaging)
+    npix: int = 0
+    table_version: int = 0
 
     @property
     def unix(self) -> float:
@@ -195,16 +209,80 @@ class RingReader:
             return None
         (seq_start, nseqs, chan0, nchan, nbin, grid, mode, grid_res,
          img_len_ms, gain_version) = struct.unpack_from("<QIIIIIIddQ", self.mm, off + 8)
-        data = np.frombuffer(self.mm, np.float32, nchan * grid * grid,
-                             off + SLOT_HEADER).copy().reshape(nchan, grid, grid)
+        layout, npix, table_version = struct.unpack_from("<IIQ", self.mm, off + 64)
+        if layout == 1:
+            data = np.frombuffer(self.mm, np.float32, nchan * npix,
+                                 off + SLOT_HEADER).copy().reshape(nchan, npix)
+        else:
+            layout, npix, table_version = 0, 0, 0
+            data = np.frombuffer(self.mm, np.float32, nchan * grid * grid,
+                                 off + SLOT_HEADER).copy().reshape(nchan, grid, grid)
         lock2, = struct.unpack_from("<Q", self.mm, off)
         self.next += 1
         if lock2 != lock1:  # overwritten while copying
             self.dropped += 1
             return None
         meta = ImageMeta(n, seq_start, nseqs, chan0, nchan, nbin, grid,
-                         PHASE_MODES.get(mode, "plane"), grid_res, img_len_ms, gain_version)
+                         PHASE_MODES.get(mode, "plane"), grid_res, img_len_ms, gain_version,
+                         layout, npix, table_version)
         return meta, data
+
+    def close(self):
+        if self.mm is not None:
+            self.mm.close()
+            self.mm = None
+
+
+class SkyTableWriter:
+    """
+    The monitor's pixel table for the imager (src/ex/sky_table.hpp): with FX
+    imaging the imager regrids every image to these pixel slots on the GPU
+    and publishes their spectra (ring layout 1) instead of the image.
+    """
+
+    MAGIC = b"EPICSKYT"
+    HEADER = 128
+
+    def __init__(self, name: str):
+        self.path = shm_path(name)
+        self.mm = None
+        self.capacity = 0
+        self.version = 0
+
+    def _map(self, capacity: int):
+        import mmap
+
+        size = self.HEADER + 2 * capacity * 2 * 8
+        fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o644)
+        try:
+            os.ftruncate(fd, size)
+            self.mm = mmap.mmap(fd, size)
+        finally:
+            os.close(fd)
+        self.mm[0:8] = self.MAGIC
+        struct.pack_into("<IIQ", self.mm, 8, 1, capacity, 0)
+        self.capacity = capacity
+
+    def write(self, grid: int, grid_res: float, t_a: float, t_b: float, xy_a, xy_b):
+        """Positions xy_a at t_a and xy_b at t_b ([P, 2], 1-based FITS pixels, NaN for a free slot)"""
+        xy_a = np.ascontiguousarray(xy_a, np.float64)
+        xy_b = np.ascontiguousarray(xy_b, np.float64)
+        P = xy_a.shape[0]
+        if self.mm is None or P != self.capacity:
+            if self.mm is not None:
+                self.mm.close()
+            self._map(P)
+        seq, = struct.unpack_from("<Q", self.mm, 16)
+        seq += 1 if seq % 2 == 0 else 2  # odd: being written
+        struct.pack_into("<Q", self.mm, 16, seq)
+        self.version += 1
+        struct.pack_into("<QII", self.mm, 24, self.version, int(grid), 0)
+        struct.pack_into("<ddd", self.mm, 40, float(grid_res), float(t_a), float(t_b))
+        n = P * 2 * 8
+        self.mm[self.HEADER:self.HEADER + n] = xy_a.tobytes()
+        self.mm[self.HEADER + n:self.HEADER + 2 * n] = xy_b.tobytes()
+        struct.pack_into("<Q", self.mm, 16, seq + 1)  # even: complete
+        return self.version
 
     def close(self):
         if self.mm is not None:

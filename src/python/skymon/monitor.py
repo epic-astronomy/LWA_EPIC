@@ -138,6 +138,8 @@ class Config:
     # a candidate at an azimuth and elevation where at least this many earlier
     # detections (in the last fixed_dir_hours) were made while the sky was
     # elsewhere is tied to the ground or the instrument: RFI, data kept
+    # write the pixel table with which an FX imager regrids on the GPU (shm.SkyTableWriter)
+    pixel_table: bool = True
     fixed_dir_repeats: int = 2
     fixed_dir_hours: float = 6.0
     # a candidate whose signal is in fewer effective channels than this, or
@@ -203,6 +205,9 @@ class Monitor:
         self.last_index = -1
         self.started = time.time()
         self.metrics = collections.defaultdict(float)
+        # set by the ring reader (run_ring): the pixel table for the imager's GPU regridding
+        self.table_writer = None
+        self.table_version = 0
         self.fixed_dirs = FixedDirections(cfg.fixed_dir_hours)
         self.lag_hist = collections.deque(maxlen=600)
         self.last_image_unix = None
@@ -285,7 +290,32 @@ class Monitor:
         self.wcs = self.grid.wcs
         self.wcs_unix = unix
         self.grid_next = unix + self.cfg.regrid_interval_s
+        if self.table_writer is not None:
+            self._write_table(unix)
         self.metrics["tracked"] = int(self.grid.active().sum())
+
+    def _write_table(self, unix):
+        """
+        The pixel table for the imager's GPU regridding (shm.SkyTableWriter).
+        The imager works ahead of the monitor by the monitor's lag, so the
+        table spans twice the update interval: positions at unix and at unix +
+        2 interval, between which it interpolates (the sky's motion is linear
+        to a small fraction of a pixel over that time).
+        """
+        from .geometry import image_wcs
+
+        g = self.grid
+        t_b = unix + 2 * self.cfg.regrid_interval_s
+        xy_b = np.full_like(g.xy_a, np.nan)
+        act = np.nonzero(np.isfinite(g.xy_a[:, 0]))[0]
+        if len(act):
+            wcs_b = image_wcs(t_b, g.grid_size, g.grid_res, g.phase_mode)
+            x, y = wcs_b.all_world2pix(g.ra[g.hpix_of[act]], g.dec[g.hpix_of[act]], 1, ra_dec_order=True)
+            xy_b[act, 0], xy_b[act, 1] = x, y
+        try:
+            self.table_version = self.table_writer.write(g.grid_size, g.grid_res, unix, t_b, g.xy_a, xy_b)
+        except OSError as e:
+            print(f"skymon: pixel table not written: {e}", flush=True)
 
     # ------------------------------------------------------------ per image
     def process(self, meta, image):
@@ -331,6 +361,11 @@ class Monitor:
         else:
             self.grid.taps(unix, self.cfg.nthreads)
         self.last_index = n
+        if item is not None and item[0].layout == 1 and item[1].shape != self.raw.shape:
+            # spectra for another pixel set (the table changed size): an image lost
+            self.metrics["missing_images"] += 1
+            self.metrics["pixel_mismatch"] += 1
+            item = None
         if item is None:
             results = self.searcher.push(None)
         else:
@@ -339,10 +374,20 @@ class Monitor:
             self.injector.schedule(unix, self.grid, self.searcher,
                                    self.cfg.warmup_images + 4 * self.cfg.block0)
             self.injector.prepare(unix, self.grid, self.searcher)
-            if self.injector.active:
-                self.injector.apply(image, unix, self.dt, self.band.edges_mhz(),
-                                    self.band.centres_mhz(), self.wcs, self.cfg_pix_deg(meta))
-            kernels.regrid(image, self.grid.idx, self.grid.w, self.raw, self.cfg.nthreads)
+            if meta.layout == 1:
+                # regridded on the GPU by the imager (FX imaging); injections
+                # go into the spectra
+                np.copyto(self.raw, image)
+                self.metrics["gpu_regridded"] += 1
+                if self.injector.active:
+                    self.injector.apply_pixels(self.raw, self.grid.xy, unix, self.dt,
+                                               self.band.edges_mhz(), self.band.centres_mhz(),
+                                               self.wcs, self.cfg_pix_deg(meta))
+            else:
+                if self.injector.active:
+                    self.injector.apply(image, unix, self.dt, self.band.edges_mhz(),
+                                        self.band.centres_mhz(), self.wcs, self.cfg_pix_deg(meta))
+                kernels.regrid(image, self.grid.idx, self.grid.w, self.raw, self.cfg.nthreads)
             self.accum.begin(unix)
             results = self.searcher.push(self.raw, self.accum.sum)
             self.accum.end_image(unix + self.dt)

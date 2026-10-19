@@ -89,6 +89,8 @@ def add_monitor_args(p):
     p.add_argument("--no-rfi-records", action="store_true", help="do not store RFI candidates")
     p.add_argument("--rfi-records-max", type=int, default=20,
                    help="records kept per search block for certain RFI, brightest first; the rest are counted")
+    p.add_argument("--no-pixel-table", action="store_true",
+                   help="do not write the pixel table with which an FX imager regrids its images on the GPU")
     p.add_argument("--fixed-dir-repeats", type=int, default=2,
                    help="earlier detections at a candidate's azimuth and elevation, with the sky elsewhere, "
                         "that make it RFI (data kept)")
@@ -120,7 +122,7 @@ def make_config(a) -> Config:
                   inject_interval_s=a.inject_every * 60, inject_snr=tuple(a.inject_snr),
                   inject_dm=tuple(a.inject_dm), store_rfi=not a.no_rfi_records, rfi_records_max=a.rfi_records_max,
                   sidelobe_max=a.sidelobe_max,
-                  fixed_dir_repeats=a.fixed_dir_repeats, fixed_dir_hours=a.fixed_dir_hours, seed=a.seed,
+                  fixed_dir_repeats=a.fixed_dir_repeats, fixed_dir_hours=a.fixed_dir_hours, pixel_table=not a.no_pixel_table, seed=a.seed,
                   narrowband_min_channels=a.narrowband_min_channels,
                   known_pulsars_csv=a.known_pulsars,
                   clip=a.clip, chan_flag_sigma=a.chan_flag_sigma,
@@ -140,6 +142,11 @@ def run_ring(monitor: Monitor, ring: str, stop: threading.Event, max_queue: int 
     from .shm import RingReader
 
     rd = RingReader(ring)
+    if getattr(monitor.cfg, "pixel_table", True):
+        from .shm import SkyTableWriter
+
+        # an FX imager regrids its images to the monitor's pixels on the GPU
+        monitor.table_writer = SkyTableWriter((ring if ring.startswith("/") else ring) + "_table")
     q: queue.Queue = queue.Queue()
     dropped = [0]
     done = threading.Event()  # stops the reader before the ring is closed

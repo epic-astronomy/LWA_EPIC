@@ -200,6 +200,36 @@ class LiveInjector:
             # and the amplitude was set in units of the per-image noise
             stamp(image, b, float(x), float(y), b._amp, frac, centres, pix_deg)
 
+    def apply_pixels(self, raw: np.ndarray, xy: np.ndarray, t0: float, dt: float, edges, centres,
+                     wcs, pix_deg):
+        """
+        Add the active injections to the pixel spectra raw [C][P] (the imager
+        regridded the image on the GPU): the beam stamp of apply, evaluated at
+        each slot's image position xy [P, 2] (1-based FITS pixels) for this
+        image, which is what regridding the stamped image gives for a beam
+        much wider than a pixel.
+        """
+        with self.lock:
+            active = list(self.active)
+        for b in active:
+            span = b.meta["span"]
+            if t0 + dt < span[0] or t0 > span[1]:
+                continue
+            frac = channel_fractions(b, edges, t0, dt)
+            act = np.nonzero(frac > 0)[0]
+            if len(act) == 0:
+                continue
+            x, y = wcs.all_world2pix(b.ra, b.dec, 1, ra_dec_order=True)
+            sig = beam_fwhm_deg(float(np.max(centres[act]))) / pix_deg / 2.3548
+            r = 3.0 * beam_fwhm_deg(float(np.min(centres[act]))) / pix_deg
+            d2 = (xy[:, 0] - float(x)) ** 2 + (xy[:, 1] - float(y)) ** 2
+            near = np.nonzero(np.isfinite(d2) & (d2 <= r * r))[0]
+            if len(near) == 0:
+                continue
+            for c in act:
+                s = sig * centres.max() / centres[c]  # beam scales with wavelength
+                raw[c, near] += (b._amp[c] * frac[c]) * np.exp(-d2[near] / (2 * s * s))
+
     def match(self, cand, radius_deg: float):
         """Return the active injection a candidate corresponds to, if any"""
         with self.lock:

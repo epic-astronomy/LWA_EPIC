@@ -232,6 +232,63 @@ class TestFixedDirections(unittest.TestCase):
         self.assertEqual(len(fd.t), 1)
 
 
+class TestPixelRing(unittest.TestCase):
+    """The pixel table the monitor writes and the pixel spectra the FX imager publishes (sky_table.hpp)"""
+
+    def test_table_layout(self):
+        import mmap
+        import struct
+
+        from skymon.shm import SkyTableWriter
+
+        name = f"skymon_test_table_{os.getpid()}"
+        w = SkyTableWriter(name)
+        try:
+            xy_a = np.array([[10.5, 20.25], [np.nan, np.nan], [100.0, 3.5]])
+            xy_b = xy_a + 1.0
+            for v in (1, 2):
+                self.assertEqual(w.write(256, 0.528, 1000.0, 1020.0, xy_a, xy_b), v)
+            with open(w.path, "rb") as f:
+                m = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
+                self.assertEqual(m[0:8], b"EPICSKYT")
+                ver, cap, seq, version, grid = struct.unpack_from("<IIQQI", m, 8)
+                self.assertEqual((ver, cap, version, grid), (1, 3, 2, 256))
+                self.assertEqual(seq % 2, 0)  # complete
+                self.assertEqual(struct.unpack_from("<ddd", m, 40), (0.528, 1000.0, 1020.0))
+                a = np.frombuffer(m, np.float64, 6, 128).reshape(3, 2)
+                b = np.frombuffer(m, np.float64, 6, 128 + 48).reshape(3, 2)
+                np.testing.assert_array_equal(a, xy_a)
+                np.testing.assert_array_equal(b, xy_b)
+                del a, b
+                m.close()
+        finally:
+            w.close()
+            os.unlink(w.path)
+
+    def test_reader_takes_pixel_slots(self):
+        import struct
+
+        from skymon.shm import HEADER_BYTES, SLOT_HEADER, RingReader, RingWriter
+
+        name = f"skymon_test_ring_{os.getpid()}"
+        wr = RingWriter(name, nslots=4, max_nchan=4, max_grid=8)
+        try:
+            img = np.arange(4 * 8 * 8, dtype=np.float32).reshape(4, 8, 8)
+            wr.write(img, seq_start=1000, nseqs=1000, chan0=3072, nbin=1, grid_res=1.0, img_len_ms=41.8)
+            # turn the slot into a pixel slot as the imager writes one: 4 channels x 5 pixels
+            off = HEADER_BYTES  # slot 0
+            pix = np.arange(20, dtype=np.float32).reshape(4, 5) + 0.5
+            struct.pack_into("<IIQ", wr.mm, off + 64, 1, 5, 7)
+            wr.mm[off + SLOT_HEADER:off + SLOT_HEADER + pix.nbytes] = pix.tobytes()
+            rd = RingReader(name)
+            meta, data = rd.read()
+            self.assertEqual((meta.layout, meta.npix, meta.table_version), (1, 5, 7))
+            np.testing.assert_array_equal(data, pix)
+            rd.close()
+        finally:
+            wr.close(unlink=True)
+
+
 class TestSharedMemory(unittest.TestCase):
     def test_roundtrip_overrun_and_restart(self):
         name = f"skymon_test_{os.getpid()}"
