@@ -352,6 +352,20 @@ class Searcher:
             t.base[:, slots] = 0
             t.acc[:, slots] = 0
 
+    def rebase(self, slots, mean, first):
+        """
+        New baselines after a step of the data (a change of the calibration):
+        the running mean of each channel of the given slots becomes mean
+        [C, len(slots)], the mean of the images after the step, and the
+        previous raw value (for the successive differences) first [C,
+        len(slots)], the first of them. Slots still warming up are left alone.
+        """
+        slots = np.asarray(slots, np.int64)
+        warm = self.age[slots] > self.warmup
+        s_ = slots[warm]
+        self.mu[:, s_] = mean[:, warm]
+        self.prev[:, s_] = first[:, warm]
+
     # ------------------------------------------------------------- per image
     def tier_time(self, tier: Tier, sample: float) -> float:
         """Unix start time of tier sample index (fractional allowed)"""

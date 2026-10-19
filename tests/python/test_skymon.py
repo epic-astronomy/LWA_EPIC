@@ -905,6 +905,56 @@ def _sim_and_monitor(out, duration, frb_per_hour, inject_every_s, snr=(25, 40), 
     return sim, mon
 
 
+class TestCalibrationSteps(unittest.TestCase):
+    def test_gain_changes_are_rebased_not_detected(self):
+        """
+        A new gain table steps every pixel's brightness by a different
+        fraction (here 2%, smooth over 8 image pixels, every 20 s). Held and
+        rebased, the steps leave the candidates at those of a sky without
+        them; searched with the old baselines they come out as broadband
+        pulses.
+        """
+        from skymon.monitor import Config, Monitor
+        from skymon.simulate import SkySimulator, tier_dt_function
+
+        def run(amp, rebase):
+            out = tempfile.mkdtemp()
+            try:
+                sim = SkySimulator(chan0=2336, nchan=64, start_unix=T0, frb_per_hour=0, rfi_per_hour=0,
+                                   seed=3, el_min=25.0,
+                                   tier_dt=tier_dt_function(Band(2336, 64).edges_mhz(), 0.083592, 64,
+                                                            300.0, 64))
+                mon = Monitor(Config(out_dir=out, nside=32, dm_max=300.0, block0=64, nthreads=4,
+                                     warmup_images=32, inject_interval_s=0, seed=3, accum_hours=0.5,
+                                     rebase_images=rebase))
+                rng = np.random.default_rng(1)
+                G = sim.grid
+                field = np.ones((G, G), np.float32)
+                v = 0
+                for i in range(int(150 / sim.dt)):
+                    meta, img = sim.next_image()
+                    t = i * sim.dt
+                    if t >= 40 and int(t / 20) != int((t - sim.dt) / 20):
+                        v += 1
+                        f = np.kron(rng.standard_normal((G // 8, G // 8)), np.ones((8, 8)))
+                        field = (1 + amp * f).astype(np.float32)
+                    meta.gain_version = v
+                    img *= field[None]
+                    mon.process(meta, img)
+                mon.store.flush()
+                c = mon.store.counts
+                return c["stored"] + int(mon.metrics.get("rfi_unrecorded", 0)), int(mon.metrics.get("rebased", 0))
+            finally:
+                shutil.rmtree(out, ignore_errors=True)
+
+        quiet, _ = run(0.0, 24)
+        rebased, n = run(0.02, 24)
+        stepped, _ = run(0.02, 0)
+        self.assertEqual(n, 6)  # changes at 40, 60, .., 140 s
+        self.assertLessEqual(rebased, quiet + 2)
+        self.assertGreater(stepped, quiet + 20)
+
+
 class TestEndToEnd(unittest.TestCase):
     def test_simulated_frbs_are_found_and_stored(self):
         from skymon.evaluate import report

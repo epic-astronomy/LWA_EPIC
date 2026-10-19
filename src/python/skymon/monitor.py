@@ -73,6 +73,9 @@ class Config:
     nthreads: int = 8
     regrid_interval_s: float = 10.0
     max_gap_s: float = 60.0
+    # images held after a change of the calibration gain table: their mean
+    # becomes each pixel's baseline before they are searched (0: off)
+    rebase_images: int = 24
     warmup_images: int = 64
     norm_tau_s: float = 120.0
     var_tau_s: float = 300.0
@@ -220,6 +223,8 @@ class Monitor:
     # ------------------------------------------------------------ setup
     def _setup(self, meta):
         cfg = self.cfg
+        self._held = None  # images held after a gain change (_push_or_hold)
+        self._gv_last = None
         self.band = Band(meta.chan0, meta.nchan, meta.nbin)
         self.dt = meta.img_len_ms / 1e3
         self.nseqs = meta.nseqs
@@ -352,12 +357,72 @@ class Monitor:
             out = []
             for _ in range(gap):
                 self.metrics["missing_images"] += 1
-                out += self._push(None, self.last_index + 1)
-            out += self._push((meta, image), n)
+                out += self._push_or_hold(None, self.last_index + 1)
+            out += self._push_or_hold((meta, image), n)
             self.last_image_unix = meta.unix
             return out
 
+    def _push_or_hold(self, item, n):
+        """
+        Search the image, or hold it after a change of the calibration.
+
+        Every gain table changes the images a little, and differently on each
+        pixel (sources and sidelobes move against the sky median, which the
+        normalisation removes): a step that each pixel's running mean, with
+        its time constant of minutes, would take for a broadband pulse.
+        After a change the next rebase_images images are held; their mean
+        becomes the baseline of every pixel and channel (Searcher.rebase),
+        and then they are searched in order. Nothing is lost; the search runs
+        that many images late at each change.
+        """
+        K = self.cfg.rebase_images
+        if K > 0 and item is not None:
+            v = int(item[0].gain_version)
+            last = getattr(self, "_gv_last", None)
+            self._gv_last = v
+            if last is not None and v != last:
+                out = self._release() if getattr(self, "_held", None) is not None else []
+                self._held = []
+                self._held_sum = np.zeros_like(self.raw, dtype=np.float64)
+                self._held_n = np.zeros(self.raw.shape[1], np.int32)
+                self._held_table = getattr(self, "table_version", None)
+                self.metrics["rebased"] = self.metrics.get("rebased", 0) + 1
+                return out + self._hold(item, n)
+        if getattr(self, "_held", None) is not None:
+            return self._hold(item, n)
+        return self._push(item, n)
+
+    def _hold(self, item, n):
+        prep = self._prepare(item, n)
+        raw = None
+        if prep["item"] is not None:
+            raw = self.raw.copy()
+            self._held_sum += raw
+            self._held_n += 1
+        self._held.append((prep, raw))
+        return self._release() if len(self._held) >= self.cfg.rebase_images else []
+
+    def _release(self):
+        """New baselines from the held images, then search them"""
+        held, self._held = self._held, None
+        if getattr(self, "table_version", None) == self._held_table and self._held_n.max() > 0:
+            ok = self._held_n > 0
+            mean = (self._held_sum[:, ok] / self._held_n[ok]).astype(np.float32)
+            first = next(r for _, r in held if r is not None)
+            self.searcher.rebase(np.nonzero(ok)[0], mean, first[:, ok])
+        self._held_sum = None
+        out = []
+        for prep, raw in held:
+            if raw is not None:
+                np.copyto(self.raw, raw)
+            out += self._search(prep)
+        return out
+
     def _push(self, item, n):
+        return self._search(self._prepare(item, n))
+
+    def _prepare(self, item, n):
+        """Everything of one image before the search: the pixels' values in self.raw"""
         t0 = time.perf_counter()
         unix = self.unix0 + n * self.dt
         if self.cond.due(unix):
@@ -373,9 +438,7 @@ class Monitor:
             self.metrics["missing_images"] += 1
             self.metrics["pixel_mismatch"] += 1
             item = None
-        if item is None:
-            results = self.searcher.push(None)
-        else:
+        if item is not None:
             meta, image = item
             self._note_gains(meta.gain_version, unix)
             self.injector.schedule(unix, self.grid, self.searcher,
@@ -395,6 +458,15 @@ class Monitor:
                     self.injector.apply(image, unix, self.dt, self.band.edges_mhz(),
                                         self.band.centres_mhz(), self.wcs, self.cfg_pix_deg(meta))
                 kernels.regrid(image, self.grid.idx, self.grid.w, self.raw, self.cfg.nthreads)
+        return dict(item=item, unix=unix, dt_s=time.perf_counter() - t0)
+
+    def _search(self, prep):
+        """The search of one prepared image (_prepare; self.raw holds its pixels)"""
+        t0 = time.perf_counter()
+        unix = prep["unix"]
+        if prep["item"] is None:
+            results = self.searcher.push(None)
+        else:
             self.accum.begin(unix)
             results = self.searcher.push(self.raw, self.accum.sum)
             self.accum.end_image(unix + self.dt)
@@ -407,7 +479,7 @@ class Monitor:
         self.searcher.finish_block()
         self.injector.expire(unix)
         self.metrics["images"] += 1
-        self.metrics["process_s"] += time.perf_counter() - t0
+        self.metrics["process_s"] += time.perf_counter() - t0 + prep["dt_s"]
         return found
 
     def _note_gains(self, version, unix):
