@@ -34,6 +34,8 @@
 
 #include "../ex/buffer.hpp"
 #include "../ex/constants.h"
+#include "../ex/lf_buf_mngr.hpp"
+#include "../ex/par_helpers.hpp"
 #include "../ex/metrics.hpp"
 #include "../ex/py_funcs.hpp"
 #include "../ex/tensor.hpp"
@@ -62,6 +64,23 @@ class AccumulatorRft : public raft::kernel {
 
   _Pld m_cur_buf;
   size_t m_accum_count{0};
+  /// The sums are made in buffers of their own: the first image of a sum
+  /// may be shared with other kernels (the video reads the imager's buffer)
+  std::unique_ptr<LFBufMngr<AlignedBuffer<float>>> m_sum_bufs;
+  size_t m_nfloat{0};
+  /// threads of the copies and additions (memory-bound; a 256 x 256 image
+  /// of 192 channels is 200 MB, added 24 times a second)
+  static constexpr int m_nthreads{4};
+
+  /// Start a sum with this image: a copy of its data and metadata
+  void StartSum(_Pld& p_first) {
+    auto buf = m_sum_bufs->acquire_buf();
+    CHECK(static_cast<bool>(buf)) << "Accumulator buffer allocation failed";
+    buf.get_mbuf()->GetMetadataRef() = p_first.get_mbuf()->GetMetadataRef();
+    par::Copy(buf.get_mbuf()->GetDataPtr(), p_first.get_mbuf()->GetDataPtr(), m_nfloat, m_nthreads);
+    m_cur_buf = buf;
+    m_in_tensor.assign_data(m_cur_buf.get_mbuf()->GetDataPtr());
+  }
 
   unsigned int m_rt_gauge_id{0};
   Timer m_timer;
@@ -85,6 +104,9 @@ class AccumulatorRft : public raft::kernel {
         m_out_tensor(p_nchan, p_xdim, p_ydim) {
     input.addPort<_Pld>("in_img");
     output.addPort<_Pld>("out_img");
+    m_nfloat = p_nchan * p_xdim * p_ydim * NSTOKES;
+    // one sum being made, one being written
+    m_sum_bufs = std::make_unique<LFBufMngr<AlignedBuffer<float>>>(3, m_nfloat, 5, false);
     m_rt_gauge_id = PrometheusExporter::AddRuntimeSummaryLabel(
         {{"type", "exec_time"},
          {"kernel", "accumulator"},
@@ -108,9 +130,11 @@ class AccumulatorRft : public raft::kernel {
   raft::kstatus run() override {
     m_timer.Tick();
     if (m_accum_count == 0) {
-      // store the current gulp
-      input["in_img"].pop(m_cur_buf);
-      m_in_tensor.assign_data(m_cur_buf.get_mbuf()->GetDataPtr());
+      // start a sum with this image
+      _Pld first;
+      input["in_img"].pop(first);
+      StartSum(first);
+      first = _Pld();
       m_init_chan0 =
           std::get<int64_t>(m_cur_buf.get_mbuf()->GetMetadataRef()["chan0"]);
       _seq_end =
@@ -139,17 +163,15 @@ class AccumulatorRft : public raft::kernel {
           VLOG(2) << "accumulator: " << m_accum_count
                   << " images dropped at a gap";
         }
-        m_cur_buf = pld2;
+        StartSum(pld2);
         pld2 = _Pld();
-        m_in_tensor.assign_data(m_cur_buf.get_mbuf()->GetDataPtr());
         m_init_chan0 = chan0;
         _seq_end = new_seq_end;
         m_accum_count = 0;
       } else {
         _seq_end = new_seq_end;
-        m_out_tensor.assign_data(pld2.get_mbuf()->GetDataPtr());
-
-        m_in_tensor += m_out_tensor;
+        par::AddInPlace(m_cur_buf.get_mbuf()->GetDataPtr(), pld2.get_mbuf()->GetDataPtr(), m_nfloat,
+                        m_nthreads);
       }
     }
 

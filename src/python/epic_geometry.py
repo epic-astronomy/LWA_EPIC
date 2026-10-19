@@ -209,42 +209,48 @@ def _setup_pool():
     return ThreadPoolExecutor(max_workers=_setup_threads(), initializer=init)
 
 
-def cached_geometry(key, arrays, compute):
+def cached_geometry(key, exact, approx, compute):
     """
     compute(), or its result from an earlier run with the same inputs. The
     imager's set-up for a frequency window (w-projected weights, gridding
-    correction) takes minutes for 192 channels at 256 x 256; the result depends
-    only on key and the input arrays, whose digest names the file. Files go to
-    EPIC_GEOMETRY_CACHE (default /var/tmp/epic-geometry-cache; empty: no
-    cache) and are written under a temporary name and renamed, so concurrent
-    imagers never read a partial file. A cache that cannot be read or written
-    only costs the computation.
+    correction) takes half a minute for 192 channels at 256 x 256, and its
+    result depends only on key and the input arrays. The arrays in exact (the
+    stand positions) are the same in every run and name the file with key;
+    those in approx (the kernel weights, which come from the GPU and differ
+    from run to run in the last bits) are stored with the result and must
+    agree within 1e-5 for it to be reused. Files go to EPIC_GEOMETRY_CACHE
+    (default /var/tmp/epic-geometry-cache; empty: no cache) and are written
+    under a temporary name and renamed, so concurrent imagers never read a
+    partial file. A cache that cannot be read or written only costs the
+    computation.
     """
     import hashlib
     import json
-    import os
 
     cache_dir = os.environ.get("EPIC_GEOMETRY_CACHE", "/var/tmp/epic-geometry-cache")
     if not cache_dir:
         return compute()
     h = hashlib.sha256(json.dumps(key, sort_keys=True).encode())
-    for a in arrays:
+    for a in exact:
         a = np.ascontiguousarray(a)
         h.update(str((a.dtype.str, a.shape)).encode())
         h.update(a.tobytes())
-    path = os.path.join(cache_dir, f"{key['kind']}_{h.hexdigest()[:24]}.npy")
+    path = os.path.join(cache_dir, f"{key['kind']}_{h.hexdigest()[:24]}.npz")
     try:
-        out = np.load(path, allow_pickle=False)
-        print(f"epic_geometry: {key['kind']} for {key.get('nchan')} channels from {path}", flush=True)
-        return out
-    except (OSError, ValueError):
+        with np.load(path, allow_pickle=False) as f:
+            ok = all(f[f"in{n}"].shape == np.shape(a) and np.allclose(f[f"in{n}"], a, rtol=0, atol=1e-5)
+                     for n, a in enumerate(approx))
+            if ok:
+                print(f"epic_geometry: {key['kind']} for {key.get('nchan')} channels from {path}", flush=True)
+                return f["out"]
+    except (OSError, ValueError, KeyError):
         pass
     out = compute()
     try:
         os.makedirs(cache_dir, mode=0o775, exist_ok=True)
         tmp = f"{path}.{os.getpid()}.tmp"
         with open(tmp, "wb") as f:
-            np.save(f, out, allow_pickle=False)
+            np.savez(f, out=out, **{f"in{n}": np.asarray(a) for n, a in enumerate(approx)})
         os.replace(tmp, path)
     except OSError as e:
         print(f"epic_geometry: {key['kind']} not cached in {cache_dir}: {e}", flush=True)
@@ -317,7 +323,7 @@ def wproj_kernel_weights(gcf_elems, antpos_freq, chan0, nchan, support, grid_siz
             list(pool.map(one, range(nchan)))
         return out
 
-    return cached_geometry(key, (gcf_elems, antpos_freq, np.asarray(w_m)), compute)
+    return cached_geometry(key, (antpos_freq, np.asarray(w_m)), (gcf_elems,), compute)
 
 
 def gridding_correction(gcf_elems, antpos_freq, chan0, nchan, support, grid_size, oversample=4):
@@ -346,7 +352,7 @@ def gridding_correction(gcf_elems, antpos_freq, chan0, nchan, support, grid_size
     antpos_freq = np.asarray(antpos_freq, dtype=np.float32).reshape(nchan, -1, 3)
     key = dict(kind="correction", chan0=int(chan0), nchan=int(nchan), support=int(S),
                grid_size=int(grid_size), oversample=int(oversample))
-    return cached_geometry(key, (gcf_elems, antpos_freq),
+    return cached_geometry(key, (antpos_freq,), (gcf_elems,),
                            lambda: _gridding_correction(gcf_elems, antpos_freq, nchan, S, grid_size, oversample))
 
 

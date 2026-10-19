@@ -179,7 +179,8 @@ class ChanReducerRft : public raft::kernel {
     }
 
     m_out_nchan = m_in_nchan / m_ncombine;
-    m_nbufs = std::max<size_t>(64, 300 * (128 * 128) / std::max<size_t>(1, m_xdim * m_ydim));
+    // none without combining: the images go on as they are
+    m_nbufs = m_ncombine == 1 ? 1 : std::max<size_t>(64, 300 * (128 * 128) / std::max<size_t>(1, m_xdim * m_ydim));
     m_buf_mngr.reset(new BufferMngr(m_nbufs,
                                     m_xdim * m_ydim * m_out_nchan * NSTOKES,
                                     m_max_buf_reqs, false));
@@ -225,6 +226,17 @@ class ChanReducerRft : public raft::kernel {
     // }
 
     if (m_sky) PublishSky(in_pld);
+
+    if (m_ncombine == 1) {
+      // nothing to combine: the image itself goes on
+      auto& meta = in_pld.get_mbuf()->GetMetadataRef();
+      meta["chan_width"] = static_cast<int>(std::lround(BANDWIDTH));
+      output["out_img"].push(in_pld);
+      output["seq_start_id"].push(std::get<uint64_t>(meta["seq_start"]));
+      m_timer.Tock();
+      PrometheusExporter::ObserveRunTimeValue(m_rt_gauge_id, m_timer.Duration());
+      return raft::proceed;
+    }
 
     auto out_pld = m_buf_mngr->acquire_buf();
     if (!out_pld) {
