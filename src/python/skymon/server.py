@@ -5,6 +5,8 @@ HTTP interface of a running monitor (standard library only).
   GET /api/pixel?ra=&dec=              spectrogram of the tracked pixel nearest to a position
       /api/pixel?hpix=  /api/pixel?x=&y=  (HEALPix index, or 1-based image pixel)
       &since=<unix>                    only accumulation rows from this time
+      &hours=<h>                       only the last h hours before the latest image (the
+                                       monitor's own clock; takes precedence over since)
       &fine=1                          the last tier-0 window (83.6 ms, normalised) instead
       &format=npz                      binary npz instead of JSON
   GET /api/candidates?since=&cls=&limit=   recent candidates (newest last)
@@ -15,6 +17,7 @@ HTTP interface of a running monitor (standard library only).
                                        tracked pixel's raw value, averaged in time and the median
                                        over channels (base64 int32 hpix, float32 values)
   GET /api/injections                  live injection summary
+  GET /api/pulsars                     the pulsars whose single pulses are classified as known
   GET /api/watches?event=              watches requested by the combiner, and their results
   GET /api/conditions?since=<unix>     data-quality samples (conditions.py), every 10 s of
                                        data over the last 6 h, with the latest summary
@@ -39,6 +42,7 @@ import json
 import math
 import os
 import threading
+import time
 import urllib.parse
 import warnings
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -140,9 +144,12 @@ def make_handler(monitor):
                     return self._json(monitor.status())
                 if parts[:2] == ["api", "pixel"]:
                     f = lambda k: float(q[k]) if k in q else None
+                    since = f("since")
+                    if "hours" in q:
+                        since = (monitor.last_image_unix or time.time()) - float(q["hours"]) * 3600
                     res = monitor.pixel(ra=f("ra"), dec=f("dec"),
                                         hpix=int(q["hpix"]) if "hpix" in q else None,
-                                        x=f("x"), y=f("y"), since=f("since"),
+                                        x=f("x"), y=f("y"), since=since,
                                         fine=q.get("fine") in ("1", "true"))
                     if res is None:
                         return self._json(dict(error="not running"), 503)
@@ -179,6 +186,9 @@ def make_handler(monitor):
                     if res is None:
                         return self._json(dict(error="not running"), 503)
                     return self._json(res)
+                if parts[:2] == ["api", "pulsars"]:
+                    k = getattr(monitor, "known", None)
+                    return self._json(list(k.pulsars) if k is not None else [])
                 if parts[:2] == ["api", "injections"]:
                     return self._json(monitor.injector.summary())
                 if parts[:2] == ["api", "watches"]:

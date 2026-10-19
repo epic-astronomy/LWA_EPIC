@@ -67,6 +67,17 @@ class TestKnownSources(unittest.TestCase):
         far = self.ks.classify(p["ra_deg"], p["dec_deg"], 60.0, T0, dm=40.0, dm_step=0.6)
         self.assertTrue(far is None or far["kind"] != "pulsar", far)
 
+    def test_crab_giant_pulse_is_told_from_tau_a_by_its_dm(self):
+        """The Crab pulsar is in Tau A: a pulse at its DM is the pulsar, a trigger at DM ~1 the nebula"""
+        crab = next(p for p in self.ks.pulsars if p["name"] == "B0531+21")
+        self.assertEqual(crab["alias"], "Crab")
+        self.assertTrue(crab["giant_pulses"])
+        lab = self.ks.classify(83.633, 22.014, 70.0, T0, dm=57.4, dm_step=0.6)
+        self.assertEqual((lab["kind"], lab["name"], lab["alias"]), ("pulsar", "B0531+21", "Crab"))
+        self.assertTrue(lab["giant_pulse"])
+        lab = self.ks.classify(83.633, 22.014, 70.0, T0, dm=1.2, dm_step=0.6)
+        self.assertEqual((lab["kind"], lab["name"]), ("bright_source", "Tau A"))
+
     def test_bright_source(self):
         lab = self.ks.classify(299.868, 40.734 + 0.5, 60.0, T0, dm=300.0, dm_step=1.0)
         self.assertEqual((lab["kind"], lab["name"]), ("bright_source", "Cyg A"))

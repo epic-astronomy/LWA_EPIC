@@ -16,7 +16,9 @@ bursts that are not FRBs:
                   normalisation can trigger the search.
   pulsar          Bright low-frequency pulsars. A single pulse is a genuine
                   dispersed burst; it is identified by its position and its
-                  DM together.
+                  DM together. The Crab pulsar (B0531+21) is in the nebula
+                  Tau A, so its giant pulses are told from the nebula's
+                  scintillation by their DM (pulsars are checked first).
 
 A match is made within a number of synthesised beams (at the band centre,
 widened towards the horizon as the beam is, candidates.elevation_radius):
@@ -50,6 +52,7 @@ BRIGHT_SOURCES = [  # name, RA, Dec (J2000, deg)
 # sexagesimal), DM (pc cm^-3), period (s)
 _PULSARS = [
     ("B0301+19", "03:04:33.1", "+19:32:51", 15.66, 1.38758),
+    ("B0531+21", "05:34:31.97", "+22:00:52.1", 56.77, 0.0333924),
     ("B0320+39", "03:23:26.6", "+39:44:52", 26.19, 3.03207),
     ("B0329+54", "03:32:59.37", "+54:34:43.6", 26.764, 0.71452),
     ("B0809+74", "08:14:59.5", "+74:29:05.7", 5.733, 1.29224),
@@ -68,6 +71,11 @@ _PULSARS = [
 ]
 
 
+# common names, and the pulsars known for giant pulses at these frequencies
+ALIASES = {"B0531+21": "Crab"}
+GIANT_PULSES = {"B0531+21"}
+
+
 def _sexagesimal(s: str) -> float:
     sign = -1.0 if s.strip().startswith("-") else 1.0
     parts = [abs(float(p)) for p in s.strip().lstrip("+-").split(":")]
@@ -77,7 +85,8 @@ def _sexagesimal(s: str) -> float:
 def builtin_pulsars() -> list[dict]:
     """The built-in pulsar list as dicts (name, ra_deg, dec_deg, dm, period_s)"""
     return [dict(name=n, ra_deg=15.0 * _sexagesimal(ra), dec_deg=_sexagesimal(dec), dm=dm,
-                 period_s=p) for n, ra, dec, dm, p in _PULSARS]
+                 period_s=p, alias=ALIASES.get(n), giant_pulses=n in GIANT_PULSES)
+            for n, ra, dec, dm, p in _PULSARS]
 
 
 def load_pulsars(path: str | None = None) -> list[dict]:
@@ -170,7 +179,8 @@ class KnownSources:
                 p = self.pulsars[k]
                 return dict(kind="pulsar", name=p["name"], sep_deg=round(float(sep[k]), 3),
                             sep_beams=round(float(sep[k]) / scale, 2), dm_match=True,
-                            dm_psr=p["dm"], period_s=p["period_s"])
+                            dm_psr=p["dm"], period_s=p["period_s"], alias=p.get("alias"),
+                            giant_pulse=bool(p.get("giant_pulses")))
         bodies = self.body_positions(unix)
         best = None
         for name, kind in (("Sun", "solar"), ("Jupiter", "jovian")):
