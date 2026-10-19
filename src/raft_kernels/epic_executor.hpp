@@ -26,6 +26,7 @@
 #include <string>
 #include <utility>
 
+#include "../ex/cpu_reserve.hpp"
 #include "../ex/metrics.hpp"
 #include "../ex/station_desc.hpp"
 #include "./bench_kernels.hpp"
@@ -94,6 +95,7 @@ class EPICKernels {
       RftManip<b + 4, 1 + _GpuId>::bind(m_db_ingester);
       RftManip<b + 4, 1 + _GpuId>::bind(m_accumulator);
       RftManip<b + 4, 1 + _GpuId>::bind(m_disk_saver);
+      ReserveReceiver(b);
       return;
     }
     // use an additional offset of 2 for the runtime
@@ -115,6 +117,16 @@ class EPICKernels {
     RftManip<7 + cpu_ofst, 1 + _GpuId>::bind(m_accumulator);
     RftManip<8 + cpu_ofst, 1 + _GpuId>::bind(m_disk_saver);
     RftManip<9 + cpu_ofst, 1 + _GpuId>::bind(m_live_streamer);
+    ReserveReceiver(1 + cpu_ofst);
+  }
+
+  /// Keep the helper threads off the packet receiver's CPU and its sibling
+  /// (cpu_reserve.hpp); threads started from here on take the rest
+  void ReserveReceiver(int p_cpu) {
+    if (m_bench_gen || m_is_offline) return;
+    cpus::Reserve(p_cpu);
+    cpus::UseFree();
+    LOG(INFO) << "CPU " << p_cpu << " and its siblings reserved for the packet receiver";
   }
 
   void InitMap(const KernelTypeDefs::opt_t& p_options) {

@@ -6,7 +6,8 @@
 // worker threads inherit the affinity of the thread that starts them, so they
 // would all share that one CPU. The workers therefore take the process's
 // affinity (the main thread's, i.e. the taskset epic++ was started with) the
-// first time they run; the calling thread keeps its own.
+// first time they run, without the CPUs reserved for the packet receiver
+// (cpu_reserve.hpp); the calling thread keeps its own.
 #ifndef SRC_EX_PAR_HELPERS_HPP_
 #define SRC_EX_PAR_HELPERS_HPP_
 
@@ -20,37 +21,19 @@
 #include <sstream>
 #include <string>
 
+#include "./cpu_reserve.hpp"
+
 namespace par {
 
-/// CPUs of the main thread (/proc/self/status Cpus_allowed_list)
-inline const cpu_set_t& ProcessCpus() {
-  static const cpu_set_t set = [] {
-    cpu_set_t s;
-    CPU_ZERO(&s);
-    std::ifstream f("/proc/self/status");
-    std::string line;
-    while (std::getline(f, line)) {
-      if (line.rfind("Cpus_allowed_list:", 0) != 0) continue;
-      std::stringstream ss(line.substr(line.find(':') + 1));
-      std::string part;
-      while (std::getline(ss, part, ',')) {
-        const auto dash = part.find('-');
-        const int lo = std::stoi(part.substr(0, dash));
-        const int hi = dash == std::string::npos ? lo : std::stoi(part.substr(dash + 1));
-        for (int c = lo; c <= hi; ++c) CPU_SET(c, &s);
-      }
-    }
-    if (CPU_COUNT(&s) == 0) sched_getaffinity(0, sizeof(s), &s);
-    return s;
-  }();
-  return set;
-}
+/// CPUs for the workers: the process's, without those reserved for the packet receiver
+inline cpu_set_t ProcessCpus() { return cpus::Free(); }
 
 /// In a parallel region: move this worker (not the calling thread) to the process's CPUs, once
 inline void FreeWorker() {
   thread_local bool done = false;
   if (!done && omp_get_thread_num() != 0) {
-    sched_setaffinity(0, sizeof(cpu_set_t), &ProcessCpus());
+    const cpu_set_t c = ProcessCpus();
+    sched_setaffinity(0, sizeof(cpu_set_t), &c);
     done = true;
   }
 }

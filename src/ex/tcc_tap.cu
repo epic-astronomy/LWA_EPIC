@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "./constants.h"
+#include "./cpu_reserve.hpp"
 #include "./vis_table.hpp"
 #include "libtcc/Correlator.h"
 
@@ -303,6 +304,8 @@ struct TccTap::Impl {
   void PublishLoop() {
     Check(cudaSetDevice(device), "cudaSetDevice");
     while (true) {
+      // off the packet receiver's CPU (reserved after this thread started)
+      cpus::UseFree();
       VisTableHeader h;
       int buf;
       bool wtd;
