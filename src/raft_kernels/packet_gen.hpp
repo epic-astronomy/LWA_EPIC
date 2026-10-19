@@ -24,7 +24,10 @@
 #define SRC_RAFT_KERNELS_PACKET_GEN_HPP_
 #include <glog/logging.h>
 
+#include <algorithm>
 #include <chrono>
+#include <cstdio>
+#include <vector>
 #include <cmath>
 #include <cstdlib>
 #include <thread>
@@ -49,6 +52,7 @@ class GulpGen_rft : public raft::kernel {
 
  private:
   std::unique_ptr<PktAssmblr> m_assmblr;
+  std::vector<double> m_get_ms, m_push_ms;
   /// Duration of the generator in seconds
   int m_timer;
   /// Flag to keep the program running forever
@@ -122,7 +126,9 @@ class GulpGen_rft : public raft::kernel {
                      std::chrono::steady_clock::now() - m_start_time)
                      .count();
       VLOG(3) << "Receiving the gulp";
+      const auto t_get = std::chrono::steady_clock::now();
       auto gulp = m_assmblr.get()->get_gulp();
+      m_get_ms.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t_get).count());
       VLOG(3) << "Received";
       if (!gulp) {
         // A gulp with too few packets. get_gulp() has already waited a whole
@@ -153,7 +159,21 @@ class GulpGen_rft : public raft::kernel {
       //   std::get<int64_t>(gulp.get_mbuf()->GetMetadataRef()["chan0"]);
       //   gulp.get_mbuf()->GetMetadataRef()["chan0"] = int64_t(440);
       // }
+      const auto t_push = std::chrono::steady_clock::now();
       output["gulp"].push(gulp);
+      m_push_ms.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t_push).count());
+      if (m_push_ms.size() >= 240) {
+        // how long assembling a gulp took, and handing it on (downstream back-pressure)
+        auto stats = [](std::vector<double>& v) {
+          std::sort(v.begin(), v.end());
+          char b[96];
+          std::snprintf(b, sizeof(b), "p50 %.2f p99 %.2f max %.2f ms", v[v.size() / 2], v[v.size() * 99 / 100], v.back());
+          v.clear();
+          return std::string(b);
+        };
+        LOG(INFO) << "Gulp generator: get " << stats(m_get_ms) << "; push " << stats(m_push_ms) << "; "
+                  << m_assmblr.get()->TakeStats();
+      }
       PrometheusExporter::ObserveRunTimeValue(m_rt_gauge_id, 1);
 
       if (m_terminate) break;

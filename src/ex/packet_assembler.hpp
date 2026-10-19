@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <functional>
 #include <memory>
 #include <string>
@@ -78,6 +79,10 @@ class PacketAssembler : public PktProcessor {
   // bit t of word src * m_mask_words + t / 64: the packet of source src at
   // sequence t of the gulp arrived (PktProcessor::weigh_samples)
   std::vector<uint64_t> m_valid_mask;
+  high_resolution_clock::time_point m_t_last_recv{};
+  double m_gap_max{0}, m_end_max{0};  // ms: longest time between packet reads, longest end of a gulp
+  unsigned long long m_n_recv{0}, m_n_invalid{0}, m_n_late{0}, m_n_copied{0}, m_n_timeout{0}, m_n_empty{0},
+      m_n_skipped{0};
   size_t m_mask_words{0};
   size_t m_n_valid_pkts;
   size_t m_n_valid_bytes;
@@ -93,6 +98,20 @@ class PacketAssembler : public PktProcessor {
   PacketAssembler(std::string p_ip, int p_port, size_t p_nseq_per_gulp = 1000,
                   size_t p_ngulps = 100, size_t p_seq_size = SINGLE_SEQ_SIZE);
   payload_t get_gulp();
+  /// Packet counts since the last call: received, invalid, late (for a gulp
+  /// already returned), copied, timeouts, gulps returned empty and skipped
+  std::string TakeStats() {
+    char b[384];
+    size_t ring = 0;
+    if constexpr (Receiver::type == VERBS) ring = m_receiver->TakeRingMax();
+    std::snprintf(b, sizeof(b), "packets received %llu invalid %llu late %llu copied %llu, timeouts %llu, "
+                  "gulps empty %llu skipped %llu; longest gap between reads %.2f ms, end of gulp %.2f ms, "
+                  "ring backlog max %zu batches", m_n_recv, m_n_invalid, m_n_late, m_n_copied, m_n_timeout,
+                  m_n_empty, m_n_skipped, m_gap_max, m_end_max, ring);
+    m_n_recv = m_n_invalid = m_n_late = m_n_copied = m_n_timeout = m_n_empty = m_n_skipped = 0;
+    m_gap_max = m_end_max = 0;
+    return b;
+  }
   size_t GetNumSeqPerGulp() { return m_nseq_per_gulp; }
   // ~PacketAssembler(){
   //     LOG(INFO)<<"D assembler";
@@ -188,22 +207,30 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::get_gulp() {
     if (!m_last_pkt_available) {  // fetch a new one
       start = high_resolution_clock::now();
       // VLOG(3) << "Receiving a packet";
+      const auto t_call = high_resolution_clock::now();
+      const double outside = std::chrono::duration<double, std::milli>(t_call - m_t_last_recv).count();
+      if (m_t_last_recv.time_since_epoch().count() && outside > m_gap_max) m_gap_max = outside;
       nbytes =
           m_receiver->recv_packet(m_recent_pkt, PktProcessor::align_offset);
       stop = high_resolution_clock::now();
+      m_t_last_recv = stop;
       ++recvd_pkts;
 
       if (nbytes <= 0) {
+        ++m_n_timeout;
         continue;
       }
+      ++m_n_recv;
 
       if (!PktProcessor::is_pkt_valid(m_recent_pkt, m_recent_hdr, m_recent_data,
                                       nbytes)) {
         VLOG(3) << "Bad header";
+        ++m_n_invalid;
         continue;
       }
       if (m_recent_hdr.seq < m_seq_start) {
         m_last_pkt_available = false;
+        ++m_n_late;
         continue;
       }
     }
@@ -228,6 +255,7 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::get_gulp() {
           // Skip ahead to the gulp holding the pending packet. Rounding up
           // would leave the packet before m_seq_start and give it a negative
           // time index in copy_to_buffer.
+          m_n_skipped += (m_recent_hdr.seq / m_nseq_per_gulp * m_nseq_per_gulp - m_seq_end) / m_nseq_per_gulp;
           m_seq_start =
               m_recent_hdr.seq / m_nseq_per_gulp * m_nseq_per_gulp;
           m_seq_end = m_seq_start + m_nseq_per_gulp;
@@ -238,6 +266,7 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::get_gulp() {
 
         if (m_n_valid_pkts < m_min_pkt_limit) {
           VLOG(3) << "returning null pkt";
+          ++m_n_empty;
           m_n_valid_pkts = 0;
           PrometheusExporter::ObserveRunTimeValue(
               m_gauge_pktqual_id,
@@ -247,12 +276,15 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::get_gulp() {
           return payload_t(nullptr);
         }
 
+        const auto t_end0 = high_resolution_clock::now();
         PktProcessor::set_metadata(mbuf, m_recent_hdr, m_seq_start, m_seq_end,
                                    m_time_tag0);
         PktProcessor::nullify_ill_sources(mbuf, m_recent_hdr, m_valid_pkt_stats,
                                           m_nseq_per_gulp);
         PktProcessor::weigh_samples(mbuf, m_recent_hdr, m_valid_pkt_stats,
                                     m_valid_mask, m_nseq_per_gulp);
+        m_end_max = std::max(m_end_max, std::chrono::duration<double, std::milli>(
+                                            high_resolution_clock::now() - t_end0).count());
 
         m_n_valid_pkts = 0;
         // DLOG(INFO)<<"Returning payload";
@@ -273,6 +305,7 @@ PacketAssembler<BufferMngr, Receiver, PktProcessor>::get_gulp() {
       const size_t src = size_t(PktProcessor::source_index(m_recent_hdr));
       m_valid_mask[src * m_mask_words + t / 64] |= uint64_t(1) << (t % 64);
     }
+    ++m_n_copied;
     PktProcessor::copy_to_buffer(
         m_recent_hdr, m_recent_data, mbuf->GetDataPtr(), m_valid_pkt_stats,
         m_recent_hdr.seq - m_seq_start, m_nseq_per_gulp);

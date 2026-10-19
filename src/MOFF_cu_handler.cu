@@ -29,6 +29,7 @@
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
 #include <algorithm>
+#include <cstring>
 #include <iostream>
 #include <string>
 #include <nvml.h>
@@ -380,6 +381,7 @@ MOFFCuHandler::ProcessGulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, 
             m_nbytes_f_eng_per_stream,
             cudaMemcpyHostToDevice,
             stream_i));
+        ZeroLostPackets(chan_offset, stream_i);
         if (m_tcc_tap) {
             m_tcc_tap->AfterCopy(i, stream_i);
         }
@@ -440,6 +442,67 @@ MOFFCuHandler::ProcessGulp(uint8_t* p_data_ptr, float* p_out_ptr, bool p_first, 
 
 }
 
+namespace {
+// Zero the samples of lost packets in the device gulp [chan][seq][board][32]:
+// the slot of (chan, seq, board) is zero unless bit seq of
+// mask[(board * NDP_CHAN_BLOCKS + block[chan]) * words] is set. Block x: the
+// stream's channel; threads: 16 boards x 32 sequences.
+__global__ void ZeroLostPacketsKernel(uint8_t* __restrict__ gulp, const uint64_t* __restrict__ mask,
+                                      const uint8_t* __restrict__ block, int chan0, int nseq, int words) {
+  const int c = chan0 + blockIdx.x;
+  const int t = blockIdx.y * blockDim.y + threadIdx.y;
+  const int b = threadIdx.x;
+  if (t >= nseq) return;
+  const uint64_t w = mask[size_t(b * NDP_CHAN_BLOCKS + block[c]) * words + t / 64];
+  if ((w >> (t % 64)) & 1) return;
+  uint4* d = reinterpret_cast<uint4*>(gulp + ((size_t(c) * nseq + t) * NROACH_BOARDS + b) * 32);
+  d[0] = make_uint4(0, 0, 0, 0);
+  d[1] = make_uint4(0, 0, 0, 0);
+}
+}  // namespace
+
+void
+MOFFCuHandler::SetGulpValidity(const uint64_t* p_mask, size_t p_words, const uint8_t* p_block)
+{
+    if (m_fx) m_fx->SetGulpValidity(p_mask, p_words, p_block);
+    if (m_tcc_tap) m_tcc_tap->SetGulpValidity(p_mask, p_words, p_block);
+    m_have_mask = p_mask && p_block;
+    if (!m_have_mask) {
+        return;
+    }
+    const size_t mask_bytes = size_t(NROACH_BOARDS) * NDP_CHAN_BLOCKS * p_words * sizeof(uint64_t);
+    if (!m_mask_ring_h || p_words != m_mask_words) {
+        if (m_mask_ring_h) {
+            cuda_check_err(cudaDeviceSynchronize());
+            cudaFreeHost(m_mask_ring_h);
+        }
+        m_mask_words = p_words;
+        m_mask_slot_bytes = (mask_bytes + NDP_NCHAN_SELECT + 255) / 256 * 256;
+        cuda_check_err(cudaHostAlloc((void**)&m_mask_ring_h, kMaskSlots * m_mask_slot_bytes, cudaHostAllocMapped));
+        cuda_check_err(cudaHostGetDevicePointer((void**)&m_mask_ring_d, m_mask_ring_h, 0));
+    }
+    // a slot is reused kMaskSlots gulps later, long after its kernels ran
+    m_mask_slot = (m_mask_slot + 1) % kMaskSlots;
+    uint8_t* slot = m_mask_ring_h + size_t(m_mask_slot) * m_mask_slot_bytes;
+    std::memcpy(slot, p_mask, mask_bytes);
+    std::memcpy(slot + mask_bytes, p_block, NDP_NCHAN_SELECT);
+}
+
+void
+MOFFCuHandler::ZeroLostPackets(int p_chan_offset, cudaStream_t p_stream)
+{
+    if (!m_have_mask) {
+        return;
+    }
+    const size_t mask_bytes = size_t(NROACH_BOARDS) * NDP_CHAN_BLOCKS * m_mask_words * sizeof(uint64_t);
+    const uint8_t* slot = m_mask_ring_d + size_t(m_mask_slot) * m_mask_slot_bytes;
+    const dim3 threads(NROACH_BOARDS, 32), grid(m_nchan_per_stream, (m_nseq_per_gulp + 31) / 32);
+    ZeroLostPacketsKernel<<<grid, threads, 0, p_stream>>>(m_f_eng_cu, reinterpret_cast<const uint64_t*>(slot),
+                                                          slot + mask_bytes, p_chan_offset, m_nseq_per_gulp,
+                                                          int(m_mask_words));
+    cuda_check_err(cudaGetLastError());
+}
+
 void
 MOFFCuHandler::ProcessGulpFx(uint8_t* p_data_ptr, uint8_t* p_img_in, bool p_rfi, float* p_out_ptr, bool p_first,
                              bool p_last)
@@ -458,6 +521,7 @@ MOFFCuHandler::ProcessGulpFx(uint8_t* p_data_ptr, uint8_t* p_img_in, bool p_rfi,
         }
         cuda_check_err(cudaMemcpyAsync((void*)(m_f_eng_cu + f_eng_dat_offset), (void*)(p_data_ptr + f_eng_dat_offset),
                                        m_nbytes_f_eng_per_stream, cudaMemcpyHostToDevice, stream_i));
+        ZeroLostPackets(chan_offset, stream_i);
         if (m_tcc_tap) {
             m_tcc_tap->AfterCopy(i, stream_i);
         }
@@ -526,6 +590,9 @@ MOFFCuHandler::DestroyTextures(cudaArray_t& p_tex_arr, cudaTextureObject_t& p_te
 
 MOFFCuHandler::~MOFFCuHandler()
 {
+    if (m_mask_ring_h) {
+        cudaFreeHost(m_mask_ring_h);
+    }
     cuda_check_err(cudaSetDevice(m_device_id));
     m_tcc_tap.reset();  // its streams may still read the gulp buffer
     m_fx.reset();

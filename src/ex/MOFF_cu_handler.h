@@ -108,6 +108,17 @@ class MOFFCuHandler {
 
   /// GPU calibration tap (null: off). Correlates the gulps from m_f_eng_cu.
   std::unique_ptr<TccTap> m_tcc_tap{nullptr};
+  // The validity masks of the last gulps (packet_processor.hpp), in a ring of
+  // mapped host buffers: the slots of lost packets are zeroed on the GPU after
+  // each stream's copy (the receiver leaves them, see ZeroLostPackets)
+  static constexpr int kMaskSlots = 8;
+  uint8_t* m_mask_ring_h{nullptr};
+  uint8_t* m_mask_ring_d{nullptr};
+  size_t m_mask_slot_bytes{0};
+  size_t m_mask_words{0};
+  int m_mask_slot{0};
+  bool m_have_mask{false};
+  void ZeroLostPackets(int p_chan_offset, cudaStream_t p_stream);
   /// FX imaging (--imager fx): replaces the E-field kernel when set
   std::unique_ptr<FxImager> m_fx{nullptr};
   int m_fx_size{0};
@@ -291,10 +302,7 @@ class MOFFCuHandler {
   }
   /// Which samples of the next gulp arrived, for the FX imager and the GPU
   /// calibration tap (FxImager::SetGulpValidity)
-  void SetGulpValidity(const uint64_t* p_mask, size_t p_words, const uint8_t* p_block) {
-    if (m_fx) m_fx->SetGulpValidity(p_mask, p_words, p_block);
-    if (m_tcc_tap) m_tcc_tap->SetGulpValidity(p_mask, p_words, p_block);
-  }
+  void SetGulpValidity(const uint64_t* p_mask, size_t p_words, const uint8_t* p_block);
   int SkyPixels() const { return m_fx ? m_fx->SkyPixels() : 0; }
   bool SkyDone() const { return m_fx && m_fx->SkyDone(); }
   /// FX: start time (unix) of the image whose last gulp comes next, and

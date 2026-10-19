@@ -330,15 +330,20 @@ inline int Snap2SelChan0(const snap2_hdr_type& p_hdr) {
  * p_valid: bit t of word src * words + t / 64 is set if the packet of source
  * src = board * NDP_CHAN_BLOCKS + block at sequence t is valid; p_sel0: the
  * stream channel of the gulp's first channel; p_block_nchan: channels per
- * block. Writes valid_mask (p_valid as bytes) and valid_block to p_meta.
+ * block. Writes valid_mask (p_valid as bytes) and valid_block to p_meta. p_zero:
+ * zero the lost samples here; the receiver leaves them to the GPU
+ * (MOFFCuHandler::ZeroLostPackets): scattered over the 98 MB of a 192-channel
+ * gulp they took the receive thread up to 70 ms, and the receive queue ran
+ * out of buffers meanwhile. p_fill: the byte written (tests: garbage the GPU must clear).
  */
 template <PKT_DATA_ORDER Order, class Meta>
 inline void ApplySampleWeights(uint8_t* p_data, const std::vector<uint64_t>& p_valid, size_t p_nseq,
-                               int p_sel0, int p_block_nchan, Meta& p_meta) {
+                               int p_sel0, int p_block_nchan, Meta& p_meta, bool p_zero = true,
+                               uint8_t p_fill = 0) {
   constexpr size_t kLane = LWA_SV_INP_PER_CHAN / NROACH_BOARDS;  // bytes of one board
   const size_t words = (p_nseq + 63) / 64;
   const uint64_t last = p_nseq % 64 ? (uint64_t(1) << (p_nseq % 64)) - 1 : ~uint64_t(0);
-  for (int src = 0; src < NROACH_BOARDS * NDP_CHAN_BLOCKS; ++src) {
+  for (int src = 0; p_zero && src < NROACH_BOARDS * NDP_CHAN_BLOCKS; ++src) {
     const uint64_t* m = p_valid.data() + size_t(src) * words;
     int nvalid = 0;
     for (size_t w = 0; w < words; ++w) nvalid += __builtin_popcountll(m[w] & (w + 1 == words ? last : ~uint64_t(0)));
@@ -351,7 +356,7 @@ inline void ApplySampleWeights(uint8_t* p_data, const std::vector<uint64_t>& p_v
       if ((m[t / 64] >> (t % 64)) & 1) continue;
       for (int chan = chan_beg; chan < chan_end; ++chan) {
         const size_t cell = Order == TIME_MAJOR ? (t * NDP_NCHAN_SELECT + chan) : (size_t(chan) * p_nseq + t);
-        std::memset(p_data + (cell * NROACH_BOARDS + board) * kLane, 0, kLane);
+        std::memset(p_data + (cell * NROACH_BOARDS + board) * kLane, p_fill, kLane);
       }
     }
   }
@@ -526,10 +531,6 @@ void PacketProcessor<snap2_hdr_type, uint8_t, Copier, Order>::
         Buffer* p_mbuf, snap2_hdr_type& p_hdr,
         std::vector<std::shared_ptr<std::atomic_ullong>>& p_pkt_stats,
         size_t p_exp_pkts_per_source) {
-  hn::ScalableTag<uint8_t> tag8;
-  auto zero_vec = Zero(tag8);
-  using v256_t = decltype(zero_vec);
-  auto vec_start = reinterpret_cast<v256_t*>(p_mbuf->GetDataPtr());
   auto& metadata = p_mbuf->GetMetadataRef();  // by reference
 
   size_t npkts = 0;
@@ -541,25 +542,10 @@ void PacketProcessor<snap2_hdr_type, uint8_t, Copier, Order>::
       npkts += nsrc_pkts;
       continue;
     }
-    int board = static_cast<int>(src / NDP_CHAN_BLOCKS);
-    int block = static_cast<int>(src % NDP_CHAN_BLOCKS);
-    // this source's channels in the gulp (i.e., the selected window)
-    int chan_ofst = block * p_hdr.nchan - Snap2SelChan0(p_hdr);
-    int chan_beg = std::max(chan_ofst, 0);
-    int chan_end =
-        std::min(chan_ofst + int(p_hdr.nchan), int(NDP_NCHAN_SELECT));
-    for (size_t tidx = 0; tidx < p_exp_pkts_per_source; ++tidx) {
-      for (auto chan = chan_beg; chan < chan_end; ++chan) {
-        if (Order == TIME_MAJOR) {
-          *(vec_start + (tidx * NDP_NCHAN_SELECT + chan) * NROACH_BOARDS +
-            board) = zero_vec;
-        }
-        if (Order == CHAN_MAJOR) {
-          *(vec_start + (chan * p_exp_pkts_per_source + tidx) * NROACH_BOARDS +
-            board) = zero_vec;
-        }
-      }  // chan loop
-    }    // time loop
+    // The source's samples are left for the GPU to zero: weigh_samples
+    // records them as lost, and MOFFCuHandler::ZeroLostPackets clears them
+    // after the copy (zeroing them here held the receive thread for
+    // milliseconds of scattered writes per gulp)
     metadata["src" + std::to_string(src + 1) + "_valid_frac"] =
         nsrc_pkts / double(p_exp_pkts_per_source);
   }
@@ -591,7 +577,7 @@ void PacketProcessor<snap2_hdr_type, uint8_t, Copier, Order>::weigh_samples(
     std::copy_n(p_mask.begin() + src * words, words, valid.begin() + src * words);
   }
   ApplySampleWeights<Order>(p_mbuf->GetDataPtr(), valid, p_nseq, Snap2SelChan0(p_hdr), int(p_hdr.nchan),
-                            p_mbuf->GetMetadataRef());
+                            p_mbuf->GetMetadataRef(), false);
 }
 
 void copy_tester() {

@@ -155,7 +155,9 @@ class BenchGulpGen : public raft::kernel {
           }
         }
         const int block_nchan = (m_opts.nchan + NDP_CHAN_BLOCKS - 1) / NDP_CHAN_BLOCKS;
-        ApplySampleWeights<CHAN_MAJOR>(dst, valid, size_t(m_opts.nseq), 0, block_nchan, mref);
+        // lost samples hold garbage (+7 +7j), as a receive buffer holds old voltages: the
+        // GPU must clear them (MOFFCuHandler::ZeroLostPackets)
+        ApplySampleWeights<CHAN_MAJOR>(dst, valid, size_t(m_opts.nseq), 0, block_nchan, mref, true, 0x77);
         mref["data_quality"] = double(nvalid) / double(valid.size() / words * m_opts.nseq);
       }
       if (m_opts.realtime) {

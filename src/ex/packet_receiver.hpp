@@ -85,6 +85,7 @@ class VerbsReceiver : public GenericPktReceiver<Dtype, Buffer, Socket, Zcopy> {
   explicit VerbsReceiver(size_t buf_size = MAX_PACKET_SIZE);
   void init_receiver(int p_offset = 0);
   size_t recv_packet(Dtype*& p_out_buf, int /**/);
+  size_t TakeRingMax() { return m_verbs ? m_verbs->TakeRingMax() : 0; }
 };
 
 ///////////////////////////////   DEFINITIONS

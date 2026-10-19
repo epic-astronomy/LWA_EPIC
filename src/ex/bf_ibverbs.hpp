@@ -40,6 +40,8 @@
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
+#include <sys/syscall.h>
+#include <sched.h>
 #include <unistd.h>
 
 #include <immintrin.h>
@@ -184,14 +186,14 @@ class Verbs {
   std::atomic<bool> _stop{false};
   std::thread _poller;
   int _threads{0};  // 0: not decided yet
+ public:
+  // diagnostics of the two-thread receiver, reset by the reader: the most
+  // batches waiting in the ring, and packets that arrived in them
+  std::atomic<size_t> diag_ring_max{0};
+ private:
   void poll_loop() {
     while (!_stop.load(std::memory_order_relaxed)) {
-      bf_ibv_recv_pkt* batch = nullptr;
-      try {
-        batch = this->receive();
-      } catch (Verbs::Error const&) {
-        continue;  // timeout
-      }
+      bf_ibv_recv_pkt* batch = this->receive_spin();
       if (!batch) continue;
       const size_t h = _head.load(std::memory_order_relaxed);
       while (h - _tail.load(std::memory_order_acquire) >= kRing) {
@@ -200,21 +202,23 @@ class Verbs {
       }
       _ring[h % kRing] = batch;
       _head.store(h + 1, std::memory_order_release);
+      const size_t backlog = h + 1 - _tail.load(std::memory_order_relaxed);
+      if (backlog > diag_ring_max.load(std::memory_order_relaxed)) diag_ring_max.store(backlog, std::memory_order_relaxed);
     }
   }
   void start_threads() {
     const char* e = std::getenv("EPIC_RECV_THREADS");
     _threads = e ? std::max(1, std::atoi(e)) : 2;
     const int cpu = cpus::ReceiverCpu();
-    if (cpu >= 0) cpus::PinTo(cpu);
+    const bool pinned = cpu >= 0 && cpus::PinTo(cpu);
+    std::cerr << "verbs receiver: thread " << ::syscall(SYS_gettid) << (pinned ? " pinned to CPU " : " on CPU ")
+              << sched_getcpu() << ", " << _threads << " receive thread(s)" << std::endl;
     if (_threads < 2) return;
     const int sib = cpu >= 0 ? cpus::Sibling(cpu) : -1;
     _poller = std::thread([this, sib] {
-      if (sib >= 0) {
-        cpus::PinTo(sib);
-      } else {
-        cpus::UseFree();
-      }
+      const bool ok = sib >= 0 ? cpus::PinTo(sib) : (cpus::UseFree(), false);
+      std::cerr << "verbs receiver: poller thread " << ::syscall(SYS_gettid) << (ok ? " pinned to CPU " : " on CPU ")
+                << sched_getcpu() << std::endl;
       poll_loop();
     });
   }
@@ -829,6 +833,58 @@ class Verbs {
     i = recv_pkt->wr.wr_id / BF_VERBS_NPKTBUF;
     return ibv_post_recv(_verbs.qp[i], &recv_pkt->wr, &recv_wr_bad);
   }
+  /// The poller's receive: completions polled from the queue directly, no
+  /// interrupt. The completion channel's interrupt (one vector of the NIC,
+  /// placed by irqbalance) landed on a CPU busy with the all-sky monitor, and
+  /// its late wake-ups let the receive queue run out of buffers in bursts.
+  inline bf_ibv_recv_pkt* receive_spin() {
+    ibv_wc wc[BF_VERBS_WCBATCH];
+    bf_ibv_recv_pkt* recv_head = NULL;
+    ibv_recv_wr* recv_tail = NULL;
+    for (int i = 0; i < BF_VERBS_NQP; i++) {
+      ibv_qp_attr qp_attr;
+      switch (_verbs.qp[i]->state) {
+        case IBV_QPS_RESET:
+          qp_attr.qp_state = IBV_QPS_INIT;
+          qp_attr.port_num = _verbs.port_num;
+          if (ibv_modify_qp(_verbs.qp[i], &qp_attr, IBV_QP_STATE | IBV_QP_PORT)) return NULL;
+          // fall through
+        case IBV_QPS_INIT:
+          qp_attr.qp_state = IBV_QPS_RTR;
+          qp_attr.port_num = _verbs.port_num;
+          if (ibv_modify_qp(_verbs.qp[i], &qp_attr, IBV_QP_STATE)) return NULL;
+          break;
+        case IBV_QPS_RTR:
+        case IBV_QPS_RTS:
+          break;
+        default:
+          return NULL;
+      }
+    }
+    int num_wce;
+    do {
+      num_wce = ibv_poll_cq(_verbs.cq[0], BF_VERBS_WCBATCH, &wc[0]);
+      if (num_wce < 0) return NULL;
+      for (int i = 0; i < num_wce; i++) {
+        const uint64_t wr_id = wc[i].wr_id;
+        _verbs.pkt_buf[wr_id].length =
+            wc[i].status != IBV_WC_SUCCESS ? BF_VERBS_PAYLOAD_OFFSET : wc[i].byte_len;
+        if (!recv_head) {
+          recv_head = &(_verbs.pkt_buf[wr_id]);
+          recv_tail = &recv_head->wr;
+        } else {
+          recv_tail->next = &(_verbs.pkt_buf[wr_id].wr);
+          recv_tail = recv_tail->next;
+        }
+      }
+    } while (num_wce == BF_VERBS_WCBATCH);
+    if (recv_tail) {
+      recv_tail->next = NULL;
+    } else {
+      _mm_pause();
+    }
+    return recv_head;
+  }
   inline bf_ibv_recv_pkt* receive() {
     int i;
     int num_wce;
@@ -1127,6 +1183,7 @@ class Verbs {
     pkt_ptr = (uint8_t*)_verbs.pkt->wr.sg_list->addr + BF_VERBS_PAYLOAD_OFFSET;
     return _verbs.pkt->length - BF_VERBS_PAYLOAD_OFFSET;
   }
+  size_t TakeRingMax() { return diag_ring_max.exchange(0); }
   inline void get_ethernet_header(bf_ethernet_hdr* hdr) {
     uint8_t src_mac[6], dst_mac[6];
     this->get_mac_address(&(src_mac[0]));
