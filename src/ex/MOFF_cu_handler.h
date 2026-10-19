@@ -289,9 +289,11 @@ class MOFFCuHandler {
                    int p_nbin) {
     if (m_fx) m_fx->SetSkyTable(p_xy_a, p_xy_b, p_capacity, p_t_a, p_t_b, p_nbin);
   }
-  /// FX: which samples of the next gulp arrived (FxImager::SetGulpValidity)
+  /// Which samples of the next gulp arrived, for the FX imager and the GPU
+  /// calibration tap (FxImager::SetGulpValidity)
   void SetGulpValidity(const uint64_t* p_mask, size_t p_words, const uint8_t* p_block) {
     if (m_fx) m_fx->SetGulpValidity(p_mask, p_words, p_block);
+    if (m_tcc_tap) m_tcc_tap->SetGulpValidity(p_mask, p_words, p_block);
   }
   int SkyPixels() const { return m_fx ? m_fx->SkyPixels() : 0; }
   bool SkyDone() const { return m_fx && m_fx->SkyDone(); }

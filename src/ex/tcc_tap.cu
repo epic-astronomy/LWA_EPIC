@@ -53,6 +53,26 @@ __global__ void ReorderToTccI8(const uint8_t* __restrict__ p_in, int8_t* __restr
   dst[0] = reinterpret_cast<const uint4*>(v)[0];
   dst[1] = reinterpret_cast<const uint4*>(v)[1];
 }
+
+// Sample weights in the same layout: 1 if the sample's packet arrived (bit t
+// of mask[(board * NDP_CHAN_BLOCKS + block[c]) * words]), else 0; the
+// correlated weights count the sequences in which both samples of a product
+// were valid (as FxImager does for the images)
+__global__ void WeightsToTccI8(const uint64_t* __restrict__ p_mask, const uint8_t* __restrict__ p_block,
+                               int8_t* __restrict__ p_out, int p_nseq, int p_ntb, int p_words) {
+  const int i = threadIdx.x, tb = blockIdx.x, c = blockIdx.y;
+  const uint64_t* m = p_mask + size_t((i / (kInputs / NROACH_BOARDS)) * NDP_CHAN_BLOCKS + p_block[c]) * p_words;
+  alignas(16) int8_t v[2 * kT];
+#pragma unroll
+  for (int tt = 0; tt < kT; ++tt) {
+    const int t = tb * kT + tt;
+    v[2 * tt] = int8_t(t < p_nseq && ((m[t / 64] >> (t % 64)) & 1));
+    v[2 * tt + 1] = 0;
+  }
+  uint4* dst = reinterpret_cast<uint4*>(p_out + ((size_t(c) * p_ntb + tb) * kInputs + i) * 2 * kT);
+  dst[0] = reinterpret_cast<const uint4*>(v)[0];
+  dst[1] = reinterpret_cast<const uint4*>(v)[1];
+}
 }  // namespace
 
 struct TccTap::Impl {
@@ -67,6 +87,17 @@ struct TccTap::Impl {
   int8_t* d_in{nullptr};
   void* d_vis[2]{nullptr, nullptr};
   int32_t* h_vis{nullptr};
+  // sample weights: the next gulp's validity (SetGulpValidity), their TCC
+  // input and correlation; weighted: some gulp of the integration lost packets
+  std::vector<uint64_t> mask;
+  std::vector<uint8_t> block;
+  bool have_mask{false}, weighted{false}, pub_weighted{false};
+  int mask_words{0};
+  uint64_t* d_mask{nullptr};
+  uint8_t* d_block{nullptr};
+  int8_t* d_win{nullptr};
+  void* d_wvis[2]{nullptr, nullptr};
+  int32_t* h_wvis{nullptr};
 
   // integration (imaging thread)
   bool armed{false};
@@ -74,6 +105,7 @@ struct TccTap::Impl {
   bool open{false};  // the current buffer holds part of an integration
   int64_t chan0{-1};
   uint64_t seq_first{0}, seq_last{0}, nsamp{0}, nskipped{0};
+  uint64_t weighted_base{0}, pub_weighted_base{0};  // complete samples before the first weighted gulp
   uint32_t ngulps{0};
   uint64_t armed_seq{0};
 
@@ -108,6 +140,13 @@ struct TccTap::Impl {
     Check(cudaMalloc(&d_vis[0], vis_bytes), "cudaMalloc visibilities");
     Check(cudaMalloc(&d_vis[1], vis_bytes), "cudaMalloc visibilities");
     Check(cudaMallocHost(&h_vis, vis_bytes), "cudaMallocHost");
+    mask_words = (nseq + 63) / 64;
+    Check(cudaMalloc(&d_mask, size_t(NROACH_BOARDS) * NDP_CHAN_BLOCKS * mask_words * sizeof(uint64_t)), "mask");
+    Check(cudaMalloc(&d_block, size_t(nchan)), "blocks");
+    Check(cudaMalloc(&d_win, in_bytes), "cudaMalloc weights input");
+    Check(cudaMalloc(&d_wvis[0], vis_bytes), "cudaMalloc weights");
+    Check(cudaMalloc(&d_wvis[1], vis_bytes), "cudaMalloc weights");
+    Check(cudaMallocHost(&h_wvis, vis_bytes), "cudaMallocHost");
     Check(cudaStreamCreateWithFlags(&s_tap, cudaStreamNonBlocking), "stream");
     Check(cudaStreamCreateWithFlags(&s_copy, cudaStreamNonBlocking), "stream");
     ev_copied.resize(nstreams);
@@ -143,6 +182,25 @@ struct TccTap::Impl {
     cudaFree(d_vis[0]);
     cudaFree(d_vis[1]);
     cudaFreeHost(h_vis);
+    cudaFree(d_mask);
+    cudaFree(d_block);
+    cudaFree(d_win);
+    cudaFree(d_wvis[0]);
+    cudaFree(d_wvis[1]);
+    cudaFreeHost(h_wvis);
+  }
+
+  void SetGulpValidity(const uint64_t* p_mask, size_t p_words, const uint8_t* p_block) {
+    have_mask = false;
+    if (!p_mask || !p_block || int(p_words) != mask_words) return;
+    const size_t n = size_t(NROACH_BOARDS) * NDP_CHAN_BLOCKS * p_words;
+    const uint64_t last = nseq % 64 ? (uint64_t(1) << (nseq % 64)) - 1 : ~uint64_t(0);
+    for (size_t i = 0; i < n && !have_mask; ++i) {
+      have_mask = (p_mask[i] | ((i + 1) % p_words == 0 ? ~last : 0)) != ~uint64_t(0);  // a packet lost
+    }
+    if (!have_mask) return;
+    mask.assign(p_mask, p_mask + n);
+    block.assign(p_block, p_block + nchan);
   }
 
   bool Arm(uint64_t p_seq_start, int64_t p_chan0, int p_nchan, int p_nseq, float p_quality) {
@@ -176,9 +234,30 @@ struct TccTap::Impl {
       seq_first = armed_seq;
       nsamp = 0;
       ngulps = 0;
+      weighted = false;
+      weighted_base = 0;
     }
     corr->launchAsync(reinterpret_cast<CUstream>(s_tap), reinterpret_cast<CUdeviceptr>(d_vis[cur]),
                       reinterpret_cast<CUdeviceptr>(d_in), open);
+    // The weights are correlated from the first gulp of the integration that
+    // lost packets on; the complete gulps before it add their samples on the host
+    if (have_mask || weighted) {
+      std::vector<uint64_t> full;
+      if (!have_mask) {  // a complete gulp of a weighted integration
+        full.assign(size_t(NROACH_BOARDS) * NDP_CHAN_BLOCKS * mask_words, ~uint64_t(0));
+      }
+      const uint64_t* hm = have_mask ? mask.data() : full.data();
+      Check(cudaMemcpyAsync(d_mask, hm, size_t(NROACH_BOARDS) * NDP_CHAN_BLOCKS * mask_words * sizeof(uint64_t),
+                            cudaMemcpyHostToDevice, s_tap), "mask");
+      if (have_mask) Check(cudaMemcpyAsync(d_block, block.data(), nchan, cudaMemcpyHostToDevice, s_tap), "blocks");
+      WeightsToTccI8<<<dim3(ntb, nchan), kInputs, 0, s_tap>>>(d_mask, d_block, d_win, nseq, ntb, mask_words);
+      Check(cudaGetLastError(), "weights launch");
+      if (!weighted) weighted_base = nsamp;  // the complete gulps before, all samples valid
+      corr->launchAsync(reinterpret_cast<CUstream>(s_tap), reinterpret_cast<CUdeviceptr>(d_wvis[cur]),
+                        reinterpret_cast<CUdeviceptr>(d_win), weighted);
+      weighted = true;
+    }
+    have_mask = false;
     open = true;
     nsamp += nseq;
     ++ngulps;
@@ -194,6 +273,9 @@ struct TccTap::Impl {
     Check(cudaEventRecord(ev_corr, s_tap), "record");
     Check(cudaStreamWaitEvent(s_copy, ev_corr, 0), "wait corr");
     Check(cudaMemcpyAsync(h_vis, d_vis[cur], vis_bytes, cudaMemcpyDeviceToHost, s_copy), "d2h");
+    if (weighted) Check(cudaMemcpyAsync(h_wvis, d_wvis[cur], vis_bytes, cudaMemcpyDeviceToHost, s_copy), "d2h");
+    pub_weighted = weighted;
+    pub_weighted_base = weighted_base;
     Check(cudaEventRecord(ev_d2h[cur], s_copy), "record");
     VisTableHeader& h = pub_hdr;
     h = VisTableHeader{};
@@ -223,12 +305,16 @@ struct TccTap::Impl {
     while (true) {
       VisTableHeader h;
       int buf;
+      bool wtd;
+      uint64_t wbase;
       {
         std::unique_lock<std::mutex> lk(mtx);
         cv.wait(lk, [this] { return stop || busy; });
         if (stop) return;
         h = pub_hdr;
         buf = pub_buf;
+        wtd = pub_weighted;
+        wbase = pub_weighted_base;
       }
       Check(cudaEventSynchronize(ev_d2h[buf]), "sync d2h");
       // TCC: v[chan][bl][polY][polX] = sum x[recvY, polY] conj(x[recvX, polX]),
@@ -241,9 +327,17 @@ struct TccTap::Impl {
             for (int b = 0; b < kStands; ++b) {
               const int32_t* row = h_vis + ((size_t(c) * kNbl + size_t(b) * (b + 1) / 2) * kPols * kPols +
                                             (p * kPols + p)) * 2;
+              const int32_t* wrow = h_wvis + (row - h_vis);
               for (int a = 0; a <= b; ++a) {
                 const int32_t* z = row + size_t(a) * kPols * kPols * 2;
-                std::complex<float> r{float(z[0]) * inv, float(z[1]) * inv};
+                // divided by the valid samples of the product (the weights'
+                // correlation plus the complete gulps before the first lossy one)
+                float f = inv;
+                if (wtd) {
+                  const double nw = double(wbase) + wrow[size_t(a) * kPols * kPols * 2];
+                  f = nw > 0 ? float(1.0 / nw) : 0.f;
+                }
+                std::complex<float> r{float(z[0]) * f, float(z[1]) * f};
                 out[size_t(a) * kStands + b] = r;
                 out[size_t(b) * kStands + a] = std::conj(r);
               }
@@ -293,6 +387,9 @@ void TccTap::AfterCopy(int p_i, cudaStream_t p_stream) {
   if (m->armed) Check(cudaEventRecord(m->ev_copied[p_i], p_stream), "record copy");
 }
 void TccTap::Launch(const uint8_t* p_gulp) { m->Launch(p_gulp); }
+void TccTap::SetGulpValidity(const uint64_t* p_mask, size_t p_words, const uint8_t* p_block) {
+  m->SetGulpValidity(p_mask, p_words, p_block);
+}
 uint64_t TccTap::Version() const { return m->writer.Version(); }
 
 #else  // !EPIC_WITH_TCC
@@ -306,6 +403,7 @@ bool TccTap::Arm(uint64_t, int64_t, int, int, float) { return false; }
 void TccTap::BeforeCopy(cudaStream_t) {}
 void TccTap::AfterCopy(int, cudaStream_t) {}
 void TccTap::Launch(const uint8_t*) {}
+void TccTap::SetGulpValidity(const uint64_t*, size_t, const uint8_t*) {}
 uint64_t TccTap::Version() const { return 0; }
 
 #endif  // EPIC_WITH_TCC

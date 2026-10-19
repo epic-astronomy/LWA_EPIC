@@ -266,9 +266,10 @@ class CorrelatorRft : public raft::kernel {
     // The tap stages its slice while ProcessGulp runs (WaitCopied below).
     bool tapped = false;
     const float quality = float(MetaOr<double>(gulp_metadata, "data_quality", 1.0));
-    if (m_correlator.get()->UsesFx()) {
+    {
       // which samples arrived (packet_processor.hpp ApplySampleWeights), for
-      // the FX imager to correlate the sample weights like the voltages
+      // the FX imager and the calibration tap to correlate the sample weights
+      // like the voltages
       const auto vm = gulp_metadata.find("valid_mask");
       const auto vb = gulp_metadata.find("valid_block");
       if (vm != gulp_metadata.end() && vb != gulp_metadata.end()) {

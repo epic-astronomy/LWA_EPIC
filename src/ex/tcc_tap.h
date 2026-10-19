@@ -54,6 +54,11 @@ class TccTap {
   void AfterCopy(int p_i, cudaStream_t p_stream);
   /// All copies are queued: reorder and correlate the armed gulp held at `p_gulp`.
   void Launch(const uint8_t* p_gulp);
+  /// Which samples of the next gulp arrived (as FxImager::SetGulpValidity;
+  /// call before Launch, null: all). Tables of integrations with lost
+  /// packets divide each product by its valid samples, from the sample
+  /// weights correlated like the voltages.
+  void SetGulpValidity(const uint64_t* p_mask, size_t p_words, const uint8_t* p_block);
 
   uint64_t Version() const;
 
