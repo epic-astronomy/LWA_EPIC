@@ -131,6 +131,13 @@ class ChanReducerRft : public raft::kernel {
       info.grid_res = MetaNum(meta, "grid_res");
       info.img_len_ms = MetaNum(meta, "img_len_ms");
       info.gain_version = MetaU64(meta, "gain_version");  // set by the correlator with --gain_table
+      if (const uint64_t npix = MetaU64(meta, "sky_npix"); npix > 0) {
+        // regridded to the monitor's pixels on the GPU (FX imaging)
+        info.layout = 1;
+        info.npix = static_cast<uint32_t>(npix);
+        info.table_version = MetaU64(meta, "sky_table_version");
+        info.pix = p_pld.get_mbuf()->GetDataPtr() + MetaU64(meta, "sky_pix_offset");
+      }
       m_sky_hold.emplace(p_pld);
       if (!m_sky->TrySubmit(p_pld.get_mbuf()->GetDataPtr(), static_cast<int>(m_in_nchan), info)) {
         m_sky_hold.reset();

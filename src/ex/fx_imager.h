@@ -49,7 +49,18 @@ class FxImager {
   /// to p_host (page-locked). Returns at once: the copy runs on its own
   /// stream from one of two device images, overlapping the next image's
   /// correlation and gridding; Sync waits for it.
-  void Image(const float* p_phases, float* p_host);
+  void Image(const float* p_phases, float* p_host, double p_unix = 0.0, float* p_pix_host = nullptr);
+  /// The all-sky monitor's pixel table (sky_table.hpp): with it, Image also
+  /// regrids Stokes I (XX + YY, summed over p_nbin channels) to the monitor's
+  /// pixel slots, interpolating their positions to each image's start time
+  /// as the monitor would, and copies the spectra [nchan / p_nbin][P] to
+  /// p_pix_host. Bicubic taps (Keys, a = -0.75) on the image in FITS order.
+  void SetSkyTable(const double* p_xy_a, const double* p_xy_b, int p_capacity, double p_t_a, double p_t_b,
+                   int p_nbin);
+  /// Pixel slots of the table in use (0: none)
+  int SkyPixels() const;
+  /// The last image was regridded (its time inside the table's span)
+  bool SkyDone() const;
   /// Wait until the last image is in its host buffer
   void Sync();
 

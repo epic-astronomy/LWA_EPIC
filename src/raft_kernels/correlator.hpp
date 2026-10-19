@@ -36,6 +36,7 @@
 #include "../ex/constants.h"
 #include "../ex/gain_table.hpp"
 #include "../ex/proj_table.hpp"
+#include "../ex/sky_table.hpp"
 #include "../ex/metrics.hpp"
 #include "../ex/station_desc.hpp"
 #include "../ex/types.hpp"
@@ -68,6 +69,9 @@ class CorrelatorRft : public raft::kernel {
   std::string m_session_id; //changes with frequency
   /// Calibration gains from streamcal (null: off)
   std::unique_ptr<GainTableReader> m_gain_reader{nullptr};
+  /// FX: the all-sky monitor's pixel table
+  std::unique_ptr<SkyTableReader> m_sky_table{nullptr};
+  uint64_t m_sky_table_version{0};
   /// Interference projector from streamcal (null: off)
   std::unique_ptr<ProjTableReader> m_proj_reader{nullptr};
   /// CPU X-engine on a slice of every gulp for streamcal (null: off; the GPU
@@ -112,6 +116,11 @@ class CorrelatorRft : public raft::kernel {
     if (!cal.proj_table_path.empty()) {
       m_proj_reader = std::make_unique<ProjTableReader>(cal.proj_table_path);
       LOG(INFO) << "Interference projector will be read from " << cal.proj_table_path;
+    }
+    if (cal.use_fx && !cal.sky_table_path.empty()) {
+      m_sky_table = std::make_unique<SkyTableReader>(cal.sky_table_path);
+      LOG(INFO) << "Images regridded on the GPU to the all-sky monitor's pixels once it writes "
+                << cal.sky_table_path;
     }
     if (cal.caltap_nseq > 0 && !cal.caltap_path.empty()) {
       CalTapOptions o;
@@ -208,6 +217,22 @@ class CorrelatorRft : public raft::kernel {
           LOG_EVERY_N(WARNING, 100) << "Gain table rejected: " << m_gain_reader->LastError();
         }
       }
+      // and the monitor's pixel table
+      if (m_sky_table) {
+        if (auto t = m_sky_table->Poll()) {
+          const int nb = m_correlator.get()->GetCalDesc().sky_nbin;
+          if (t->capacity == 0 || t->capacity > 65536 || int(t->grid) != m_grid_size) {
+            LOG_EVERY_N(WARNING, 10) << "Sky pixel table v" << t->version << " not used: " << t->capacity
+                                     << " slots for a " << t->grid << "-pixel grid";
+          } else {
+            m_correlator.get()->SetSkyTable(t->xy_a.data(), t->xy_b.data(), int(t->capacity), t->t_a, t->t_b, nb);
+            if (m_sky_table_version == 0) {
+              LOG(INFO) << "Regridding to the all-sky monitor's " << t->capacity << " pixel slots on the GPU";
+            }
+            m_sky_table_version = t->version;
+          }
+        }
+      }
       // the projector likewise changes only between images
       if (m_proj_reader) {
         if (auto snap = m_proj_reader->Poll(chan0, nchan, m_seq_start_id)) {
@@ -252,6 +277,7 @@ class CorrelatorRft : public raft::kernel {
       img_metadata["chan0"] = chan0;
       img_metadata["session_id"] = m_session_id;
       img_metadata["gain_version"] = m_correlator.get()->GetGainVersion();
+      m_correlator.get()->SetImageTime(double(m_seq_start_id) * (double(SEQ_MULT_S) / double(FS)));
       // img_metadata["cfreq"] = int((chan0+ceil(nchan/2f))*BANDWIDTH);
       VLOG(3)
           << "Processing gulp at: "
@@ -269,6 +295,13 @@ class CorrelatorRft : public raft::kernel {
           pld.get_mbuf()->GetDataPtr(), buf.get_mbuf()->GetDataPtr(),
           m_is_first, m_is_last, static_cast<int>(chan0), m_delta);
       DLOG(INFO) << "Done processing the gulp";
+      if (m_correlator.get()->SkyDone()) {
+        // regridded to the monitor's pixels on the GPU: the spectra follow the image in buf
+        img_metadata["sky_npix"] = uint64_t(m_correlator.get()->SkyPixels());
+        img_metadata["sky_table_version"] = m_sky_table_version;
+        img_metadata["sky_pix_offset"] = uint64_t(m_correlator.get()->SkyPixelOffset());
+        img_metadata["sky_nchan"] = uint64_t(nchan / std::max(1, m_correlator.get()->GetCalDesc().sky_nbin));
+      }
       // interference stage (only when configured, so other images are unchanged)
       if (m_proj_reader || cal_impulse_on()) {
         img_metadata["proj_version"] = m_correlator.get()->GetProjVersion();

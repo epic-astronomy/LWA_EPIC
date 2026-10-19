@@ -6,6 +6,7 @@
 #include <glog/logging.h>
 
 #include <algorithm>
+#include <iomanip>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -142,6 +143,73 @@ __global__ void CombineImages(const float2* __restrict__ F, float4* __restrict__
   out[j] = float4{2.f * xx.x * s, 2.f * yy.x * s, (xy.x + yx.x) * s, (xy.y - yx.y) * s};
 }
 
+// Bicubic weights of Keys' cubic convolution (a = -0.75) at offset f, in
+// double precision without contraction, as skymon_taps computes them
+__device__ inline void Keys4(double f, double* wt) {
+  const double a = -0.75;
+  const double t[4] = {__dadd_rn(1.0, f), f, __dsub_rn(1.0, f), __dsub_rn(2.0, f)};
+#pragma unroll
+  for (int k = 0; k < 4; ++k) {
+    const double t2 = __dmul_rn(t[k], t[k]), t3 = __dmul_rn(t2, t[k]);
+    const double nr = __dadd_rn(__dsub_rn(__dmul_rn(a + 2, t3), __dmul_rn(a + 3, t2)), 1.0);
+    const double fr = __dsub_rn(__dadd_rn(__dsub_rn(__dmul_rn(a, t3), __dmul_rn(5 * a, t2)), __dmul_rn(8 * a, t[k])),
+                                4 * a);
+    wt[k] = t[k] <= 1.0 ? nr : fr;
+  }
+}
+
+// Stokes I of the monitor's pixel slots: out[c'][p] = sum of the 16 bicubic
+// taps of slot p of sum_{k < nbin} (XX + YY)[c' nbin + k]. The positions are
+// 1-based FITS pixels (x, y) of the image in FITS order; FITS pixel
+// (i + 1, j + 1) is buffer element [a][b], a = (i + N/2) % N,
+// b = (N - 1 - j + N/2) % N (save_output; sky_publisher.hpp).
+__global__ void SkyRegrid(const float4* __restrict__ img, const double2* __restrict__ xy_a,
+                          const double2* __restrict__ xy_b, double f, int P, int N, int nbin, int nout,
+                          float* __restrict__ out) {
+  const int p = blockIdx.x * blockDim.x + threadIdx.x;
+  if (p >= P) return;
+  const double2 a2 = xy_a[p], b2 = xy_b[p];
+  const double xx = __dadd_rn(a2.x, __dmul_rn(f, __dsub_rn(b2.x, a2.x)));
+  const double yy = __dadd_rn(a2.y, __dmul_rn(f, __dsub_rn(b2.y, a2.y)));
+  const double x = xx - 1.0, y = yy - 1.0;
+  const double fx0 = floor(x), fy0 = floor(y);
+  const bool ok = isfinite(fx0) && isfinite(fy0) && fx0 >= 1 && fy0 >= 1 && fx0 < N - 2 && fy0 < N - 2;
+  if (!ok) {
+    for (int c = 0; c < nout; ++c) out[size_t(c) * P + p] = 0.f;
+    return;
+  }
+  const int x0 = int(fx0), y0 = int(fy0);
+  double wx[4], wy[4];
+  Keys4(x - x0, wx);
+  Keys4(y - y0, wy);
+  int cell[16];
+  float w[16];
+#pragma unroll
+  for (int j = 0; j < 4; ++j)
+#pragma unroll
+    for (int i = 0; i < 4; ++i) {
+      const int fi = x0 + i - 1, fj = y0 + j - 1;  // 0-based FITS pixel
+      const int a = (fi + N / 2) % N, b = (N - 1 - fj + N / 2) % N;
+      cell[4 * j + i] = a * N + b;
+      w[4 * j + i] = float(__dmul_rn(wy[j], wx[i]));
+    }
+  const size_t nn = size_t(N) * N;
+  for (int c = 0; c < nout; ++c) {
+    float s = 0.f;
+    for (int k = 0; k < nbin; ++k) {
+      const float4* im = img + size_t(c * nbin + k) * nn;
+      float v = 0.f;
+#pragma unroll
+      for (int t = 0; t < 16; ++t) {
+        const float4 q = im[cell[t]];
+        v += w[t] * (q.x + q.y);
+      }
+      s += v;
+    }
+    out[size_t(c) * P + p] = s;
+  }
+}
+
 }  // namespace
 
 struct FxImager::Impl {
@@ -160,6 +228,13 @@ struct FxImager::Impl {
   cudaEvent_t ev_free{}, ev_combined{}, ev_copied[2]{};
   int next{0};  // device image the next combination writes
   int last{0};  // device image of the last Image call
+  // the all-sky monitor's pixel table
+  double2* d_xy_a{};
+  double2* d_xy_b{};
+  float* d_pix[2]{};
+  int sky_p{0}, sky_cap{0}, sky_nbin{1};
+  bool sky_done{false};  // the last image was regridded
+  double sky_ta{0}, sky_tb{1};
   // timing of the last image (gridding to combination, and the copy)
   cudaEvent_t t_grid{}, t_comb{}, t_copy{};
   bool timed{false};
@@ -202,7 +277,8 @@ struct FxImager::Impl {
     cufftDestroy(plan);
     for (void* p : {static_cast<void*>(d_tcc_in), static_cast<void*>(d_vis), static_cast<void*>(d_base),
                     static_cast<void*>(d_K), static_cast<void*>(d_corr), static_cast<void*>(d_lag),
-                    static_cast<void*>(d_img[0]), static_cast<void*>(d_img[1])})
+                    static_cast<void*>(d_img[0]), static_cast<void*>(d_img[1]), static_cast<void*>(d_xy_a),
+                    static_cast<void*>(d_xy_b), static_cast<void*>(d_pix[0]), static_cast<void*>(d_pix[1])})
       if (p) cudaFree(p);
     for (auto e : {ev_free, ev_combined, ev_copied[0], ev_copied[1], t_grid, t_comb, t_copy}) cudaEventDestroy(e);
     cudaStreamDestroy(s);
@@ -248,7 +324,34 @@ void FxImager::Correlate(const uint8_t* p_gulp, cudaEvent_t const* p_ready, int 
                        reinterpret_cast<CUdeviceptr>(m->d_tcc_in), p_add);
 }
 
-void FxImager::Image(const float* p_phases, float* p_host) {
+void FxImager::SetSkyTable(const double* p_xy_a, const double* p_xy_b, int p_capacity, double p_t_a, double p_t_b,
+                           int p_nbin) {
+  Check(cudaSetDevice(m->device), "device");
+  if (p_nbin < 1 || m->nchan % p_nbin) throw std::invalid_argument("FxImager: channels not divisible by sky_nbin");
+  // the copies of earlier images may still read the pixel buffers
+  Check(cudaStreamSynchronize(m->s), "sky table");
+  Check(cudaStreamSynchronize(m->s_copy), "sky table");
+  if (p_capacity > m->sky_cap) {
+    for (void* p : {static_cast<void*>(m->d_xy_a), static_cast<void*>(m->d_xy_b), static_cast<void*>(m->d_pix[0]),
+                    static_cast<void*>(m->d_pix[1])})
+      if (p) cudaFree(p);
+    Check(cudaMalloc(&m->d_xy_a, size_t(p_capacity) * sizeof(double2)), "sky table");
+    Check(cudaMalloc(&m->d_xy_b, size_t(p_capacity) * sizeof(double2)), "sky table");
+    for (auto& p : m->d_pix) Check(cudaMalloc(&p, size_t(m->nchan) * p_capacity * sizeof(float)), "sky pixels");
+    m->sky_cap = p_capacity;
+  }
+  Check(cudaMemcpy(m->d_xy_a, p_xy_a, size_t(p_capacity) * sizeof(double2), cudaMemcpyHostToDevice), "sky table");
+  Check(cudaMemcpy(m->d_xy_b, p_xy_b, size_t(p_capacity) * sizeof(double2), cudaMemcpyHostToDevice), "sky table");
+  m->sky_p = p_capacity;
+  m->sky_ta = p_t_a;
+  m->sky_tb = p_t_b;
+  m->sky_nbin = p_nbin;
+}
+
+int FxImager::SkyPixels() const { return m->sky_p; }
+bool FxImager::SkyDone() const { return m->sky_done; }
+
+void FxImager::Image(const float* p_phases, float* p_host, double p_unix, float* p_pix_host) {
   if (!m->geometry) throw std::logic_error("FxImager: Image before SetGeometry");
   const int N = m->N;
   const size_t nlag = size_t(m->nchan) * 4 * N * N;
@@ -274,11 +377,32 @@ void FxImager::Image(const float* p_phases, float* p_host) {
   CombineImages<<<dim3((N * N + 255) / 256, m->nchan), 256, 0, m->s>>>(m->d_lag, m->d_img[k], m->d_corr, N,
                                                                      r * r * r * r / 32.f);
   Check(cudaGetLastError(), "combine");
+  // within the table's span (with the monitor's margin): a table the monitor
+  // stopped updating is not used, and the image is published instead
+  const double fr = (p_unix - m->sky_ta) / (m->sky_tb - m->sky_ta);
+  const bool sky = m->sky_p > 0 && p_pix_host && fr >= -0.5 && fr <= 1.5;
+  if (m->sky_p > 0 && sky != m->sky_done) {
+    LOG(INFO) << "FxImager: " << (sky ? "regridding to" : "not regridding to") << " the monitor's pixels (image at "
+              << std::fixed << p_unix << ", table " << m->sky_ta << " - " << m->sky_tb << ")";
+  }
+  m->sky_done = sky;
+  if (sky) {
+    // the monitor's interpolation between its two positions (geometry.SkyGrid.taps)
+    const double f = std::min(std::max(fr, 0.0), 1.5);
+    SkyRegrid<<<(m->sky_p + 127) / 128, 128, 0, m->s>>>(m->d_img[k], m->d_xy_a, m->d_xy_b, f, m->sky_p, N,
+                                                        m->sky_nbin, m->nchan / m->sky_nbin, m->d_pix[k]);
+    Check(cudaGetLastError(), "sky regrid");
+  }
   Check(cudaEventRecord(m->ev_combined, m->s), "event");
   Check(cudaEventRecord(m->t_comb, m->s), "event");
   Check(cudaStreamWaitEvent(m->s_copy, m->ev_combined, 0), "wait combine");
   if (p_host) {
     Check(cudaMemcpyAsync(p_host, m->d_img[k], size_t(m->nchan) * N * N * 4 * sizeof(float),
+                          cudaMemcpyDeviceToHost, m->s_copy),
+          "copy");
+  }
+  if (sky) {
+    Check(cudaMemcpyAsync(p_pix_host, m->d_pix[k], size_t(m->nchan / m->sky_nbin) * m->sky_p * sizeof(float),
                           cudaMemcpyDeviceToHost, m->s_copy),
           "copy");
   }
@@ -326,7 +450,10 @@ FxImager::FxImager(int, int, int, int, int, bool) {
 FxImager::~FxImager() = default;
 void FxImager::SetGeometry(const float*, const float*, const float*, const float*) {}
 void FxImager::Correlate(const uint8_t*, cudaEvent_t const*, int, bool) {}
-void FxImager::Image(const float*, float*) {}
+void FxImager::Image(const float*, float*, double, float*) {}
+void FxImager::SetSkyTable(const double*, const double*, int, double, double, int) {}
+int FxImager::SkyPixels() const { return 0; }
+bool FxImager::SkyDone() const { return false; }
 void FxImager::Sync() {}
 cudaEvent_t FxImager::InputFree() const { return nullptr; }
 cudaStream_t FxImager::Stream() const { return nullptr; }

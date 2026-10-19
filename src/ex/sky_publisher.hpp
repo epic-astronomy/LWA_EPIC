@@ -75,6 +75,13 @@ class SkyPublisher {
     double img_len_ms{0};
     /// calibration gain table the image was made with (0: nominal phases)
     uint64_t gain_version{0};
+    /// 1: pix holds the all-sky monitor's pixel spectra [nchan / nbin][npix],
+    /// regridded on the GPU with pixel table table_version (sky_table.hpp),
+    /// published instead of the image; 0: the image
+    uint32_t layout{0};
+    uint32_t npix{0};
+    uint64_t table_version{0};
+    const float* pix{nullptr};
   };
 
   /**
@@ -155,7 +162,16 @@ class SkyPublisher {
     put_at<double>(slot, 48, p_info.img_len_ms);
     put_at<uint64_t>(slot, 56, p_info.gain_version);
     float* out = reinterpret_cast<float*>(slot + kSlotHeader);
-    StokesIFitsOrder(p_img, p_nchan, m_grid, m_nbin, out);
+    const bool pixels = p_info.layout == 1 && p_info.pix &&
+                        size_t(nout) * p_info.npix * sizeof(float) + kSlotHeader <= m_slot_bytes;
+    put_at<uint32_t>(slot, 64, pixels ? 1u : 0u);
+    put_at<uint32_t>(slot, 68, pixels ? p_info.npix : 0u);
+    put_at<uint64_t>(slot, 72, pixels ? p_info.table_version : 0u);
+    if (pixels) {
+      std::memcpy(out, p_info.pix, size_t(nout) * p_info.npix * sizeof(float));
+    } else {
+      StokesIFitsOrder(p_img, p_nchan, m_grid, m_nbin, out);
+    }
     std::atomic_thread_fence(std::memory_order_release);
     lock->store(2 * n + 2, std::memory_order_release);
     m_count = n + 1;

@@ -213,6 +213,16 @@ class BenchSink : public raft::kernel {
       std::snprintf(fn, sizeof(fn), "%s/img_seq%llu_gv%llu_pv%llu.f32", m_opts.dump_dir.c_str(),
                     (unsigned long long)seq, (unsigned long long)gv, (unsigned long long)pv);
       std::ofstream(fn, std::ios::binary).write(reinterpret_cast<const char*>(pld.get_mbuf()->GetDataPtr()), nbytes);
+      // with GPU regridding (FX imaging): the monitor's pixel spectra too
+      if (auto it = meta.find("sky_npix"); it != meta.end()) {
+        const uint64_t npix = std::get<uint64_t>(it->second);
+        const uint64_t off = std::get<uint64_t>(meta["sky_pix_offset"]);
+        const uint64_t tv = std::get<uint64_t>(meta["sky_table_version"]);
+        std::string pfn = std::string(fn) + ".pix_tv" + std::to_string(tv) + "_n" + std::to_string(npix);
+        std::ofstream(pfn, std::ios::binary)
+            .write(reinterpret_cast<const char*>(pld.get_mbuf()->GetDataPtr() + off),
+                   size_t(std::get<uint64_t>(meta["sky_nchan"])) * npix * sizeof(float));
+      }
     }
     if (m_opts.report_every > 0 && m_n % m_opts.report_every == 0) {
       double m, p50, p99, mx;

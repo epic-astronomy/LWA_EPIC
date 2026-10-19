@@ -74,6 +74,10 @@ struct MOFFCorrelatorDesc {
   IMAGE_SIZE img_size{FULL};
   /// Image with the FX imager (Tensor-Core Correlator, lag grid, cuFFT) instead of the E-field kernel
   bool use_fx{false};
+  /// FX: the all-sky monitor's pixel table (sky_table.hpp; empty: none) and
+  /// the channels summed per published channel
+  std::string sky_table_path;
+  int sky_nbin{1};
   float grid_res_deg{1};
   int support_size{3};
   bool is_remove_autocorr{false};

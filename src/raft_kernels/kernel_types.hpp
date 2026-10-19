@@ -148,11 +148,17 @@ struct Kernel<_CORRELATOR> : KernelTypeDefs {
       correlator_options.img_size = DOUBLE;
     }
     correlator_options.use_fx = options["imager"].as<std::string>() == "fx";
+    if (correlator_options.use_fx && !options["sky_shm"].as<std::string>().empty()) {
+      correlator_options.sky_table_path = "/dev/shm/" + options["sky_shm"].as<std::string>() + "_table";
+      correlator_options.sky_nbin = options["sky_nbin"].as<int>();
+    }
     {
       // one image per buffer (floats): XX, YY, XY* for every channel; larger
       // images get fewer of these page-locked buffers (25 x 134 MB at 256)
       const int n = options["imagesize"].as<int>();
-      const size_t img = size_t(correlator_options.nchan_out) * n * n * 4;
+      size_t img = size_t(correlator_options.nchan_out) * n * n * 4;
+      // the monitor's pixel spectra after the image (at most 65536 slots)
+      if (!correlator_options.sky_table_path.empty()) img += size_t(correlator_options.nchan_out) * 65536;
       if (img > size_t(correlator_options.buf_size)) {
         correlator_options.buf_size = int(img);
         correlator_options.nbuffers = 25;

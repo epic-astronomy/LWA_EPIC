@@ -204,6 +204,7 @@ class EPIC<1> : public EPICKernels<0> {
 /// the video server or the network.
 void RunEpicBench(const KernelTypeDefs::opt_t& p_options) {
   BenchOptions bo = GetBenchOptions(p_options);
+  bo.exit_grace_s = 10;  // the FX imager holds the last image (see bench_kernels.hpp)
   using gen_t = BenchGen_t;
   using sink_t = BenchSink<KernelTypeDefs::moffcorr_t::payload_t>;
   raft::map m;

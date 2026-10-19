@@ -473,7 +473,8 @@ MOFFCuHandler::ProcessGulpFx(uint8_t* p_data_ptr, uint8_t* p_img_in, bool p_rfi,
     if (p_last) {
         // returns at once; the correlator kernel waits (FinishFxImage) before
         // it hands the image on, one image later
-        m_fx->Image(m_phases_cu, p_out_ptr);
+        m_fx->Image(m_phases_cu, p_out_ptr, m_image_unix,
+                    m_fx->SkyPixels() > 0 ? p_out_ptr + SkyPixelOffset() : nullptr);
     }
 }
 

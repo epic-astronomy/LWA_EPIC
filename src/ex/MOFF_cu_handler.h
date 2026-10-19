@@ -111,6 +111,7 @@ class MOFFCuHandler {
   /// FX imaging (--imager fx): replaces the E-field kernel when set
   std::unique_ptr<FxImager> m_fx{nullptr};
   int m_fx_size{0};
+  double m_image_unix{0};
   /// Recorded on each gulp stream once its part of the gulp is on the GPU
   std::vector<cudaEvent_t> m_stream_ready;
 
@@ -283,6 +284,17 @@ class MOFFCuHandler {
   /// Image with the FX imager at p_size x p_size instead of the E-field kernel
   void EnableFx(int p_size) { m_fx_size = p_size; }
   bool UsesFx() const { return m_fx_size > 0; }
+  /// FX: regrid every image to the all-sky monitor's pixels as well
+  void SetSkyTable(const double* p_xy_a, const double* p_xy_b, int p_capacity, double p_t_a, double p_t_b,
+                   int p_nbin) {
+    if (m_fx) m_fx->SetSkyTable(p_xy_a, p_xy_b, p_capacity, p_t_a, p_t_b, p_nbin);
+  }
+  int SkyPixels() const { return m_fx ? m_fx->SkyPixels() : 0; }
+  bool SkyDone() const { return m_fx && m_fx->SkyDone(); }
+  /// FX: start time (unix) of the image whose last gulp comes next, and
+  /// where in its host buffer the pixel spectra go (floats after the start)
+  void SetImageTime(double p_unix) { m_image_unix = p_unix; }
+  size_t SkyPixelOffset() const { return size_t(m_nchan_in) * m_fx_size * m_fx_size * 4; }
   /// Wait until the last FX image is in its host buffer
   void FinishFxImage() {
     if (m_fx) m_fx->Sync();
