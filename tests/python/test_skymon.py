@@ -905,6 +905,55 @@ def _sim_and_monitor(out, duration, frb_per_hour, inject_every_s, snr=(25, 40), 
     return sim, mon
 
 
+class TestBurstFit(unittest.TestCase):
+    def test_parameters_of_simulated_bursts(self):
+        """
+        The burst model fitted to dynamic spectra as a tier stores them (the
+        injector's channel fractions, the tier's high-pass, unit noise), at Unix
+        times: DM and the arrival at the band's centre within three of their
+        errors, and most fits reliable.
+        """
+        from skymon.burstfit import _highpass, fit, fractions
+        from skymon.dedisp import K_DM
+
+        band = Band(3136, 192, 1)
+        e = band.edges_mhz()
+        fc = 0.5 * (e[:-1] + e[1:])
+        f0 = math.sqrt(e[0] * e[-1])
+        img = 8192 * 1000 / 196e6
+        rng = np.random.default_rng(4)
+        good = reliable = 0
+        n_trials = 8
+        for _ in range(n_trials):
+            tier = int(rng.integers(0, 3))
+            n = 2 ** tier
+            dt = img * n
+            dm = float(np.exp(rng.uniform(np.log(10), np.log(300))))
+            w = float(np.exp(rng.uniform(np.log(0.005), np.log(0.2))))
+            sweep = K_DM * dm * (e[0] ** -2 - e[-1] ** -2)
+            W = int((sweep + 1.5) / dt) + 64
+            t0 = 1792400000.0
+            t_inf = t0 + 20 * dt - K_DM * dm * e[-1] ** -2 + rng.uniform(0, dt)
+            a_hp = 1.0 / 512
+            sig = fractions(e, dm, t_inf, w, 0.0, t0 + dt * np.arange(W + 1)) * (fc / f0)[:, None] ** -1.0 / math.sqrt(n)
+            sig = _highpass(sig, a_hp)
+            sig -= sig.mean(axis=1, keepdims=True)
+            sig *= 30.0 / math.sqrt(np.sum(sig ** 2))
+            noise = _highpass(rng.standard_normal(sig.shape), a_hp)
+            d = sig + noise - noise.mean(axis=1, keepdims=True)
+            step = 0.506 * n
+            r = fit(d, t0 + dt * np.arange(W), e, dm + rng.uniform(-0.5, 0.5) * step,
+                    t_inf + rng.uniform(-0.5, 0.5) * dt, dt * 2 ** round(math.log2(max(w / dt, 1))),
+                    tier_images=n, a_hp=a_hp, dm_step=step)
+            self.assertIsNotNone(r)
+            reliable += r["reliable"]
+            t_f0 = t_inf + K_DM * dm / f0 ** 2
+            if r["reliable"] and abs(r["dm"] - dm) < 3 * r["dm_err"] and abs(r["t_f0"] - t_f0) < 3 * r["t_f0_err"]:
+                good += 1
+        self.assertGreaterEqual(reliable, n_trials - 2)
+        self.assertEqual(good, reliable)
+
+
 class TestCalibrationSteps(unittest.TestCase):
     def test_gain_changes_are_rebased_not_detected(self):
         """

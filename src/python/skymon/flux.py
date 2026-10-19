@@ -528,6 +528,8 @@ def candidate_flux(contrib, raw_sigma, tier_level, dt_image, width_s, k, rec, el
                fluence_err_method=err_method,
                flux_density_jy=round(band / 1e3 / max(width_s, 1e-6), 3),
                fluence_per_channel_jy_ms=[None if not np.isfinite(v) else round(float(v), 3) for v in fl],
+               # per channel, Jy ms per normalised tier unit of contrib (for burstfit.physical)
+               jy_ms_per_unit=[None if not np.isfinite(v) else float(v) for v in scale],
                beam_relative=round(beam_rel, 4), beam_model=tab.get("model"),
                beam_source=tab.get("source", "model"), beam_version=tab.get("version"),
                gain_version=rec.get("gain_version"),

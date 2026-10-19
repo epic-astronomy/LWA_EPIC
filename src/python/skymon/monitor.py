@@ -40,6 +40,7 @@ from .geometry import Band, SkyGrid, altaz, auto_nside, beam_fwhm_deg, image_wcs
 from .inject import LiveInjector
 from .known import KnownSources
 from .search import Searcher
+from . import burstfit
 from .flux import (CalibrationFeed, beam_sigma_pix, beam_table, candidate_flux, measure_calibrators,
                    peak_fit)
 from .quality import candidate_quality, channel_contributions, contribution_noise
@@ -76,6 +77,10 @@ class Config:
     # images held after a change of the calibration gain table: their mean
     # becomes each pixel's baseline before they are searched (0: off)
     rebase_images: int = 24
+    # the burst model fitted to candidates (burstfit.py): at most this many a minute, with this
+    # many evaluations of the model each (0 a minute: none)
+    burst_fits_per_min: int = 6
+    burst_fit_nfev: int = 200
     warmup_images: int = 64
     norm_tau_s: float = 120.0
     var_tau_s: float = 300.0
@@ -212,6 +217,7 @@ class Monitor:
         self.last_index = -1
         self.started = time.time()
         self.metrics = collections.defaultdict(float)
+        self._fit_times = collections.deque()
         # set by the ring reader (run_ring): the pixel table for the imager's GPU regridding
         self.table_writer = None
         self.table_version = 0
@@ -809,6 +815,8 @@ class Monitor:
                 self._label_known(c)
             c.quality["conditions"] = self.cond.around(c.t_bottom)
             c.quality["calibration"] = self._calibration_around(c)
+            if products is not None and c.cls in ("candidate", "injection", "known"):
+                c.burst_fit = self._burst_fit(c, res.tier, products)
             stored = self.store.add(c, products, self.beam)  # repeats peak within a beam
             if stored is not None:
                 self.cond.note_candidate("solar" if (solar or sidelobe) else stored.cls)
@@ -840,6 +848,33 @@ class Monitor:
         c.known_source = ks
         if c.cls == "candidate":
             c.cls = "known"
+
+    def _burst_fit(self, c, tier, products):
+        """
+        The physical parameters of a candidate (burstfit.py): DM, arrival, intrinsic
+        width, scattering and spectrum fitted to its dynamic spectrum, and the
+        fitted fluences in Jy ms with the calibration of its flux. At most
+        burst_fits_per_min a minute (each takes about 2 s of one core), so a storm
+        of candidates cannot hold up the search; the others get a note.
+        """
+        now = time.time()
+        q = self._fit_times
+        while q and now - q[0] > 60.0:
+            q.popleft()
+        if len(q) >= self.cfg.burst_fits_per_min:
+            return dict(skipped="rate limit")
+        q.append(now)
+        try:
+            f = burstfit.fit(products["dynspec"], products["dynspec_t"], self.band.edges_mhz(), c.dm, c.t_inf,
+                             c.width_s, tier_images=2 ** tier.level, a_hp=tier.a_hp, dm_step=c.dm_step,
+                             max_nfev=self.cfg.burst_fit_nfev)
+            if f is None:
+                return dict(error="no fit")
+            f["physical"] = burstfit.physical(f, c.flux, tier.level, self.band.centres_mhz())
+            f["seconds"] = round(time.time() - now, 2)
+            return f
+        except Exception as e:  # for review: it must never stop the search
+            return dict(error=repr(e)[:200])
 
     def _products(self, res, hit, cand=None):
         """Data around a candidate: its pixel's window, DM-time plane, and accumulation"""

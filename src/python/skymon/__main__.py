@@ -89,6 +89,8 @@ def add_monitor_args(p):
                    help="spread over the sky above which a channel is flagged in an image "
                         "(noise gives about 1; inf disables)")
     p.add_argument("--no-rfi-records", action="store_true", help="do not store RFI candidates")
+    p.add_argument("--burst-fits-per-min", type=int, default=6,
+                   help="candidates a minute that get the burst model fitted (burstfit.py; 0: none)")
     p.add_argument("--rebase-images", type=int, default=24,
                    help="images held after a change of the calibration gain table; their mean becomes "
                         "every pixel's baseline before they are searched (0: off)")
@@ -126,7 +128,7 @@ def make_config(a) -> Config:
                   accum_interval_s=a.accum_interval, accum_hours=a.accum_hours,
                   inject_interval_s=a.inject_every * 60, inject_snr=tuple(a.inject_snr),
                   inject_dm=tuple(a.inject_dm), store_rfi=not a.no_rfi_records, rfi_records_max=a.rfi_records_max,
-                  rebase_images=a.rebase_images,
+                  rebase_images=a.rebase_images, burst_fits_per_min=a.burst_fits_per_min,
                   sidelobe_max=a.sidelobe_max,
                   fixed_dir_repeats=a.fixed_dir_repeats, fixed_dir_hours=a.fixed_dir_hours, pixel_table=not a.no_pixel_table, seed=a.seed,
                   narrowband_min_channels=a.narrowband_min_channels,
