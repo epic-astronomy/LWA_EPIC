@@ -42,8 +42,16 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <immintrin.h>
+
+#include <algorithm>
+#include <atomic>
+#include <cstdlib>
 #include <iostream>
 #include <sstream>
+#include <thread>
+
+#include "./cpu_reserve.hpp"
 #include <stdexcept>
 #include <string>
 
@@ -163,6 +171,53 @@ class Verbs {
   size_t _pkt_size_max;
   float _timeout;
   bf_ibv _verbs;
+
+  // Two receive threads (EPIC_RECV_THREADS=2, the default): a poller waits on
+  // the completion queue and hands each batch of received packets through a
+  // single-producer single-consumer ring to the thread that calls
+  // recv_packet, which assembles them and returns the buffers to the queue.
+  // The two run on the CPU reserved for the receiver and its sibling.
+  static constexpr size_t kRing = 1 << 14;  // batches
+  bf_ibv_recv_pkt* _ring[kRing];
+  alignas(64) std::atomic<size_t> _head{0};  // written by the poller
+  alignas(64) std::atomic<size_t> _tail{0};  // written by the consumer
+  std::atomic<bool> _stop{false};
+  std::thread _poller;
+  int _threads{0};  // 0: not decided yet
+  void poll_loop() {
+    while (!_stop.load(std::memory_order_relaxed)) {
+      bf_ibv_recv_pkt* batch = nullptr;
+      try {
+        batch = this->receive();
+      } catch (Verbs::Error const&) {
+        continue;  // timeout
+      }
+      if (!batch) continue;
+      const size_t h = _head.load(std::memory_order_relaxed);
+      while (h - _tail.load(std::memory_order_acquire) >= kRing) {
+        if (_stop.load(std::memory_order_relaxed)) return;
+        _mm_pause();
+      }
+      _ring[h % kRing] = batch;
+      _head.store(h + 1, std::memory_order_release);
+    }
+  }
+  void start_threads() {
+    const char* e = std::getenv("EPIC_RECV_THREADS");
+    _threads = e ? std::max(1, std::atoi(e)) : 2;
+    const int cpu = cpus::ReceiverCpu();
+    if (cpu >= 0) cpus::PinTo(cpu);
+    if (_threads < 2) return;
+    const int sib = cpu >= 0 ? cpus::Sibling(cpu) : -1;
+    _poller = std::thread([this, sib] {
+      if (sib >= 0) {
+        cpus::PinTo(sib);
+      } else {
+        cpus::UseFree();
+      }
+      poll_loop();
+    });
+  }
 
   void get_interface_name(char* name) {
     sockaddr_in sin;
@@ -1013,12 +1068,15 @@ class Verbs {
     // std::cout << "2\n";
   }
   ~Verbs() {
+    _stop = true;
+    if (_poller.joinable()) _poller.join();
     destroy_flows();
     destroy_queues();
     destroy_buffers();
     destroy_context();
   }
   inline int recv_packet(uint8_t*& pkt_ptr, int flags = 0) {
+    if (_threads == 0) start_threads();  // on the receiving thread, after the CPUs are reserved
     // If we don't have a work-request queue on the go,
     // get some new packets.
     if (_verbs.pkt != NULL) {
@@ -1027,6 +1085,27 @@ class Verbs {
         this->release(_verbs.pkt_batch);
         _verbs.pkt_batch = NULL;
       }
+    }
+
+    if (_threads >= 2) {
+      // the next batch from the poller; a millisecond without one is a timeout
+      for (int spin = 0; _verbs.pkt_batch == NULL; ++spin) {
+        const size_t t = _tail.load(std::memory_order_relaxed);
+        if (t != _head.load(std::memory_order_acquire)) {
+          _verbs.pkt_batch = _ring[t % kRing];
+          _tail.store(t + 1, std::memory_order_release);
+          _verbs.pkt = _verbs.pkt_batch;
+          break;
+        }
+        if (spin > 20000) {
+          _verbs.pkt = NULL;
+          errno = EAGAIN;
+          return -1;
+        }
+        _mm_pause();
+      }
+      pkt_ptr = (uint8_t*)_verbs.pkt->wr.sg_list->addr + BF_VERBS_PAYLOAD_OFFSET;
+      return _verbs.pkt->length - BF_VERBS_PAYLOAD_OFFSET;
     }
 
     while (_verbs.pkt_batch == NULL) {

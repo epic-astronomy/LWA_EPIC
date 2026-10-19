@@ -37,6 +37,10 @@ inline std::mutex& Mutex() {
   static std::mutex m;
   return m;
 }
+inline int& Receiver() {
+  static int cpu = -1;
+  return cpu;
+}
 inline cpu_set_t& Reserved() {
   static cpu_set_t s = [] {
     cpu_set_t z;
@@ -68,11 +72,38 @@ inline void Reserve(int p_cpu) {
   Process();  // the process's set, before anything narrows the main thread
   std::lock_guard<std::mutex> lk(detail::Mutex());
   CPU_SET(p_cpu, &detail::Reserved());
+  if (detail::Receiver() < 0) detail::Receiver() = p_cpu;
   char path[128];
   std::snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%d/topology/thread_siblings_list", p_cpu);
   std::ifstream f(path);
   std::string list;
   if (std::getline(f, list)) detail::AddList(list, &detail::Reserved());
+}
+
+/// The CPU reserved for the packet receiver (-1: none)
+inline int ReceiverCpu() { return detail::Receiver(); }
+
+/// A hyperthread sibling of p_cpu (-1: none)
+inline int Sibling(int p_cpu) {
+  cpu_set_t s;
+  CPU_ZERO(&s);
+  char path[128];
+  std::snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%d/topology/thread_siblings_list", p_cpu);
+  std::ifstream f(path);
+  std::string list;
+  if (std::getline(f, list)) detail::AddList(list, &s);
+  for (int c = 0; c < CPU_SETSIZE; ++c) {
+    if (c != p_cpu && CPU_ISSET(c, &s)) return c;
+  }
+  return -1;
+}
+
+/// Pin the calling thread to p_cpu; false if that failed
+inline bool PinTo(int p_cpu) {
+  cpu_set_t s;
+  CPU_ZERO(&s);
+  CPU_SET(p_cpu, &s);
+  return sched_setaffinity(0, sizeof(s), &s) == 0;
 }
 
 /// The process's CPUs without the reserved ones (all of them if nothing else is left)
