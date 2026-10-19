@@ -167,13 +167,46 @@ def apply_wcs(header, obstime, grid_size, grid_res, mode=None):
     return header
 
 
-def _setup_threads():
-    """Threads for the set-up computations: the CPUs this process may use"""
-    import os
+def _process_cpus():
+    """
+    CPUs the process may use: the main thread's affinity (the imager's taskset).
+    The imager calls into Python from a pipeline thread pinned to one CPU, whose
+    affinity new threads would otherwise inherit.
+    """
     try:
-        return max(1, len(os.sched_getaffinity(0)))
-    except (AttributeError, OSError):
-        return max(1, os.cpu_count() or 1)
+        with open("/proc/self/status") as f:
+            for line in f:
+                if line.startswith("Cpus_allowed_list:"):
+                    cpus = set()
+                    for part in line.split(":", 1)[1].strip().split(","):
+                        lo, _, hi = part.partition("-")
+                        cpus.update(range(int(lo), int(hi or lo) + 1))
+                    return cpus
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def _setup_threads():
+    """Threads for the set-up computations: the CPUs the process may use"""
+    cpus = _process_cpus()
+    return max(1, len(cpus)) if cpus else max(1, os.cpu_count() or 1)
+
+
+def _setup_pool():
+    """A thread pool for the set-up whose threads run on all the process's CPUs"""
+    from concurrent.futures import ThreadPoolExecutor
+
+    cpus = _process_cpus()
+
+    def init():
+        if cpus:
+            try:
+                os.sched_setaffinity(0, cpus)  # this thread only
+            except OSError:
+                pass
+
+    return ThreadPoolExecutor(max_workers=_setup_threads(), initializer=init)
 
 
 def cached_geometry(key, arrays, compute):
@@ -259,8 +292,6 @@ def wproj_kernel_weights(gcf_elems, antpos_freq, chan0, nchan, support, grid_siz
     result is cached on disk (cached_geometry), so a restart or a return to a
     frequency window reuses it.
     """
-    from concurrent.futures import ThreadPoolExecutor
-
     _, _, w_m = array_frame(mode)
     gcf_elems = np.asarray(gcf_elems, dtype=np.float32).reshape(nchan, -1, support * support)
     antpos_freq = np.asarray(antpos_freq, dtype=np.float32).reshape(nchan, -1, 3)
@@ -282,7 +313,7 @@ def wproj_kernel_weights(gcf_elems, antpos_freq, chan0, nchan, support, grid_siz
             out[c] = _wproj_channel(gcf_elems[c], antpos_freq[c], SOL / ((chan0 + c) * CHAN_BW), w_m,
                                     dx, dy, nm1, grid_size)
 
-        with ThreadPoolExecutor(max_workers=_setup_threads()) as pool:
+        with _setup_pool() as pool:
             list(pool.map(one, range(nchan)))
         return out
 
@@ -347,7 +378,6 @@ def _gridding_correction(gcf_elems, antpos_freq, nchan, S, grid_size, oversample
         out[c] = scale / np.maximum(resp, 1e-6)
 
     # channels in parallel threads (the exponentials and products release the lock)
-    from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=_setup_threads()) as pool:
+    with _setup_pool() as pool:
         list(pool.map(one, range(nchan)))
     return out
