@@ -103,6 +103,11 @@ set(AV_LIBS -lavcodec -lavformat -lavutil -lswscale -lavfilter )
 # Channels kept from each NDP stream (of 192): every target sees the same value
 set(EPIC_NCHAN_SELECT 128 CACHE STRING "channels kept from the centre of each NDP stream (128 or 192)")
 add_compile_definitions(EPIC_NCHAN_SELECT=${EPIC_NCHAN_SELECT})
+# packet buffers of the verbs receiver's queue (at most the NIC's max_qp_wr, 32768 on
+# the workers' ConnectX): how long the receive thread may pause, 8192 being 11 ms of
+# an NDP stream of 192 channels
+set(EPIC_VERBS_NPKTBUF 8192 CACHE STRING "packet buffers of the verbs receive queue")
+add_compile_definitions(BF_VERBS_NPKTBUF=${EPIC_VERBS_NPKTBUF})
 add_library(epic_cu STATIC src/MOFF_cu_handler.cu src/ex/host_helpers.cu src/ex/tcc_tap.cu src/ex/rfi_stage.cu
             src/ex/fx_imager.cu)
 target_compile_features(epic_cu PUBLIC cxx_std_17)
