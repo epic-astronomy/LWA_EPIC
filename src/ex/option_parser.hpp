@@ -70,6 +70,9 @@ cxxopts::Options GetEpicOptions() {
       cxxopts::value<bool>()->default_value("false"))(
       "bench_rotate", "Rotation of each channel's sequences per pass through the data file",
       cxxopts::value<int>()->default_value("50"))(
+      "bench_shuffle", "Each channel of each gulp from a file gulp chosen at random: images that vary "
+      "like noise rather than cycling through the file's gulps",
+      cxxopts::value<bool>()->default_value("false"))(
       "bench_dump", "Directory for image dumps (empty: none)",
       cxxopts::value<std::string>()->default_value(""))(
       "bench_dump_every", "Dump every Nth image",

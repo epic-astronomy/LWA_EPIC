@@ -47,6 +47,7 @@ inline BenchOptions GetBenchOptions(const KernelTypeDefs::opt_t& p_options) {
   bo.ngulps = p_options["bench_ngulps"].as<int64_t>();
   bo.realtime = p_options["bench_realtime"].as<bool>();
   bo.rotate = p_options["bench_rotate"].as<int>();
+  bo.shuffle = p_options["bench_shuffle"].as<bool>();
   bo.dump_dir = p_options["bench_dump"].as<std::string>();
   bo.dump_every = p_options["bench_dump_every"].as<int>();
   bo.report_every = p_options["bench_report"].as<int>();

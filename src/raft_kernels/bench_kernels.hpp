@@ -48,6 +48,10 @@ struct BenchOptions {
   int64_t ngulps{0};          // 0: run until stopped
   bool realtime{false};       // pace gulps at the F-engine rate
   int rotate{50};             // per-pass rotation of each channel's sequences
+  /// each channel of each gulp from a file gulp chosen at random for that
+  /// channel: images that vary like noise, with no period and nothing common
+  /// to the channels (a cycle of the file's few gulps looks like a pulsar)
+  bool shuffle{false};
   std::string dump_dir;       // empty: no image dumps
   int dump_every{0};
   /// > 0: end the process this many seconds after the last gulp (the full
@@ -122,6 +126,12 @@ class BenchGulpGen : public raft::kernel {
         const int shift = int((i / m_nfile) * m_opts.rotate % m_opts.nseq);
         const size_t per_seq = LWA_SV_INP_PER_CHAN;
         for (int c = 0; c < m_opts.nchan; ++c) {
+          if (m_opts.shuffle) {  // splitmix64 of (gulp, channel)
+            uint64_t z = uint64_t(i) * uint64_t(m_opts.nchan) + uint64_t(c) + 0x9E3779B97F4A7C15ull;
+            z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
+            z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
+            src = m_data + size_t((z ^ (z >> 31)) % uint64_t(m_nfile)) * m_gulp_bytes;
+          }
           const uint8_t* s = src + size_t(c) * m_opts.nseq * per_seq;
           uint8_t* d = dst + size_t(c) * m_opts.nseq * per_seq;
           std::memcpy(d, s + size_t(shift) * per_seq, size_t(m_opts.nseq - shift) * per_seq);
