@@ -204,6 +204,15 @@ def fit(dynspec, times, edges_mhz, dm, t_inf, width_s, tier_images=1, a_hp=0.0, 
     return out
 
 
+def fit_job(dynspec, times, edges_mhz, dm, t_inf, width_s, tier_images, a_hp, dm_step, max_nfev):
+    """fit() in a worker process (Monitor._submit_fit): never raises, an error is returned"""
+    try:
+        return fit(dynspec, times, edges_mhz, dm, t_inf, width_s, tier_images=tier_images,
+                   a_hp=a_hp, dm_step=dm_step, max_nfev=max_nfev)
+    except Exception as e:
+        return dict(error=repr(e)[:200])
+
+
 def physical(fitres, flux, tier_level, freqs_mhz):
     """
     The fitted burst in physical units with the candidate's calibration (flux.py):

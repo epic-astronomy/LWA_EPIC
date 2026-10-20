@@ -94,6 +94,8 @@ def add_monitor_args(p):
                         "only tallied, /api/pulsars/pulses; giant pulses are always stored)")
     p.add_argument("--burst-fits-per-min", type=int, default=6,
                    help="candidates a minute that get the burst model fitted (burstfit.py; 0: none)")
+    p.add_argument("--burst-fit-workers", type=int, default=d.burst_fit_workers,
+                   help="worker processes for the burst fits, beside the search (0: in the search's thread)")
     p.add_argument("--rebase-images", type=int, default=24,
                    help="images held after a change of the calibration gain table; their mean becomes "
                         "every pixel's baseline before they are searched (0: off)")
@@ -133,6 +135,7 @@ def make_config(a) -> Config:
                   inject_dm=tuple(a.inject_dm), store_rfi=not a.no_rfi_records, rfi_records_max=a.rfi_records_max,
                   store_pulsar_pulses=a.store_pulsar_pulses,
                   rebase_images=a.rebase_images, burst_fits_per_min=a.burst_fits_per_min,
+                  burst_fit_workers=a.burst_fit_workers,
                   sidelobe_max=a.sidelobe_max,
                   fixed_dir_repeats=a.fixed_dir_repeats, fixed_dir_hours=a.fixed_dir_hours, pixel_table=not a.no_pixel_table, seed=a.seed,
                   narrowband_min_channels=a.narrowband_min_channels,
@@ -402,6 +405,7 @@ def cmd_run(a):
     monitor.start_db_sync(stop)
     print(f"skymon: following /dev/shm/{a.shm}", flush=True)
     run_ring(monitor, a.shm, stop)
+    monitor.close_fits()
     monitor.store.flush()
     return 0
 
@@ -459,6 +463,7 @@ def cmd_simtest(a):
                       f"{len(sim.truth)} FRBs, stored {s['candidates']['stored']}", flush=True)
         t_end_data = sim._t(n)
         t_start_data = sim._t(0)
+    monitor.close_fits()
     monitor.store.flush()
     wall = time.time() - t_start
     st = monitor.status()

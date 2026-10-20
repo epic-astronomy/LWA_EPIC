@@ -954,6 +954,39 @@ class TestBurstFit(unittest.TestCase):
         self.assertEqual(good, reliable)
 
 
+    def test_fit_in_a_worker_process_equals_the_fit_in_thread(self):
+        """
+        The monitor fits bursts in spawned worker processes (Monitor._submit_fit,
+        burstfit.fit_job): the same parameters, to the last bit, as fit() in
+        the search's thread; a failing fit comes back as an error, not an exception.
+        """
+        import concurrent.futures
+        import multiprocessing
+        from skymon.burstfit import _highpass, fit, fit_job, fractions
+
+        band = Band(3136, 192, 1)
+        e = band.edges_mhz()
+        fc = 0.5 * (e[:-1] + e[1:])
+        dt = 8192 * 1000 / 196e6
+        t0, dm, w = 1792400000.0, 57.0, 0.02
+        W = int(K_DM * dm * (e[0] ** -2 - e[-1] ** -2) / dt) + 96
+        t_inf = t0 + 30 * dt - K_DM * dm * e[-1] ** -2
+        a_hp = 1.0 / 512
+        sig = _highpass(fractions(e, dm, t_inf, w, 0.0, t0 + dt * np.arange(W + 1)), a_hp)
+        sig *= 25.0 / math.sqrt(np.sum(sig ** 2))
+        d = (sig + _highpass(np.random.default_rng(2).standard_normal(sig.shape), a_hp)).astype(np.float32)
+        t = t0 + dt * np.arange(W)
+        args = (d, t, e, dm + 0.2, t_inf, 2 * dt, 1, a_hp, 0.506, 200)
+        ref = fit(*args[:6], tier_images=1, a_hp=a_hp, dm_step=0.506, max_nfev=200)
+        with concurrent.futures.ProcessPoolExecutor(
+                1, mp_context=multiprocessing.get_context("spawn")) as pool:
+            got = pool.submit(fit_job, *args).result(timeout=300)
+            bad = pool.submit(fit_job, d[:, :4], t[:4], e, dm, t_inf, dt, 1, a_hp, 0.506, 200).result()
+        self.assertIsNotNone(ref)
+        self.assertEqual(got["dm"], ref["dm"])
+        self.assertEqual(got["t_f0"], ref["t_f0"])
+        self.assertIsNone(bad)  # too short a window: no fit, as fit() says
+
 class TestCalibrationSteps(unittest.TestCase):
     def test_gain_changes_are_rebased_not_detected(self):
         """

@@ -78,9 +78,11 @@ class Config:
     # becomes each pixel's baseline before they are searched (0: off)
     rebase_images: int = 24
     # the burst model fitted to candidates (burstfit.py): at most this many a minute, with this
-    # many evaluations of the model each (0 a minute: none)
+    # many evaluations of the model each (0 a minute: none), in this many worker processes
+    # beside the search (0: in the search's thread, as a test reference)
     burst_fits_per_min: int = 6
     burst_fit_nfev: int = 200
+    burst_fit_workers: int = 2
     warmup_images: int = 64
     norm_tau_s: float = 120.0
     var_tau_s: float = 300.0
@@ -221,6 +223,9 @@ class Monitor:
         self.started = time.time()
         self.metrics = collections.defaultdict(float)
         self._fit_times = collections.deque()
+        # burst fits running in the worker processes: (future, candidate, tier level, submitted)
+        self._fit_pool = None
+        self._fits: list[tuple] = []
         # candidates whose data are still being extended past the burst (_extend_tails)
         self._tails: list[dict] = []
         # ordinary pulsars' single pulses, tallied rather than stored (_tally_pulse)
@@ -490,6 +495,7 @@ class Monitor:
             found += self._candidates(res)
             found += self._measure_watches(res)
         self._expire_watches(unix)
+        self._collect_fits()
         self.searcher.finish_block()
         self.injector.expire(unix)
         self.metrics["images"] += 1
@@ -829,9 +835,12 @@ class Monitor:
                 continue
             c.quality["conditions"] = self.cond.around(c.t_bottom)
             c.quality["calibration"] = self._calibration_around(c)
-            if products is not None and c.cls in ("candidate", "injection", "known"):
+            fit = products is not None and c.cls in ("candidate", "injection", "known")
+            if fit and self.cfg.burst_fit_workers <= 0:
                 c.burst_fit = self._burst_fit(c, res.tier, products)
             stored = self.store.add(c, products, self.beam)  # repeats peak within a beam
+            if fit and stored is c and self.cfg.burst_fit_workers > 0:
+                c.burst_fit = self._submit_fit(c, res.tier, products)
             if stored is c and products is not None:
                 self._start_tail(c, products, res, b)
             if stored is not None:
@@ -888,17 +897,15 @@ class Monitor:
         """
         The physical parameters of a candidate (burstfit.py): DM, arrival, intrinsic
         width, scattering and spectrum fitted to its dynamic spectrum, and the
-        fitted fluences in Jy ms with the calibration of its flux. At most
+        fitted fluences in Jy ms with the calibration of its flux, in the search's
+        thread (burst_fit_workers 0; otherwise _submit_fit). At most
         burst_fits_per_min a minute (each takes about 2 s of one core), so a storm
         of candidates cannot hold up the search; the others get a note.
         """
         now = time.time()
-        q = self._fit_times
-        while q and now - q[0] > 60.0:
-            q.popleft()
-        if len(q) >= self.cfg.burst_fits_per_min:
-            return dict(skipped="rate limit")
-        q.append(now)
+        why = self._fit_allowed()
+        if why is not None:
+            return dict(skipped=why)
         try:
             f = burstfit.fit(products["dynspec"], products["dynspec_t"], self.band.edges_mhz(), c.dm, c.t_inf,
                              c.width_s, tier_images=2 ** tier.level, a_hp=tier.a_hp, dm_step=c.dm_step,
@@ -910,6 +917,72 @@ class Monitor:
             return f
         except Exception as e:  # for review: it must never stop the search
             return dict(error=repr(e)[:200])
+
+    def _fit_allowed(self):
+        """The rate limit of burst fits: None if one may start now, else the reason it may not"""
+        now = time.time()
+        q = self._fit_times
+        while q and now - q[0] > 60.0:
+            q.popleft()
+        if len(q) >= self.cfg.burst_fits_per_min:
+            return "rate limit"
+        if len(self._fits) >= 4 * self.cfg.burst_fit_workers:
+            return "fits queued"
+        q.append(now)
+        return None
+
+    def _submit_fit(self, c, tier, products):
+        """
+        Start the burst fit of a stored candidate in a worker process (about 2 s of
+        one core each), so the search never waits for it. Its result replaces the
+        candidate's burst_fit and its record is written again (_collect_fits).
+        """
+        why = self._fit_allowed()
+        if why is not None:
+            return dict(skipped=why)
+        try:
+            if self._fit_pool is None:
+                import concurrent.futures
+                import multiprocessing
+                # spawned, not forked: the monitor holds tens of GB and OpenMP threads
+                self._fit_pool = concurrent.futures.ProcessPoolExecutor(
+                    self.cfg.burst_fit_workers, mp_context=multiprocessing.get_context("spawn"))
+            fut = self._fit_pool.submit(
+                burstfit.fit_job, np.array(products["dynspec"], np.float32),
+                np.array(products["dynspec_t"], np.float64), self.band.edges_mhz(), c.dm, c.t_inf,
+                c.width_s, 2 ** tier.level, tier.a_hp, c.dm_step, self.cfg.burst_fit_nfev)
+        except Exception as e:  # for review: it must never stop the search
+            return dict(error=repr(e)[:200])
+        self._fits.append((fut, c, tier.level, time.time()))
+        return dict(pending=True)
+
+    def _collect_fits(self):
+        """The finished burst fits: into their candidates, whose records are written again"""
+        if not self._fits:
+            return
+        keep = []
+        for fut, c, level, t0 in self._fits:
+            if not fut.done():
+                keep.append((fut, c, level, t0))
+                continue
+            try:
+                f = fut.result()
+                if f is None:
+                    f = dict(error="no fit")
+                elif "error" not in f:
+                    f["physical"] = burstfit.physical(f, c.flux, level, self.band.centres_mhz())
+                f["seconds"] = round(time.time() - t0, 2)
+            except Exception as e:  # a worker that died: noted, never fatal
+                f = dict(error=repr(e)[:200])
+            c.burst_fit = f
+            self.store.q.put(("json", c, None))
+        self._fits = keep
+
+    def close_fits(self):
+        """Stop the fit workers (at exit); fits still running are dropped"""
+        if self._fit_pool is not None:
+            self._fit_pool.shutdown(wait=False, cancel_futures=True)
+            self._fit_pool = None
 
     # ------------------------------------------------------------ data after the burst
     TAIL_MAX_S = 600.0  # a tail not complete by then is written as it is
