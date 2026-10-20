@@ -25,9 +25,15 @@ Each run applies two rules.
    oldest first in each. Data younger than ``--protect-days`` (30) are never
    removed by this rule.
 
-Never removed by either rule: a skymon event whose review is listed in
-``--keep-review`` (default ``pending``: awaiting a person's verdict), and the
-data of its candidates. Under the ceiling rule, a skymon candidate whose event
+Never removed by either rule (kept for good):
+
+- a skymon event of a kind listed in ``--keep-kinds`` (default ``sky``: every
+  FRB event, whatever its review), and the data of its candidates;
+- a skymon event whose review is listed in ``--keep-review`` (default
+  ``pending``: awaiting a person's verdict), and the data of its candidates;
+- a giant pulse (a candidate whose record has ``known_source.giant_pulse``, the
+  Crab's), which belongs to no event (``--no-keep-giant-pulses`` to curate them).
+ Under the ceiling rule, a skymon candidate whose event
 is not in the archive is also kept, since its review state is unknown.
 
 Safety:
@@ -165,6 +171,7 @@ class MetadataDB:
 class Curator:
     def __init__(self, fits_roots=(), skymon_roots=(), retention_days=1827.0, protect_days=30.0,
                  ceiling=0.85, target=None, keep_review=("pending",), dry_run=False,
+                 keep_kinds=("sky",), keep_giant_pulses=True,
                  state_dir=None, db=None, op_timeout_s=60.0, scan_timeout_s=1800.0,
                  max_delete=100000, lock_stale_hours=12.0, now=None, usage_fn=None,
                  log=None):
@@ -175,6 +182,8 @@ class Curator:
         self.ceiling = ceiling
         self.target = ceiling - 0.02 if target is None else target
         self.keep_review = set(keep_review)
+        self.keep_kinds = set(keep_kinds)
+        self.keep_giant_pulses = keep_giant_pulses
         self.dry_run = dry_run
         self.state_dir = state_dir
         self.db = db
@@ -307,7 +316,7 @@ class Curator:
             except (KeyError, ValueError) as e:
                 raise RuntimeError(f"cannot read event {js[0]}: {e!r}")
             review = ev.get("review") or "pending"
-            it.protected = review in self.keep_review
+            it.protected = review in self.keep_review or ev.get("kind") in self.keep_kinds
             for node, b in (ev.get("bands") or {}).items():
                 ids = list(b.get("others") or [])
                 if isinstance(b.get("candidate"), dict) and b["candidate"].get("id"):
@@ -322,6 +331,18 @@ class Curator:
                 it.unknown = True
             elif True in flags:
                 it.protected = True
+        # candidates of no event: a giant pulse is kept for good, read from its record
+        if self.keep_giant_pulses:
+            loose = {p: it for it in cands.values() if it.unknown
+                     for p, _ in it.files if p.endswith(".json")}
+            texts = self._read_many(list(loose))
+            for p, it in loose.items():
+                try:
+                    rec = json.loads(texts[p])
+                except (KeyError, ValueError):
+                    continue  # unreadable: not known to be a giant pulse, the rules apply
+                if (rec.get("known_source") or {}).get("giant_pulse"):
+                    it.protected = True
         return list(cands.values()) + list(events.values())
 
     # ------------------------------------------------------------ rules
@@ -517,6 +538,10 @@ def main(argv=None):
     ap.add_argument("--protect-days", type=float, default=30.0)
     ap.add_argument("--ceiling", type=float, default=0.85)
     ap.add_argument("--target", type=float, default=None, help="default: ceiling - 0.02")
+    ap.add_argument("--keep-kinds", default="sky",
+                    help="comma-separated skymon event kinds never removed (sky: every FRB event)")
+    ap.add_argument("--keep-giant-pulses", action=argparse.BooleanOptionalAction, default=True,
+                    help="never remove giant pulses (candidates with known_source.giant_pulse)")
     ap.add_argument("--keep-review", default="pending",
                     help="comma-separated skymon review states never removed (pending, frb, unclear, rfi)")
     ap.add_argument("--dry-run", action="store_true")
@@ -533,8 +558,10 @@ def main(argv=None):
         ap.error("give at least one --fits or --skymon directory")
     db = None if a.no_db else MetadataDB(a.db, a.schema)
     c = Curator(a.fits, a.skymon, a.retention_days, a.protect_days, a.ceiling, a.target,
-                [s for s in a.keep_review.split(",") if s], a.dry_run, a.state_dir, db,
-                a.op_timeout, a.scan_timeout, a.max_delete, a.lock_stale_hours)
+                [s for s in a.keep_review.split(",") if s], a.dry_run,
+                keep_kinds=[s for s in a.keep_kinds.split(",") if s], keep_giant_pulses=a.keep_giant_pulses,
+                state_dir=a.state_dir, db=db, op_timeout_s=a.op_timeout, scan_timeout_s=a.scan_timeout,
+                max_delete=a.max_delete, lock_stale_hours=a.lock_stale_hours)
     return c.run()
 
 

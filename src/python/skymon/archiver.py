@@ -6,11 +6,12 @@ analysed and must be kept, and nothing in the real-time path depends on it.
 On each node the archiver, a process of its own, does two things.
 
 1. **Archive.** It copies to <archive>/<node>/YYYYMMDD/ the JSON record and
-   data products of every candidate of this node that belongs to an event
-   worth keeping:
-   - a confirmed event;
-   - an event a reviewer judged to be an FRB, or unclear;
-   - a coordinated injection.
+   data products of every candidate of this node that is kept for good:
+   - a detection or measurement of any FRB event (kind "sky"), whatever its
+     status or review, since the catalogue (catalogue.py) lists them all;
+   - a coordinated injection;
+   - a giant pulse of a pulsar known for them (the Crab), which belongs to no
+     event.
 
    The selection reads the event copies in the node's own database. Each copy
    is verified by size and SHA-256 before the row is marked archived. When the
@@ -83,8 +84,7 @@ class Archiver:
     def _wanted(self):
         """Candidate ids of this node in events worth keeping (from the local event copies)"""
         rows = self.db.execute(
-            "SELECT state FROM events WHERE status = 'confirmed' OR review IN ('frb', 'unclear') "
-            "OR state->>'kind' = 'injection'", fetch=True) or []
+            "SELECT state FROM events WHERE state->>'kind' IN ('sky', 'injection')", fetch=True) or []
         ids = set()
         for (ev,) in rows:
             b = (ev.get("bands") or {}).get(self.node) or {}
@@ -93,6 +93,11 @@ class Archiver:
             ids.update(b.get("others", []))
             if b.get("data_id"):
                 ids.add(b["data_id"])
+        # the giant pulses (known_source.giant_pulse), which open no event
+        for (cid,) in self.db.execute(
+                "SELECT cid FROM candidates WHERE cls = 'known' AND archived IS NULL "
+                "AND record->'known_source'->>'giant_pulse' = 'true'", fetch=True) or []:
+            ids.add(cid)
         return ids
 
     def archive_once(self, limit: int = 200) -> int:
@@ -123,8 +128,8 @@ class Archiver:
         # the events themselves, so the archive is complete without the nodes: each
         # version is written to a local staging directory and copied like the data
         evs = self.db.execute(
-            "SELECT id, version, state FROM events WHERE status = 'confirmed' "
-            "OR review IN ('frb', 'unclear') OR state->>'kind' = 'injection'", fetch=True) or []
+            "SELECT id, version, state FROM events WHERE state->>'kind' IN ('sky', 'injection')",
+            fetch=True) or []
         done = self._archived_versions()
         for eid, ver, ev in evs:
             if done.get(eid, 0) >= ver:

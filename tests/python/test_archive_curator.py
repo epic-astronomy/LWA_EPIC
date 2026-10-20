@@ -60,11 +60,13 @@ class Tree:
             paths.append(p)
         return paths
 
-    def add_event(self, eid, age_d, review, bands):
+    def add_event(self, eid, age_d, review, bands, kind=None):
         d = os.path.join(self.sky, "events", day_dir(NOW - age_d * DAY))
         os.makedirs(d, exist_ok=True)
         p = os.path.join(d, eid + ".json")
         ev = dict(id=eid, review=review, bands={n: dict(candidate=dict(id=c)) for n, c in bands.items()})
+        if kind:
+            ev["kind"] = kind
         with open(p, "w") as f:
             json.dump(ev, f)
         return p
@@ -173,6 +175,29 @@ class TestCurator(unittest.TestCase):
         for p in pend + young + [ev_p]:
             self.assertTrue(os.path.exists(p), p)
         for p in done + orphan + [ev_r]:
+            self.assertFalse(os.path.exists(p), p)
+
+    def test_frb_events_and_giant_pulses_kept_for_good(self):
+        """Every FRB event (kind sky, any review) and every giant pulse outlive the age rule"""
+        frb = self.t.add_candidate("epic3", "c_frb", 2000)
+        inj = self.t.add_candidate("epic3", "c_inj", 2000)
+        gp = self.t.add_candidate("epic3", "c_gp", 2000)
+        plain = self.t.add_candidate("epic3", "c_plain", 2000)
+        for p, ks in ((gp[0], dict(kind="pulsar", name="B0531+21", giant_pulse=True)),
+                      (plain[0], dict(kind="pulsar", name="B0950+08", giant_pulse=False))):
+            with open(p, "w") as f:
+                json.dump(dict(id=os.path.basename(p)[:-5], cls="known", known_source=ks), f)
+        ev_s = self.t.add_event("ev-s", 2000, "rfi", {"epic3": "c_frb"}, kind="sky")
+        ev_i = self.t.add_event("ev-i", 2000, "not needed", {"epic3": "c_inj"}, kind="injection")
+        self.t.add_candidate("epic3", "c_young", 10)  # a recent item: the clock guard is satisfied
+        self.assertEqual(self.curator().run(), 0)
+        for p in frb + gp + [ev_s]:
+            self.assertTrue(os.path.exists(p), p)
+        for p in inj + plain + [ev_i]:
+            self.assertFalse(os.path.exists(p), p)
+        # with the protection turned off, the FRB event and the giant pulse go too
+        self.assertEqual(self.curator(keep_kinds=[], keep_giant_pulses=False).run(), 0)
+        for p in frb + gp + [ev_s]:
             self.assertFalse(os.path.exists(p), p)
 
     def test_keep_review_extends_protection(self):

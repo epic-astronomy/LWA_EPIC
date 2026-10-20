@@ -116,6 +116,8 @@ class CombinerConfig:
     nodes: dict  # name -> monitor URL (status and live data)
     dsns: dict = field(default_factory=dict)  # name -> the node's local database (mailbox)
     out_dir: str = "skymon_combiner"
+    # the catalogue in the head database (catalogue.py), for the website; None: not written
+    catalogue_dsn: str | None = None
     poll_s: float = 10.0
     timeout_s: float = 3.0
     token: str | None = None
@@ -184,6 +186,12 @@ class Combiner:
         self.context = make_service(cfg.context_swpc, cfg.lightning_url,
                                     os.path.join(cfg.out_dir, "context"), cfg.context_interval_s)
         self._context_gen: dict[str, int] = {}  # event id -> context generation attached
+        from .catalogue import Catalogue, is_giant_pulse
+        self.catalogue = Catalogue(cfg.catalogue_dsn, os.path.join(cfg.out_dir, "spool", "catalogue"))
+        self._is_giant_pulse = is_giant_pulse
+        # candidate records read from the monitors, for the catalogue's detections:
+        # (node, id) -> (received, record), kept as long as the events
+        self.records: dict = {}
         self._load()
 
     # ------------------------------------------------------------ persistence
@@ -197,6 +205,7 @@ class Combiner:
         ev["updated"] = time.time()
         ev["version"] = ev.get("version", 0) + 1
         self._replicate(ev)
+        self.catalogue.put_event(ev, {k: r for k, (_, r) in self.records.items()})
         p = self._event_path(ev)
         tmp = p + ".tmp"
         try:
@@ -823,6 +832,10 @@ class Combiner:
                 if (name, c["id"]) in self.seen:
                     continue
                 self.seen.add((name, c["id"]))
+                if c["cls"] in ("candidate", "followup", "injection"):
+                    self.records[(name, c["id"])] = (now, c)
+                elif self._is_giant_pulse(c):
+                    self.catalogue.put_giant_pulse(name, c)
                 if c["cls"] in ("candidate", "rfi"):
                     self.recent.append((now, name, {k: c.get(k) for k in COINC_KEYS}))
                 # only plain candidates open events: not RFI, not candidates at
@@ -883,6 +896,9 @@ class Combiner:
                 del self.events[eid]
                 self._context_gen.pop(eid, None)
             self.terrestrial = {k: v for k, v in self.terrestrial.items() if v in self.events}
+            self.records = {k: v for k, v in self.records.items() if v[0] >= cutoff}
+        if self.catalogue.spooled():
+            self.catalogue.replay()
         self._maybe_inject(now)
 
     def _maybe_inject(self, now):
@@ -968,6 +984,7 @@ class Combiner:
                                                     if e["kind"] == "terrestrial"),
                                          candidates=len(self.terrestrial)),
                         context=self.context.status(),
+                        catalogue=self.catalogue.status(),
                         nodes=[dict(name=n["name"], up=n["up"], error=n["error"],
                                     last_ok=n["last_ok"], band=(n["status"] or {}).get("band"))
                                for n in self.nodes.values()],

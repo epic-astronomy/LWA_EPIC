@@ -89,6 +89,9 @@ def add_monitor_args(p):
                    help="spread over the sky above which a channel is flagged in an image "
                         "(noise gives about 1; inf disables)")
     p.add_argument("--no-rfi-records", action="store_true", help="do not store RFI candidates")
+    p.add_argument("--store-pulsar-pulses", action="store_true",
+                   help="store the single pulses of ordinary pulsars as candidates (by default they are "
+                        "only tallied, /api/pulsars/pulses; giant pulses are always stored)")
     p.add_argument("--burst-fits-per-min", type=int, default=6,
                    help="candidates a minute that get the burst model fitted (burstfit.py; 0: none)")
     p.add_argument("--rebase-images", type=int, default=24,
@@ -128,6 +131,7 @@ def make_config(a) -> Config:
                   accum_interval_s=a.accum_interval, accum_hours=a.accum_hours,
                   inject_interval_s=a.inject_every * 60, inject_snr=tuple(a.inject_snr),
                   inject_dm=tuple(a.inject_dm), store_rfi=not a.no_rfi_records, rfi_records_max=a.rfi_records_max,
+                  store_pulsar_pulses=a.store_pulsar_pulses,
                   rebase_images=a.rebase_images, burst_fits_per_min=a.burst_fits_per_min,
                   sidelobe_max=a.sidelobe_max,
                   fixed_dir_repeats=a.fixed_dir_repeats, fixed_dir_hours=a.fixed_dir_hours, pixel_table=not a.no_pixel_table, seed=a.seed,
@@ -256,6 +260,9 @@ def main(argv=None):
                    help="local directory for a copy of the events (the state is in the nodes' databases)")
     p.add_argument("--port", type=int, default=8096)
     p.add_argument("--poll", type=float, default=10.0)
+    p.add_argument("--catalogue", default=os.environ.get("SKYMON_CATALOGUE_DSN"),
+                   help="the catalogue in the head database (catalogue.py), for the website; "
+                        "default $SKYMON_CATALOGUE_DSN; not written when unset")
     p.add_argument("--confirm-snr", type=float, default=6.0)
     p.add_argument("--inject-every", type=float, default=0.0,
                    help="mean hours between coordinated injections (0 = off)")
@@ -492,7 +499,8 @@ def cmd_combine(a):
                                    inject_interval_s=a.inject_every * 3600,
                                    inject_dm=tuple(a.inject_dm), seed=a.seed,
                                    context_swpc=a.context_swpc, lightning_url=a.lightning_url,
-                                   context_interval_s=a.context_every * 60))
+                                   context_interval_s=a.context_every * 60,
+                                   catalogue_dsn=a.catalogue or None))
     if a.port:
         serve_combiner(comb, port=a.port)
         print(f"combiner: HTTP on port {a.port}", flush=True)

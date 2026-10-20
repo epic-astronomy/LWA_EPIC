@@ -68,6 +68,70 @@ class PgServer:
 
 
 @unittest.skipIf(PGBIN is None, "PostgreSQL binaries not installed")
+class TestCatalogue(unittest.TestCase):
+    """The catalogue the combiner writes for the website (catalogue.py)"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.pg = PgServer()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.pg.close()
+
+    def ev(self, eid, version, review="pending", kind="sky"):
+        return dict(id=eid, kind=kind, status="confirmed", review=review, t_inf=T0, ra=10.0, dec=20.0,
+                    dm=300.0, dm_err=1.0, combined_snr=15.0, seen=["epic2", "epic4"],
+                    could_see=["epic2", "epic4"], version=version,
+                    bands=dict(epic2=dict(state="detected", f_lo=42.0, f_hi=45.0,
+                                          candidate=dict(id="c2", snr=12.0, dm=299.0, fluence_jy_ms=80.0)),
+                               epic4=dict(state="followup", f_lo=55.9, f_hi=58.9, data_id="f4",
+                                          followup=dict(snr=7.0, dm=300.0)),
+                               epic6=dict(state="not_visible")))
+
+    def test_events_detections_giant_pulses_and_an_outage(self):
+        from skymon.catalogue import Catalogue
+        d = tempfile.mkdtemp()
+        try:
+            cat = Catalogue(self.pg.dsn(), os.path.join(d, "spool"))
+            rec = dict(id="c2", cls="candidate", t_inf=T0 + 1, snr=12.5, dm=299.2, width_s=0.17,
+                       f_lo_mhz=42.0, f_hi_mhz=45.0, ra=10.1, dec=20.1, flux=dict(fluence_jy_ms=81.0))
+            self.assertTrue(cat.put_event(self.ev("ev1", 3), {("epic2", "c2"): rec}))
+            self.assertTrue(cat.put_event(self.ev("ev-inj", 1, kind="injection")))  # not catalogued
+            gp = dict(id="g1", cls="known", t_inf=T0 + 50, snr=40.0, dm=56.8, width_s=1.3,
+                      f_lo_mhz=55.9, f_hi_mhz=58.9, ra=83.6, dec=22.0,
+                      known_source=dict(kind="pulsar", name="B0531+21", giant_pulse=True))
+            self.assertTrue(cat.put_giant_pulse("epic4", gp))
+            # an older version arriving late does not overwrite the newer one
+            self.assertTrue(cat.put_event(self.ev("ev1", 2, review="rfi")))
+            conn = cat._conn()
+            with conn.cursor() as cur:
+                cur.execute("SELECT id, review, version, n_seen FROM skymon.events")
+                self.assertEqual(cur.fetchall(), [("ev1", "pending", 3, 2)])
+                cur.execute("SELECT node, cand_id, kind, state, event_id, pulsar, snr, fluence_jy_ms, archive_path "
+                            "FROM skymon.detections ORDER BY node, cand_id")
+                rows = cur.fetchall()
+            day = time.strftime("%Y%m%d", time.gmtime(T0))
+            self.assertEqual(rows, [
+                ("epic2", "c2", "frb", "detected", "ev1", None, 12.5, 81.0, f"epic2/{day}/c2"),
+                ("epic4", "f4", "frb", "followup", "ev1", None, 7.0, None, f"epic4/{day}/f4"),
+                ("epic4", "g1", "giant_pulse", "detected", None, "B0531+21", 40.0, None, f"epic4/{day}/g1")])
+            # the database away: rows are spooled, then written in order once it is back
+            self.pg.stop()
+            self.assertFalse(cat.put_event(self.ev("ev1", 4, review="frb"), {("epic2", "c2"): rec}))
+            self.assertEqual(cat.spooled(), 1)
+            self.pg.start()
+            self.assertEqual(cat.replay(), 1)
+            with cat._conn().cursor() as cur:
+                cur.execute("SELECT review, version FROM skymon.events WHERE id = 'ev1'")
+                self.assertEqual(cur.fetchone(), ("frb", 4))
+                cur.execute("SELECT snr FROM skymon.detections WHERE cand_id = 'c2'")
+                self.assertEqual(cur.fetchone(), (12.5,))
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+
+@unittest.skipIf(PGBIN is None, "PostgreSQL binaries not installed")
 class TestLocalDB(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

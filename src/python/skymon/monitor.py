@@ -135,6 +135,9 @@ class Config:
     inject_tau600_ms: tuple = (0.31, 10.0)
     inject_unscattered_fraction: float = 0.2
     store_rfi: bool = True
+    # single pulses of ordinary pulsars: stored as candidates (True), or only tallied
+    # per pulsar in the status (False); giant pulses (the Crab's) are always stored
+    store_pulsar_pulses: bool = False
     # records kept per search block for groups that are certainly RFI (zero DM
     # or much of the sky at once), brightest first; the rest are only counted
     # (conditions RFI rate, status rfi_unrecorded). An interference storm
@@ -220,6 +223,8 @@ class Monitor:
         self._fit_times = collections.deque()
         # candidates whose data are still being extended past the burst (_extend_tails)
         self._tails: list[dict] = []
+        # ordinary pulsars' single pulses, tallied rather than stored (_tally_pulse)
+        self.pulsar_pulses: dict[str, collections.deque] = {}
         # set by the ring reader (run_ring): the pixel table for the imager's GPU regridding
         self.table_writer = None
         self.table_version = 0
@@ -816,6 +821,12 @@ class Monitor:
                 self.fixed_dirs.add(c.t_bottom, c.az, c.el, c.ra, c.dec)
             if not certain and not solar:
                 self._label_known(c)
+            ks = c.known_source or {}
+            if c.cls == "known" and ks.get("kind") == "pulsar" and not ks.get("giant_pulse") and \
+                    not self.cfg.store_pulsar_pulses:
+                self._tally_pulse(ks["name"], c)  # counted, not stored
+                self.cond.note_candidate("known")
+                continue
             c.quality["conditions"] = self.cond.around(c.t_bottom)
             c.quality["calibration"] = self._calibration_around(c)
             if products is not None and c.cls in ("candidate", "injection", "known"):
@@ -836,6 +847,25 @@ class Monitor:
         n_eff, top2 = q.get("n_eff_channels"), q.get("top2_fraction")
         return (n_eff is not None and n_eff < self.cfg.narrowband_min_channels) or \
             (top2 is not None and top2 > self.cfg.narrowband_top2)
+
+    def _tally_pulse(self, name: str, c: Candidate):
+        """
+        A single pulse of an ordinary pulsar, kept only as (arrival, S/N, DM) for the
+        last 24 h, at most 5000 a pulsar; the same pulse found again by another tier
+        or block (within 2 s) is counted once
+        """
+        q = self.pulsar_pulses.setdefault(name, collections.deque(maxlen=5000))
+        if q and abs(q[-1][0] - c.t_inf) < 2.0:
+            if c.snr > q[-1][1]:
+                q[-1] = (c.t_inf, round(float(c.snr), 2), round(float(c.dm), 2))
+            return
+        q.append((c.t_inf, round(float(c.snr), 2), round(float(c.dm), 2)))
+        while q and q[0][0] < c.t_inf - 86400.0:
+            q.popleft()
+
+    def pulsar_tally(self):
+        """Per pulsar: the pulses tallied in the last 24 h, as [arrival, S/N, DM]"""
+        return {n: [list(p) for p in q] for n, q in list(self.pulsar_pulses.items()) if q}
 
     def _label_known(self, c: Candidate):
         """

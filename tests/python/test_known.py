@@ -232,17 +232,17 @@ class TestEndToEnd(unittest.TestCase):
     def _near(self, ra, dec, radius):
         return [c for c in self.cands if separation_deg(ra, dec, c["ra"], c["dec"]) < radius]
 
-    def test_pulsar_burst_is_known(self):
+    def test_pulsar_pulse_is_tallied_not_stored(self):
+        """A single pulse of an ordinary pulsar is counted for its pulsar, not stored, and opens no event"""
         p = self.psr
         near = self._near(p["ra_deg"], p["dec_deg"], 3 * self.mon.beam)
-        known = [c for c in near if c["cls"] == "known"]
-        self.assertTrue(known, [(c["cls"], c["dm"], c["rfi_reasons"]) for c in self.cands])
-        best = max(known, key=lambda c: c["snr"])
-        self.assertEqual(best["known_source"]["kind"], "pulsar")
-        self.assertEqual(best["known_source"]["name"], "B1508+55")
-        self.assertTrue(os.path.exists(best["files"]["npz"]))
-        self.assertFalse([c for c in near if c["cls"] == "candidate"])
-        self.assertGreaterEqual(self.mon.store.counts["known"], 1)
+        self.assertFalse([c for c in near if c["cls"] in ("known", "candidate")],
+                         [(c["cls"], c["dm"], c["rfi_reasons"]) for c in near])
+        tally = self.mon.pulsar_tally()
+        self.assertIn("B1508+55", tally, tally)
+        t, snr, dm = tally["B1508+55"][0]
+        self.assertLess(abs(dm - p["dm"]), 0.1 * p["dm"] + 2)
+        self.assertGreater(snr, 8)
 
     def test_carrier_is_narrowband_rfi_with_data(self):
         near = self._near(*self.carrier, 3 * self.mon.beam)

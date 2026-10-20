@@ -18,6 +18,8 @@ HTTP interface of a running monitor (standard library only).
                                        over channels (base64 int32 hpix, float32 values)
   GET /api/injections                  live injection summary
   GET /api/pulsars                     the pulsars whose single pulses are classified as known
+  GET /api/pulsars/pulses              their single pulses of the last 24 h, tallied rather than
+                                       stored: {name: [[arrival, S/N, DM], ...]}
   GET /api/watches?event=              watches requested by the combiner, and their results
   GET /api/conditions?since=<unix>     data-quality samples (conditions.py), every 10 s of
                                        data over the last 6 h, with the latest summary
@@ -188,6 +190,8 @@ def make_handler(monitor):
                     return self._json(res)
                 if parts[:2] == ["api", "pulsars"]:
                     k = getattr(monitor, "known", None)
+                    if len(parts) > 2 and parts[2] == "pulses":  # the tallied single pulses
+                        return self._json(monitor.pulsar_tally())
                     return self._json(list(k.pulsars) if k is not None else [])
                 if parts[:2] == ["api", "injections"]:
                     return self._json(monitor.injector.summary())
