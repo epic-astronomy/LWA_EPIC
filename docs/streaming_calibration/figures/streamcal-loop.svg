@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 1280 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="streamcal-loop-title streamcal-loop-desc" id="streamcal-loop-root">
+      <title id="streamcal-loop-title">The streaming calibration loop</title>
+      <desc id="streamcal-loop-desc">The imager's GPU tap publishes a visibility table every 10 s; the streamcal daemon solves and publishes a relative gain table, which the imager applies at the next image boundary, and a calibration record that the all-sky monitor uses with the images' gain_version to set the flux scale.</desc>
+      <defs>
+      <style>#streamcal-loop-root { font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif; color: #111827; }
+      #streamcal-loop-root .diagram-container { width: 100%; overflow-x: auto; }
+      #streamcal-loop-root .diagram-container { overflow-x: visible; }
+      #streamcal-loop-root .nm { font: 600 12px 'DM Sans', ui-sans-serif, system-ui, sans-serif; fill: #111827; }
+      #streamcal-loop-root .sb { font: 400 9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #4b5563; }
+      #streamcal-loop-root .tg { font: 500 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.08em; fill: #6b7280; }
+      #streamcal-loop-root .tgf { font: 500 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.08em; fill: #15803d; }
+      #streamcal-loop-root .lb { font: 400 8px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.06em; fill: #6b7280; }
+      #streamcal-loop-root .ey { font: 500 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.14em; fill: #6b7280; }
+      #streamcal-loop-root .co { font: italic 14px 'Instrument Serif', Georgia, serif; fill: #4b5563; }</style>
+        <marker id="streamcal-loop-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4b5563"/></marker>
+        <marker id="streamcal-loop-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#15803d"/></marker>
+        <marker id="streamcal-loop-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#1d4ed8"/></marker>
+      </defs>
+      <rect width="100%" height="100%" fill="#ffffff"/>
+      <rect x="32" y="88" width="1216" height="120" rx="8" fill="#111827" stroke="#111827" stroke-width="0.8" fill-opacity="0.02" stroke-opacity="0.10"/>
+      <rect x="44" y="92" width="188" height="12" rx="2" fill="#ffffff"/>
+      <text x="138" y="101" class="ey" text-anchor="middle">ONE IMAGING NODE · SHARED MEMORY</text>
+      <path d="M 288,152 H 368" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#streamcal-loop-arrow)"/>
+      <rect x="296" y="130" width="64" height="12" rx="2" fill="#ffffff"/>
+      <text x="328" y="139" class="lb" text-anchor="middle">EVERY 10 S</text>
+      <path d="M 592,152 H 672" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#streamcal-loop-arrow)"/>
+      <rect x="608" y="130" width="48" height="12" rx="2" fill="#ffffff"/>
+      <text x="632" y="139" class="lb" text-anchor="middle">SEQLOCK</text>
+      <path d="M 912,152 H 992" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#streamcal-loop-arrow)"/>
+      <rect x="928" y="130" width="48" height="12" rx="2" fill="#ffffff"/>
+      <text x="952" y="139" class="lb" text-anchor="middle">PUBLISH</text>
+      <path d="M 1104,120 V 64 Q 1104,56 1096,56 H 256 Q 248,56 248,64 V 120" fill="none" stroke="#15803d" stroke-width="1.2" marker-end="url(#streamcal-loop-arrow-accent)"/>
+      <rect x="582" y="34" width="116" height="12" rx="2" fill="#ffffff"/>
+      <text x="640" y="43" class="lb" text-anchor="middle" style="fill:#15803d">NEXT IMAGE BOUNDARY</text>
+      <path d="M 760,184 V 328" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#streamcal-loop-arrow)"/>
+      <rect x="768" y="250" width="44" height="12" rx="2" fill="#ffffff"/>
+      <text x="790" y="259" class="lb" text-anchor="middle">RECORD</text>
+      <path d="M 864,184 V 240 Q 864,248 872,248 H 1096 Q 1104,248 1104,256 V 328" fill="none" stroke="#4b5563" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#streamcal-loop-arrow)"/>
+      <rect x="978" y="228" width="44" height="12" rx="2" fill="#ffffff"/>
+      <text x="1000" y="237" class="lb" text-anchor="middle">--PROJ</text>
+      <path d="M 672,360 H 592" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#streamcal-loop-arrow)"/>
+      <rect x="596" y="338" width="72" height="12" rx="2" fill="#ffffff"/>
+      <text x="632" y="347" class="lb" text-anchor="middle">C1 C2 C3 C5</text>
+      <path d="M 216,184 V 352 Q 216,360 224,360 H 368" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#streamcal-loop-arrow)"/>
+      <rect x="258" y="338" width="76" height="12" rx="2" fill="#ffffff"/>
+      <text x="296" y="347" class="lb" text-anchor="middle">GAIN_VERSION</text>
+      <path d="M 1104,392 V 432 Q 1104,440 1096,440 H 144 Q 136,440 136,432 V 184" fill="none" stroke="#4b5563" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#streamcal-loop-arrow)"/>
+      <rect x="610" y="418" width="60" height="12" rx="2" fill="#ffffff"/>
+      <text x="640" y="427" class="lb" text-anchor="middle">PROJECTOR</text>
+      <rect x="64" y="120" width="224" height="64" rx="6" fill="#ffffff"/>
+      <rect x="64" y="120" width="224" height="64" rx="6" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+      <rect x="72" y="126" width="24" height="12" rx="2" fill="none" stroke="#111827" stroke-width="0.8" stroke-opacity="0.40"/>
+      <text x="84" y="135" class="tg" text-anchor="middle">GPU</text>
+      <text x="176" y="154" class="nm" text-anchor="middle">epic++ imager</text>
+      <text x="176" y="170" class="sb" text-anchor="middle">TCC tap · every gulp</text>
+      <rect x="368" y="120" width="224" height="64" rx="6" fill="#ffffff"/>
+      <rect x="368" y="120" width="224" height="64" rx="6" fill="#111827" stroke="#4b5563" stroke-width="1" fill-opacity="0.05"/>
+      <rect x="376" y="126" width="24" height="12" rx="2" fill="none" stroke="#4b5563" stroke-width="0.8" stroke-opacity="0.40"/>
+      <text x="388" y="135" class="tg" text-anchor="middle">SHM</text>
+      <text x="480" y="154" class="nm" text-anchor="middle">Visibility table</text>
+      <text x="480" y="170" class="sb" text-anchor="middle">EPICVIS1 · epic_vis_gpuN</text>
+      <rect x="672" y="120" width="240" height="64" rx="6" fill="#ffffff"/>
+      <rect x="672" y="120" width="240" height="64" rx="6" fill="#22c55e" stroke="#15803d" stroke-width="1.2" fill-opacity="0.08"/>
+      <rect x="680" y="126" width="20" height="12" rx="2" fill="none" stroke="#15803d" stroke-width="0.8" stroke-opacity="0.50"/>
+      <text x="690" y="135" class="tgf" text-anchor="middle">PY</text>
+      <text x="792" y="154" class="nm" text-anchor="middle">streamcal daemon</text>
+      <text x="792" y="170" class="sb" text-anchor="middle">StEFCal · Kalman · policy</text>
+      <rect x="992" y="120" width="224" height="64" rx="6" fill="#ffffff"/>
+      <rect x="992" y="120" width="224" height="64" rx="6" fill="#111827" stroke="#4b5563" stroke-width="1" fill-opacity="0.05"/>
+      <rect x="1000" y="126" width="24" height="12" rx="2" fill="none" stroke="#4b5563" stroke-width="0.8" stroke-opacity="0.40"/>
+      <text x="1012" y="135" class="tg" text-anchor="middle">SHM</text>
+      <text x="1104" y="154" class="nm" text-anchor="middle">Gain table</text>
+      <text x="1104" y="170" class="sb" text-anchor="middle">EPICGAIN · median |c| = 1</text>
+      <rect x="672" y="328" width="240" height="64" rx="6" fill="#ffffff"/>
+      <rect x="672" y="328" width="240" height="64" rx="6" fill="#111827" stroke="#4b5563" stroke-width="1" fill-opacity="0.05"/>
+      <rect x="680" y="334" width="28" height="12" rx="2" fill="none" stroke="#4b5563" stroke-width="0.8" stroke-opacity="0.40"/>
+      <text x="694" y="343" class="tg" text-anchor="middle">JSON</text>
+      <text x="792" y="362" class="nm" text-anchor="middle">Calibration record</text>
+      <text x="792" y="378" class="sb" text-anchor="middle">epic_calinfo_gpuN.json</text>
+      <rect x="368" y="328" width="224" height="64" rx="6" fill="#ffffff"/>
+      <rect x="368" y="328" width="224" height="64" rx="6" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+      <rect x="376" y="334" width="20" height="12" rx="2" fill="none" stroke="#111827" stroke-width="0.8" stroke-opacity="0.40"/>
+      <text x="386" y="343" class="tg" text-anchor="middle">PY</text>
+      <text x="480" y="362" class="nm" text-anchor="middle">skymon monitor</text>
+      <text x="480" y="378" class="sb" text-anchor="middle">flux scale · rebase</text>
+      <rect x="992" y="328" width="224" height="64" rx="6" fill="#ffffff"/>
+      <rect x="992" y="328" width="224" height="64" rx="6" fill="#111827" stroke="#111827" stroke-width="1" stroke-dasharray="4,3" fill-opacity="0.02" stroke-opacity="0.35"/>
+      <rect x="1000" y="334" width="24" height="12" rx="2" fill="none" stroke="#111827" stroke-width="0.8" stroke-opacity="0.30"/>
+      <text x="1012" y="343" class="tg" text-anchor="middle">SHM</text>
+      <text x="1104" y="362" class="nm" text-anchor="middle">Interference projector</text>
+      <text x="1104" y="378" class="sb" text-anchor="middle">EPICPROJ · optional</text>
+      <text x="32" y="488" class="co">Gains change only at image boundaries, and every image records the gain_version it was made with.</text>
+      <line x1="32" y1="512" x2="1248" y2="512" stroke="#111827" stroke-width="0.8" stroke-opacity="0.10"/>
+      <text x="32" y="540" class="ey">LEGEND</text>
+      <rect x="96" y="530" width="20" height="12" rx="2" fill="#22c55e" stroke="#15803d" stroke-width="1" fill-opacity="0.08"/>
+      <text x="124" y="539" class="lb">FOCAL PROCESS</text>
+      <rect x="222" y="530" width="20" height="12" rx="2" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+      <text x="250" y="539" class="lb">PROCESS</text>
+      <rect x="316" y="530" width="20" height="12" rx="2" fill="#111827" stroke="#4b5563" stroke-width="1" fill-opacity="0.05"/>
+      <text x="344" y="539" class="lb">SHARED-MEMORY FILE</text>
+      <rect x="469" y="530" width="20" height="12" rx="2" fill="#111827" stroke="#111827" stroke-width="1" stroke-dasharray="4,3" fill-opacity="0.02" stroke-opacity="0.35"/>
+      <text x="497" y="539" class="lb">OPTIONAL</text>
+      <line x1="568" y1="536" x2="600" y2="536" stroke="#4b5563" stroke-width="1.2" marker-end="url(#streamcal-loop-arrow)"/>
+      <text x="608" y="539" class="lb">DATA</text>
+      <line x1="657" y1="536" x2="689" y2="536" stroke="#15803d" stroke-width="1.2" marker-end="url(#streamcal-loop-arrow-accent)"/>
+      <text x="697" y="539" class="lb">FEEDBACK</text>
+    </svg>

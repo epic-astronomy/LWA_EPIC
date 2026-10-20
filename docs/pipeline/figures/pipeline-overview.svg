@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 1280 640" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="pipeline-overview-title pipeline-overview-desc" id="pipeline-overview-root">
+      <title id="pipeline-overview-title">The EPIC imaging pipeline</title>
+      <desc id="pipeline-overview-desc">On each imaging node the packet receiver assembles NDP F-engine packets into gulps, the GPU imager forms all-sky images by E-field gridding or the FX route, and the images feed FITS integrations, database pixels, video and the all-sky monitor, while the streamcal daemon closes a calibration loop through visibility and gain tables.</desc>
+      <defs>
+      <style>#pipeline-overview-root { font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif; color: #111827; }
+      #pipeline-overview-root .diagram-container { width: 100%; overflow-x: auto; }
+      #pipeline-overview-root .diagram-container { overflow-x: visible; }
+      #pipeline-overview-root .nm { font: 600 12px 'DM Sans', ui-sans-serif, system-ui, sans-serif; fill: #111827; }
+      #pipeline-overview-root .sb { font: 400 9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #4b5563; }
+      #pipeline-overview-root .tg { font: 500 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.08em; fill: #6b7280; }
+      #pipeline-overview-root .tgf { font: 500 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.08em; fill: #15803d; }
+      #pipeline-overview-root .lb { font: 400 8px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.06em; fill: #6b7280; }
+      #pipeline-overview-root .ey { font: 500 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.14em; fill: #6b7280; }
+      #pipeline-overview-root .co { font: italic 14px 'Instrument Serif', Georgia, serif; fill: #4b5563; }</style>
+        <marker id="pipeline-overview-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4b5563"/></marker>
+        <marker id="pipeline-overview-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#15803d"/></marker>
+        <marker id="pipeline-overview-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#1d4ed8"/></marker>
+      </defs>
+      <rect width="100%" height="100%" fill="#ffffff"/>
+      <rect x="272" y="40" width="544" height="448" rx="8" fill="#111827" stroke="#111827" stroke-width="0.8" fill-opacity="0.02" stroke-opacity="0.10"/>
+      <rect x="284" y="44" width="152" height="12" rx="2" fill="#ffffff"/>
+      <text x="360" y="53" class="ey" text-anchor="middle">EPIC++ · ONE IMAGING NODE</text>
+      <path d="M 224,200 H 288" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#pipeline-overview-arrow)"/>
+      <rect x="242" y="178" width="28" height="12" rx="2" fill="#ffffff"/>
+      <text x="256" y="187" class="lb" text-anchor="middle">UDP</text>
+      <path d="M 496,200 H 560" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#pipeline-overview-arrow)"/>
+      <rect x="508" y="178" width="40" height="12" rx="2" fill="#ffffff"/>
+      <text x="528" y="187" class="lb" text-anchor="middle">GULPS</text>
+      <path d="M 800,176 H 912 Q 920,176 920,168 V 112 Q 920,104 928,104 H 960" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#pipeline-overview-arrow)"/>
+      <path d="M 800,192 H 960" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#pipeline-overview-arrow)"/>
+      <path d="M 800,208 H 888 Q 896,208 896,216 V 288 Q 896,296 904,296 H 960" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#pipeline-overview-arrow)"/>
+      <path d="M 800,224 H 864 Q 872,224 872,232 V 400 Q 872,408 880,408 H 960" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#pipeline-overview-arrow)"/>
+      <path d="M 640,232 V 400" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#pipeline-overview-arrow)"/>
+      <rect x="570" y="310" width="60" height="12" rx="2" fill="#ffffff"/>
+      <text x="600" y="319" class="lb" text-anchor="middle">VIS TABLE</text>
+      <path d="M 720,400 V 232" fill="none" stroke="#15803d" stroke-width="1.2" marker-end="url(#pipeline-overview-arrow-accent)"/>
+      <rect x="736" y="310" width="40" height="12" rx="2" fill="#ffffff"/>
+      <text x="756" y="319" class="lb" text-anchor="middle" style="fill:#15803d">GAINS</text>
+      <path d="M 800,440 H 960" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#pipeline-overview-arrow)"/>
+      <rect x="814" y="418" width="44" height="12" rx="2" fill="#ffffff"/>
+      <text x="836" y="427" class="lb" text-anchor="middle">RECORD</text>
+      <rect x="32" y="168" width="192" height="64" rx="6" fill="#ffffff"/>
+      <rect x="32" y="168" width="192" height="64" rx="6" fill="#4b5563" stroke="#6b7280" stroke-width="1" fill-opacity="0.10"/>
+      <rect x="40" y="174" width="24" height="12" rx="2" fill="none" stroke="#6b7280" stroke-width="0.8" stroke-opacity="0.50"/>
+      <text x="52" y="183" class="tg" text-anchor="middle">NDP</text>
+      <text x="128" y="202" class="nm" text-anchor="middle">NDP F-engine</text>
+      <text x="128" y="218" class="sb" text-anchor="middle">192 ch · 4+4 bit</text>
+      <rect x="288" y="160" width="208" height="80" rx="6" fill="#ffffff"/>
+      <rect x="288" y="160" width="208" height="80" rx="6" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+      <rect x="296" y="166" width="24" height="12" rx="2" fill="none" stroke="#111827" stroke-width="0.8" stroke-opacity="0.40"/>
+      <text x="308" y="175" class="tg" text-anchor="middle">CPU</text>
+      <text x="392" y="194" class="nm" text-anchor="middle">Packet receiver</text>
+      <text x="392" y="210" class="sb" text-anchor="middle">ibverbs · two threads</text>
+      <text x="392" y="223" class="sb" text-anchor="middle">central 128 channels</text>
+      <rect x="560" y="168" width="240" height="64" rx="6" fill="#ffffff"/>
+      <rect x="560" y="168" width="240" height="64" rx="6" fill="#22c55e" stroke="#15803d" stroke-width="1.2" fill-opacity="0.08"/>
+      <rect x="568" y="174" width="24" height="12" rx="2" fill="none" stroke="#15803d" stroke-width="0.8" stroke-opacity="0.50"/>
+      <text x="580" y="183" class="tgf" text-anchor="middle">GPU</text>
+      <text x="680" y="202" class="nm" text-anchor="middle">GPU imager</text>
+      <text x="680" y="218" class="sb" text-anchor="middle">E-field (MOFF) or FX</text>
+      <rect x="960" y="72" width="256" height="64" rx="6" fill="#ffffff"/>
+      <rect x="960" y="72" width="256" height="64" rx="6" fill="#111827" stroke="#111827" stroke-width="1" fill-opacity="0.03" stroke-opacity="0.30"/>
+      <rect x="968" y="78" width="28" height="12" rx="2" fill="none" stroke="#111827" stroke-width="0.8" stroke-opacity="0.30"/>
+      <text x="982" y="87" class="tg" text-anchor="middle">RTMP</text>
+      <text x="1088" y="106" class="nm" text-anchor="middle">EPIC TV video</text>
+      <text x="1088" y="122" class="sb" text-anchor="middle">one channel · EPIC TV grid</text>
+      <rect x="960" y="168" width="256" height="64" rx="6" fill="#ffffff"/>
+      <rect x="960" y="168" width="256" height="64" rx="6" fill="#111827" stroke="#4b5563" stroke-width="1" fill-opacity="0.05"/>
+      <rect x="968" y="174" width="28" height="12" rx="2" fill="none" stroke="#4b5563" stroke-width="0.8" stroke-opacity="0.40"/>
+      <text x="982" y="183" class="tg" text-anchor="middle">FITS</text>
+      <text x="1088" y="202" class="nm" text-anchor="middle">FITS integrations</text>
+      <text x="1088" y="218" class="sb" text-anchor="middle">--nimg_accum · --out_dir</text>
+      <rect x="960" y="264" width="256" height="64" rx="6" fill="#ffffff"/>
+      <rect x="960" y="264" width="256" height="64" rx="6" fill="#111827" stroke="#4b5563" stroke-width="1" fill-opacity="0.05"/>
+      <rect x="968" y="270" width="20" height="12" rx="2" fill="none" stroke="#4b5563" stroke-width="0.8" stroke-opacity="0.40"/>
+      <text x="978" y="279" class="tg" text-anchor="middle">DB</text>
+      <text x="1088" y="298" class="nm" text-anchor="middle">Database pixels</text>
+      <text x="1088" y="314" class="sb" text-anchor="middle">epic_pixels · watch list</text>
+      <rect x="960" y="392" width="256" height="64" rx="6" fill="#ffffff"/>
+      <rect x="960" y="392" width="256" height="64" rx="6" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+      <rect x="968" y="398" width="20" height="12" rx="2" fill="none" stroke="#111827" stroke-width="0.8" stroke-opacity="0.40"/>
+      <text x="978" y="407" class="tg" text-anchor="middle">PY</text>
+      <text x="1088" y="426" class="nm" text-anchor="middle">skymon monitor</text>
+      <text x="1088" y="442" class="sb" text-anchor="middle">sky ring · FRB search</text>
+      <rect x="560" y="400" width="240" height="64" rx="6" fill="#ffffff"/>
+      <rect x="560" y="400" width="240" height="64" rx="6" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+      <rect x="568" y="406" width="20" height="12" rx="2" fill="none" stroke="#111827" stroke-width="0.8" stroke-opacity="0.40"/>
+      <text x="578" y="415" class="tg" text-anchor="middle">PY</text>
+      <text x="680" y="434" class="nm" text-anchor="middle">streamcal daemon</text>
+      <text x="680" y="450" class="sb" text-anchor="middle">gains · calibration record</text>
+      <text x="32" y="536" class="co">The CHIME-triggered FRB analysis reads the database pixels;</text>
+      <text x="32" y="554" class="co">the EPIC TV grid composes the node video streams.</text>
+      <line x1="32" y1="584" x2="1248" y2="584" stroke="#111827" stroke-width="0.8" stroke-opacity="0.10"/>
+      <text x="32" y="612" class="ey">LEGEND</text>
+      <rect x="96" y="602" width="20" height="12" rx="2" fill="#22c55e" stroke="#15803d" stroke-width="1" fill-opacity="0.08"/>
+      <text x="124" y="611" class="lb">IMAGING</text>
+      <rect x="190" y="602" width="20" height="12" rx="2" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+      <text x="218" y="611" class="lb">PROCESS</text>
+      <rect x="284" y="602" width="20" height="12" rx="2" fill="#4b5563" stroke="#6b7280" stroke-width="1" fill-opacity="0.10"/>
+      <text x="312" y="611" class="lb">INPUT</text>
+      <rect x="367" y="602" width="20" height="12" rx="2" fill="#111827" stroke="#4b5563" stroke-width="1" fill-opacity="0.05"/>
+      <text x="395" y="611" class="lb">STORED PRODUCT</text>
+      <rect x="499" y="602" width="20" height="12" rx="2" fill="#111827" stroke="#111827" stroke-width="1" fill-opacity="0.03" stroke-opacity="0.30"/>
+      <text x="527" y="611" class="lb">STREAM</text>
+      <line x1="587" y1="608" x2="619" y2="608" stroke="#4b5563" stroke-width="1.2" marker-end="url(#pipeline-overview-arrow)"/>
+      <text x="627" y="611" class="lb">DATA</text>
+      <line x1="676" y1="608" x2="708" y2="608" stroke="#15803d" stroke-width="1.2" marker-end="url(#pipeline-overview-arrow-accent)"/>
+      <text x="716" y="611" class="lb">CALIBRATION</text>
+    </svg>

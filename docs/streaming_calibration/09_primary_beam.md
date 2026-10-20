@@ -198,4 +198,4 @@ The beam correction lowers the held-out direction-independent residual by 2–7%
 - **Full polarisation.** XY correlations from the tap would constrain the leakage terms that a scalar correction cannot represent.
 - **Accumulated daemon solutions** (section 9.5). The per-source scales solved every 10 s over days give the same constraint continuously.
 
-Code: `streamcal/beamcorr.py` (basis, table, `build_snapshot` hook), `research/beam_fit.py` (fit and hold-out scoring; `BF_SIM` for the simulation, `BF_SWAP` for the label test), `research/beam_fit_report.py` (tables), and `KC_BEAM` in `research/dd_kernelcal_real.py`. Outputs are in epic1:/data/streamcal/beam/.
+Code: `streamcal/beamcorr.py` (basis, table, `build_snapshot` hook), `research/beam_fit.py` (fit and hold-out scoring; `BF_SIM` for the simulation, `BF_SWAP` for the label test), `research/beam_fit_report.py` (tables), and `KC_BEAM` in `research/dd_kernelcal_real.py`. Outputs are kept on the local disk of the node that ran the fit.

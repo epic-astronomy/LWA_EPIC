@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 1280 464" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="pipeline-receiver-title pipeline-receiver-desc" id="pipeline-receiver-root">
+      <title id="pipeline-receiver-title">Packet receiver and gulp assembly</title>
+      <desc id="pipeline-receiver-desc">A NIC poller thread hands packet batches through a single-producer single-consumer ring to an assembler thread that writes time-major gulps and a validity mask; the GPU transposes each gulp to channel-major order and zeroes the samples of lost packets before imaging.</desc>
+      <defs>
+      <style>#pipeline-receiver-root { font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif; color: #111827; }
+      #pipeline-receiver-root .diagram-container { width: 100%; overflow-x: auto; }
+      #pipeline-receiver-root .diagram-container { overflow-x: visible; }
+      #pipeline-receiver-root .nm { font: 600 12px 'DM Sans', ui-sans-serif, system-ui, sans-serif; fill: #111827; }
+      #pipeline-receiver-root .sb { font: 400 9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #4b5563; }
+      #pipeline-receiver-root .tg { font: 500 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.08em; fill: #6b7280; }
+      #pipeline-receiver-root .tgf { font: 500 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.08em; fill: #15803d; }
+      #pipeline-receiver-root .lb { font: 400 8px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.06em; fill: #6b7280; }
+      #pipeline-receiver-root .ey { font: 500 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.14em; fill: #6b7280; }
+      #pipeline-receiver-root .co { font: italic 14px 'Instrument Serif', Georgia, serif; fill: #4b5563; }</style>
+        <marker id="pipeline-receiver-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4b5563"/></marker>
+        <marker id="pipeline-receiver-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#15803d"/></marker>
+        <marker id="pipeline-receiver-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#1d4ed8"/></marker>
+      </defs>
+      <rect width="100%" height="100%" fill="#ffffff"/>
+      <rect x="192" y="88" width="528" height="128" rx="8" fill="#111827" stroke="#111827" stroke-width="0.8" fill-opacity="0.02" stroke-opacity="0.10"/>
+      <rect x="204" y="92" width="164" height="12" rx="2" fill="#ffffff"/>
+      <text x="286" y="101" class="ey" text-anchor="middle">RECEIVER CPU AND ITS SIBLING</text>
+      <rect x="928" y="88" width="336" height="128" rx="8" fill="#111827" stroke="#111827" stroke-width="0.8" fill-opacity="0.02" stroke-opacity="0.10"/>
+      <rect x="940" y="92" width="76" height="12" rx="2" fill="#ffffff"/>
+      <text x="978" y="101" class="ey" text-anchor="middle">IMAGING GPU</text>
+      <path d="M 176,152 H 208" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#pipeline-receiver-arrow)"/>
+      <path d="M 352,152 H 384" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#pipeline-receiver-arrow)"/>
+      <path d="M 528,152 H 560" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#pipeline-receiver-arrow)"/>
+      <path d="M 704,152 H 736" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#pipeline-receiver-arrow)"/>
+      <path d="M 1088,152 H 1120" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#pipeline-receiver-arrow)"/>
+      <path d="M 880,152 H 944" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#pipeline-receiver-arrow)"/>
+      <rect x="896" y="130" width="32" height="12" rx="2" fill="#ffffff"/>
+      <text x="912" y="139" class="lb" text-anchor="middle">COPY</text>
+      <path d="M 632,184 V 288 Q 632,296 640,296 H 736" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#pipeline-receiver-arrow)"/>
+      <rect x="584" y="234" width="32" height="12" rx="2" fill="#ffffff"/>
+      <text x="600" y="243" class="lb" text-anchor="middle">BITS</text>
+      <path d="M 880,296 H 1008 Q 1016,296 1016,288 V 184" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#pipeline-receiver-arrow)"/>
+      <rect x="928" y="274" width="32" height="12" rx="2" fill="#ffffff"/>
+      <text x="944" y="283" class="lb" text-anchor="middle">MASK</text>
+      <rect x="32" y="120" width="144" height="64" rx="6" fill="#ffffff"/>
+      <rect x="32" y="120" width="144" height="64" rx="6" fill="#4b5563" stroke="#6b7280" stroke-width="1" fill-opacity="0.10"/>
+      <rect x="40" y="126" width="24" height="12" rx="2" fill="none" stroke="#6b7280" stroke-width="0.8" stroke-opacity="0.50"/>
+      <text x="52" y="135" class="tg" text-anchor="middle">NIC</text>
+      <text x="104" y="154" class="nm" text-anchor="middle">Queue pair</text>
+      <text x="104" y="170" class="sb" text-anchor="middle">verbs · 8192 bufs</text>
+      <rect x="208" y="120" width="144" height="64" rx="6" fill="#ffffff"/>
+      <rect x="208" y="120" width="144" height="64" rx="6" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+      <rect x="216" y="126" width="20" height="12" rx="2" fill="none" stroke="#111827" stroke-width="0.8" stroke-opacity="0.40"/>
+      <text x="226" y="135" class="tg" text-anchor="middle">T1</text>
+      <text x="280" y="154" class="nm" text-anchor="middle">NIC poller</text>
+      <text x="280" y="170" class="sb" text-anchor="middle">busy-polls the CQ</text>
+      <rect x="384" y="120" width="144" height="64" rx="6" fill="#ffffff"/>
+      <rect x="384" y="120" width="144" height="64" rx="6" fill="#111827" stroke="#4b5563" stroke-width="1" fill-opacity="0.05"/>
+      <rect x="392" y="126" width="28" height="12" rx="2" fill="none" stroke="#4b5563" stroke-width="0.8" stroke-opacity="0.40"/>
+      <text x="406" y="135" class="tg" text-anchor="middle">RING</text>
+      <text x="456" y="154" class="nm" text-anchor="middle">SPSC ring</text>
+      <text x="456" y="170" class="sb" text-anchor="middle">16384 batches</text>
+      <rect x="560" y="120" width="144" height="64" rx="6" fill="#ffffff"/>
+      <rect x="560" y="120" width="144" height="64" rx="6" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+      <rect x="568" y="126" width="20" height="12" rx="2" fill="none" stroke="#111827" stroke-width="0.8" stroke-opacity="0.40"/>
+      <text x="578" y="135" class="tg" text-anchor="middle">T2</text>
+      <text x="632" y="154" class="nm" text-anchor="middle">Assembler</text>
+      <text x="632" y="170" class="sb" text-anchor="middle">1000 seq per gulp</text>
+      <rect x="736" y="120" width="144" height="64" rx="6" fill="#ffffff"/>
+      <rect x="736" y="120" width="144" height="64" rx="6" fill="#111827" stroke="#4b5563" stroke-width="1" fill-opacity="0.05"/>
+      <rect x="744" y="126" width="28" height="12" rx="2" fill="none" stroke="#4b5563" stroke-width="0.8" stroke-opacity="0.40"/>
+      <text x="758" y="135" class="tg" text-anchor="middle">HOST</text>
+      <text x="808" y="154" class="nm" text-anchor="middle">Gulp buffer</text>
+      <text x="808" y="170" class="sb" text-anchor="middle">time-major</text>
+      <rect x="944" y="120" width="144" height="64" rx="6" fill="#ffffff"/>
+      <rect x="944" y="120" width="144" height="64" rx="6" fill="#22c55e" stroke="#15803d" stroke-width="1.2" fill-opacity="0.08"/>
+      <rect x="952" y="126" width="28" height="12" rx="2" fill="none" stroke="#15803d" stroke-width="0.8" stroke-opacity="0.50"/>
+      <text x="966" y="135" class="tgf" text-anchor="middle">CUDA</text>
+      <text x="1016" y="154" class="nm" text-anchor="middle">Transpose, zero</text>
+      <text x="1016" y="170" class="sb" text-anchor="middle">lost packets to 0</text>
+      <rect x="1120" y="120" width="128" height="64" rx="6" fill="#ffffff"/>
+      <rect x="1120" y="120" width="128" height="64" rx="6" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+      <rect x="1128" y="126" width="24" height="12" rx="2" fill="none" stroke="#111827" stroke-width="0.8" stroke-opacity="0.40"/>
+      <text x="1140" y="135" class="tg" text-anchor="middle">GPU</text>
+      <text x="1184" y="154" class="nm" text-anchor="middle">Imaging</text>
+      <text x="1184" y="170" class="sb" text-anchor="middle">MOFF or FX</text>
+      <rect x="736" y="264" width="144" height="64" rx="6" fill="#ffffff"/>
+      <rect x="736" y="264" width="144" height="64" rx="6" fill="#111827" stroke="#4b5563" stroke-width="1" fill-opacity="0.05"/>
+      <rect x="744" y="270" width="28" height="12" rx="2" fill="none" stroke="#4b5563" stroke-width="0.8" stroke-opacity="0.40"/>
+      <text x="758" y="279" class="tg" text-anchor="middle">HOST</text>
+      <text x="808" y="298" class="nm" text-anchor="middle">Validity mask</text>
+      <text x="808" y="314" class="sb" text-anchor="middle">1 bit per packet</text>
+      <text x="32" y="384" class="co">The receive threads only copy packets; every per-sample operation runs on the GPU.</text>
+      <line x1="32" y1="408" x2="1248" y2="408" stroke="#111827" stroke-width="0.8" stroke-opacity="0.10"/>
+      <text x="32" y="436" class="ey">LEGEND</text>
+      <rect x="96" y="426" width="20" height="12" rx="2" fill="#22c55e" stroke="#15803d" stroke-width="1" fill-opacity="0.08"/>
+      <text x="124" y="435" class="lb">GPU STAGE</text>
+      <rect x="200" y="426" width="20" height="12" rx="2" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+      <text x="228" y="435" class="lb">THREAD OR KERNEL</text>
+      <rect x="343" y="426" width="20" height="12" rx="2" fill="#111827" stroke="#4b5563" stroke-width="1" fill-opacity="0.05"/>
+      <text x="371" y="435" class="lb">BUFFER</text>
+      <rect x="431" y="426" width="20" height="12" rx="2" fill="#4b5563" stroke="#6b7280" stroke-width="1" fill-opacity="0.10"/>
+      <text x="459" y="435" class="lb">INPUT</text>
+      <line x1="514" y1="432" x2="546" y2="432" stroke="#4b5563" stroke-width="1.2" marker-end="url(#pipeline-receiver-arrow)"/>
+      <text x="554" y="435" class="lb">DATA</text>
+    </svg>

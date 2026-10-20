@@ -1,17 +1,17 @@
 # Streaming calibration for the EPIC imager
 
-Notes and prototype for real-time per-antenna gain calibration of epic++ at LWA-SV. The gains are solved on the host CPUs and applied on the GPU. Work dated 2026-10-16, on branch `streaming-calibration` (base: `phoenix` v0.19.0, 670d6da).
+Notes and implementation of real-time per-antenna gain calibration of epic++ at LWA-SV. The gains are solved on the host CPUs and applied on the GPU. The work began on 2026-10-16 on branch `streaming-calibration` (base: `phoenix` v0.19.0, 670d6da) and was merged into `phoenix-fx`; the implementation described in [section 4](04_implementation.md) is that of `phoenix-fx` at commit `b67ed6b`. The place of calibration in the whole imaging pipeline is described in [the pipeline design](../pipeline/DESIGN.md).
 
 ## Summary
 
 The EPIC imager (Thyagarajan et al. 2017) mixes all antennas before any averaging, so gains must be applied to the voltages before gridding. The GPU kernel already runs at about 95% of its 40 ms gulp budget and at the register limit. Calibration must therefore run on the CPU, and only its result may reach the GPU.
 
-The adopted formalism (section 1.5) has five parts:
+The adopted formalism (section 1.5) has five parts; Figure 4.1 of section 4 shows the loop.
 
-1. **Tap.** A tap inside epic++ correlates the gulps and publishes the 256×256 XX and YY covariance of all 128 channels to shared memory every 10 s. The tap reads the voltages before any gains are applied, so **there is no feedback loop**. Two forms:
-   - on the CPU, a slice of every gulp (2.5–5% of the samples) with an AVX2 X-engine on the raw 4+4-bit voltages;
-   - on the GPU, every sample, with the tensor-core correlator (`--caltap_gpu`, section 8.9.2).
-2. **Forward model.** A CPU service, `streamcal`, predicts the visibilities of the sky every 60 s through the LSL dipole beam:
+1. **Tap.** A tap inside epic++ correlates the gulps and publishes the 256×256 XX and YY covariance of all imaged channels to shared memory every 10 s. The tap reads the voltages before any gains are applied, so **there is no feedback loop**. Two forms:
+   - on the GPU, every sample, with the tensor-core correlator (`--caltap_gpu`, sections 4.2 and 8.9.2). In integrations with lost packets it correlates the sample weights as well and divides each product by its own number of valid samples. This is the route for the time-major gulps of the NDP receiver;
+   - on the CPU, a slice of every gulp (2.5–5% of the samples) with an AVX2 X-engine on the raw 4+4-bit voltages. It reads channel-major gulps only and is disabled for NDP data.
+2. **Forward model.** A CPU service, `streamcal`, predicts the visibilities of the sky through the LSL dipole beam from snapshots 60 s apart, interpolated to the time of each table (section 4.4.1):
    - the A-team, with de Gasperin et al. 2020 spectra;
    - the diffuse sky: the OVRO-LWA hybrid map at 30–80 MHz, LFSM outside;
    - the Sun as a free flux.
@@ -20,8 +20,8 @@ The adopted formalism (section 1.5) has five parts:
 3. **Solution.** Each solved channel and polarisation is fitted with warm-started StEFCal. The flux and position of every bright source (A-team, Sun) are solved together with the gains, so scintillation, solar bursts and ionospheric refraction stay in the sky model rather than in the gains (section 6).
    - The source frame is anchored to the catalogue positions, and the offsets carry a refraction prior that separates thermal noise from model error (section 10.3).
    - Channels whose χ²/dof, relative to the band median, shows RFI are rejected.
-4. **Tracking.** A per-antenna Kalman filter tracks phase and delay; amplitudes and the bandpass are averaged slowly. Gains are interpolated to all channels.
-5. **Application.** epic++ reads the gain table at image boundaries and folds it into `phases_g`, the per-antenna phases the GPU kernel already applies. Calibration costs the GPU nothing, and the autocorrelation removal stays consistent. The published weights are the matched filter $`(1/g)\min(1,\rho/\bar\rho)`$, not plain 1/g, so stands with excess receiver noise are down-weighted (section 10.2).
+4. **Tracking.** A per-antenna Kalman filter tracks phase and delay; the amplitudes are averaged cumulatively over the first 300 s and exponentially after that, the phase bandpass is averaged over 600 s, and flags change with hysteresis. Gains are interpolated to all channels.
+5. **Publication and application.** After a warm-up of 300 s the daemon publishes a table only when it moves the phases by more than 1°, the brightness of a compact source or the diffuse sky by more than 0.1%, the amplitudes by more than 2%, or the flags, or when the last table is 600 s old (section 4.4.2); with each table it writes the calibration record of the all-sky monitor (section 4.4.3). epic++ reads the gain table at image boundaries and folds it into `phases_g`, the per-antenna phases the GPU kernels already apply (the E-field kernel to the voltages, the FX gridder to each visibility pair). Calibration costs the GPU nothing, and the autocorrelation removal stays consistent. The published weights are the matched filter $`(1/g)\min(1,\rho/\bar\rho)`$, with the sky fractions ρ smoothed over 600 s, not plain 1/g, so stands with excess receiver noise are down-weighted (section 10.2).
 
 ## Main results
 
@@ -120,7 +120,7 @@ The benchmark also found and fixed six defects, among them a buffer-release race
 | [01_formalism.md](01_formalism.md) | Measurement model, exact EPIC image operator, EPICal as a projection, grid-domain solver, adopted streaming formalism, budgets |
 | [02_forward_model.md](02_forward_model.md) | Sky components, spectra, beam, evaluation, omissions |
 | [03_experiments.md](03_experiments.md) | All simulations, the LWA-SV data analysis, X-engine benchmark |
-| [04_implementation.md](04_implementation.md) | epic++ changes, options, shared-memory layouts, streamcal modules, tests, commissioning plan, open items |
+| [04_implementation.md](04_implementation.md) | Data flow, epic++ changes and options, the GPU tap and its sample weights, shared-memory layouts, the calibration record, streamcal modules, stability of the published calibration (model interpolation, smoothed weights and amplitudes, flag hysteresis), the publication policy, tests, commissioning plan, open items |
 | [05_literature.md](05_literature.md) | Survey of real-time and direct-imaging calibration, with references |
 | [06_ionosphere.md](06_ionosphere.md) | Scintillation, refraction, absorption and solar bursts; sky parameters solved with the gains; storm simulations; direction dependence |
 | [07_benchmark.md](07_benchmark.md) | epic++ benchmark mode, timing with and without calibration, end-to-end calibration of simulated F-engine data through the imager, defects found |
@@ -132,13 +132,14 @@ The benchmark also found and fixed six defects, among them a buffer-release race
 
 | Path | Content |
 |---|---|
-| `src/ex/xengine.hpp`, `src/ex/cal_tap.hpp`, `src/ex/gain_table.hpp` | CPU X-engine, calibration tap, gain-table reader |
+| `src/ex/tcc_tap.{h,cu}`, `src/ex/vis_table.hpp` | GPU calibration tap (tensor-core correlator, sample weights), visibility-table writer |
+| `src/ex/xengine.hpp`, `src/ex/cal_tap.hpp`, `src/ex/gain_table.hpp` | CPU X-engine, CPU calibration tap, gain-table reader |
 | `src/raft_kernels/bench_kernels.hpp`, `src/raft_kernels/epic_executor.hpp` | `epic++ --bench` (generator → correlator → sink) |
 | `src/ex/buffer.hpp` | Fix: reset a buffer before releasing it |
-| `src/raft_kernels/correlator.hpp`, `src/ex/MOFF_correlator.hpp`, `src/MOFF_cu_handler.cu` | Hooks: tap offer, gain polling at image boundaries, in-place phase upload, `gain_version` metadata |
-| `src/python/streamcal/` | `daemon.py` (service), `forward.py`, `sky.py`, `solvers.py`, `epicop.py`, `shm.py`, `geometry.py` |
+| `src/raft_kernels/correlator.hpp`, `src/ex/MOFF_correlator.hpp`, `src/MOFF_cu_handler.cu`, `src/ex/fx_imager.cu` | Hooks: tap arming and validity mask, gain polling at image boundaries, in-place phase upload, gain application in the FX gridder, `gain_version` metadata |
+| `src/python/streamcal/` | `daemon.py` (service), `calinfo.py` (calibration record), `forward.py`, `sky.py`, `solvers.py`, `rfi.py`, `beamcorr.py`, `epicop.py`, `shm.py`, `geometry.py` |
 | `src/python/streamcal/research/` | Simulation and real-data scripts behind section 3 |
-| `tests/streamcal/` | `test_io.cpp`, `test_shm_roundtrip.py`, `test_daemon.py` |
+| `tests/streamcal/` | `test_io.cpp`, `test_shm_roundtrip.py`, `test_daemon.py`, `test_tcc_tap.cu`, `test_rfi_stage.py` |
 
 ## Reproduction
 
@@ -147,9 +148,9 @@ Environment: the epic310 conda environment, or any Python 3.10 with numpy, scipy
 ```bash
 # C++ I/O tests (no CUDA)
 g++ -O3 -march=znver3 -fopenmp -std=c++17 -I tests/streamcal/shim -I src/ex \
-    tests/streamcal/test_io.cpp -o /tmp/streamcal_test_io -lpthread
-/tmp/streamcal_test_io selftest /dev/shm
-python tests/streamcal/test_shm_roundtrip.py /tmp/streamcal_test_io /dev/shm/streamcal_test
+    tests/streamcal/test_io.cpp -o <build>/streamcal_test_io -lpthread
+<build>/streamcal_test_io selftest /dev/shm
+python tests/streamcal/test_shm_roundtrip.py <build>/streamcal_test_io /dev/shm/streamcal_test
 
 # service, end to end on synthetic tap tables
 python tests/streamcal/test_daemon.py /dev/shm/streamcal_e2e
@@ -162,16 +163,16 @@ python sim_loop.py --chan0 1376 --duration 600 --start 2026-10-16T19:00:00 \
 python plot_sim.py sim_75.npz sim_75.png
 
 # LWA-SV TBF data (section 3.6)
-python tbf_cache.py /FileStore/epic0/memo12_Data/rawfiles/060204_008031743_DeMux ../tbfR_1.npz 10000
+python tbf_cache.py <Memo 12 data>/rawfiles/060204_008031743_DeMux ../tbfR_1.npz 10000
 python tbf_stability.py
 ```
 
 Running the service beside an imager:
 
 ```bash
-epic++ ... --caltap_nseq 25 --caltap_interval 10 [--gain_table /dev/shm/epic_gains_gpu{gpu}]
+epic++ ... --caltap_gpu --caltap_interval 10 [--gain_table /dev/shm/epic_gains_gpu{gpu}]
 PYTHONPATH=src/python python -m streamcal.daemon --vis /dev/shm/epic_vis_gpu0 \
-       --gains /dev/shm/epic_gains_gpu0 --dry-run
+       --gains /dev/shm/epic_gains_gpu0 --calinfo /dev/shm/epic_calinfo_gpu0.json --dry-run
 ```
 
 The commissioning order (tap only, then dry run, then the NDP sign check, then apply) is in section 4.6.

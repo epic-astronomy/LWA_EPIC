@@ -136,7 +136,7 @@ Daemon cost, measured on one Xeon Silver 4210 node with 8 BLAS threads:
 
 ## 3.6 LWA-SV data (EPIC Memo 12 TBF captures)
 
-**Data.** TBF captures of 2023-09-17 (ADP F-engine, 25 kHz channels, 28.2–48 MHz, `/FileStore/epic0/memo12_Data`). From each capture, 10,000 samples (0.4 s) were correlated at 16 channels.
+**Data.** TBF captures of 2023-09-17 (ADP F-engine, 25 kHz channels, 28.2–48 MHz, the EPIC Memo 12 data set). From each capture, 10,000 samples (0.4 s) were correlated at 16 channels.
 
 **Processing.**
 

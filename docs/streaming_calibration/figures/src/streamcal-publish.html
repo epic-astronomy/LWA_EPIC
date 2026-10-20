@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Publication policy of the streamcal daemon</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif; background: #ffffff; color: #111827; padding: 3rem 2rem; }
+    .frame { max-width: 1320px; margin: 0 auto; }
+    .eyebrow { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: #4b5563; margin-bottom: 0.5rem; }
+    h1 { font-family: 'Instrument Serif', serif; font-size: 2rem; font-weight: 400; letter-spacing: -0.02em; margin-bottom: 1.5rem; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    svg { width: 100%; min-width: 1280px; display: block; }
+    @media print { .diagram-container { overflow-x: visible; } svg { min-width: 0; } }
+    .nm { font: 600 12px 'DM Sans', ui-sans-serif, system-ui, sans-serif; fill: #111827; }
+    .sb { font: 400 9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #4b5563; }
+    .tg { font: 500 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.08em; fill: #6b7280; }
+    .tgf { font: 500 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.08em; fill: #15803d; }
+    .lb { font: 400 8px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.06em; fill: #6b7280; }
+    .ey { font: 500 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.14em; fill: #6b7280; }
+    .co { font: italic 14px 'Instrument Serif', Georgia, serif; fill: #4b5563; }
+  </style>
+</head>
+<body>
+<div class="frame">
+  <p class="eyebrow">Flowchart · streaming calibration</p>
+  <h1>Publication policy of the streamcal daemon</h1>
+  <div class="diagram-container">
+    <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="streamcal-publish-title streamcal-publish-desc">
+      <title id="streamcal-publish-title">Publication policy of the streamcal daemon</title>
+      <desc id="streamcal-publish-desc">After every solved table the daemon publishes during the 300 s warm-up, when the last published table is 600 s old or the flags change, or when the phases, brightness or amplitudes move beyond their thresholds; otherwise it holds the table.</desc>
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4b5563"/></marker>
+        <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#15803d"/></marker>
+        <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#1d4ed8"/></marker>
+      </defs>
+      <rect width="100%" height="100%" fill="#ffffff"/>
+      <path d="M 400,96 V 132" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <path d="M 400,252 V 284" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <rect x="414" y="262" width="20" height="12" rx="2" fill="#ffffff"/>
+      <text x="424" y="271" class="lb" text-anchor="middle">NO</text>
+      <path d="M 400,404 V 436" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <rect x="414" y="414" width="20" height="12" rx="2" fill="#ffffff"/>
+      <text x="424" y="423" class="lb" text-anchor="middle">NO</text>
+      <path d="M 400,556 V 600" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <rect x="414" y="572" width="20" height="12" rx="2" fill="#ffffff"/>
+      <text x="424" y="581" class="lb" text-anchor="middle">NO</text>
+      <path d="M 560,192 H 852 Q 860,192 860,200 V 312" fill="none" stroke="#15803d" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+      <rect x="666" y="170" width="28" height="12" rx="2" fill="#ffffff"/>
+      <text x="680" y="179" class="lb" text-anchor="middle" style="fill:#15803d">YES</text>
+      <path d="M 560,344 H 720" fill="none" stroke="#15803d" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+      <rect x="626" y="322" width="28" height="12" rx="2" fill="#ffffff"/>
+      <text x="640" y="331" class="lb" text-anchor="middle" style="fill:#15803d">YES</text>
+      <path d="M 560,496 H 852 Q 860,496 860,488 V 376" fill="none" stroke="#15803d" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+      <rect x="666" y="474" width="28" height="12" rx="2" fill="#ffffff"/>
+      <text x="680" y="483" class="lb" text-anchor="middle" style="fill:#15803d">YES</text>
+      <path d="M 1000,344 H 1040" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <rect x="280" y="48" width="240" height="48" rx="20" fill="#ffffff"/>
+      <rect x="280" y="48" width="240" height="48" rx="20" fill="rgba(75,85,99,0.10)" stroke="#6b7280" stroke-width="1"/>
+      <text x="400" y="70" class="nm" text-anchor="middle">Table solved</text>
+      <text x="400" y="84" class="sb" text-anchor="middle">gains · weights · flags</text>
+      <polygon points="400,132 560,192 400,252 240,192" fill="#ffffff"/>
+      <polygon points="400,132 560,192 400,252 240,192" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+      <text x="400" y="188" class="nm" text-anchor="middle">Converging?</text>
+      <text x="400" y="204" class="sb" text-anchor="middle">first table, or within</text>
+      <text x="400" y="216" class="sb" text-anchor="middle">--publish-warmup 300 s</text>
+      <polygon points="400,284 560,344 400,404 240,344" fill="#ffffff"/>
+      <polygon points="400,284 560,344 400,404 240,344" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+      <text x="400" y="340" class="nm" text-anchor="middle">Stale or new flags?</text>
+      <text x="400" y="356" class="sb" text-anchor="middle">--publish-max-s 600 s,</text>
+      <text x="400" y="368" class="sb" text-anchor="middle">or a stand flagged differently</text>
+      <polygon points="400,436 560,496 400,556 240,496" fill="#ffffff"/>
+      <polygon points="400,436 560,496 400,556 240,496" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+      <text x="400" y="492" class="nm" text-anchor="middle">Moved enough?</text>
+      <text x="400" y="508" class="sb" text-anchor="middle">phase > 1 deg · brightness</text>
+      <text x="400" y="520" class="sb" text-anchor="middle">> 0.1 % · amplitude > 2 %</text>
+      <rect x="280" y="600" width="240" height="48" rx="20" fill="#ffffff"/>
+      <rect x="280" y="600" width="240" height="48" rx="20" fill="rgba(75,85,99,0.10)" stroke="#6b7280" stroke-width="1"/>
+      <text x="400" y="622" class="nm" text-anchor="middle">Hold</text>
+      <text x="400" y="636" class="sb" text-anchor="middle">log the change since vN</text>
+      <rect x="720" y="312" width="280" height="64" rx="6" fill="#ffffff"/>
+      <rect x="720" y="312" width="280" height="64" rx="6" fill="rgba(34,197,94,0.08)" stroke="#15803d" stroke-width="1.2"/>
+      <rect x="728" y="318" width="24" height="12" rx="2" fill="none" stroke="rgba(21,128,61,0.50)" stroke-width="0.8"/>
+      <text x="740" y="327" class="tgf" text-anchor="middle">SHM</text>
+      <text x="860" y="346" class="nm" text-anchor="middle">Publish gain table vN+1</text>
+      <text x="860" y="362" class="sb" text-anchor="middle">seqlock write · median |c| = 1</text>
+      <rect x="1040" y="300" width="208" height="88" rx="6" fill="#ffffff"/>
+      <rect x="1040" y="300" width="208" height="88" rx="6" fill="rgba(17,24,39,0.05)" stroke="#4b5563" stroke-width="1"/>
+      <rect x="1048" y="306" width="24" height="12" rx="2" fill="none" stroke="rgba(75,85,99,0.40)" stroke-width="0.8"/>
+      <text x="1060" y="315" class="tg" text-anchor="middle">OUT</text>
+      <text x="1144" y="338" class="nm" text-anchor="middle">With every table</text>
+      <text x="1144" y="354" class="sb" text-anchor="middle">calibration record</text>
+      <text x="1144" y="367" class="sb" text-anchor="middle">projector (--proj)</text>
+      <text x="640" y="616" class="co">With --dry-run the daemon solves and logs every table</text>
+      <text x="640" y="634" class="co">but publishes none.</text>
+      <line x1="32" y1="672" x2="1248" y2="672" stroke="rgba(17,24,39,0.10)" stroke-width="0.8"/>
+      <text x="32" y="700" class="ey">LEGEND</text>
+      <rect x="96" y="690" width="20" height="12" rx="2" fill="rgba(34,197,94,0.08)" stroke="#15803d" stroke-width="1"/>
+      <text x="124" y="699" class="lb">PUBLISH</text>
+      <rect x="190" y="690" width="20" height="12" rx="2" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+      <text x="218" y="699" class="lb">TEST</text>
+      <rect x="267" y="690" width="20" height="12" rx="2" fill="rgba(75,85,99,0.10)" stroke="#6b7280" stroke-width="1"/>
+      <text x="295" y="699" class="lb">START OR END</text>
+      <rect x="388" y="690" width="20" height="12" rx="2" fill="rgba(17,24,39,0.05)" stroke="#4b5563" stroke-width="1"/>
+      <text x="416" y="699" class="lb">OUTPUTS</text>
+      <line x1="482" y1="696" x2="514" y2="696" stroke="#15803d" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+      <text x="522" y="699" class="lb">PUBLISH PATH</text>
+      <line x1="615" y1="696" x2="647" y2="696" stroke="#4b5563" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <text x="655" y="699" class="lb">HOLD PATH</text>
+    </svg>
+  </div>
+</div>
+</body>
+</html>

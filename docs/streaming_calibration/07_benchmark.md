@@ -70,9 +70,9 @@ The residual is at the sky-model floor: section 3.2 found about 0.4–0.5° and 
 
 ```bash
 # step 1, any host with pygdsm and lsl (about 10 min)
-python src/python/streamcal/research/make_bench_model.py /FileStore/epicT/epic/streamcal_bench/model75 --chan0 3104
+python src/python/streamcal/research/make_bench_model.py $BENCH/model75 --chan0 3104
 # step 2, on the GPU node (numpy only; about 15 min for 96 gulps)
-python src/python/streamcal/research/make_bench_gulps.py /FileStore/epicT/epic/streamcal_bench/model75 \
+python src/python/streamcal/research/make_bench_gulps.py $BENCH/model75 \
        /dev/shm/streamcal_bench/gulps.bin --ngulps 96
 # reference images with the exact gains
 ORACLE=1 DATA=/dev/shm/streamcal_bench/gulps.bin src/python/streamcal/research/bench_run.sh oracle 480 \
@@ -83,4 +83,4 @@ CAL=1 DATA=/dev/shm/streamcal_bench/gulps.bin src/python/streamcal/research/benc
 python src/python/streamcal/research/bench_images.py /dev/shm/streamcal_bench/cal_rt/dumps /dev/shm/streamcal_bench/oracle/dumps
 ```
 
-`bench_run.sh` expects the daemon's dependencies in `/FileStore/epicT/epic/streamcal_bench/venv`. That is a venv over `epic310` (`--system-site-packages`) with `pygdsm` added, so the production environment is unchanged.
+`bench_run.sh` expects the daemon's dependencies in `$BENCH/venv`, `$BENCH` being the benchmark directory set at the top of the script. That is a venv over `epic310` (`--system-site-packages`) with `pygdsm` added, so the production environment is unchanged.

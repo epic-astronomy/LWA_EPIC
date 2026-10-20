@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The FX imaging path</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif; background: #ffffff; color: #111827; padding: 3rem 2rem; }
+    .frame { max-width: 1320px; margin: 0 auto; }
+    .eyebrow { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: #4b5563; margin-bottom: 0.5rem; }
+    h1 { font-family: 'Instrument Serif', serif; font-size: 2rem; font-weight: 400; letter-spacing: -0.02em; margin-bottom: 1.5rem; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    svg { width: 100%; min-width: 1280px; display: block; }
+    @media print { .diagram-container { overflow-x: visible; } svg { min-width: 0; } }
+    .nm { font: 600 12px 'DM Sans', ui-sans-serif, system-ui, sans-serif; fill: #111827; }
+    .sb { font: 400 9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #4b5563; }
+    .tg { font: 500 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.08em; fill: #6b7280; }
+    .tgf { font: 500 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.08em; fill: #15803d; }
+    .lb { font: 400 8px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.06em; fill: #6b7280; }
+    .ey { font: 500 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.14em; fill: #6b7280; }
+    .co { font: italic 14px 'Instrument Serif', Georgia, serif; fill: #4b5563; }
+  </style>
+</head>
+<body>
+<div class="frame">
+  <p class="eyebrow">Process · EPIC imager</p>
+  <h1>The FX imaging path</h1>
+  <div class="diagram-container">
+    <svg viewBox="0 0 1280 504" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="pipeline-fx-title pipeline-fx-desc">
+      <title id="pipeline-fx-title">The FX imaging path</title>
+      <desc id="pipeline-fx-desc">The Tensor-Core Correlator correlates the voltages and the sample weights of every gulp; once per image the tiled lag gridder normalises each visibility by its valid samples, applies the calibration gains and optionally subtracts peeled sources, then an inverse FFT and a combine step form the XX, YY and cross-polarisation images.</desc>
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4b5563"/></marker>
+        <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#15803d"/></marker>
+        <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#1d4ed8"/></marker>
+      </defs>
+      <rect width="100%" height="100%" fill="#ffffff"/>
+      <rect x="16" y="88" width="448" height="272" rx="8" fill="rgba(17,24,39,0.02)" stroke="rgba(17,24,39,0.10)" stroke-width="0.8"/>
+      <rect x="28" y="92" width="72" height="12" rx="2" fill="#ffffff"/>
+      <text x="64" y="101" class="ey" text-anchor="middle">EVERY GULP</text>
+      <rect x="544" y="88" width="720" height="272" rx="8" fill="rgba(17,24,39,0.02)" stroke="rgba(17,24,39,0.10)" stroke-width="0.8"/>
+      <rect x="556" y="92" width="92" height="12" rx="2" fill="#ffffff"/>
+      <text x="602" y="101" class="ey" text-anchor="middle">ONCE PER IMAGE</text>
+      <path d="M 192,152 H 256" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <path d="M 192,296 H 256" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <path d="M 432,140 H 640" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <rect x="498" y="118" width="76" height="12" rx="2" fill="#ffffff"/>
+      <text x="536" y="127" class="lb" text-anchor="middle">VISIBILITIES</text>
+      <path d="M 432,280 H 472 Q 480,280 480,272 V 176 Q 480,168 488,168 H 640" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <rect x="536" y="178" width="48" height="12" rx="2" fill="#ffffff"/>
+      <text x="560" y="187" class="lb" text-anchor="middle">WEIGHTS</text>
+      <path d="M 688,264 V 184" fill="none" stroke="#4b5563" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+      <rect x="630" y="218" width="44" height="12" rx="2" fill="#ffffff"/>
+      <text x="652" y="227" class="lb" text-anchor="middle">FLUXES</text>
+      <path d="M 816,264 V 184" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <rect x="828" y="218" width="40" height="12" rx="2" fill="#ffffff"/>
+      <text x="848" y="227" class="lb" text-anchor="middle">GAINS</text>
+      <path d="M 864,152 H 912" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <path d="M 1056,152 H 1104" fill="none" stroke="#4b5563" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <rect x="32" y="120" width="160" height="64" rx="6" fill="#ffffff"/>
+      <rect x="32" y="120" width="160" height="64" rx="6" fill="rgba(75,85,99,0.10)" stroke="#6b7280" stroke-width="1"/>
+      <rect x="40" y="126" width="24" height="12" rx="2" fill="none" stroke="rgba(107,114,128,0.50)" stroke-width="0.8"/>
+      <text x="52" y="135" class="tg" text-anchor="middle">DEV</text>
+      <text x="112" y="154" class="nm" text-anchor="middle">Device gulp</text>
+      <text x="112" y="170" class="sb" text-anchor="middle">channel-major · 4+4</text>
+      <rect x="32" y="264" width="160" height="64" rx="6" fill="#ffffff"/>
+      <rect x="32" y="264" width="160" height="64" rx="6" fill="rgba(75,85,99,0.10)" stroke="#6b7280" stroke-width="1"/>
+      <rect x="40" y="270" width="28" height="12" rx="2" fill="none" stroke="rgba(107,114,128,0.50)" stroke-width="0.8"/>
+      <text x="54" y="279" class="tg" text-anchor="middle">MASK</text>
+      <text x="112" y="298" class="nm" text-anchor="middle">Validity, flags</text>
+      <text x="112" y="314" class="sb" text-anchor="middle">mask · impulse flags</text>
+      <rect x="256" y="120" width="176" height="64" rx="6" fill="#ffffff"/>
+      <rect x="256" y="120" width="176" height="64" rx="6" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+      <rect x="264" y="126" width="24" height="12" rx="2" fill="none" stroke="rgba(17,24,39,0.40)" stroke-width="0.8"/>
+      <text x="276" y="135" class="tg" text-anchor="middle">TCC</text>
+      <text x="344" y="154" class="nm" text-anchor="middle">Correlate voltages</text>
+      <text x="344" y="170" class="sb" text-anchor="middle">int8 · sums the gulps</text>
+      <rect x="256" y="264" width="176" height="64" rx="6" fill="#ffffff"/>
+      <rect x="256" y="264" width="176" height="64" rx="6" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+      <rect x="264" y="270" width="24" height="12" rx="2" fill="none" stroke="rgba(17,24,39,0.40)" stroke-width="0.8"/>
+      <text x="276" y="279" class="tg" text-anchor="middle">TCC</text>
+      <text x="344" y="298" class="nm" text-anchor="middle">Correlate weights</text>
+      <text x="344" y="314" class="sb" text-anchor="middle">valid samples per pair</text>
+      <rect x="640" y="120" width="224" height="64" rx="6" fill="#ffffff"/>
+      <rect x="640" y="120" width="224" height="64" rx="6" fill="rgba(34,197,94,0.08)" stroke="#15803d" stroke-width="1.2"/>
+      <rect x="648" y="126" width="28" height="12" rx="2" fill="none" stroke="rgba(21,128,61,0.50)" stroke-width="0.8"/>
+      <text x="662" y="135" class="tgf" text-anchor="middle">CUDA</text>
+      <text x="752" y="154" class="nm" text-anchor="middle">Tiled lag gridder</text>
+      <text x="752" y="170" class="sb" text-anchor="middle">1/weight · gains · w-proj</text>
+      <rect x="576" y="264" width="144" height="64" rx="6" fill="#ffffff"/>
+      <rect x="576" y="264" width="144" height="64" rx="6" fill="rgba(17,24,39,0.02)" stroke="rgba(17,24,39,0.35)" stroke-width="1" stroke-dasharray="4,3"/>
+      <rect x="584" y="270" width="28" height="12" rx="2" fill="none" stroke="rgba(17,24,39,0.30)" stroke-width="0.8"/>
+      <text x="598" y="279" class="tg" text-anchor="middle">CUDA</text>
+      <text x="648" y="298" class="nm" text-anchor="middle">Peel fit</text>
+      <text x="648" y="314" class="sb" text-anchor="middle">EPIC_FX_PEEL</text>
+      <rect x="768" y="264" width="160" height="64" rx="6" fill="#ffffff"/>
+      <rect x="768" y="264" width="160" height="64" rx="6" fill="rgba(17,24,39,0.05)" stroke="#4b5563" stroke-width="1"/>
+      <rect x="776" y="270" width="24" height="12" rx="2" fill="none" stroke="rgba(75,85,99,0.40)" stroke-width="0.8"/>
+      <text x="788" y="279" class="tg" text-anchor="middle">SHM</text>
+      <text x="848" y="298" class="nm" text-anchor="middle">Gain table</text>
+      <text x="848" y="314" class="sb" text-anchor="middle">streamcal · versioned</text>
+      <rect x="912" y="120" width="144" height="64" rx="6" fill="#ffffff"/>
+      <rect x="912" y="120" width="144" height="64" rx="6" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+      <rect x="920" y="126" width="32" height="12" rx="2" fill="none" stroke="rgba(17,24,39,0.40)" stroke-width="0.8"/>
+      <text x="936" y="135" class="tg" text-anchor="middle">CUFFT</text>
+      <text x="984" y="154" class="nm" text-anchor="middle">Inverse FFT</text>
+      <text x="984" y="170" class="sb" text-anchor="middle">N x N · FP32</text>
+      <rect x="1104" y="120" width="144" height="64" rx="6" fill="#ffffff"/>
+      <rect x="1104" y="120" width="144" height="64" rx="6" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+      <rect x="1112" y="126" width="28" height="12" rx="2" fill="none" stroke="rgba(17,24,39,0.40)" stroke-width="0.8"/>
+      <text x="1126" y="135" class="tg" text-anchor="middle">CUDA</text>
+      <text x="1176" y="154" class="nm" text-anchor="middle">Combine</text>
+      <text x="1176" y="170" class="sb" text-anchor="middle">XX YY XY* · copy</text>
+      <text x="32" y="400" class="co">Each visibility is scaled by the image length over its valid samples before gridding,</text>
+      <text x="32" y="418" class="co">so lost packets lower the sensitivity of a baseline but not its amplitude.</text>
+      <line x1="32" y1="448" x2="1248" y2="448" stroke="rgba(17,24,39,0.10)" stroke-width="0.8"/>
+      <text x="32" y="476" class="ey">LEGEND</text>
+      <rect x="96" y="466" width="20" height="12" rx="2" fill="rgba(34,197,94,0.08)" stroke="#15803d" stroke-width="1"/>
+      <text x="124" y="475" class="lb">FOCAL KERNEL</text>
+      <rect x="217" y="466" width="20" height="12" rx="2" fill="#ffffff" stroke="#111827" stroke-width="1"/>
+      <text x="245" y="475" class="lb">KERNEL</text>
+      <rect x="305" y="466" width="20" height="12" rx="2" fill="rgba(75,85,99,0.10)" stroke="#6b7280" stroke-width="1"/>
+      <text x="333" y="475" class="lb">INPUT</text>
+      <rect x="388" y="466" width="20" height="12" rx="2" fill="rgba(17,24,39,0.05)" stroke="#4b5563" stroke-width="1"/>
+      <text x="416" y="475" class="lb">TABLE</text>
+      <rect x="471" y="466" width="20" height="12" rx="2" fill="rgba(17,24,39,0.02)" stroke="rgba(17,24,39,0.35)" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="499" y="475" class="lb">OPTIONAL</text>
+      <line x1="570" y1="472" x2="602" y2="472" stroke="#4b5563" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <text x="610" y="475" class="lb">DATA</text>
+    </svg>
+  </div>
+</div>
+</body>
+</html>

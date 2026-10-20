@@ -12,6 +12,12 @@ This repository is an implementation of the EPIC (E-field Parallel Imaging Corre
 
 For a generalized implementation of EPIC please see [our EPIC repo](https://github.com/epic-astronomy/EPIC).
 
+# Documentation
+
+- [Design of the EPIC imaging pipeline](docs/pipeline/DESIGN.md): NDP input and packet receiver, the E-field and FX imaging paths, the calibration loop, the outputs and the configuration options.
+- [Streaming calibration](docs/streaming_calibration/README.md): real-time gain calibration with the streamcal daemon.
+- [skymon](docs/skymon/DESIGN.md): the real-time all-sky FRB monitor.
+
 
 # Build Instructions
 Download the source code with all the dependencies. 

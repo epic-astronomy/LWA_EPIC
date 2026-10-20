@@ -2,7 +2,7 @@
 
 `skymon` searches every EPIC all-sky image formed at LWA-Sevilleta (LWA-SV) for dispersed radio bursts, at every sky position above the elevation limit, in every imaging band, in real time. This document describes its requirements, architecture, algorithms, storage, calibration interface, operation and verification.
 
-Scope and sources. The description follows the working tree of branch `phoenix-skymon` of the LWA_EPIC repository, at commit `b93e354`. The facts are taken from the package README (`src/python/skymon/README.md`), the module docstrings and code of `src/python/skymon/`, the published page *All-Sky Monitor* of the EPIC documentation (`content/1.docs/3.lwa-sv-imager/6.all-sky-monitor.md` of the Waterfalls site, branch `skymon`), and the Nomad jobs and Ansible playbook of `epic-sv-devops`. Points that these sources leave open or state inconsistently are collected in [Open items](#11-open-items-and-known-limitations).
+Scope and sources. The description follows branch `phoenix-fx` of the LWA_EPIC repository at commit `b67ed6b`; the monitor was developed on branch `phoenix-skymon` (commit `b93e354`) and merged into `phoenix-fx`. The imaging pipeline that feeds the monitor is described in [the pipeline design](../pipeline/DESIGN.md). The facts are taken from the package README (`src/python/skymon/README.md`), the module docstrings and code of `src/python/skymon/`, the published page *All-Sky Monitor* of the EPIC documentation (`content/1.docs/3.lwa-sv-imager/6.all-sky-monitor.md` of the Waterfalls site, branch `skymon`), and the Nomad jobs and Ansible playbook of `epic-sv-devops`. Points that these sources leave open or state inconsistently are collected in [Open items](#11-open-items-and-known-limitations).
 
 ---
 
@@ -10,9 +10,9 @@ Scope and sources. The description follows the working tree of branch `phoenix-s
 
 | # | Requirement | How it is met |
 |---|---|---|
-| R1 | Search the whole visible sky for dispersed bursts, in every band, in real time. | One monitor per imaging node follows every image of its band (83.6 ms, 128 channels of 24 kHz, 3.06 MHz) and tracks every HEALPix pixel above 10° elevation (about 20 300 pixels at `nside` 64). Processing takes 40% of real time (§10). |
+| R1 | Search the whole visible sky for dispersed bursts, in every band, in real time. | One monitor per imaging node follows every image of its band (83.6 ms images of 128 channels of 24 kHz with the E-field imager; 41.8 ms images of up to 192 channels with the FX imager) and tracks every HEALPix pixel above 10° elevation (about 20 300 pixels at `nside` 64). Processing takes 0.32 of real time at 83.6 ms and 0.66–0.67 at 41.8 ms images with the wide-pulse search (§10.1b, §10.1c). |
 | R2 | Each node works independently. | A monitor depends on no other node, no other monitor, the combiner, the head node or the shared file system. The loss of a node removes only its band. |
-| R3 | No data are lost unless they are certainly RFI; a human verifies FRBs. | Only RFI at DM < 2 pc cm⁻³ or triggering more than 1% of the sky at once is stored without data products. Every other candidate, every followup and every context record keeps its data. Every sky event is marked `review: pending`; the verdict (`frb`, `rfi`, `unclear`) is recorded by a person. |
+| R3 | No data are lost unless they are certainly RFI; a human verifies FRBs. | Only RFI at DM < 2 pc cm⁻³ or triggering much of the sky at once is stored without data products, and beyond 20 such records (with solar bursts) per search block the rest are only counted. Single pulses of known pulsars other than the Crab are tallied, not stored, unless `--store-pulsar-pulses` is set, and a weaker detection of a stored burst at another DM is listed in the burst's `dm_arms` rather than stored again (§3.4). Every other candidate, every followup and every context record keeps its data. Every sky event is marked `review: pending`; the verdict (`frb`, `rfi`, `unclear`) is recorded by a person. |
 | R4 | The shared file system is an archive only, never in the real-time path. | Code, Python environment, database and data products of each monitor are on the node's local disk. A separate archiver copies kept data to the archive on the shared file system (NFS) when it is mounted and waits otherwise. |
 
 The dispersion delay across a band from $f_\mathrm{lo}$ to $f_\mathrm{hi}$ is
@@ -63,6 +63,11 @@ The ring layout `EPICSKY1` (version 1, little endian) is shared by the C++ write
 | 40 | `f64` | `grid_res` (deg) |
 | 48 | `f64` | `img_len_ms` |
 | 56 | `u64` | `gain_version`, version of the calibration gain table the image was made with (0: nominal phases) |
+| 64 | `u32` | `layout`: 0, the image `f32 [nchan][grid][grid]`; 1, the monitor's pixel spectra `f32 [nchan][npix]` regridded by the FX imager |
+| 68 | `u32` | `npix`, pixel slots of a layout-1 slot |
+| 72 | `u64` | `table_version`, version of the pixel table the imager regridded with |
+
+**Pixel table (FX imager).** With the FX imager the regridding to the tracked pixels runs on the GPU. The monitor publishes its pixel table to `/dev/shm/<ring>_table` (`EPICSKYT`, `SkyTableWriter` in `shm.py`; `--no-pixel-table` disables it): under a sequence lock, the image position of every pixel slot at two times 120 s apart, rewritten at every update of the tracked set (every 10 s). At each image boundary the imager polls the table, interpolates each slot's position to the image time and writes the bicubic samples (Keys, a = −0.75) to the slot in layout 1. The monitor copies these spectra directly; a slot whose pixel count does not match its own is counted as a lost image.
 
 The lock word is a sequence lock. The reader accepts slot n only if the lock reads 2n + 2 before and after the copy; a different value means the slot was overwritten and the image is counted as lost. The writer never waits: a reader more than `nslots − 1` images behind skips to the oldest safe slot and counts the drop, and a change of `session` (or a fall of `write_count`) resets its position. A restart of either program therefore never stalls the other. The default ring holds 64 images (5.3 s at 83.6 ms, 537 MB for 128 channels of 128 × 128 pixels; 2.7 s and 3.2 GB for the FX imager's 192 channels of 256 × 256 pixels).
 
@@ -71,14 +76,14 @@ The lock word is a sequence lock. The reader accepts slot n only if the lock rea
 `monitor.py` processes the images in time order. A missing image is searched as zeros, so the time axis stays regular; a gap longer than 60 s (`max_gap_s`) restarts the search state.
 
 1. **Sky-fixed pixels** (`geometry.py`). The monitor tracks HEALPix pixels (J2000, RING order) rather than image pixels, so that each time series looks at one patch of sky for the hours a sweep can last. Every 10 s the tracked set is recomputed: a pixel that rises above the elevation limit (10°) receives a slot in the state arrays, a pixel that sets releases it. Between updates the image position of each pixel is interpolated linearly in time.
-2. **Regridding.** Each image is interpolated onto the tracked pixels by bicubic convolution (Keys 1981, 16 taps, a = −0.75).
+2. **Regridding.** Each image is interpolated onto the tracked pixels by bicubic convolution (Keys 1981, 16 taps, a = −0.75), on the CPU for images (layout 0), on the GPU by the FX imager for layout 1.
    - The beam spans about three image pixels across its FWHM. At that sampling, bilinear interpolation loses 10% of a source's peak on average (up to 15%), and the error ripples in all channels at once as the sky turns.
    - Keys' usual a = −0.5 loses 2.5% on average (up to 4.8%).
    - a = −0.75 reproduces the peak to between 0.0% and +0.8% (+0.4% on average), with no additional taps. In exchange, a plane is no longer reproduced exactly: a gradient of g per image pixel is offset by at most 0.048 g. This is a slow ripple of smooth emission as the sky turns, which the running mean, high-pass and detrend remove.
    - These figures come from a Gaussian beam at 1500 random positions.
 3. **Resolution.** `nside` is the coarsest at which a pixel is no larger than half the synthesised beam λ/D (D ≈ 100 m), and never finer than an image pixel: 64 (0.92°) above 40 MHz, 32 near 35 MHz, 16 at 16–21 MHz.
 4. **Normalisation, flagging, tiers, search and classification** (§3).
-5. **Products** (`candidates.py`, `accumulate.py`). Each candidate is a JSON record and, unless it is certain RFI, an `.npz` file under `<out>/candidates/YYYYMMDD/` holding the pixel's dynamic spectrum at the tier's resolution, its DM–time plane, 30 min of accumulated spectrum before the burst, the noise table, and the calibration data of §6. The raw spectrum of every tracked pixel, averaged over 10 s, is kept for 6 h in float16 (12 GB at `nside` 64) and serves the spectrograms of the website.
+5. **Products** (`candidates.py`, `accumulate.py`). Each candidate is a JSON record and, unless it is certain RFI, an `.npz` file under `<out>/candidates/YYYYMMDD/` holding the pixel's dynamic spectrum at the tier's resolution, its DM–time plane, 30 min of accumulated spectrum before the burst, the noise table, and the calibration data of §6. After detection the monitor keeps appending samples until min(D, max(32, row + 4w)) samples follow the burst (at most 600 s) and rewrites the `.npz` and the DM–time plane, so the record holds the burst's tail. The burst fit of §3.5 is stored with the record. The raw spectrum of every tracked pixel, averaged over 10 s, is kept for 6 h in float16 (12 GB at `nside` 64) and serves the spectrograms of the website.
 6. **Conditions** (`conditions.py`, §4.6) and **live test injections** (`inject.py`, §7.3).
 
 ### 2.3 Beyond the monitor
@@ -87,6 +92,7 @@ The lock word is a sequence lock. The reader accepts slot n only if the lock rea
 |---|---|
 | Local PostgreSQL (port 5433) | Record of every candidate; mailbox between monitor and combiner; copies of events (§5). |
 | Local disk (the node's local data directory under `skymon_root`) | Data products, spool of records while the database is unavailable. |
+| Catalogue (`catalogue.py`) | Schema `skymon` of the head database (`--catalogue`, `SKYMON_CATALOGUE_DSN`): table `events` (every event of kind `sky`) and table `detections` (per node and candidate, kind `frb` or `giant_pulse`, with fluence, DM, width and archive path), written by the combiner with each new event version and spooled on local disk while the database is unavailable. |
 | Combiner (`combiner.py`, port 8096) | One process for the array, on any imaging node. Reads new candidates from every node's database every 10 s, forms events across bands (§4). |
 | Archiver (`archiver.py`) | One per node. Copies kept candidates and events to the archive on the shared file system (`--archive`, subdirectories `<node>/YYYYMMDD/`), applies local retention (§5.3). |
 | Website | The Waterfalls backend (`server/backend/app/api/routes/skymon.py`) queries every monitor on :8095 and the combiner on :8096, and forwards review verdicts. The page is `/waterfalls/spectrograms/skymon`. |
@@ -165,12 +171,14 @@ Hits are clustered over the sky (twice the beam width, widened towards the horiz
 
 | Class | Condition | Data products | Opens an event |
 |---|---|---|---|
-| `rfi`, certain | DM below 2 pc cm⁻³ (`DM near zero`), or more than 1% of the tracked sky triggers within its span (`much of the sky at once`) | none | no |
-| `rfi` | cluster wider than six beam areas (scaled with elevation) or more than four clustering radii in extent; clusters at four or more well-separated positions at once; narrowband (below) | kept | no |
-| `known` | at a known source (below) | kept | no |
+| `rfi`, certain | DM below 2 pc cm⁻³ (`DM near zero`), or more distinct pixels trigger within its span than the larger of 1% of the tracked sky and three times the RFI extent (`much of the sky at once`) | none; beyond 20 per search block (`--rfi-records-max`, with solar bursts) only counted | no |
+| `rfi` | cluster wider than six beam areas (scaled with elevation) or more than four clustering radii in extent; clusters at four or more well-separated positions at once; a sidelobe (amplitude at most 0.03 of a group elsewhere at the same time, `--sidelobe-max`); a fixed direction (at least 2 earlier detections at the same azimuth and elevation within 6 h while the sky moved by more than two radii, `--fixed-dir-repeats`, `--fixed-dir-hours`); a wide pulse within 3° of the elevation limit; narrowband (below) | kept | no |
+| `known` | at a known source (below); a burst at the Sun is a solar burst (`known_source` solar, `burst`), its RFI tests kept as notes | kept, except single pulses of pulsars other than the Crab, which are tallied (`--store-pulsar-pulses` stores them) | no |
 | `injection` | matches a live test injection | kept | coordinated injections only |
 | `candidate` | none of the above | kept | yes |
 | `followup`, `context` | measurement or accumulated spectrum requested by the combiner (§4) | kept | joins its event |
+
+**Duplicates and DM arms.** A burst found again within one beam, within max(30 s, 4 × the summed widths) and a DM tolerance of max(15%, 3 steps) is stored once. A weaker detection within a beam, inside the burst's smeared sweep and with an S/N at most twice the S/N predicted for that DM, is a DM arm of the brighter one: it is listed in the brighter candidate's `dm_arms`, and an arm stored earlier is marked as superseded.
 
 Narrowband test. Along the dispersion track each channel's samples are summed over the boxcar at that channel's delay (`quality.channel_contributions`). From the positive contributions c, `n_eff_channels` = (Σc)²/Σc² and `top2_fraction` is the share of the two strongest channels. Fewer than 6 effective channels, or more than 0.6 in two channels, makes the candidate narrowband RFI with its data kept. The test is applied before injections are matched, so the measured injection efficiency includes any burst it would lose.
 
@@ -180,9 +188,24 @@ Known sources (`known.py`), within a number of synthesised beams at the band cen
 |---|---|
 | `solar`, `jovian` | within 3 beams of the Sun or Jupiter (astropy built-in ephemeris, FK5 J2000, cached 60 s) |
 | `bright_source` | within 1.5 beams of Cyg A, Cas A, Tau A, Vir A, Her A or Hya A |
-| `pulsar` | within 2 beams of a bright low-frequency pulsar with \|DM − DM_psr\| ≤ max(3 DM steps, 10%); built-in list, extended by `--known-pulsars` CSV |
+| `pulsar` | within 2 beams of a bright low-frequency pulsar with \|DM − DM_psr\| ≤ max(3 DM steps, 10%); built-in list, extended by `--known-pulsars` CSV. Pulsars are tested first, so a pulse at the Crab's position and DM (B0531+21, DM 56.77) is a pulsar pulse while a trigger near DM 0 there is Tau A |
+| giant pulse | a pulse of the Crab pulsar (`known_source.giant_pulse`): always stored, archived (§5.3) and catalogued, and kept in the archive for good |
 
 Each candidate also carries in-band review measures (`quality.py`): S/N against trial DM, the ratio of the S/N at the lowest trial DM to the best S/N, S/N per quarter of the band, the number of trial DMs within half the best S/N, `n_eff_channels`, `top2_fraction`, `flagged_fraction`, and the conditions and calibration state of §4.6 and §6.
+
+### 3.5 Burst fit
+
+Every candidate, injection and known-source detection (at most `--burst-fits-per-min`, 6, per minute of wall-clock time; the others are marked `skipped: rate limit`) is fitted with the burst model of `burst.py`, which the simulator and the injector also use (`burstfit.py`). The data are the dynamic spectrum stored with the candidate: the window of its pixel in the tier that found it, normalised, decimated and high-passed. The model has seven parameters:
+
+| Parameter | Meaning |
+|---|---|
+| `t_f0` | arrival time at the geometric centre frequency f0 = √(f_lo f_hi) |
+| `dm` | dispersion measure, arrival t_∞ + k_DM DM f⁻² |
+| `log10_width_s` | intrinsic width: a box swept across each channel and integrated over each sample |
+| `log10_tau_1ghz_s` | scattering: a one-sided exponential of time constant τ_1GHz (f / 1 GHz)⁻⁴ |
+| `log_amp`, `beta`, `gamma` | spectrum A(f) = A0 (f/f0)^(β + γ ln(f/f0)), a power law with curvature |
+
+The model samples pass through the tier's high-pass recursion, have the window mean removed per channel and are scaled to the tier's sample sums. The parameters are found by bounded non-linear least squares (scipy `least_squares`): three starts at DMs within half a trial step of the search's DM, the best continued to at most 200 evaluations. Their uncertainties are the diagonal of (JᵀJ)⁻¹ scaled by the reduced χ². The record flags fits at a bound (`at_bound`), resolved widths (above 0.2 of a sample) and resolved scattering. With the candidate's flux calibration (§6.4), `physical` converts the fitted amplitude to fluences per channel and over the band in Jy ms, the flux density over the fitted width, and a spectral index from a log–log fit over at least four channels.
 
 ---
 
@@ -311,11 +334,11 @@ Each update of an event increments its `version`. The combiner upserts the event
 
 The archiver (one per node, a process separate from the monitor) runs every 60 s. It copies to the archive on the shared file system (`--archive`, subdirectories `<node>/YYYYMMDD/`) the JSON record and data products of every candidate of its node that belongs to:
 
-- a confirmed event;
-- an event reviewed as `frb` or `unclear`;
+- an event of kind `sky`, whatever its status or review (the band's candidate, its other detections and the candidate holding its data);
 - a coordinated injection;
+- a giant pulse of the Crab pulsar, which opens no event;
 
-and the events themselves. The selection reads the event copies in the node's own database. Each copy runs in a time-limited child process, is verified by size and SHA-256, and only then is the row marked archived. When the archive is not mounted or does not answer, the archiver waits and retries.
+and the events themselves, as JSON files under `events/YYYYMMDD/` of the archive. The selection reads the event copies in the node's own database. Each copy runs in a time-limited child process (300 s), is compared byte for byte with its source (`cmp`), and only then is renamed to its final name and the row marked archived. When the archive is not mounted or does not answer, the archiver waits and retries.
 
 | Local data | Removed after |
 |---|---|
@@ -340,7 +363,8 @@ At 300 s an accumulation is 16.8 MB (64 channels, 4 correlation products, 128 ×
 
 | Archive data | Removed |
 |---|---|
-| FITS accumulations, archived candidates and events | when older than five years (1827 days, `--retention-days`), by the Unix time in the file name (FITS) or the date of the day directory (skymon), never by modification time |
+| Events of kind `sky` (every FRB event, whatever its review; `--keep-kinds`) with the data of their candidates, and giant pulses (`--keep-giant-pulses`) | never |
+| FITS accumulations, other archived candidates and events | when older than five years (1827 days, `--retention-days`), by the Unix time in the file name (FITS) or the date of the day directory (skymon), never by modification time |
 | File system at or above 85% (`--ceiling`) | down to 83% (`--target`): FITS accumulations first, then skymon data, oldest first in each; nothing younger than 30 days (`--protect-days`) |
 | Events awaiting review (`review: pending`, or as listed in `--keep-review`) and the data of their candidates | never |
 | Candidates whose event is not in the archive (review state unknown) | by age only, never to meet the ceiling |
@@ -364,15 +388,17 @@ The curator handles both the daily directories and the flat layout of files writ
 
 ## 6. Calibration and flux
 
-**Interface status.** The streaming calibrator (branch `streaming-calibration`) is under development, including direction-dependent calibration. What the monitor requires from it, why, and the open questions are set out in [What the all-sky monitor needs from the streaming calibrator](streamcal-interface.md). This section describes the monitor's side.
+**Interface status.** What the monitor requires from the streaming calibrator, why, and the open questions are set out in [What the all-sky monitor needs from the streaming calibrator](streamcal-interface.md). The streamcal daemon writes the calibration record with every published gain table when started with `--calinfo` (`src/python/streamcal/calinfo.py`; [streaming calibration, section 4.4.3](../streaming_calibration/04_implementation.md#443-the-calibration-record)); direction-dependent calibration and a calibrated beam are not part of it. This section describes the monitor's side.
 
 ### 6.1 Gain version in the images
 
-With `epic++ --gain_table`, each image carries the version of the gain table it was made with (slot header offset 56; 0 means nominal phases, no table). The monitor counts changes of version in the conditions, logs when calibration is first applied and when it reverts to nominal phases, and records per candidate `quality.calibration = {gain_version, changes_in_sweep, applied_or_reverted_in_sweep}`. The last flag marks the larger change of the images when calibration starts or stops during the sweep. No image is held back.
+With `epic++ --gain_table`, each image carries the version of the gain table it was made with (slot header offset 56; 0 means nominal phases, no table). The monitor counts changes of version in the conditions, logs when calibration is first applied and when it reverts to nominal phases, and records per candidate `quality.calibration = {gain_version, changes_in_sweep, applied_or_reverted_in_sweep}`. The last flag marks the larger change of the images when calibration starts or stops during the sweep.
+
+**Hold and rebase.** Every gain table changes the images slightly and differently in each pixel: sources and sidelobes move against the sky median that the normalisation removes. Each pixel's running mean, with its time constant of minutes, would take that step for a broadband pulse. After a change of `gain_version` the monitor therefore holds the next `--rebase-images` images (24; 0 disables the hold) after preparing them. Their mean becomes the baseline of every pixel and channel, the first held image becomes the previous sample of the variance estimate (`Searcher.rebase`), and the held images are then searched in order. The search thus runs that many images late after each change and loses no image. A second change during a hold releases the held images first. The rebase is not applied if the pixel table changed during the hold; the held images are then searched without it. The count of holds is reported as `rebased` in `/api/status`. The streamcal daemon's publication policy (a table only after a significant change, or every 600 s) keeps the number of holds low.
 
 ### 6.2 The calibration record
 
-The gain tables are relative (median |c| = 1 per channel and polarisation) and epic++ applies no primary beam, so the images have no absolute scale. With `--calinfo` naming the shared-memory file `epic_calinfo_gpu0.json` the monitor reads a JSON record rewritten with every solution, polls it for changes, keeps the latest record of each `gain_version` (up to 2000) and selects, for each candidate, the record of the version its images were made with. The fields read by `flux.py`:
+The gain tables are relative (median |c| = 1 per channel and polarisation) and epic++ applies no primary beam, so the images have no absolute scale. With `--calinfo` naming the shared-memory file `epic_calinfo_gpu0.json` the monitor reads a JSON record rewritten with every solution, polls it for changes, keeps the latest record of each `gain_version` (up to 2000) and selects, for each candidate, the record of the `gain_version` in force when the candidate is processed (the latest record when that version is 0 or unknown). The record is polled every 10 s of data, so a record replaced within 10 s may be missed. The fields read by `flux.py`:
 
 | Field | Meaning |
 |---|---|
@@ -449,7 +475,9 @@ where:
 - `fluence_per_channel_jy_ms`;
 - `peak_correction` (factor, fitted image position, `ra_deg`, `dec_deg`, `applied`, `reason`; also in `quality.peak`);
 - `beam_relative` (response at the position relative to zenith);
-- the beam's source, model and version, and `gain_version`.
+- the beam's source, model and version, and `gain_version`;
+- `jy_ms_per_unit` (the conversion of a normalised fluence to Jy ms, used by the burst fit) and `method`;
+- `calibrators` (name, elevation, excess S/N and scale of each calibrator used for k), `measured_unix` and `measured_gain_version` of the calibrator measurement, which may belong to an earlier gain table than the candidate's record.
 
 The `.npz` adds `raw_sigma`, `raw_mean`, `tier_images`, `image_s`, the calibration record and the calibrator measurement, so the fluence can be recomputed.
 
@@ -478,8 +506,8 @@ The imager has priority: the monitor reads the ring without blocking it and runs
 
 | Port | Service |
 |---|---|
-| 8095 | monitor HTTP: `/api/status`, `/api/pixel`, `/api/candidates`, `/api/sky`, `/api/injections`, `/api/watches`, `/api/conditions`; `POST /api/watch`, `POST /api/inject` |
-| 8096 | combiner HTTP: `/api/status`, `/api/events`, `POST /api/events/<id>/review` |
+| 8095 | monitor HTTP: `/api/status`, `/api/pixel` (with `hours`, `fine`, `format=npz`), `/api/candidates`, `/api/candidates/<id>` and `/api/candidates/<id>/npz`, `/api/sky`, `/api/skymap` (mean sky map of the last `seconds`, 10–3600), `/api/pulsars`, `/api/pulsars/pulses`, `/api/injections`, `/api/watches`, `/api/conditions`; `POST /api/watch`, `POST /api/inject` |
+| 8096 | combiner HTTP: `/api/status`, `/api/events`, `/api/events/<id>`, `POST /api/events/<id>/review` |
 | 5433 | local PostgreSQL (`skymon` database and user) |
 
 `POST` requests require the header `X-Skymon-Token` when `SKYMON_TOKEN` is set.
@@ -528,7 +556,7 @@ Fonts: DM Sans for names, the system monospace stack for technical labels, Instr
 
 | Requirement | Mechanism | Evidence (§10) |
 |---|---|---|
-| R1 real time, whole sky | sky-fixed HEALPix, octave tiers, C kernels | 40% of real time at 20 310 pixels; no image lost |
+| R1 real time, whole sky | sky-fixed HEALPix, octave tiers, C kernels | 0.32 of real time at 83.6 ms and 0.66–0.67 at 41.8 ms images, 20 310 pixels; no image lost (§10.1a–c) |
 | R2 independence | per-node monitor, local DB and disk; combiner optional | three-band run with one node stopped |
 | R3 no loss, human review | certain-RFI rule, `followup`/`context` records, retention table, review verdicts | all simulated FRBs kept as events |
 | R4 archive only | local storage, archiver with verified copies | failure table §5.4 |
@@ -648,7 +676,7 @@ The scattered bursts that the wide search lost have τ > 15 s (8), where η fall
 
 **Live injections.** Live injections every 1.5 min on average over 45 min of simulated sky (target S/N 15–30, scattered by default): 24 completed, 19 recovered. The 7 unscattered were found at 0.94 of their target S/N (median, 6 of 7 recovered). The 17 scattered (τ = 1.3–33 s at the band centre) were found at 0.53 of their target (13 recovered); the 4 missed had τ = 17–33 s. These ratios are the search efficiency for each burst, as in the table above. `tau_1ghz` and `tau_s` are logged with each injection.
 
-**Short pulses and false alarms.** Unscattered bursts were found at the same S/N by both searches (S/N ratio 1.00–1.03, predicted 1.01–1.02, 14 bursts at DM 30–1390). Without a guard, the wide boxcars produced false candidates on pixels that had just risen above the elevation limit (at 10.0–10.1° elevation, 5.3 s boxcars at random DM): such a pixel brightens quickly while its running mean and its tier's high-pass start from nothing. A boxcar wider than 8 samples now reports a pixel only once it has been tracked for the tier's history plus three high-pass time constants (96 s in tier 0, 20 min in tier 4), which costs only the lowest elevations for that time after rising. With the guard and the horizon rule (a candidate from a boxcar wider than 8 samples within 3° of the elevation limit is classified as RFI with its data kept, `wide_el_margin`), the simulated skies gave no candidate matching no burst in either search; the only other candidates were detections of bright bursts at a neighbouring DM, listed by the combiner as `other_dm` entries (§4.2). On white noise through the chain, the rate of segment maxima above S/N 4.5 changed by a factor of 0.97–1.02 (§3.3).
+**Short pulses and false alarms.** Unscattered bursts were found at the same S/N by both searches (S/N ratio 1.00–1.03, predicted 1.01–1.02, 14 bursts at DM 30–1390). Without a guard, the wide boxcars produced false candidates on pixels that had just risen above the elevation limit (at 10.0–10.1° elevation, 5.3 s boxcars at random DM): such a pixel brightens quickly while its running mean and its tier's high-pass start from nothing. A boxcar wider than 8 samples reports a pixel only once it has been tracked for the tier's history plus three high-pass time constants (96 s in tier 0, 20 min in tier 4), which costs only the lowest elevations for that time after rising. With the guard and the horizon rule (a candidate from a boxcar wider than 8 samples within 3° of the elevation limit is classified as RFI with its data kept, `wide_el_margin`), the simulated skies gave no candidate matching no burst in either search; the only other candidates were detections of bright bursts at a neighbouring DM, listed by the combiner as `other_dm` entries (§4.2). On white noise through the chain, the rate of segment maxima above S/N 4.5 changed by a factor of 0.97–1.02 (§3.3).
 
 ### 10.2 Multi-band consensus and fault test
 
@@ -717,9 +745,9 @@ The suite covers the FDMT against numpy and brute force; the FDMT for any number
 
 **Calibration interface**
 
-4. The calibration record is assumed to come from `streamcal` (branch `streaming-calibration`, in development, including direction-dependent calibration). The field list of §6.2 is inferred from `flux.py` and may change. The file name `epic_calinfo_gpu0.json` implies one record per GPU; how nodes with several imaging pipelines would select their record is not specified.
+4. The calibration record is written by the streamcal daemon (`--calinfo`) without uncertainties (C4) or a beam table (C6, C7). A candidate's flux uses the record of the `gain_version` in force when it is processed and the latest calibrator measurement, which may have been made under an earlier gain table. The file name `epic_calinfo_gpu0.json` implies one record per GPU; how nodes with several imaging pipelines would select their record is not specified.
 5. `fluence_jy_ms` is the mean of the per-channel fluences over the band, and `fluence_err_jy_ms` is its noise from the window (§6.4); neither includes calibration uncertainty.
-6. With direction-dependent calibration, a single k per channel measured from compact calibrators may no longer describe the whole sky; the design does not yet address this.
+6. With direction-dependent calibration, a single k per channel measured from compact calibrators may no longer describe the whole sky; the design does not address this.
 
 **Operations**
 
@@ -735,4 +763,10 @@ The suite covers the FDMT against numpy and brute force; the FDMT for any number
 13. At 16–21 MHz, positions near the western horizon set before high-DM sweeps complete, limiting the DM reach to a few hundred there.
 14. The zero-DM filter (1.1–1.3% of S/N above tier 0 for a short burst, about w/S for a pulse of w samples over a sweep of S) and the removal of the window mean each remove a measured fraction of a burst's S/N, and neither enters the fluence. Bursts beyond the clip are kept by the sky-shape exemption (§3.1) and verified up to S/N 120. The efficiency for scattered bursts is characterised in §10.1c.
 15. The `implausible` status is in practice reachable only between bands that nearly overlap in frequency; with bands several MHz apart, almost any single-band detection fits a band-limited spectrum.
-16. The candidate store took a candidate as a repeat of a stored one within the clustering radius (two beams, widened towards the horizon), and merged two distinct simulated bursts at the same DM, about 5° and 28 s apart; the weaker was lost. The radius is now one beam (widened towards the horizon), within which a burst found again by another tier or block peaks, and two such bursts are both kept (`test_skymon`). Two bursts within a beam, at a similar DM and within the time window, are still taken as one; the time window (at least 30 s) is not characterised for repeating sources.
+16. The candidate store took a candidate as a repeat of a stored one within the clustering radius (two beams, widened towards the horizon), and merged two distinct simulated bursts at the same DM, about 5° and 28 s apart; the weaker was lost. The radius was reduced to one beam (widened towards the horizon), within which a burst found again by another tier or block peaks, and two such bursts are both kept (`test_skymon`). Two bursts within a beam, at a similar DM and within the time window, are still taken as one; the time window (at least 30 s) is not characterised for repeating sources.
+
+**Calibration hold and burst fit**
+
+17. Each change of `gain_version` delays the search by 24 images (§6.1). The rebase is skipped when the pixel table changes during the hold (every 10 s with the FX imager), and the held images are discarded without being searched if the search state restarts during the hold (a gap of more than 60 s, time going backwards or a change of imaging configuration).
+18. The `table_version` of a layout-1 slot is not compared with the pixel table the monitor last wrote; only a mismatch of the pixel count is detected. Spectra regridded with the previous table can therefore enter slots reassigned at an update until the imager reads the new table.
+19. Solar bursts (class `known`) count against the burst-fit limit of 6 per minute, so during solar activity other candidates may be left without a fit.
