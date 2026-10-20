@@ -85,7 +85,22 @@ FetchContent_Declare(cmake_git_version_tracking
   GIT_REPOSITORY https://github.com/andrew-hardin/cmake-git-version-tracking.git
   GIT_TAG 904dbda1336ba4b9a1415a68d5f203f576b696bb
 )
-FetchContent_MakeAvailable(cmake_git_version_tracking)
+# The commit recorded with every image (imager_build_hash) comes from the
+# source's git state, or from EPIC_GIT_COMMIT for a source without .git (the
+# container build, whose context has none).
+set(EPIC_GIT_COMMIT "" CACHE STRING "commit to embed instead of querying git")
+if(EPIC_GIT_COMMIT)
+  FetchContent_GetProperties(cmake_git_version_tracking)
+  if(NOT cmake_git_version_tracking_POPULATED)
+    FetchContent_Populate(cmake_git_version_tracking)
+  endif()
+  file(WRITE ${CMAKE_BINARY_DIR}/epic_git_commit.cpp
+       "extern \"C\" const char* git_CommitSHA1() { return \"${EPIC_GIT_COMMIT}\"; }\n")
+  add_library(cmake_git_version_tracking STATIC ${CMAKE_BINARY_DIR}/epic_git_commit.cpp)
+  target_include_directories(cmake_git_version_tracking PUBLIC ${cmake_git_version_tracking_SOURCE_DIR})
+else()
+  FetchContent_MakeAvailable(cmake_git_version_tracking)
+endif()
 
 
 

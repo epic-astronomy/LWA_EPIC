@@ -1,0 +1,12 @@
+.git
+build
+build-*
+build2
+src/extern/*/build
+**/__pycache__
+**/*.pyc
+.vscode
+.swm
+docs
+src/extern/nvidia
+src/extern_old

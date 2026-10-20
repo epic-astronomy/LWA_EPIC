@@ -1,0 +1,24 @@
+# Python packages of the imager (embedded interpreter), the streaming
+# calibration daemon and the all-sky monitor, at the versions of the imaging
+# nodes' environment. numpy stays below 2 for the compiled packages.
+# Installed from binary wheels; requirements-source.txt lists the packages
+# built from source, whose dependencies are listed here.
+numpy==1.23.5
+scipy==1.10.1
+astropy==6.1.7
+pyerfa==2.0.1.5
+healpy==1.18.1
+h5py==3.14.0
+matplotlib==3.8.4
+pandas==2.0.3
+numba==0.60.0
+ephem==4.2
+jplephem
+pytz
+pytest
+psycopg2-binary==2.9.9
+SQLAlchemy==2.0.21
+protobuf==3.20.3
+grpcio==1.48.2
+dnspython==2.4.2
+requests==2.31.0

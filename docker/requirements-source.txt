@@ -1,0 +1,5 @@
+# Packages without binary wheels, built against the wheels of requirements.txt
+# (no build isolation, no dependency resolution: their dependencies are there)
+aipy==3.0.6
+lsl==3.0.6
+pygdsm==1.7.1
