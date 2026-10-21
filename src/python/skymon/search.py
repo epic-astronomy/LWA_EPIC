@@ -201,7 +201,11 @@ class Searcher:
         settle_hp hp_tau) decim). A pixel that has just risen above the
         elevation limit brightens quickly while its running mean and the
         tier's high-pass start from nothing, which a wide boxcar at low DM
-        takes for a broadband pulse; the narrow boxcars are not affected.
+        takes for a broadband pulse. A narrow boxcar reports the pixel once
+        the tier's history holds only its data (warm-up + W decim): before,
+        a sweep across the start of its data is taken for a dispersed pulse
+        (in a live run, 50 of 72 candidates lay within 2 deg above the
+        elevation limit, mostly where the sky was rising).
         noise_every: the noise of every row and width is measured in one
         block of this many (always until a tier is calibrated); the noise
         sums take about a third of the boxcar search.
@@ -311,6 +315,8 @@ class Searcher:
             t.strides = np.array([boxcar_stride(int(w), stride_div, t.block) for w in t.widths],
                                  np.int32)
             t.settle = int(warmup_images + math.ceil((W + settle_hp * hp) * t.decim))
+            # every width waits until the tier's history holds only the pixel's data
+            t.settle_narrow = int(warmup_images + math.ceil(W * t.decim))
             t.narrow_max = int(narrow_max)
         # every width searched in some tier, and tier 0's high-pass weight
         self.widths = np.asarray(sorted(set(int(w) for t in self.tiers for w in t.widths)),
@@ -472,8 +478,8 @@ class Searcher:
             for p, sg in zip(ps, segs):
                 row, t, wi = info[p, sg]
                 w = int(tier.widths[wi])
-                if w > tier.narrow_max and self.age[p] < tier.settle:
-                    continue  # a wide boxcar on a pixel that has just risen
+                if self.age[p] < (tier.settle if w > tier.narrow_max else tier.settle_narrow):
+                    continue  # a pixel that has just risen
                 t_end = first + tier.f0 + int(t)
                 dm = row * tier.dm_per_delay
                 # bottom-edge arrival in the middle of the boxcar
