@@ -49,7 +49,9 @@ def main(d):
                              umin=1.0, niter=40, max_chi2=3.0, min_power=0.3, max_power=3.0, flag_amp=0.15,
                              max_abs=32.0, q_phase_deg=2.0, q_delay_ns=0.05, interval=10.0, save="",
                              passes=12, passes_warm=4, workers=4, no_positions=False, fixed_time="",
-                             calinfo=calinfo_path)
+                             calinfo=calinfo_path,
+                             # every table published: this tests the solutions, not the publication policy
+                             publish_warmup=0.0, publish_min_s=0.0)
     sc = D.StreamCal(a)
     ant = sc.ant
     n = len(ant)

@@ -530,8 +530,11 @@ class StreamCal:
 
         Every published table changes the images: the all-sky monitor sees a
         change of 0.1% in a pixel's brightness. While the gains converge
-        (--publish-warmup seconds after the first table) every table is
-        published; then only one that differs from the last published one by
+        (--publish-warmup seconds after the first table) nothing is published
+        and the images keep their nominal phases (--publish-converging every:
+        every table, as before); the converged table follows, so the sky
+        changes once. Then, no sooner than --publish-min-s after the last
+        (a change of the flags excepted), a table that differs from it by
         more than --publish-phase-deg (rms over the stands of the phase
         change, without the common phase of each channel), changes the
         band-summed brightness of a compact source or of the diffuse sky by
@@ -546,15 +549,24 @@ class StreamCal:
             self.first_t = t_unix
         t0 = self.first_t
         prev = getattr(self, "published", None)
-        if prev is None or prev.shape != corr.shape:
-            return "first"
-        if t_unix - t0 < getattr(a, "publish_warmup", 300.0):
-            return "converging"
+        warm = t_unix - t0 < getattr(a, "publish_warmup", 300.0)
+        if getattr(a, "publish_converging", "hold") == "every":
+            if prev is None or prev.shape != corr.shape:
+                return "first"
+            if warm:
+                return "converging"
+        else:
+            if warm:
+                return None
+            if prev is None or prev.shape != corr.shape:
+                return "converged"
         if t_unix - self.published_t >= getattr(a, "publish_max_s", 600.0):
             return "age"
         on_a, on_b = np.abs(prev) > 0, np.abs(corr) > 0
         if np.any(on_a != on_b):
             return "flags"
+        if t_unix - self.published_t < getattr(a, "publish_min_s", 0.0):
+            return None
         both = on_a & on_b  # [chan, stand, pol]
         r = np.where(both, corr / np.where(both, prev, 1), 1)
         ph, am, br = [], [], []
@@ -679,7 +691,11 @@ def build_parser():
     ap.add_argument("--weights-tau", type=float, default=600.0,
                     help="time constant (s) of the stands' sky fractions behind the matched-filter weights")
     ap.add_argument("--publish-warmup", type=float, default=300.0,
-                    help="seconds after the first table during which every table is published")
+                    help="seconds after the first table while the gains converge")
+    ap.add_argument("--publish-converging", default="hold", choices=("hold", "every"),
+                    help="while converging: publish nothing, then the converged table (hold), or every table")
+    ap.add_argument("--publish-min-s", type=float, default=60.0,
+                    help="no table sooner than this after the last published one, unless the flags change")
     ap.add_argument("--publish-phase-deg", type=float, default=1.0,
                     help="then publish when the rms phase change since the last published table exceeds this")
     ap.add_argument("--publish-bright-pct", type=float, default=0.1,
