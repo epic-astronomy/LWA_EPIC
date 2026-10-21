@@ -22,7 +22,7 @@ import json
 import os
 
 import numpy as np
-from astropy.coordinates import get_body
+from astropy.coordinates import GCRS, SkyCoord, get_body
 from astropy.time import Time
 
 from . import sky as sm
@@ -36,7 +36,10 @@ def _source_coords(names, t: Time):
             c = s.coord.icrs
             out[s.name] = (float(c.ra.deg), float(c.dec.deg))
     if "Sun" in names:
-        c = get_body("sun", t, sm.LWASV).icrs
+        # the apparent direction from the station, as that of a distant source; .icrs of
+        # the body itself would be its direction from the solar system's barycentre
+        g = get_body("sun", t, sm.LWASV)
+        c = SkyCoord(g.ra, g.dec, frame=GCRS(obstime=t)).icrs
         out["Sun"] = (float(c.ra.deg), float(c.dec.deg))
     return out
 
