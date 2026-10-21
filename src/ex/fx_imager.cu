@@ -1256,6 +1256,23 @@ void FxImager::Sync() {
         os << (k ? ", " : "") << m->peel_names[k] << " " << ax[ax.size() / 2] << " / " << ay[ay.size() / 2];
       }
       LOG(INFO) << "FxImager: peeled " << os.str();
+      // the fitted fluxes as complex numbers (median of the real and imaginary parts over
+      // the channels, XX and YY): a calibrated source is real and positive
+      std::ostringstream oc;
+      for (int k = 0; k < m->peel_k; ++k) {
+        std::vector<float> rx, ix, ry, iy;
+        for (int c = 0; c < m->nchan; ++c) {
+          const float2 x = m->h_peel_x[(size_t(c) * 2) * kPeelMax + k], y = m->h_peel_x[(size_t(c) * 2 + 1) * kPeelMax + k];
+          rx.push_back(x.x); ix.push_back(x.y); ry.push_back(y.x); iy.push_back(y.y);
+        }
+        auto med = [](std::vector<float>& v) {
+          std::nth_element(v.begin(), v.begin() + v.size() / 2, v.end());
+          return v[v.size() / 2];
+        };
+        oc << (k ? ", " : "") << m->peel_names[k] << " X " << med(rx) << (med(ix) < 0 ? "" : "+") << med(ix) << "i Y "
+           << med(ry) << (med(iy) < 0 ? "" : "+") << med(iy) << "i";
+      }
+      LOG(INFO) << "FxImager: peel fits " << oc.str();
     }
   }
 }
