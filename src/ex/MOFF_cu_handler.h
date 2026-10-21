@@ -310,8 +310,8 @@ class MOFFCuHandler {
   /// calibration tap (FxImager::SetGulpValidity)
   void SetGulpValidity(const uint64_t* p_mask, size_t p_words, const uint8_t* p_block);
   /// FX: peel the bright compact sources (FxImager::SetPeel)
-  void SetPeel(const double* p_frame, double p_dl, double p_umin_lambda) {
-    if (m_fx) m_fx->SetPeel(p_frame, p_dl, p_umin_lambda);
+  void SetPeel(const double* p_frame, double p_dl, double p_umin_lambda, bool p_sky_only = false) {
+    if (m_fx) m_fx->SetPeel(p_frame, p_dl, p_umin_lambda, p_sky_only);
   }
   /// Layout of the next gulps on the host: time-major (t_maj) or channel-major
   void SetGulpTimeMajor(bool p_time_major) { m_time_major = p_time_major; }

@@ -72,8 +72,12 @@ class FxImager {
   /// on baselines longer than p_umin_lambda) and subtract them before
   /// gridding. p_frame: rows grid x, grid y and phase centre in (east, north,
   /// up) (epic_geometry.array_frame); p_dl: the pixel in direction cosine.
-  /// Null p_frame: no peeling.
-  void SetPeel(const double* p_frame, double p_dl, double p_umin_lambda);
+  /// p_sky_only: the image (video, integrations, pixels) stays whole and the
+  /// sources are subtracted from the all-sky monitor's pixels only, with
+  /// patterns gridded from unit fluxes (environment EPIC_FX_PEEL_REFRESH_S:
+  /// seconds over which all patterns are refreshed, 10). Null p_frame: no
+  /// peeling.
+  void SetPeel(const double* p_frame, double p_dl, double p_umin_lambda, bool p_sky_only = false);
   /// The impulse detector's flags [chan][seq] on the device (null: none)
   void SetImpulseFlags(const uint8_t* p_flags);
   /// Pixel slots of the table in use (0: none)

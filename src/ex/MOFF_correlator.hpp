@@ -421,14 +421,16 @@ bool MOFFCorrelator<Dtype, BuffMngr>::ResetImagingConfig(int p_nchan,
   // the FX imager takes the geometry just computed
   this->SetupFx(m_nchan_out, m_nseq_per_gulp);
   if (this->UsesFx()) {
-    // EPIC_FX_PEEL=1: subtract the bright compact sources from every image's visibilities
+    // EPIC_FX_PEEL=1: subtract the bright compact sources from every image's visibilities;
+    // EPIC_FX_PEEL=sky: from the all-sky monitor's pixels only, the image staying whole
     // (EPIC_FX_PEEL_UMIN: shortest baseline of the flux fit in wavelengths, 4)
     const char* peel = std::getenv("EPIC_FX_PEEL");
     if (peel && std::string(peel) != "0") {
       double frame[9];
       GetArrayFrame(frame);
       const char* um = std::getenv("EPIC_FX_PEEL_UMIN");
-      this->SetPeel(frame, 2.0 * std::sin(m_grid_res * M_PI / 360.0), um ? std::atof(um) : 4.0);
+      this->SetPeel(frame, 2.0 * std::sin(m_grid_res * M_PI / 360.0), um ? std::atof(um) : 4.0,
+                    std::string(peel) == "sky");
     }
   }
 

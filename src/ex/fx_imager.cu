@@ -439,8 +439,14 @@ __global__ void __launch_bounds__(kTileThreads) GridLagsTiled(const int2* __rest
       const int a = int((ent >> 16) & 0xff), b = int(ent >> 24);
       const float4 ga = g[c * kStands + a], gb = g[c * kStands + b];
       const int2 pa = base[c * kStands + a], pb = base[c * kStands + b];
-      const int4* v = reinterpret_cast<const int4*>(vis + (size_t(c) * kNbl + bl) * 4);
-      const int4 v01 = v[0], v23 = v[1];  // [polY][polX]: xx, xy | yx, yy
+      // no visibilities (null vis): only the sources' model is gridded, with a
+      // minus sign (the monitor's peeling patterns, FxImager::Image)
+      int4 v01{}, v23{};  // [polY][polX]: xx, xy | yx, yy
+      if (vis) {
+        const int4* v = reinterpret_cast<const int4*>(vis + (size_t(c) * kNbl + bl) * 4);
+        v01 = v[0];
+        v23 = v[1];
+      }
       if (!((ga.x == 0.f && ga.y == 0.f && ga.z == 0.f && ga.w == 0.f) ||
             (gb.x == 0.f && gb.y == 0.f && gb.z == 0.f && gb.w == 0.f))) {
         const float sc = cscale[c];
@@ -449,7 +455,7 @@ __global__ void __launch_bounds__(kTileThreads) GridLagsTiled(const int2* __rest
         P[1] = cmul(cmulc(gay, gby), float2{float(v23.z), float(v23.w)});
         P[2] = cmul(cmulc(gax, gby), float2{float(v01.z), float(v01.w)});
         P[3] = cmul(cmulc(gay, gbx), float2{float(v23.x), float(v23.y)});
-        if (wvis) {
+        if (wvis && vis) {
           const int4* wv = reinterpret_cast<const int4*>(wvis + (size_t(c) * kNbl + bl) * 4);
           const int4 w01 = wv[0], w23 = wv[1];
           const float f0 = WeightFactor(w01.x, nimg), f1 = WeightFactor(w23.z, nimg), f2 = WeightFactor(w01.z, nimg),
@@ -553,6 +559,47 @@ __global__ void CombineImages(const float2* __restrict__ F, float4* __restrict__
   out[j] = float4{2.f * xx.x * s, 2.f * yy.x * s, (xy.x + yx.x) * s, (xy.y - yx.y) * s};
 }
 
+// Stokes I (XX + YY) of a combined image, as CombineImages and SkyRegrid
+// form it, in the image layout: the monitor's peeling patterns
+__global__ void CombineStokesI(const float2* __restrict__ F, float* __restrict__ out,
+                               const float* __restrict__ corr, int N, float scale) {
+  const int c = blockIdx.y;
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;  // ky * N + kx
+  if (i >= N * N) return;
+  const int ky = i / N, kx = i % N;
+  const size_t nn = size_t(N) * N, o = size_t(c) * 4 * nn + i;
+  const size_t j = size_t(c) * nn + size_t(kx) * N + ky;
+  const float s = corr ? scale * corr[j] : scale;
+  out[j] = 2.f * (F[o].x + F[o + nn].x) * s;
+}
+
+// Unit flux (1 or i, both polarisations) of source k alone: the model a
+// peeling pattern is gridded from
+__global__ void PeelUnit(float2* __restrict__ x, int nchan, int k, int part) {
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= nchan * 2 * kPeelMax) return;
+  const int kk = i % kPeelMax;
+  x[i] = kk == k ? (part ? float2{0.f, 1.f} : float2{1.f, 0.f}) : float2{0.f, 0.f};
+}
+
+struct PeelSlots {
+  int slot[kPeelMax];  // pattern slot of fitted source k (-1: no pattern yet)
+};
+// The fitted fluxes of the image, averaged over the polarisations, by pattern
+// slot (zero where a slot has no source or no pattern)
+__global__ void PeelCoef(const float2* __restrict__ x, PeelSlots ps, int K, int nchan, float2* __restrict__ coef) {
+  const int c = blockIdx.x * blockDim.x + threadIdx.x;
+  if (c >= nchan) return;
+  float2 out[kPeelMax] = {};
+  for (int k = 0; k < K; ++k) {
+    const int s = ps.slot[k];
+    if (s < 0) continue;
+    const float2 a = x[(size_t(c) * 2) * kPeelMax + k], b = x[(size_t(c) * 2 + 1) * kPeelMax + k];
+    out[s] = float2{0.5f * (a.x + b.x), 0.5f * (a.y + b.y)};
+  }
+  for (int s = 0; s < kPeelMax; ++s) coef[size_t(c) * kPeelMax + s] = out[s];
+}
+
 // Bicubic weights of Keys' cubic convolution (a = -0.75) at offset f, in
 // double precision without contraction, as skymon_taps computes them
 __device__ inline void Keys4(double f, double* wt) {
@@ -573,9 +620,14 @@ __device__ inline void Keys4(double f, double* wt) {
 // 1-based FITS pixels (x, y) of the image in FITS order; FITS pixel
 // (i + 1, j + 1) is buffer element [a][b], a = (i + N/2) % N,
 // b = (N - 1 - j + N/2) % N (save_output; sky_publisher.hpp).
+// With patterns (pat: [slot][re, im][chan][image] Stokes I of the sources'
+// unit fluxes, gridded with a minus sign; coef [chan][slot]: the image's
+// fitted fluxes) the sources are subtracted from the pixels: the monitor's
+// peeling, which leaves the image itself whole.
 __global__ void SkyRegrid(const float4* __restrict__ img, const double2* __restrict__ xy_a,
                           const double2* __restrict__ xy_b, double f, int P, int N, int nbin, int nout,
-                          float* __restrict__ out) {
+                          float* __restrict__ out, const float* __restrict__ pat = nullptr,
+                          const float2* __restrict__ coef = nullptr, int nchan = 0) {
   const int p = blockIdx.x * blockDim.x + threadIdx.x;
   if (p >= P) return;
   const double2 a2 = xy_a[p], b2 = xy_b[p];
@@ -607,12 +659,25 @@ __global__ void SkyRegrid(const float4* __restrict__ img, const double2* __restr
   for (int c = 0; c < nout; ++c) {
     float s = 0.f;
     for (int k = 0; k < nbin; ++k) {
-      const float4* im = img + size_t(c * nbin + k) * nn;
+      const int ch = c * nbin + k;
+      const float4* im = img + size_t(ch) * nn;
       float v = 0.f;
 #pragma unroll
       for (int t = 0; t < 16; ++t) {
         const float4 q = im[cell[t]];
         v += w[t] * (q.x + q.y);
+      }
+      if (pat) {
+        for (int sl = 0; sl < kPeelMax; ++sl) {
+          const float2 x = coef[size_t(ch) * kPeelMax + sl];
+          if (x.x == 0.f && x.y == 0.f) continue;
+          const float* pr = pat + (size_t(2 * sl) * nchan + ch) * nn;
+          const float* pi = pat + (size_t(2 * sl + 1) * nchan + ch) * nn;
+          float u = 0.f;
+#pragma unroll
+          for (int t = 0; t < 16; ++t) u += w[t] * (x.x * pr[cell[t]] + x.y * pi[cell[t]]);
+          v += u;
+        }
       }
       s += v;
     }
@@ -662,6 +727,18 @@ struct FxImager::Impl {
   double dl{0}, umin_lambda{4.0}, peel_min_el_deg{10.0};
   std::vector<std::string> peel_names;
   int peel_k{0};
+  // peeling for the monitor only (SetPeel p_sky_only): the image stays whole,
+  // the sources are subtracted from the monitor's pixels with patterns
+  // gridded from unit fluxes, one pattern every pat_every images
+  bool peel_sky{false};
+  float* d_pat{};      // [slot][re, im][chan][N x N]
+  float2* d_pat_x{};   // unit flux of the pattern being gridded
+  float2* d_coef{};    // [chan][slot] fitted fluxes for SkyRegrid
+  bool pat_ok[kPeelMax][2]{};
+  int peel_slot[kPeelMax]{};  // BrightSources index of fitted source k
+  int pat_next{0};
+  long long img_count{0};
+  double pat_refresh_s{10.0};
   double img_nseq{0};      // sequences of the image so far
   float* d_cscale{};
   bool half_ctab{false};
@@ -737,7 +814,8 @@ struct FxImager::Impl {
                     static_cast<void*>(d_K), static_cast<void*>(d_corr), static_cast<void*>(d_lag),
                     static_cast<void*>(d_img[0]), static_cast<void*>(d_img[1]), static_cast<void*>(d_list), static_cast<void*>(d_antpos), static_cast<void*>(d_peel_e), static_cast<void*>(d_peel_x), static_cast<void*>(d_wtcc_in), static_cast<void*>(d_wvis), static_cast<void*>(d_mask), static_cast<void*>(d_block), d_ctab, static_cast<void*>(d_cscale),
                     static_cast<void*>(d_off), static_cast<void*>(d_xy_a),
-                    static_cast<void*>(d_xy_b), static_cast<void*>(d_pix[0]), static_cast<void*>(d_pix[1])})
+                    static_cast<void*>(d_xy_b), static_cast<void*>(d_pix[0]), static_cast<void*>(d_pix[1]),
+                    static_cast<void*>(d_pat), static_cast<void*>(d_pat_x), static_cast<void*>(d_coef)})
       if (p) cudaFree(p);
     for (auto e : {ev_free, ev_combined, ev_copied[0], ev_copied[1], t_grid, t_comb, t_copy}) cudaEventDestroy(e);
     if (h_peel_x) cudaFreeHost(h_peel_x);
@@ -890,7 +968,7 @@ void FxImager::SetGulpValidity(const uint64_t* p_mask, size_t p_words, const uin
 
 void FxImager::SetImpulseFlags(const uint8_t* p_flags) { m->flags = p_flags; }
 
-void FxImager::SetPeel(const double* p_frame, double p_dl, double p_umin_lambda) {
+void FxImager::SetPeel(const double* p_frame, double p_dl, double p_umin_lambda, bool p_sky_only) {
   Check(cudaSetDevice(m->device), "device");
   if (!p_frame || !(p_dl > 0)) {
     m->peel = false;
@@ -905,9 +983,19 @@ void FxImager::SetPeel(const double* p_frame, double p_dl, double p_umin_lambda)
     Check(cudaMallocHost(&m->h_peel_x, size_t(m->nchan) * 2 * kPeelMax * sizeof(float2)), "peel fluxes");
   }
   m->peel = m->tiled;
+  m->peel_sky = m->peel && p_sky_only;
+  if (m->peel_sky && !m->d_pat) {
+    const size_t nn = size_t(m->N) * m->N;
+    Check(cudaMalloc(&m->d_pat, 2 * size_t(kPeelMax) * m->nchan * nn * sizeof(float)), "peel patterns");
+    Check(cudaMalloc(&m->d_pat_x, size_t(m->nchan) * 2 * kPeelMax * sizeof(float2)), "peel unit flux");
+    Check(cudaMalloc(&m->d_coef, size_t(m->nchan) * kPeelMax * sizeof(float2)), "peel coefficients");
+    if (const char* e = std::getenv("EPIC_FX_PEEL_REFRESH_S")) m->pat_refresh_s = std::max(1.0, std::atof(e));
+  }
   LOG_IF(WARNING, !m->tiled) << "FxImager: peeling needs the tiled gridder; not peeling";
   LOG_IF(INFO, m->peel) << "FxImager: peeling the bright sources above " << m->peel_min_el_deg
-                        << " deg (fluxes fitted on baselines longer than " << p_umin_lambda << " wavelengths)";
+                        << " deg (fluxes fitted on baselines longer than " << p_umin_lambda << " wavelengths)"
+                        << (m->peel_sky ? " from the monitor's pixels only, patterns refreshed every " : "")
+                        << (m->peel_sky ? std::to_string(m->pat_refresh_s) + " s" : std::string());
 }
 
 int FxImager::SkyPixels() const { return m->sky_p; }
@@ -927,10 +1015,16 @@ void FxImager::Image(const float* p_phases, float* p_host, double p_unix, float*
     const double f = 2 * sky::kPi / (double(N) * m->dl);
     PeelDirs dirs{};
     m->peel_names.clear();
-    for (const auto& src : sky::BrightSources()) {
+    const auto& bright = sky::BrightSources();
+    for (size_t si = 0; si < bright.size(); ++si) {
+      const auto& src = bright[si];
       if (peel_k == kPeelMax) break;
       const auto e = sky::Direction(src, t_mid);
-      if (e[2] < std::sin(m->peel_min_el_deg * sky::kDeg)) continue;
+      if (e[2] < std::sin(m->peel_min_el_deg * sky::kDeg)) {
+        if (si < size_t(kPeelMax)) m->pat_ok[si][0] = m->pat_ok[si][1] = false;  // set: its patterns are stale
+        continue;
+      }
+      m->peel_slot[peel_k] = int(si);
       double lmn[3];
       for (int r = 0; r < 3; ++r) lmn[r] = m->frame[3 * r] * e[0] + m->frame[3 * r + 1] * e[1] + m->frame[3 * r + 2] * e[2];
       dirs.q[peel_k] = make_float3(float(f * lmn[0]), float(f * lmn[1]), float(f * (lmn[2] - 1.0)));
@@ -954,11 +1048,11 @@ void FxImager::Image(const float* p_phases, float* p_host, double p_unix, float*
     if (m->half_ctab)
       GridLagsTiled<kSupport><<<dim3(nt, m->nchan), kTileThreads, 0, m->s>>>(
           m->d_vis, m->d_base, static_cast<const __half2*>(m->d_ctab), m->d_cscale, wv, nimg, g, m->d_list, m->d_off, m->d_lag,
-          N, m->d_peel_e, m->d_peel_x, peel_k);
+          N, m->d_peel_e, m->d_peel_x, m->peel_sky ? 0 : peel_k);
     else
       GridLagsTiled<kSupport><<<dim3(nt, m->nchan), kTileThreads, 0, m->s>>>(
           m->d_vis, m->d_base, static_cast<const float2*>(m->d_ctab), m->d_cscale, wv, nimg, g, m->d_list, m->d_off, m->d_lag,
-          N, m->d_peel_e, m->d_peel_x, peel_k);
+          N, m->d_peel_e, m->d_peel_x, m->peel_sky ? 0 : peel_k);
   } else {
     Check(cudaMemsetAsync(m->d_lag, 0, nlag * sizeof(float2), m->s), "clear");
     const dim3 blk((2 * kSupport - 1) * (2 * kSupport - 1), kPairs), grd((kNbl + kPairs - 1) / kPairs, m->nchan);
@@ -994,8 +1088,19 @@ void FxImager::Image(const float* p_phases, float* p_host, double p_unix, float*
   if (sky) {
     // the monitor's interpolation between its two positions (geometry.SkyGrid.taps)
     const double f = std::min(std::max(fr, 0.0), 1.5);
+    bool use_pat = false;
+    if (m->peel_sky && peel_k > 0) {
+      PeelSlots ps{};
+      for (int q = 0; q < kPeelMax; ++q) {
+        const int sl = q < peel_k ? m->peel_slot[q] : -1;
+        ps.slot[q] = (sl >= 0 && sl < kPeelMax && m->pat_ok[sl][0] && m->pat_ok[sl][1]) ? sl : -1;
+        use_pat |= ps.slot[q] >= 0;
+      }
+      if (use_pat) PeelCoef<<<(m->nchan + 127) / 128, 128, 0, m->s>>>(m->d_peel_x, ps, peel_k, m->nchan, m->d_coef);
+    }
     SkyRegrid<<<(m->sky_p + 127) / 128, 128, 0, m->s>>>(m->d_img[k], m->d_xy_a, m->d_xy_b, f, m->sky_p, N,
-                                                        m->sky_nbin, m->nchan / m->sky_nbin, m->d_pix[k]);
+                                                        m->sky_nbin, m->nchan / m->sky_nbin, m->d_pix[k],
+                                                        use_pat ? m->d_pat : nullptr, m->d_coef, m->nchan);
     Check(cudaGetLastError(), "sky regrid");
   }
   Check(cudaEventRecord(m->ev_combined, m->s), "event");
@@ -1015,6 +1120,47 @@ void FxImager::Image(const float* p_phases, float* p_host, double p_unix, float*
   Check(cudaEventRecord(m->t_copy, m->s_copy), "event");
   m->last = k;
   m->timed = true;
+  // the monitor's peeling: one pattern (source, real or imaginary unit flux)
+  // every pat_every images, so all of them are refreshed every pat_refresh_s;
+  // gridded like the image from no visibilities and the unit flux alone,
+  // after this image (the lag grid is free again)
+  ++m->img_count;
+  if (m->peel_sky && peel_k > 0 && sky) {
+    const double img_s = m->img_nseq * double(SEQ_MULT_S) / double(FS);
+    const int npat = 2 * peel_k;
+    const long long every = std::max<long long>(1, (long long)(m->pat_refresh_s / std::max(img_s, 1e-3) / npat));
+    // until every source has its patterns, one per image
+    bool all = true;
+    for (int q = 0; q < peel_k; ++q) all &= m->pat_ok[m->peel_slot[q]][0] && m->pat_ok[m->peel_slot[q]][1];
+    if (!all || m->img_count % every == 0) {
+      const int j = m->pat_next++ % npat, kq = j / 2, part = j % 2, sl = m->peel_slot[kq];
+      PeelUnit<<<(m->nchan * 2 * kPeelMax + 255) / 256, 256, 0, m->s>>>(m->d_pat_x, m->nchan, kq, part);
+      const int nt = (N / kTile) * (N / kTile);
+      const auto* g = reinterpret_cast<const float4*>(p_phases);
+      if (m->half_ctab)
+        GridLagsTiled<kSupport><<<dim3(nt, m->nchan), kTileThreads, 0, m->s>>>(
+            nullptr, m->d_base, static_cast<const __half2*>(m->d_ctab), m->d_cscale, nullptr, nimg, g, m->d_list,
+            m->d_off, m->d_lag, N, m->d_peel_e, m->d_pat_x, peel_k);
+      else
+        GridLagsTiled<kSupport><<<dim3(nt, m->nchan), kTileThreads, 0, m->s>>>(
+            nullptr, m->d_base, static_cast<const float2*>(m->d_ctab), m->d_cscale, nullptr, nimg, g, m->d_list,
+            m->d_off, m->d_lag, N, m->d_peel_e, m->d_pat_x, peel_k);
+      CheckFft(cufftExecC2C(m->plan, reinterpret_cast<cufftComplex*>(m->d_lag),
+                            reinterpret_cast<cufftComplex*>(m->d_lag), CUFFT_INVERSE),
+               "pattern transform");
+      const size_t nn = size_t(N) * N;
+      CombineStokesI<<<dim3((N * N + 255) / 256, m->nchan), 256, 0, m->s>>>(
+          m->d_lag, m->d_pat + (size_t(2 * sl + part) * m->nchan) * nn, m->d_corr, N, r * r * r * r / 32.f);
+      Check(cudaGetLastError(), "peel pattern");
+      const bool was = all;
+      m->pat_ok[sl][part] = true;
+      if (!was) {
+        bool now = true;
+        for (int q = 0; q < peel_k; ++q) now &= m->pat_ok[m->peel_slot[q]][0] && m->pat_ok[m->peel_slot[q]][1];
+        LOG_IF(INFO, now) << "FxImager: peeling patterns ready for " << peel_k << " sources (monitor's pixels)";
+      }
+    }
+  }
 }
 
 void FxImager::Sync() {
@@ -1076,7 +1222,7 @@ void FxImager::Image(const float*, float*, double, float*) {}
 void FxImager::SetSkyTable(const double*, const double*, int, double, double, int) {}
 void FxImager::SetGulpValidity(const uint64_t*, size_t, const uint8_t*) {}
 void FxImager::SetImpulseFlags(const uint8_t*) {}
-void FxImager::SetPeel(const double*, double, double) {}
+void FxImager::SetPeel(const double*, double, double, bool) {}
 int FxImager::SkyPixels() const { return 0; }
 bool FxImager::SkyDone() const { return false; }
 void FxImager::Sync() {}
