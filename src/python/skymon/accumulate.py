@@ -2,9 +2,12 @@
 Spectrogram accumulation of every tracked pixel, for display.
 
 The raw (not normalised) sky value of each tracked pixel is averaged over
-interval_s and kept in a ring of hours long, as float16. A pixel's column is
-blanked (NaN) whenever its slot is given to another pixel, so a spectrogram
-never mixes two positions on the sky.
+interval_s of image time and kept in a ring of hours long, as float16 relative
+to a scale per row and channel (the FX imager's raw values reach 1e16, beyond
+float16). A row closes when interval_s of image time has passed, whatever
+number of images the monitor received in it. A pixel's column is blanked
+(NaN) whenever its slot is given to another pixel, so a spectrogram never mixes
+two positions on the sky.
 """
 from __future__ import annotations
 
@@ -23,6 +26,7 @@ class Accumulator:
         self.count = 0
         self.t_start = None
         self.ring = np.full((self.nslots, nchan, capacity), np.nan, np.float16)
+        self.scale = np.ones((self.nslots, nchan), np.float32)  # ring row values x scale = raw values
         self.times = np.full(self.nslots, np.nan)
         self.head = 0  # next ring row
         self.filled = 0
@@ -35,9 +39,14 @@ class Accumulator:
     def end_image(self, unix_next: float):
         """Call after the image's raw values were added to self.sum"""
         self.count += 1
-        if self.count >= self.n_img:
+        if unix_next - self.t_start >= self.interval - 1e-6:
+            avg = self.sum / self.count
+            with np.errstate(invalid="ignore"):
+                peak = np.nanmax(np.abs(avg), axis=1)  # per channel
+            sc = np.where(np.isfinite(peak) & (peak > 0), peak / 30000.0, 1.0).astype(np.float32)
             with self.lock:
-                self.ring[self.head] = (self.sum / self.count).astype(np.float16)
+                self.ring[self.head] = (avg / sc[:, None]).astype(np.float16)
+                self.scale[self.head] = sc
                 self.times[self.head] = self.t_start
                 self.head = (self.head + 1) % self.nslots
                 self.filled = min(self.filled + 1, self.nslots)
@@ -57,7 +66,7 @@ class Accumulator:
         with self.lock:
             idx = (self.head - self.filled + np.arange(self.filled)) % self.nslots
             t = self.times[idx]
-            d = self.ring[idx, :, slot].astype(np.float32)
+            d = self.ring[idx, :, slot].astype(np.float32) * self.scale[idx]
         if since is not None:
             k = t >= since
             t, d = t[k], d[k]

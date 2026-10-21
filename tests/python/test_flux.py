@@ -222,6 +222,31 @@ class TestArithmetic(unittest.TestCase):
         finally:
             w.close(unlink=True)
 
+    def test_accumulator_keeps_large_values_and_rows_by_time(self):
+        """
+        The FX imager's raw values reach 1e16, beyond float16: the accumulation
+        keeps them (relative to a scale per row and channel), and a row closes
+        after its interval of image time even when most images are missing.
+        """
+        from skymon.accumulate import Accumulator
+
+        dt = 8192 * 1000 / 196e6
+        acc = Accumulator(4, 10, dt, interval_s=1.0, hours=0.01)
+        rng = np.random.default_rng(1)
+        t = 1792400000.0
+        for i in range(200):
+            if i % 4:  # three images of four never arrive
+                continue
+            ti = t + i * dt
+            acc.begin(ti)
+            x = 3e16 * (1 + 0.1 * rng.standard_normal((4, 10)))
+            acc.sum += x.astype(np.float32)
+            acc.end_image(ti + dt)
+        tt, d = acc.pixel(3)
+        self.assertGreaterEqual(len(tt), 7)  # 200 images span 8.4 s: a row a second
+        self.assertTrue(np.all(np.isfinite(d)))
+        np.testing.assert_allclose(np.median(d), 3e16, rtol=0.05)
+
 def high_time(t0, ra, dec, min_el):
     """The first time from t0 (in steps of 10 min) at which (ra, dec) is above min_el"""
     for k in range(144):

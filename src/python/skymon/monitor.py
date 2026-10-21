@@ -469,7 +469,9 @@ class Monitor:
                 # regridded on the GPU by the imager (FX imaging); injections
                 # go into the spectra
                 np.copyto(self.raw, image)
-                if meta.peel_peaks is not None:
+                # only from calibrated images: with the nominal phases the fitted fluxes
+                # have arbitrary phases, and their real parts are no measure of the flux
+                if meta.peel_peaks is not None and int(meta.gain_version) > 0:
                     from .shm import PEEL_NAMES
                     self._peel_peaks.append((unix, {nm: meta.peel_peaks[i] for i, nm in enumerate(PEEL_NAMES)
                                                     if meta.peel_mask >> i & 1}))
@@ -544,11 +546,18 @@ class Monitor:
             if self._peel_peaks and unix - self._peel_peaks[-1][0] < 2 * self.cfg.flux_every_s:
                 m = calibrators_from_peaks(list(self._peel_peaks), rec, self.band.centres_mhz(), unix,
                                            beam_tab=getattr(self, "beam_tab", None))
+            # the calibrators in the pixels (those not peeled), measured in any case
+            why = []
+            with self.grid_lock:
+                mp = measure_calibrators(self.grid, self.accum, self.beam, rec,
+                                         self.band.centres_mhz(), unix,
+                                         beam_tab=getattr(self, "beam_tab", None), why=why)
+            self.flux_meas_pixels = mp
+            if mp is None:
+                print(f"skymon: no calibrator measured in the pixels: {'; '.join(why) or 'none in the record'}",
+                      flush=True)
             if m is None:
-                with self.grid_lock:
-                    m = measure_calibrators(self.grid, self.accum, self.beam, rec,
-                                            self.band.centres_mhz(), unix,
-                                            beam_tab=getattr(self, "beam_tab", None))
+                m = mp
             if m is not None:
                 self.flux_meas = m
                 self.flux_unwritten.append(m)
@@ -1365,8 +1374,11 @@ class Monitor:
                                        gain_version=self.flux_meas["gain_version"],
                                        n_used=self.flux_meas["n_used"],
                                        method=self.flux_meas.get("method", "pixels"),
+                                       k=self.flux_meas.get("k"),
+                                       k_pixels=None if getattr(self, "flux_meas_pixels", None) is None
+                                       else self.flux_meas_pixels.get("k"),
                                        calibrators=[dict(name=c["name"], el_deg=c["el_deg"],
-                                                         excess_snr=c["excess_snr"])
+                                                         excess_snr=c["excess_snr"], k=c.get("k"))
                                                     for c in self.flux_meas["calibrators"]])))
         if self.band:
             st.update(band=dict(f_lo=self.band.f_lo, f_hi=self.band.f_hi,

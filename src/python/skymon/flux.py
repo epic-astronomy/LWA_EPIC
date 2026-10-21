@@ -381,7 +381,7 @@ def _ring_background(grid, ring, values, centre_pix, at_pix):
 
 # ------------------------------------------------------------------ calibrators in the images
 def measure_calibrators(grid, accum, beam_deg, rec, freqs_mhz, unix, window_s=60.0,
-                        min_el=20.0, min_snr=5.0, beam_tab=None):
+                        min_el=20.0, min_snr=5.0, beam_tab=None, why=None):
     """
     The calibrators of rec in the monitor's own images: per calibrator, the
     excess (image units) of its pixel over the background, averaged over the
@@ -408,6 +408,8 @@ def measure_calibrators(grid, accum, beam_deg, rec, freqs_mhz, unix, window_s=60
         el, az = altaz(ra, dec, unix)
         el, az = float(el), float(az)
         if el < min_el:
+            if why is not None:
+                why.append(f"{c['name']}: elevation {el:.0f} below {min_el:.0f}")
             continue
         nside = grid.nside
         th, ph = math.radians(90 - dec), math.radians(ra)
@@ -421,6 +423,8 @@ def measure_calibrators(grid, accum, beam_deg, rec, freqs_mhz, unix, window_s=60
         rslots = [int(grid.slot_of[p]) for p in ring]
         rslots = [s for s in rslots if s >= 0]
         if all(s < 0 for s in slots) or len(rslots) < 8:
+            if why is not None:
+                why.append(f"{c['name']}: not tracked ({sum(s >= 0 for s in slots)} pixels, {len(rslots)} in its ring)")
             continue
         rings, rpix = [], []
         for p in ring:
@@ -433,6 +437,8 @@ def measure_calibrators(grid, accum, beam_deg, rec, freqs_mhz, unix, window_s=60
                 rings.append(np.nanmean(d, axis=0))
                 rpix.append(p)
         if len(rings) < 8:
+            if why is not None:
+                why.append(f"{c['name']}: {len(rings)} ring pixels with data in the last {window_s:.0f} s")
             continue
         # the pixel that sees most of the calibrator, from its known position
         xs, ys = grid.wcs.all_world2pix(ra, dec, 1, ra_dec_order=True)
@@ -444,10 +450,14 @@ def measure_calibrators(grid, accum, beam_deg, rec, freqs_mhz, unix, window_s=60
             if resp is None or float(np.mean(r)) > float(np.mean(resp)):
                 resp, best = r, (p, sl)
         if best is None:
+            if why is not None:
+                why.append(f"{c['name']}: no pixel with a position")
             continue
         _, d = accum.pixel(best[1], since=unix - window_s)
         d = np.asarray(d, float)
         if d.size == 0:
+            if why is not None:
+                why.append(f"{c['name']}: no data in its pixel")
             continue
         peak = np.nanmean(d, axis=0)
         bg, spread = _ring_background(grid, rpix, np.array(rings), hpix, best[0])
@@ -457,6 +467,8 @@ def measure_calibrators(grid, accum, beam_deg, rec, freqs_mhz, unix, window_s=60
         model = channel_values(solved, c["model_jy"], freqs_mhz) * (c.get("scale") or 1.0)
         be = beam_eff(rec, el, az, freqs_mhz, beam_tab)
         if be is None:
+            if why is not None:
+                why.append(f"{c['name']}: no beam")
             continue
         k = excess / np.maximum(model * be, 1e-30)
         out.append(dict(name=c["name"], el_deg=round(el, 2), az_deg=round(az, 2),

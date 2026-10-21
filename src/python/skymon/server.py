@@ -93,7 +93,7 @@ def skymap(monitor, seconds=300.0):
         tot = np.zeros(acc.ring.shape[1:], np.float32)
         cnt = np.zeros(acc.ring.shape[1:], np.int16)
         for i in sel:  # one row at a time: the whole span in float32 would take GBs
-            r = acc.ring[i].astype(np.float32)
+            r = acc.ring[i].astype(np.float32) * acc.scale[i][:, None]
             ok = np.isfinite(r)
             tot += np.where(ok, r, 0)
             cnt += ok
