@@ -545,6 +545,11 @@ class StreamCal:
         """
         a = self.a
         self.pub_change = (0.0, 0.0, 0.0)
+        # no solution to publish: every stand flagged, or a channel without finite gains
+        # (the images keep the table in force)
+        self.unusable = not (np.all(np.isfinite(corr)) and np.any(corr != 0))
+        if self.unusable:
+            return None
         if getattr(self, "first_t", None) is None:
             self.first_t = t_unix
         t0 = self.first_t
@@ -630,11 +635,19 @@ class StreamCal:
                f"solve {time.time() - T0:.1f} s")
         corr = self.table()
         why = self.publish_reason(corr, tab.t_mid_unix)
-        if not self.a.dry_run and why is None:
+        if not self.a.dry_run and why is None and getattr(self, "unusable", False):
+            msg += "; held: no usable solution (all stands flagged or non-finite gains)"
+        elif not self.a.dry_run and why is None:
             msg += (f"; held ({self.pub_change[0]:.2f} deg, amplitude {self.pub_change[1]:.2f}%, brightness "
                     f"{self.pub_change[2]:.3f}% since v{self.writer.version})")
         elif not self.a.dry_run:
-            v = self.writer.publish(corr, t_solved_unix=tab.t_mid_unix)
+            try:
+                v = self.writer.publish(corr, t_solved_unix=tab.t_mid_unix)
+            except ValueError as e:  # the writer's range check: hold the table in force
+                log.warning("table v%d not published: %s", tab.version, e)
+                why, v = None, None
+                msg += "; held: rejected by the writer"
+        if not self.a.dry_run and why is not None:
             self.published = corr
             self.published_t = tab.t_mid_unix
             msg += f"; published gains v{v} ({why})"

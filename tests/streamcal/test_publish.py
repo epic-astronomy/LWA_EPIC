@@ -70,3 +70,13 @@ def test_every_table_while_converging_on_request():
     times = 10.0 * np.arange(10)
     why = run(sc, tables(10, 3.0), times)
     assert why[0] == "first" and all(w == "converging" for w in why[1:])
+
+
+def test_no_usable_solution_is_held():
+    sc = policy(publish_warmup=0.0, publish_min_s=0.0)
+    flagged = np.zeros((8, 32, 2), np.complex64)  # every stand flagged
+    assert sc.publish_reason(flagged, 0.0) is None and sc.unusable
+    nan = tables(1, 1.0)[0].copy()
+    nan[0, 0, 0] = np.nan
+    assert sc.publish_reason(nan, 10.0) is None and sc.unusable
+    assert sc.publish_reason(tables(1, 1.0)[0], 20.0) == "converged" and not sc.unusable
