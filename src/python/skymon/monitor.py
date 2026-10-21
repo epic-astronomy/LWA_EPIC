@@ -723,8 +723,9 @@ class Monitor:
         # the burst seen through the sidelobes. They are labelled, kept apart
         # from RFI in the conditions, and capped like certain RFI
         sun_ra, sun_dec = self.known.body_positions(hits[0].t_bottom)["Sun"]
-        at_sun = separation_deg(ra[heads], dec[heads], sun_ra, sun_dec) <= \
-            self.known.body_beams * elevation_radius(self.beam, el_hits[heads])
+        at_sun = (separation_deg(ra[heads], dec[heads], sun_ra, sun_dec) <=
+                  self.known.body_beams * elevation_radius(self.beam, el_hits[heads])) & \
+            self.known.body_up("Sun", hits[0].t_bottom)
         solar_time = np.zeros(len(groups), bool)
         if at_sun.any():
             solar_time = ((h_lo[:, None] <= h_hi[at_sun][None, :]) &

@@ -21,7 +21,7 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(ROOT, "src", "python"))
 sys.path.insert(0, HERE)
 
-from skymon.candidates import separation_deg  # noqa: E402
+from skymon.candidates import elevation_radius, separation_deg  # noqa: E402
 from skymon.dedisp import K_DM, fdmt, fdmt_plan  # noqa: E402
 from skymon.geometry import Band, altaz, beam_fwhm_deg  # noqa: E402
 from skymon.known import KnownSources, load_pulsars  # noqa: E402
@@ -58,6 +58,30 @@ class TestKnownSources(unittest.TestCase):
         self.assertIs(self.ks.body_positions(T0 + 30)["Sun"], self.ks.body_positions(T0)["Sun"])
         lab = self.ks.classify(ra + 0.5, dec, 45.0, T0 + 10)
         self.assertEqual((lab["kind"], lab["name"]), ("solar", "Sun"))
+
+    def test_set_sun_labels_nothing(self):
+        """
+        Low in the west after sunset the body test's radius, widened towards the
+        horizon, reaches the set Sun; a pixel there must not be called solar,
+        while the same separation with the Sun up still is.
+        """
+        import astropy.units as u
+        from astropy.coordinates import AltAz, EarthLocation, SkyCoord
+        from astropy.time import Time
+
+        loc = EarthLocation(lat=34.348361 * u.deg, lon=-106.885778 * u.deg, height=1477 * u.m)
+        # the first time after T0 with the Sun 6-10 deg below the horizon
+        t = next(T0 + 600.0 * k for k in range(200)
+                 if -10 < altaz(*self.ks.body_positions(T0 + 600.0 * k)["Sun"], T0 + 600.0 * k)[0] < -6)
+        sra, sdec = self.ks.body_positions(t)["Sun"]
+        _, saz = altaz(sra, sdec, t)
+        frame = AltAz(obstime=Time(t, format="unix"), location=loc)
+        c = SkyCoord(alt=12.0 * u.deg, az=float(saz) * u.deg, frame=frame).icrs
+        sep = float(separation_deg(c.ra.deg, c.dec.deg, sra, sdec))
+        self.assertLess(sep, self.ks.body_beams * elevation_radius(self.ks.beam, 12.0))
+        self.assertFalse(self.ks.body_up("Sun", t))
+        lab = self.ks.classify(c.ra.deg, c.dec.deg, 12.0, t)
+        self.assertTrue(lab is None or lab["kind"] != "solar")
 
     def test_pulsar_needs_position_and_dm(self):
         p = next(p for p in self.ks.pulsars if p["name"] == "B0950+08")

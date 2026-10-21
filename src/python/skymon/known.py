@@ -37,7 +37,7 @@ import threading
 import numpy as np
 
 from .candidates import elevation_radius, separation_deg
-from .geometry import LWASV_LAT, LWASV_LON
+from .geometry import LWASV_LAT, LWASV_LON, altaz
 
 BRIGHT_SOURCES = [  # name, RA, Dec (J2000, deg)
     ("Cyg A", 299.868, 40.734),
@@ -131,6 +131,16 @@ class KnownSources:
         self._bodies = None  # (unix, {name: (ra, dec)})
         self._lock = threading.Lock()
 
+    def body_up(self, name: str, unix: float) -> bool:
+        """
+        Is the body above the horizon? A body below it cannot be what the
+        monitor sees, however close its direction to a pixel low on the same
+        side: the radius of the body test widens towards the horizon (four
+        beams at most), which reaches tens of degrees from the set Sun.
+        """
+        ra, dec = self.body_positions(unix)[name]
+        return float(altaz(ra, dec, unix)[0]) > 0.0
+
     def body_positions(self, unix: float) -> dict:
         """
         FK5 J2000 positions (deg) of the Sun and Jupiter as seen from LWA-SV,
@@ -184,6 +194,8 @@ class KnownSources:
         bodies = self.body_positions(unix)
         best = None
         for name, kind in (("Sun", "solar"), ("Jupiter", "jovian")):
+            if not self.body_up(name, unix):
+                continue
             bra, bdec = bodies[name]
             s = float(separation_deg(ra, dec, bra, bdec))
             if s <= self.body_beams * scale and (best is None or s < best["sep_deg"]):
