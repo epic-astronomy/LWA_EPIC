@@ -8,6 +8,10 @@ The EPIC imager (Thyagarajan et al. 2017) mixes all antennas before any averagin
 
 The adopted formalism (section 1.5) has five parts; Figure 4.1 of section 4 shows the loop.
 
+![Streaming calibration data flow](figures/streamcal-dataflow.svg)
+
+*The data flow of the calibration on one imaging node: the tap's 10 s visibility tables, the daemon's four steps, and the products the imager and the all-sky monitor read. PNG: [figures/streamcal-dataflow.png](figures/streamcal-dataflow.png).*
+
 1. **Tap.** A tap inside epic++ correlates the gulps and publishes the 256×256 XX and YY covariance of all imaged channels to shared memory every 10 s. The tap reads the voltages before any gains are applied, so **there is no feedback loop**. Two forms:
    - on the GPU, every sample, with the tensor-core correlator (`--caltap_gpu`, sections 4.2 and 8.9.2). In integrations with lost packets it correlates the sample weights as well and divides each product by its own number of valid samples. This is the route for the time-major gulps of the NDP receiver;
    - on the CPU, a slice of every gulp (2.5–5% of the samples) with an AVX2 X-engine on the raw 4+4-bit voltages. It reads channel-major gulps only and is disabled for NDP data.
