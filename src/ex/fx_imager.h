@@ -82,6 +82,10 @@ class FxImager {
   void SetImpulseFlags(const uint8_t* p_flags);
   /// Pixel slots of the table in use (0: none)
   int SkyPixels() const;
+  /// Bright sources (bit s: sky::BrightSources()[s]) subtracted from the last
+  /// image's pixel spectra; their peaks in image units at their own position,
+  /// [5][channels] float, follow the spectra in the host buffer
+  uint32_t SkyPeelMask() const;
   /// The last image was regridded (its time inside the table's span)
   bool SkyDone() const;
   /// Wait until the last image is in its host buffer

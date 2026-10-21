@@ -165,6 +165,63 @@ class TestArithmetic(unittest.TestCase):
             shutil.rmtree(d, ignore_errors=True)
 
 
+    def test_calibrators_from_the_imagers_peel_peaks(self):
+        """
+        With the bright sources peeled from the monitor's pixels (EPIC_FX_PEEL=sky)
+        the imager reports their peaks per image through the ring; the scale k
+        follows from them as from a measurement in the pixels, and the ring
+        carries the peaks and their mask to the reader.
+        """
+        from skymon.shm import PEEL_NAMES, RingReader, RingWriter
+
+        nchan, chan0 = 64, 2336
+        band = Band(chan0, nchan)
+        f = band.centres_mhz()
+        rec = flat_record(nchan, chan0)
+        t0 = 1792400000.0
+        cyg = (299.868, 40.734)
+        t = high_time(t0, *cyg, 45.0)
+        rec["calibrators"] = [dict(name="CygA", ra_deg=cyg[0], dec_deg=cyg[1], model_jy=[16000.0] * len(rec["solve_chans"]),
+                                   free_flux=False, scale=1.0)]
+        el, az = altaz(*cyg, t)
+        be = FX.beam_eff(rec, float(el), float(az), f)
+        k_true = 3.5e-3 * (f / f.mean()) ** -0.5
+        rng = np.random.default_rng(3)
+        entries = [(t - 50 + i * 0.5, {"CygA": k_true * 16000.0 * be * (1 + 0.05 * rng.standard_normal(nchan))})
+                   for i in range(100)]
+        m = FX.calibrators_from_peaks(entries, rec, f, t)
+        self.assertEqual(m["method"], "peel")
+        self.assertEqual(m["n_used"], 1)
+        np.testing.assert_allclose(m["k"], k_true, rtol=0.03)
+        # a source the imager did not peel gives nothing; nor do stale entries
+        self.assertIsNone(FX.calibrators_from_peaks([(t, {"CasA": k_true})], rec, f, t))
+        self.assertIsNone(FX.calibrators_from_peaks(entries, rec, f, t + 600))
+        # through the ring
+        name = f"test_peel_{os.getpid()}"
+        w = RingWriter(name, 4, nchan, 64)
+        try:
+            data = rng.standard_normal((nchan, 100)).astype(np.float32)
+            w.write_pixels(data, 1000, 1000, chan0, 64, 7, peaks={"CygA": entries[0][1]["CygA"], "Sun": np.ones(nchan)})
+            w.write_pixels(data, 2000, 1000, chan0, 64, 7)
+            r = RingReader(name)
+            r._open()
+            r.session = r._header()[1]  # read from the first image, not the newest
+            r.next = 0
+            got = []
+            for _ in range(10):
+                x = r.read()
+                if x is not None:
+                    got.append(x)
+            meta, d = got[0]
+            np.testing.assert_array_equal(d, data)
+            self.assertEqual(meta.peel_mask, (1 << PEEL_NAMES.index("CygA")) | (1 << PEEL_NAMES.index("Sun")))
+            np.testing.assert_allclose(meta.peel_peaks[PEEL_NAMES.index("CygA")], entries[0][1]["CygA"], rtol=1e-6)
+            self.assertEqual(got[1][0].peel_mask, 0)
+            self.assertIsNone(got[1][0].peel_peaks)
+            r.close()
+        finally:
+            w.close(unlink=True)
+
 def high_time(t0, ra, dec, min_el):
     """The first time from t0 (in steps of 10 min) at which (ra, dec) is above min_el"""
     for k in range(144):

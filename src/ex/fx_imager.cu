@@ -600,6 +600,39 @@ __global__ void PeelCoef(const float2* __restrict__ x, PeelSlots ps, int K, int 
   for (int s = 0; s < kPeelMax; ++s) coef[size_t(c) * kPeelMax + s] = out[s];
 }
 
+// A source's peak response to a unit flux, per channel: minus the minimum of
+// its pattern (gridded with a minus sign; the source's own position is its
+// extreme)
+__global__ void PatternPeak(const float* __restrict__ pat, int N, float* __restrict__ peak) {
+  const int c = blockIdx.x;
+  const size_t nn = size_t(N) * N;
+  float m = 0.f;
+  for (size_t i = threadIdx.x; i < nn; i += blockDim.x) m = fminf(m, pat[size_t(c) * nn + i]);
+  __shared__ float red[256];
+  red[threadIdx.x] = m;
+  __syncthreads();
+  for (int w = blockDim.x / 2; w > 0; w >>= 1) {
+    if (threadIdx.x < w) red[threadIdx.x] = fminf(red[threadIdx.x], red[threadIdx.x + w]);
+    __syncthreads();
+  }
+  if (threadIdx.x == 0) peak[c] = -red[0];
+}
+
+// The peeled sources' peaks in the monitor's channels: out[slot][c'] = sum over
+// the nbin channels of Re(fitted flux) x peak response (zero without a pattern)
+__global__ void PeelPeaks(const float2* __restrict__ coef, const float* __restrict__ unit, int nchan, int nbin,
+                          int nout, float* __restrict__ out) {
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= kPeelMax * nout) return;
+  const int sl = i / nout, c = i % nout;
+  float s = 0.f;
+  for (int k = 0; k < nbin; ++k) {
+    const int ch = c * nbin + k;
+    s += coef[size_t(ch) * kPeelMax + sl].x * unit[size_t(sl) * nchan + ch];
+  }
+  out[i] = s;
+}
+
 // Bicubic weights of Keys' cubic convolution (a = -0.75) at offset f, in
 // double precision without contraction, as skymon_taps computes them
 __device__ inline void Keys4(double f, double* wt) {
@@ -734,6 +767,8 @@ struct FxImager::Impl {
   float* d_pat{};      // [slot][re, im][chan][N x N]
   float2* d_pat_x{};   // unit flux of the pattern being gridded
   float2* d_coef{};    // [chan][slot] fitted fluxes for SkyRegrid
+  float* d_unit_peak{};  // [slot][chan] peak response to a unit flux
+  uint32_t peel_mask{0};  // sources whose peaks follow the last image's pixel spectra
   bool pat_ok[kPeelMax][2]{};
   int peel_slot[kPeelMax]{};  // BrightSources index of fitted source k
   int pat_next{0};
@@ -815,7 +850,8 @@ struct FxImager::Impl {
                     static_cast<void*>(d_img[0]), static_cast<void*>(d_img[1]), static_cast<void*>(d_list), static_cast<void*>(d_antpos), static_cast<void*>(d_peel_e), static_cast<void*>(d_peel_x), static_cast<void*>(d_wtcc_in), static_cast<void*>(d_wvis), static_cast<void*>(d_mask), static_cast<void*>(d_block), d_ctab, static_cast<void*>(d_cscale),
                     static_cast<void*>(d_off), static_cast<void*>(d_xy_a),
                     static_cast<void*>(d_xy_b), static_cast<void*>(d_pix[0]), static_cast<void*>(d_pix[1]),
-                    static_cast<void*>(d_pat), static_cast<void*>(d_pat_x), static_cast<void*>(d_coef)})
+                    static_cast<void*>(d_pat), static_cast<void*>(d_pat_x), static_cast<void*>(d_coef),
+                    static_cast<void*>(d_unit_peak)})
       if (p) cudaFree(p);
     for (auto e : {ev_free, ev_combined, ev_copied[0], ev_copied[1], t_grid, t_comb, t_copy}) cudaEventDestroy(e);
     if (h_peel_x) cudaFreeHost(h_peel_x);
@@ -948,7 +984,9 @@ void FxImager::SetSkyTable(const double* p_xy_a, const double* p_xy_b, int p_cap
       if (p) cudaFree(p);
     Check(cudaMalloc(&m->d_xy_a, size_t(p_capacity) * sizeof(double2)), "sky table");
     Check(cudaMalloc(&m->d_xy_b, size_t(p_capacity) * sizeof(double2)), "sky table");
-    for (auto& p : m->d_pix) Check(cudaMalloc(&p, size_t(m->nchan) * p_capacity * sizeof(float)), "sky pixels");
+    // the pixel spectra, then the peeled sources' peaks [kPeelMax][channels]
+    for (auto& p : m->d_pix)
+      Check(cudaMalloc(&p, size_t(m->nchan) * (p_capacity + kPeelMax) * sizeof(float)), "sky pixels");
     m->sky_cap = p_capacity;
   }
   Check(cudaMemcpy(m->d_xy_a, p_xy_a, size_t(p_capacity) * sizeof(double2), cudaMemcpyHostToDevice), "sky table");
@@ -989,6 +1027,7 @@ void FxImager::SetPeel(const double* p_frame, double p_dl, double p_umin_lambda,
     Check(cudaMalloc(&m->d_pat, 2 * size_t(kPeelMax) * m->nchan * nn * sizeof(float)), "peel patterns");
     Check(cudaMalloc(&m->d_pat_x, size_t(m->nchan) * 2 * kPeelMax * sizeof(float2)), "peel unit flux");
     Check(cudaMalloc(&m->d_coef, size_t(m->nchan) * kPeelMax * sizeof(float2)), "peel coefficients");
+    Check(cudaMalloc(&m->d_unit_peak, size_t(m->nchan) * kPeelMax * sizeof(float)), "peel peaks");
     if (const char* e = std::getenv("EPIC_FX_PEEL_REFRESH_S")) m->pat_refresh_s = std::max(1.0, std::atof(e));
   }
   LOG_IF(WARNING, !m->tiled) << "FxImager: peeling needs the tiled gridder; not peeling";
@@ -999,6 +1038,7 @@ void FxImager::SetPeel(const double* p_frame, double p_dl, double p_umin_lambda,
 }
 
 int FxImager::SkyPixels() const { return m->sky_p; }
+uint32_t FxImager::SkyPeelMask() const { return m->sky_done ? m->peel_mask : 0u; }
 bool FxImager::SkyDone() const { return m->sky_done; }
 
 void FxImager::Image(const float* p_phases, float* p_host, double p_unix, float* p_pix_host) {
@@ -1102,6 +1142,16 @@ void FxImager::Image(const float* p_phases, float* p_host, double p_unix, float*
                                                         m->sky_nbin, m->nchan / m->sky_nbin, m->d_pix[k],
                                                         use_pat ? m->d_pat : nullptr, m->d_coef, m->nchan);
     Check(cudaGetLastError(), "sky regrid");
+    m->peel_mask = 0;
+    if (use_pat) {
+      const int nout = m->nchan / m->sky_nbin;
+      PeelPeaks<<<(kPeelMax * nout + 127) / 128, 128, 0, m->s>>>(m->d_coef, m->d_unit_peak, m->nchan, m->sky_nbin,
+                                                                 nout, m->d_pix[k] + size_t(nout) * m->sky_p);
+      for (int q = 0; q < peel_k; ++q) {
+        const int sl = m->peel_slot[q];
+        if (sl >= 0 && sl < kPeelMax && m->pat_ok[sl][0] && m->pat_ok[sl][1]) m->peel_mask |= 1u << sl;
+      }
+    }
   }
   Check(cudaEventRecord(m->ev_combined, m->s), "event");
   Check(cudaEventRecord(m->t_comb, m->s), "event");
@@ -1112,7 +1162,8 @@ void FxImager::Image(const float* p_phases, float* p_host, double p_unix, float*
           "copy");
   }
   if (sky) {
-    Check(cudaMemcpyAsync(p_pix_host, m->d_pix[k], size_t(m->nchan / m->sky_nbin) * m->sky_p * sizeof(float),
+    Check(cudaMemcpyAsync(p_pix_host, m->d_pix[k],
+                          size_t(m->nchan / m->sky_nbin) * (m->sky_p + (m->peel_mask ? kPeelMax : 0)) * sizeof(float),
                           cudaMemcpyDeviceToHost, m->s_copy),
           "copy");
   }
@@ -1151,6 +1202,9 @@ void FxImager::Image(const float* p_phases, float* p_host, double p_unix, float*
       const size_t nn = size_t(N) * N;
       CombineStokesI<<<dim3((N * N + 255) / 256, m->nchan), 256, 0, m->s>>>(
           m->d_lag, m->d_pat + (size_t(2 * sl + part) * m->nchan) * nn, m->d_corr, N, r * r * r * r / 32.f);
+      if (part == 0)
+        PatternPeak<<<m->nchan, 256, 0, m->s>>>(m->d_pat + (size_t(2 * sl) * m->nchan) * nn, N,
+                                                m->d_unit_peak + size_t(sl) * m->nchan);
       Check(cudaGetLastError(), "peel pattern");
       const bool was = all;
       m->pat_ok[sl][part] = true;
@@ -1224,6 +1278,7 @@ void FxImager::SetGulpValidity(const uint64_t*, size_t, const uint8_t*) {}
 void FxImager::SetImpulseFlags(const uint8_t*) {}
 void FxImager::SetPeel(const double*, double, double, bool) {}
 int FxImager::SkyPixels() const { return 0; }
+uint32_t FxImager::SkyPeelMask() const { return 0; }
 bool FxImager::SkyDone() const { return false; }
 void FxImager::Sync() {}
 cudaEvent_t FxImager::InputFree() const { return nullptr; }

@@ -41,7 +41,8 @@ from .inject import LiveInjector
 from .known import KnownSources
 from .search import Searcher
 from . import burstfit
-from .flux import (CalibrationFeed, beam_sigma_pix, beam_table, candidate_flux, measure_calibrators,
+from .flux import (CalibrationFeed, beam_sigma_pix, beam_table, calibrators_from_peaks, candidate_flux,
+                   measure_calibrators,
                    peak_fit)
 from .quality import candidate_quality, channel_contributions, contribution_noise
 from .watch import Watches, measure, predicted_bottom
@@ -223,6 +224,8 @@ class Monitor:
         self.started = time.time()
         self.metrics = collections.defaultdict(float)
         self._fit_times = collections.deque()
+        # the peaks of the sources the imager peels from the pixels (shm.PEEL_NAMES), per image
+        self._peel_peaks = collections.deque(maxlen=4096)
         # burst fits running in the worker processes: (future, candidate, tier level, submitted)
         self._fit_pool = None
         self._fits: list[tuple] = []
@@ -466,6 +469,10 @@ class Monitor:
                 # regridded on the GPU by the imager (FX imaging); injections
                 # go into the spectra
                 np.copyto(self.raw, image)
+                if meta.peel_peaks is not None:
+                    from .shm import PEEL_NAMES
+                    self._peel_peaks.append((unix, {nm: meta.peel_peaks[i] for i, nm in enumerate(PEEL_NAMES)
+                                                    if meta.peel_mask >> i & 1}))
                 self.metrics["gpu_regridded"] += 1
                 if self.injector.active:
                     self.injector.apply_pixels(self.raw, self.grid.xy, unix, self.dt,
@@ -531,10 +538,17 @@ class Monitor:
             rec = self.calfeed.for_version(self.gain_version)
             if rec is None:
                 return
-            with self.grid_lock:
-                m = measure_calibrators(self.grid, self.accum, self.beam, rec,
-                                        self.band.centres_mhz(), unix,
-                                        beam_tab=getattr(self, "beam_tab", None))
+            # the calibrators the imager peeled are not in the pixels: their fitted peaks
+            # stand in for the measurement (the others are measured in the pixels)
+            m = None
+            if self._peel_peaks and unix - self._peel_peaks[-1][0] < 2 * self.cfg.flux_every_s:
+                m = calibrators_from_peaks(list(self._peel_peaks), rec, self.band.centres_mhz(), unix,
+                                           beam_tab=getattr(self, "beam_tab", None))
+            if m is None:
+                with self.grid_lock:
+                    m = measure_calibrators(self.grid, self.accum, self.beam, rec,
+                                            self.band.centres_mhz(), unix,
+                                            beam_tab=getattr(self, "beam_tab", None))
             if m is not None:
                 self.flux_meas = m
                 self.flux_unwritten.append(m)
@@ -1350,6 +1364,7 @@ class Monitor:
                                        t=self.flux_meas["t"],
                                        gain_version=self.flux_meas["gain_version"],
                                        n_used=self.flux_meas["n_used"],
+                                       method=self.flux_meas.get("method", "pixels"),
                                        calibrators=[dict(name=c["name"], el_deg=c["el_deg"],
                                                          excess_snr=c["excess_snr"])
                                                     for c in self.flux_meas["calibrators"]])))

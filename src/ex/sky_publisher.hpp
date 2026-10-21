@@ -82,7 +82,12 @@ class SkyPublisher {
     uint32_t npix{0};
     uint64_t table_version{0};
     const float* pix{nullptr};
+    /// layout 1: bit s set when bright source s (sky_sources.hpp, skymon
+    /// shm.PEEL_NAMES) was subtracted from the spectra; its peak per channel,
+    /// [kPeelSources][nchan / nbin] float, then follows the spectra in pix
+    uint32_t peel_mask{0};
   };
+  static constexpr int kPeelSources = 5;
 
   /**
    * @param p_name ring name in /dev/shm
@@ -163,12 +168,14 @@ class SkyPublisher {
     put_at<uint64_t>(slot, 56, p_info.gain_version);
     float* out = reinterpret_cast<float*>(slot + kSlotHeader);
     const bool pixels = p_info.layout == 1 && p_info.pix &&
-                        size_t(nout) * p_info.npix * sizeof(float) + kSlotHeader <= m_slot_bytes;
+                        size_t(nout) * (p_info.npix + kPeelSources) * sizeof(float) + kSlotHeader <= m_slot_bytes;
+    const uint32_t peel = pixels ? p_info.peel_mask : 0u;
     put_at<uint32_t>(slot, 64, pixels ? 1u : 0u);
     put_at<uint32_t>(slot, 68, pixels ? p_info.npix : 0u);
     put_at<uint64_t>(slot, 72, pixels ? p_info.table_version : 0u);
+    put_at<uint32_t>(slot, 80, peel);
     if (pixels) {
-      std::memcpy(out, p_info.pix, size_t(nout) * p_info.npix * sizeof(float));
+      std::memcpy(out, p_info.pix, size_t(nout) * (p_info.npix + (peel ? kPeelSources : 0)) * sizeof(float));
     } else {
       StokesIFitsOrder(p_img, p_nchan, m_grid, m_nbin, out);
     }

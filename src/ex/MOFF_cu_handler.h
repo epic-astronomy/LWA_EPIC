@@ -321,6 +321,7 @@ class MOFFCuHandler {
   /// where in its host buffer the pixel spectra go (floats after the start)
   void SetImageTime(double p_unix) { m_image_unix = p_unix; }
   size_t SkyPixelOffset() const { return size_t(m_nchan_in) * m_fx_size * m_fx_size * 4; }
+  uint32_t SkyPeelMask() const { return m_fx ? m_fx->SkyPeelMask() : 0u; }
   /// Wait until the last FX image is in its host buffer
   void FinishFxImage() {
     if (m_fx) m_fx->Sync();

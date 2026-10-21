@@ -137,6 +137,7 @@ class ChanReducerRft : public raft::kernel {
         info.npix = static_cast<uint32_t>(npix);
         info.table_version = MetaU64(meta, "sky_table_version");
         info.pix = p_pld.get_mbuf()->GetDataPtr() + MetaU64(meta, "sky_pix_offset");
+        info.peel_mask = static_cast<uint32_t>(MetaU64(meta, "sky_peel_mask"));
       }
       m_sky_hold.emplace(p_pld);
       if (!m_sky->TrySubmit(p_pld.get_mbuf()->GetDataPtr(), static_cast<int>(m_in_nchan), info)) {

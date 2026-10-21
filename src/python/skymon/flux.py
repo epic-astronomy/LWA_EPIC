@@ -474,6 +474,56 @@ def measure_calibrators(grid, accum, beam_deg, rec, freqs_mhz, unix, window_s=60
                 k=None if k is None else np.round(k, 9).tolist())
 
 
+def calibrators_from_peaks(entries, rec, freqs_mhz, unix, window_s=60.0, min_el=20.0, beam_tab=None):
+    """
+    The calibrators of rec from the peaks the imager reports for the sources it
+    peels from the monitor's pixels (EPIC_FX_PEEL=sky; shm.PEEL_NAMES): their
+    peak in image units at their own position, fitted to every image's
+    visibilities. entries: (unix, {name: peak [C]}) of recent images. Per
+    calibrator k = mean peak over the last window_s / (S Beff), as
+    measure_calibrators forms it from the pixels (no pixel response: the peak
+    is at the source's position). Returns the same dict, or None.
+    """
+    if rec is None or not rec.get("calibrators"):
+        return None
+    recent = [(t, p) for t, p in entries if unix - window_s <= t <= unix]
+    if not recent:
+        return None
+    allf, solved = record_freqs(rec)
+    out, ks = [], []
+    for c in rec["calibrators"]:
+        name = c["name"]
+        series = [p[name] for _, p in recent if name in p]
+        if len(series) < 0.5 * len(recent):
+            continue
+        el, az = altaz(c["ra_deg"], c["dec_deg"], unix)
+        el, az = float(el), float(az)
+        if el < min_el:
+            continue
+        a = np.asarray(series, float)
+        excess = np.nanmean(a, axis=0)
+        # S/N of the mean peak from its scatter over the window
+        err = np.nanstd(a, axis=0) / math.sqrt(len(a))
+        snr = float(np.nansum(excess) / math.sqrt(np.nansum(err ** 2))) if np.nansum(err ** 2) > 0 \
+            else float("nan")
+        model = channel_values(solved, c["model_jy"], freqs_mhz) * (c.get("scale") or 1.0)
+        be = beam_eff(rec, el, az, freqs_mhz, beam_tab)
+        if be is None:
+            continue
+        k = excess / np.maximum(model * be, 1e-30)
+        out.append(dict(name=name, el_deg=round(el, 2), az_deg=round(az, 2), excess_snr=round(snr, 1),
+                        scale=c.get("scale"), source="imager peel fit", images=len(a),
+                        excess=np.round(excess, 6).tolist(), k=np.round(k, 9).tolist()))
+        if np.isfinite(snr) and snr >= 5.0:
+            ks.append(k)
+    if not out:
+        return None
+    k = np.nanmedian(np.array(ks), axis=0) if ks else None
+    return dict(t=unix, gain_version=rec.get("gain_version"), window_s=window_s,
+                calibrators=out, n_used=len(ks), method="peel",
+                k=None if k is None else np.round(k, 9).tolist())
+
+
 # ------------------------------------------------------------------ candidates
 ERR_FACTOR = 1.7  # fluence error / (fluence / S/N) when the window's noise is not given
 

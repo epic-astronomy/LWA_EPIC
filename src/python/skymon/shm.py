@@ -38,6 +38,10 @@ Slot i at data_offset + i * slot_bytes, 256-byte header then data
               (SkyTableWriter)
  68  u32      npix (layout 1)
  72  u64      table_version (layout 1): the pixel table the spectra follow
+ 80  u32      peel_mask (layout 1): bit s set when the imager subtracted bright
+              source PEEL_NAMES[s] from the spectra (EPIC_FX_PEEL=sky); its
+              peak in image units at its own position, per channel, then
+              follows the spectra: peaks[len(PEEL_NAMES)][nchan] float32
 256  f32      data[nchan][grid][grid], FITS order ([y][x], as the saved images)
 
 Pixel table /dev/shm/<name>_table, written by the monitor and read by the
@@ -56,6 +60,8 @@ from dataclasses import dataclass
 import numpy as np
 
 MAGIC = b"EPICSKY1"
+# the imager's bright sources, in the order of their bits in peel_mask (sky_sources.hpp)
+PEEL_NAMES = ("CygA", "CasA", "TauA", "VirA", "Sun")
 VERSION = 1
 HEADER_BYTES = 4096
 SLOT_HEADER = 256
@@ -87,6 +93,9 @@ class ImageMeta:
     layout: int = 0  # 1: data are pixel spectra [nchan][npix] (FX imaging)
     npix: int = 0
     table_version: int = 0
+    peel_mask: int = 0
+    # [len(PEEL_NAMES)][nchan]: the peeled sources' peaks (image units), or None
+    peel_peaks: np.ndarray | None = None
 
     @property
     def unix(self) -> float:
@@ -127,6 +136,31 @@ class RingWriter:
                                                  gain_version)
         dst = np.frombuffer(self.mm, np.float32, nchan * gy * gx, off + SLOT_HEADER)
         dst[:] = data.reshape(-1)
+        self.mm[off: off + 8] = struct.pack("<Q", 2 * n + 2)
+        self.count = n + 1
+        self.mm[40:48] = struct.pack("<Q", self.count)
+
+    def write_pixels(self, data: np.ndarray, seq_start: int, nseqs: int, chan0: int, grid: int,
+                     table_version: int, nbin: int = 1, grid_res: float = 1.056,
+                     img_len_ms: float = 83.592, gain_version: int = 0, peaks: dict | None = None):
+        """Pixel spectra data [nchan][npix] (layout 1), as the FX imager publishes them;
+        peaks: {name in PEEL_NAMES: [nchan]} of the sources peeled from them"""
+        nchan, npix = data.shape
+        assert nchan <= self.max_nchan
+        n = self.count
+        off = HEADER_BYTES + (n % self.nslots) * self.slot_bytes
+        self.mm[off: off + 8] = struct.pack("<Q", 2 * n + 1)
+        self.mm[off + 8: off + 64] = struct.pack("<QIIIIIIddQ", seq_start, nseqs, chan0, nchan,
+                                                 nbin, grid, 0, grid_res, img_len_ms, gain_version)
+        mask, pk = 0, np.zeros((len(PEEL_NAMES), nchan), np.float32)
+        for name, v in (peaks or {}).items():
+            i = PEEL_NAMES.index(name)
+            mask |= 1 << i
+            pk[i] = v
+        self.mm[off + 64: off + 84] = struct.pack("<IIQI", 1, npix, table_version, mask)
+        dst = np.frombuffer(self.mm, np.float32, nchan * npix + pk.size, off + SLOT_HEADER)
+        dst[: nchan * npix] = data.reshape(-1)
+        dst[nchan * npix:] = pk.reshape(-1)
         self.mm[off: off + 8] = struct.pack("<Q", 2 * n + 2)
         self.count = n + 1
         self.mm[40:48] = struct.pack("<Q", self.count)
@@ -209,12 +243,16 @@ class RingReader:
             return None
         (seq_start, nseqs, chan0, nchan, nbin, grid, mode, grid_res,
          img_len_ms, gain_version) = struct.unpack_from("<QIIIIIIddQ", self.mm, off + 8)
-        layout, npix, table_version = struct.unpack_from("<IIQ", self.mm, off + 64)
+        layout, npix, table_version, peel_mask = struct.unpack_from("<IIQI", self.mm, off + 64)
+        peaks = None
         if layout == 1:
             data = np.frombuffer(self.mm, np.float32, nchan * npix,
                                  off + SLOT_HEADER).copy().reshape(nchan, npix)
+            if peel_mask:
+                peaks = np.frombuffer(self.mm, np.float32, len(PEEL_NAMES) * nchan,
+                                      off + SLOT_HEADER + 4 * nchan * npix).copy().reshape(-1, nchan)
         else:
-            layout, npix, table_version = 0, 0, 0
+            layout, npix, table_version, peel_mask = 0, 0, 0, 0
             data = np.frombuffer(self.mm, np.float32, nchan * grid * grid,
                                  off + SLOT_HEADER).copy().reshape(nchan, grid, grid)
         lock2, = struct.unpack_from("<Q", self.mm, off)
@@ -224,7 +262,7 @@ class RingReader:
             return None
         meta = ImageMeta(n, seq_start, nseqs, chan0, nchan, nbin, grid,
                          PHASE_MODES.get(mode, "plane"), grid_res, img_len_ms, gain_version,
-                         layout, npix, table_version)
+                         layout, npix, table_version, peel_mask if peaks is not None else 0, peaks)
         return meta, data
 
     def close(self):
