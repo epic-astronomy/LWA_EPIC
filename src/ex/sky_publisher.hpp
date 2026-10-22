@@ -84,7 +84,9 @@ class SkyPublisher {
     const float* pix{nullptr};
     /// layout 1: bit s set when bright source s (sky_sources.hpp, skymon
     /// shm.PEEL_NAMES) was subtracted from the spectra; its peak per channel,
-    /// [kPeelSources][nchan / nbin] float, then follows the spectra in pix
+    /// [kPeelSources][nchan / nbin] float, then follows the spectra in pix,
+    /// and after the peaks the subtracted term [nchan / nbin][npix] (the
+    /// sources at each pixel; spectra + term is the unpeeled sky)
     uint32_t peel_mask{0};
   };
   static constexpr int kPeelSources = 5;
@@ -170,12 +172,17 @@ class SkyPublisher {
     const bool pixels = p_info.layout == 1 && p_info.pix &&
                         size_t(nout) * (p_info.npix + kPeelSources) * sizeof(float) + kSlotHeader <= m_slot_bytes;
     const uint32_t peel = pixels ? p_info.peel_mask : 0u;
+    const bool term = peel && size_t(nout) * (2 * size_t(p_info.npix) + kPeelSources) * sizeof(float) +
+                                      kSlotHeader <= m_slot_bytes;
     put_at<uint32_t>(slot, 64, pixels ? 1u : 0u);
     put_at<uint32_t>(slot, 68, pixels ? p_info.npix : 0u);
     put_at<uint64_t>(slot, 72, pixels ? p_info.table_version : 0u);
     put_at<uint32_t>(slot, 80, peel);
+    put_at<uint32_t>(slot, 84, term ? 1u : 0u);
     if (pixels) {
-      std::memcpy(out, p_info.pix, size_t(nout) * (p_info.npix + (peel ? kPeelSources : 0)) * sizeof(float));
+      const size_t nf = peel ? (term ? 2 * size_t(p_info.npix) : size_t(p_info.npix)) + kPeelSources
+                             : size_t(p_info.npix);
+      std::memcpy(out, p_info.pix, size_t(nout) * nf * sizeof(float));
     } else {
       StokesIFitsOrder(p_img, p_nchan, m_grid, m_nbin, out);
     }

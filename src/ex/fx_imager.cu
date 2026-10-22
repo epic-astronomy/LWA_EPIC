@@ -656,11 +656,14 @@ __device__ inline void Keys4(double f, double* wt) {
 // With patterns (pat: [slot][re, im][chan][image] Stokes I of the sources'
 // unit fluxes, gridded with a minus sign; coef [chan][slot]: the image's
 // fitted fluxes) the sources are subtracted from the pixels: the monitor's
-// peeling, which leaves the image itself whole.
+// peeling, which leaves the image itself whole. The subtracted term (the
+// sources as they appear at each pixel) goes to term [nout][P], so that the
+// monitor's display accumulation can add them back.
 __global__ void SkyRegrid(const float4* __restrict__ img, const double2* __restrict__ xy_a,
                           const double2* __restrict__ xy_b, double f, int P, int N, int nbin, int nout,
                           float* __restrict__ out, const float* __restrict__ pat = nullptr,
-                          const float2* __restrict__ coef = nullptr, int nchan = 0) {
+                          const float2* __restrict__ coef = nullptr, int nchan = 0,
+                          float* __restrict__ term = nullptr) {
   const int p = blockIdx.x * blockDim.x + threadIdx.x;
   if (p >= P) return;
   const double2 a2 = xy_a[p], b2 = xy_b[p];
@@ -671,6 +674,8 @@ __global__ void SkyRegrid(const float4* __restrict__ img, const double2* __restr
   const bool ok = isfinite(fx0) && isfinite(fy0) && fx0 >= 1 && fy0 >= 1 && fx0 < N - 2 && fy0 < N - 2;
   if (!ok) {
     for (int c = 0; c < nout; ++c) out[size_t(c) * P + p] = 0.f;
+    if (term)
+      for (int c = 0; c < nout; ++c) term[size_t(c) * P + p] = 0.f;
     return;
   }
   const int x0 = int(fx0), y0 = int(fy0);
@@ -690,7 +695,7 @@ __global__ void SkyRegrid(const float4* __restrict__ img, const double2* __restr
     }
   const size_t nn = size_t(N) * N;
   for (int c = 0; c < nout; ++c) {
-    float s = 0.f;
+    float s = 0.f, sub = 0.f;
     for (int k = 0; k < nbin; ++k) {
       const int ch = c * nbin + k;
       const float4* im = img + size_t(ch) * nn;
@@ -710,11 +715,13 @@ __global__ void SkyRegrid(const float4* __restrict__ img, const double2* __restr
 #pragma unroll
           for (int t = 0; t < 16; ++t) u += w[t] * (x.x * pr[cell[t]] + x.y * pi[cell[t]]);
           v += u;
+          sub -= u;
         }
       }
       s += v;
     }
     out[size_t(c) * P + p] = s;
+    if (term) term[size_t(c) * P + p] = sub;
   }
 }
 
@@ -984,9 +991,10 @@ void FxImager::SetSkyTable(const double* p_xy_a, const double* p_xy_b, int p_cap
       if (p) cudaFree(p);
     Check(cudaMalloc(&m->d_xy_a, size_t(p_capacity) * sizeof(double2)), "sky table");
     Check(cudaMalloc(&m->d_xy_b, size_t(p_capacity) * sizeof(double2)), "sky table");
-    // the pixel spectra, then the peeled sources' peaks [kPeelMax][channels]
+    // the pixel spectra, then the peeled sources' peaks [kPeelMax][channels],
+    // then the subtracted term [channels][pixels]
     for (auto& p : m->d_pix)
-      Check(cudaMalloc(&p, size_t(m->nchan) * (p_capacity + kPeelMax) * sizeof(float)), "sky pixels");
+      Check(cudaMalloc(&p, size_t(m->nchan) * (2 * size_t(p_capacity) + kPeelMax) * sizeof(float)), "sky pixels");
     m->sky_cap = p_capacity;
   }
   Check(cudaMemcpy(m->d_xy_a, p_xy_a, size_t(p_capacity) * sizeof(double2), cudaMemcpyHostToDevice), "sky table");
@@ -1140,7 +1148,10 @@ void FxImager::Image(const float* p_phases, float* p_host, double p_unix, float*
     }
     SkyRegrid<<<(m->sky_p + 127) / 128, 128, 0, m->s>>>(m->d_img[k], m->d_xy_a, m->d_xy_b, f, m->sky_p, N,
                                                         m->sky_nbin, m->nchan / m->sky_nbin, m->d_pix[k],
-                                                        use_pat ? m->d_pat : nullptr, m->d_coef, m->nchan);
+                                                        use_pat ? m->d_pat : nullptr, m->d_coef, m->nchan,
+                                                        use_pat ? m->d_pix[k] + size_t(m->nchan / m->sky_nbin) *
+                                                                                    (m->sky_p + kPeelMax)
+                                                                : nullptr);
     Check(cudaGetLastError(), "sky regrid");
     m->peel_mask = 0;
     if (use_pat) {
@@ -1163,7 +1174,8 @@ void FxImager::Image(const float* p_phases, float* p_host, double p_unix, float*
   }
   if (sky) {
     Check(cudaMemcpyAsync(p_pix_host, m->d_pix[k],
-                          size_t(m->nchan / m->sky_nbin) * (m->sky_p + (m->peel_mask ? kPeelMax : 0)) * sizeof(float),
+                          size_t(m->nchan / m->sky_nbin) *
+                              (m->peel_mask ? 2 * size_t(m->sky_p) + kPeelMax : size_t(m->sky_p)) * sizeof(float),
                           cudaMemcpyDeviceToHost, m->s_copy),
           "copy");
   }

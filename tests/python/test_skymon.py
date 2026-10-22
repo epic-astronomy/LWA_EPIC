@@ -711,6 +711,22 @@ class TestSharedMemory(unittest.TestCase):
             stokes_i = img[0] + img[1]
             ref = stokes_i.reshape(nchan // nbin, nbin, grid, grid).sum(1)
             np.testing.assert_allclose(data, ref, rtol=1e-6)
+            # pixel spectra with a peeled source: peaks and the subtracted term follow
+            subprocess.run([exe, name, str(nchan), str(grid), str(nbin), "1", "peel"], check=True,
+                           capture_output=True)
+            r.close()
+            r = RingReader(name)
+            r._open()
+            r.session = r._header()[1]
+            r.next = 0
+            meta, data = r.read()
+            nout = nchan // nbin
+            spec = (np.arange(nout)[:, None] * 100.0 + np.arange(10)).astype(np.float32)
+            self.assertEqual((meta.layout, meta.npix, meta.table_version, meta.peel_mask), (1, 10, 3, 1))
+            np.testing.assert_array_equal(data, spec)
+            np.testing.assert_array_equal(meta.peel_peaks,
+                                          1000.0 * np.arange(5)[:, None] + np.arange(nout)[None, :])
+            np.testing.assert_array_equal(meta.peel_term, -spec - 0.5)
         finally:
             r.close()
             try:

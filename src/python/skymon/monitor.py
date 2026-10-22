@@ -496,6 +496,11 @@ class Monitor:
         else:
             self.accum.begin(unix)
             results = self.searcher.push(self.raw, self.accum.sum)
+            # the display accumulation keeps the unpeeled sky: the search runs on the
+            # peeled spectra, the sky map, spectrograms and calibrators see the sources
+            term = getattr(prep["item"][0], "peel_term", None)
+            if term is not None and term.shape == self.accum.sum.shape:
+                np.add(self.accum.sum, term, out=self.accum.sum)
             self.accum.end_image(unix + self.dt)
         found = []
         for res in results:

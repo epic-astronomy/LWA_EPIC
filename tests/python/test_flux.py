@@ -203,6 +203,8 @@ class TestArithmetic(unittest.TestCase):
             data = rng.standard_normal((nchan, 100)).astype(np.float32)
             w.write_pixels(data, 1000, 1000, chan0, 64, 7, peaks={"CygA": entries[0][1]["CygA"], "Sun": np.ones(nchan)})
             w.write_pixels(data, 2000, 1000, chan0, 64, 7)
+            term = rng.standard_normal((nchan, 100)).astype(np.float32)
+            w.write_pixels(data, 3000, 1000, chan0, 64, 7, peaks={"CygA": entries[0][1]["CygA"]}, term=term)
             r = RingReader(name)
             r._open()
             r.session = r._header()[1]  # read from the first image, not the newest
@@ -216,8 +218,15 @@ class TestArithmetic(unittest.TestCase):
             np.testing.assert_array_equal(d, data)
             self.assertEqual(meta.peel_mask, (1 << PEEL_NAMES.index("CygA")) | (1 << PEEL_NAMES.index("Sun")))
             np.testing.assert_allclose(meta.peel_peaks[PEEL_NAMES.index("CygA")], entries[0][1]["CygA"], rtol=1e-6)
+            self.assertIsNone(meta.peel_term)
             self.assertEqual(got[1][0].peel_mask, 0)
             self.assertIsNone(got[1][0].peel_peaks)
+            self.assertIsNone(got[1][0].peel_term)
+            # with the subtracted term: spectra + term is the unpeeled sky
+            meta3, d3 = got[2]
+            np.testing.assert_array_equal(d3, data)
+            np.testing.assert_array_equal(meta3.peel_term, term)
+            np.testing.assert_allclose(meta3.peel_peaks[PEEL_NAMES.index("CygA")], entries[0][1]["CygA"], rtol=1e-6)
             r.close()
         finally:
             w.close(unlink=True)

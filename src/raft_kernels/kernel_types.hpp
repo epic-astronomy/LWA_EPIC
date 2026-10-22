@@ -157,9 +157,10 @@ struct Kernel<_CORRELATOR> : KernelTypeDefs {
       // images get fewer of these page-locked buffers (25 x 134 MB at 256)
       const int n = options["imagesize"].as<int>();
       size_t img = size_t(correlator_options.nchan_out) * n * n * 4;
-      // the monitor's pixel spectra after the image (at most 65536 slots)
+      // the monitor's pixel spectra after the image (at most 65536 slots), the
+      // peeled sources' peaks and the subtracted term
       // and the peaks of the sources peeled from them (5 a channel)
-      if (!correlator_options.sky_table_path.empty()) img += size_t(correlator_options.nchan_out) * (65536 + 5);
+      if (!correlator_options.sky_table_path.empty()) img += size_t(correlator_options.nchan_out) * (2 * 65536 + 5);
       if (img > size_t(correlator_options.buf_size)) {
         correlator_options.buf_size = int(img);
         correlator_options.nbuffers = 25;
