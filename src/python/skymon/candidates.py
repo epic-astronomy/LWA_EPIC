@@ -353,8 +353,10 @@ class CandidateStore:
                     # "npz": the data again, extended past the burst (Monitor._extend_tails)
                     p = self.path(c, "npz")
                     tmp = p + ".tmp"
+                    # uncompressed: float32 noise barely compresses, and zlib took a
+                    # tenth of the monitor's time on live data
                     with open(tmp, "wb") as fh:
-                        np.savez_compressed(fh, **extra)
+                        np.savez(fh, **extra)
                     os.replace(tmp, p)
                     c.files["npz"] = p
                 if kind == "supersede":

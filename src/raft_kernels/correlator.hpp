@@ -374,6 +374,7 @@ class CorrelatorRft : public raft::kernel {
         img_metadata["sky_pix_offset"] = uint64_t(m_correlator.get()->SkyPixelOffset());
         // the sources peeled from the spectra (EPIC_FX_PEEL=sky); their peaks follow the spectra
         img_metadata["sky_peel_mask"] = uint64_t(m_correlator.get()->SkyPeelMask());
+        img_metadata["sky_peel_term"] = uint64_t(m_correlator.get()->SkyPeelTerm() ? 1 : 0);
         img_metadata["sky_nchan"] = uint64_t(nchan / std::max(1, m_correlator.get()->GetCalDesc().sky_nbin));
       }
       // interference stage (only when configured, so other images are unchanged)

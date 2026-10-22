@@ -88,6 +88,8 @@ class SkyPublisher {
     /// and after the peaks the subtracted term [nchan / nbin][npix] (the
     /// sources at each pixel; spectra + term is the unpeeled sky)
     uint32_t peel_mask{0};
+    /// the subtracted term follows the peaks (the imager sends it every few images)
+    bool peel_term{false};
   };
   static constexpr int kPeelSources = 5;
 
@@ -172,7 +174,7 @@ class SkyPublisher {
     const bool pixels = p_info.layout == 1 && p_info.pix &&
                         size_t(nout) * (p_info.npix + kPeelSources) * sizeof(float) + kSlotHeader <= m_slot_bytes;
     const uint32_t peel = pixels ? p_info.peel_mask : 0u;
-    const bool term = peel && size_t(nout) * (2 * size_t(p_info.npix) + kPeelSources) * sizeof(float) +
+    const bool term = peel && p_info.peel_term && size_t(nout) * (2 * size_t(p_info.npix) + kPeelSources) * sizeof(float) +
                                       kSlotHeader <= m_slot_bytes;
     put_at<uint32_t>(slot, 64, pixels ? 1u : 0u);
     put_at<uint32_t>(slot, 68, pixels ? p_info.npix : 0u);

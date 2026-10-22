@@ -51,6 +51,7 @@ int main(int argc, char** argv) {
       info.table_version = 3;
       info.pix = pix.data();
       info.peel_mask = 1u;
+      info.peel_term = true;
     }
     pub.Publish(img.data(), nchan, info);
   }

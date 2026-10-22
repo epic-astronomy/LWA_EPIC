@@ -226,6 +226,7 @@ class Monitor:
         self._fit_times = collections.deque()
         # the peaks of the sources the imager peels from the pixels (shm.PEEL_NAMES), per image
         self._peel_peaks = collections.deque(maxlen=4096)
+        self._term, self._term_table = None, None  # the display's peeled-source term (_display_term)
         # burst fits running in the worker processes: (future, candidate, tier level, submitted)
         self._fit_pool = None
         self._fits: list[tuple] = []
@@ -487,6 +488,17 @@ class Monitor:
                 kernels.regrid(image, self.grid.idx, self.grid.w, self.raw, self.cfg.nthreads)
         return dict(item=item, unix=unix, dt_s=time.perf_counter() - t0)
 
+    def _display_term(self, meta):
+        """The peeled sources at each pixel for the display accumulation. The imager
+        sends them with every few images; the last is reused in between, and dropped
+        when peeling stops or the pixel table changes (slots change their pixels)."""
+        if not getattr(meta, "peel_mask", 0) or getattr(meta, "table_version", 0) != self._term_table:
+            self._term = None
+        term = getattr(meta, "peel_term", None)
+        if term is not None and term.shape == self.accum.sum.shape:
+            self._term, self._term_table = term, meta.table_version
+        return self._term
+
     def _search(self, prep):
         """The search of one prepared image (_prepare; self.raw holds its pixels)"""
         t0 = time.perf_counter()
@@ -498,8 +510,8 @@ class Monitor:
             results = self.searcher.push(self.raw, self.accum.sum)
             # the display accumulation keeps the unpeeled sky: the search runs on the
             # peeled spectra, the sky map, spectrograms and calibrators see the sources
-            term = getattr(prep["item"][0], "peel_term", None)
-            if term is not None and term.shape == self.accum.sum.shape:
+            term = self._display_term(prep["item"][0])
+            if term is not None:
                 np.add(self.accum.sum, term, out=self.accum.sum)
             self.accum.end_image(unix + self.dt)
         found = []

@@ -239,6 +239,8 @@ __global__ void PairKernels(const float2* __restrict__ K, const float* __restric
 // sum_ab |V_ab - sum_k x_k e_a,k e_b,k*|^2 over the pairs longer than umin;
 // the gridder subtracts sum_k x_k e_a,k e_b,k* from every pair.
 constexpr int kPeelMax = 5;
+// the monitor's display gets the peeled sources' term with every kTermEvery-th image
+constexpr int kTermEvery = 8;
 struct PeelDirs {
   float3 q[kPeelMax];  // 2 pi / (N dl) (l, m, n - 1)
 };
@@ -776,6 +778,7 @@ struct FxImager::Impl {
   float2* d_coef{};    // [chan][slot] fitted fluxes for SkyRegrid
   float* d_unit_peak{};  // [slot][chan] peak response to a unit flux
   uint32_t peel_mask{0};  // sources whose peaks follow the last image's pixel spectra
+  bool peel_term{false};  // the subtracted term follows the peaks (every kTermEvery-th image)
   bool pat_ok[kPeelMax][2]{};
   int peel_slot[kPeelMax]{};  // BrightSources index of fitted source k
   int pat_next{0};
@@ -1047,6 +1050,7 @@ void FxImager::SetPeel(const double* p_frame, double p_dl, double p_umin_lambda,
 
 int FxImager::SkyPixels() const { return m->sky_p; }
 uint32_t FxImager::SkyPeelMask() const { return m->sky_done ? m->peel_mask : 0u; }
+bool FxImager::SkyPeelTerm() const { return m->sky_done && m->peel_mask && m->peel_term; }
 bool FxImager::SkyDone() const { return m->sky_done; }
 
 void FxImager::Image(const float* p_phases, float* p_host, double p_unix, float* p_pix_host) {
@@ -1137,6 +1141,7 @@ void FxImager::Image(const float* p_phases, float* p_host, double p_unix, float*
     // the monitor's interpolation between its two positions (geometry.SkyGrid.taps)
     const double f = std::min(std::max(fr, 0.0), 1.5);
     bool use_pat = false;
+    m->peel_term = false;
     if (m->peel_sky && peel_k > 0) {
       PeelSlots ps{};
       for (int q = 0; q < kPeelMax; ++q) {
@@ -1146,10 +1151,13 @@ void FxImager::Image(const float* p_phases, float* p_host, double p_unix, float*
       }
       if (use_pat) PeelCoef<<<(m->nchan + 127) / 128, 128, 0, m->s>>>(m->d_peel_x, ps, peel_k, m->nchan, m->d_coef);
     }
+    // the subtracted term for the monitor's display, which averages over 10 s:
+    // every kTermEvery-th image is enough, and the monitor reuses it in between
+    m->peel_term = use_pat && m->img_count % kTermEvery == 0;
     SkyRegrid<<<(m->sky_p + 127) / 128, 128, 0, m->s>>>(m->d_img[k], m->d_xy_a, m->d_xy_b, f, m->sky_p, N,
                                                         m->sky_nbin, m->nchan / m->sky_nbin, m->d_pix[k],
                                                         use_pat ? m->d_pat : nullptr, m->d_coef, m->nchan,
-                                                        use_pat ? m->d_pix[k] + size_t(m->nchan / m->sky_nbin) *
+                                                        m->peel_term ? m->d_pix[k] + size_t(m->nchan / m->sky_nbin) *
                                                                                     (m->sky_p + kPeelMax)
                                                                 : nullptr);
     Check(cudaGetLastError(), "sky regrid");
@@ -1175,7 +1183,8 @@ void FxImager::Image(const float* p_phases, float* p_host, double p_unix, float*
   if (sky) {
     Check(cudaMemcpyAsync(p_pix_host, m->d_pix[k],
                           size_t(m->nchan / m->sky_nbin) *
-                              (m->peel_mask ? 2 * size_t(m->sky_p) + kPeelMax : size_t(m->sky_p)) * sizeof(float),
+                              (m->peel_mask ? (m->peel_term ? 2 : 1) * size_t(m->sky_p) + kPeelMax
+                                            : size_t(m->sky_p)) * sizeof(float),
                           cudaMemcpyDeviceToHost, m->s_copy),
           "copy");
   }
@@ -1308,6 +1317,7 @@ void FxImager::SetImpulseFlags(const uint8_t*) {}
 void FxImager::SetPeel(const double*, double, double, bool) {}
 int FxImager::SkyPixels() const { return 0; }
 uint32_t FxImager::SkyPeelMask() const { return 0; }
+bool FxImager::SkyPeelTerm() const { return false; }
 bool FxImager::SkyDone() const { return false; }
 void FxImager::Sync() {}
 cudaEvent_t FxImager::InputFree() const { return nullptr; }

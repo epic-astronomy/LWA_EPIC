@@ -231,6 +231,24 @@ class TestArithmetic(unittest.TestCase):
         finally:
             w.close(unlink=True)
 
+    def test_display_term_is_reused_between_images(self):
+        """
+        The imager sends the peeled sources' term with every few images: the monitor
+        reuses the last one, and drops it when peeling stops or the pixel table changes.
+        """
+        from types import SimpleNamespace as NS
+        from skymon.monitor import Monitor
+
+        st = NS(_term=None, _term_table=None, accum=NS(sum=np.zeros((2, 3), np.float32)))
+        t1 = np.ones((2, 3), np.float32)
+        f = lambda **kw: Monitor._display_term(st, NS(**kw))
+        self.assertIs(f(peel_mask=1, table_version=4, peel_term=t1), t1)
+        self.assertIs(f(peel_mask=1, table_version=4, peel_term=None), t1)  # reused
+        self.assertIsNone(f(peel_mask=1, table_version=5, peel_term=None))  # new table
+        self.assertIs(f(peel_mask=1, table_version=5, peel_term=t1), t1)
+        self.assertIsNone(f(peel_mask=0, table_version=5, peel_term=None))  # peeling stopped
+        self.assertIsNone(f(peel_mask=1, table_version=5, peel_term=np.ones((3, 3), np.float32)))  # wrong shape
+
     def test_accumulator_keeps_large_values_and_rows_by_time(self):
         """
         The FX imager's raw values reach 1e16, beyond float16: the accumulation
