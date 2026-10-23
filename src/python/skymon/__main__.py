@@ -226,6 +226,10 @@ def main(argv=None):
 
     p = sub.add_parser("run", help="monitor the images of the local imager")
     p.add_argument("--shm", default="epic_sky0", help="shared-memory ring name (/dev/shm)")
+    p.add_argument("--max-queue", type=int, default=2048,
+                   help="images read ahead of the search (about 13 MB each at 192 channels); "
+                        "beyond this the oldest are dropped. Bursts of interference make a "
+                        "search block slower than real time for tens of seconds")
     add_monitor_args(p)
 
     p = sub.add_parser("simulate", help="write simulated images to a ring")
@@ -404,7 +408,7 @@ def cmd_run(a):
         signal.signal(s, lambda *_: stop.set())
     monitor.start_db_sync(stop)
     print(f"skymon: following /dev/shm/{a.shm}", flush=True)
-    run_ring(monitor, a.shm, stop)
+    run_ring(monitor, a.shm, stop, max_queue=a.max_queue)
     monitor.close_fits()
     monitor.store.flush()
     return 0

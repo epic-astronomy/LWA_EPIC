@@ -1408,6 +1408,47 @@ class TestScatteredBursts(unittest.TestCase):
             shutil.rmtree(out, ignore_errors=True)
 
 
+class TestReadAheadQueue(unittest.TestCase):
+    def test_queue_bounds_the_read_ahead_and_drops_the_oldest(self):
+        """A monitor slower than the imager reads ahead up to max_queue images, then
+        drops the oldest; a longer queue rides out the same burst without loss"""
+        import threading
+        from types import SimpleNamespace as NS
+        from skymon.__main__ import run_ring
+
+        def run(max_queue):
+            name = f"skymon_q_{os.getpid()}_{max_queue}"
+            w = RingWriter(name, 64, 4, 8)
+            seen = []
+            mon = NS(cfg=NS(pixel_table=False), metrics={},
+                     process=lambda meta, img: (seen.append(meta.seq_start), time.sleep(0.02)))
+            stop = threading.Event()
+            th = threading.Thread(target=run_ring, args=(mon, name, stop),
+                                  kwargs=dict(max_queue=max_queue, status_every=1e9), daemon=True)
+            th.start()
+            try:
+                time.sleep(0.3)
+                for i in range(40):  # a burst: the writer far faster than the search
+                    w.write(np.zeros((4, 8, 8), np.float32), 1000 + i, 1000, 2336)
+                for _ in range(400):
+                    if seen and seen[-1] == 1039:
+                        break
+                    time.sleep(0.01)
+            finally:
+                stop.set()
+                th.join(5)
+                w.close(unlink=True)
+            return seen, mon.metrics
+
+        seen, m = run(4)
+        self.assertGreater(m["queue_dropped"], 0)
+        self.assertLessEqual(m["queue_max"], 4)
+        self.assertEqual(seen[-1], 1039)  # the newest is kept
+        seen, m = run(64)
+        self.assertEqual(m["queue_dropped"], 0)
+        self.assertEqual(len(seen), 40)
+
+
 class TestIndependence(unittest.TestCase):
     def test_monitor_survives_missing_and_restarting_imager(self):
         """A monitor waits for its ring, rides out a writer restart and gaps, alone"""
