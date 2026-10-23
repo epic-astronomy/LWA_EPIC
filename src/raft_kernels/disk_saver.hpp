@@ -26,6 +26,7 @@
 
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <raft>
@@ -36,6 +37,7 @@
 #include "../ex/async_writer.hpp"
 #include "../ex/constants.h"
 #include "../ex/db_helpers.hpp"
+#include "../ex/fits_writer_proc.hpp"
 #include "../ex/metrics.hpp"
 #include "../ex/py_funcs.hpp"
 #include "../ex/types.hpp"
@@ -48,7 +50,11 @@
  *
  * The writing happens off the pipeline: run() copies the accumulation into a
  * bounded queue (m_queue_len entries) served by a writer thread and returns at
- * once. A full queue (the writer stalled, e.g. on a hung NFS mount) drops the
+ * once. The writer thread hands each accumulation to a Python writer in a
+ * process of its own (FitsWriterProc, src/python/epic_fits_writer.py): written
+ * from the embedded interpreter, a 201 MB accumulation held its lock for
+ * seconds and stalled the pipeline stages that call into Python.
+ * EPIC_FITS_WRITER=inproc restores the in-process writer. A full queue (the writer stalled, e.g. on a hung NFS mount) drops the
  * accumulation with a rate-limited warning, so the imager never stalls or
  * stops because of the long-integration archive. Write errors are logged
  * (rate-limited) and the accumulation is dropped.
@@ -80,17 +86,20 @@ class DiskSaverRft : public raft::kernel
   RateLimit m_drop_log{std::chrono::seconds(300)};
   RateLimit m_write_log{std::chrono::seconds(300)};
   std::unique_ptr<PgLink> m_db;
+  // the writer process; null with EPIC_FITS_WRITER=inproc (used by the writer thread only)
+  std::unique_ptr<FitsWriterProc> m_proc;
   // last: constructed after, and destroyed before, everything the writer uses
   std::unique_ptr<BoundedWorker<Job>> m_writer;
 
   void Write(Job& job) {
-    auto filename = SaveImageToDisk(job.imsize, job.nchan, job.data.data(),
-                                    m_out_dir + "/", job.meta);
+    std::string why;
+    auto filename = m_proc ? m_proc->Write(job.imsize, job.nchan, job.data.data(), m_out_dir + "/", job.meta, &why)
+                           : SaveImageToDisk(job.imsize, job.nchan, job.data.data(), m_out_dir + "/", job.meta);
     if (filename.empty()) {
       size_t held;
       if (m_write_log.Due(&held)) {
         LOG(ERROR) << "disk saver: accumulation not written to " << m_out_dir
-                   << " (" << held << " more since the last report)";
+                   << (why.empty() ? "" : ": " + why) << " (" << held << " more since the last report)";
       }
       return;
     }
@@ -114,6 +123,11 @@ class DiskSaverRft : public raft::kernel
     m_out_dir = p_out_dir;
     // a few files a minute: 256 cover hours of an unavailable database
     m_db = std::make_unique<PgLink>("disk saver", p_db_conn_str, 256);
+    const char* mode = std::getenv("EPIC_FITS_WRITER");
+    if (!(mode && std::string(mode) == "inproc")) m_proc = std::make_unique<FitsWriterProc>();
+    LOG(INFO) << "disk saver: accumulations written by "
+              << (m_proc ? "a writer process (epic_fits_writer)" : "the embedded interpreter") << " to "
+              << m_out_dir;
 
     m_rt_gauge_id = PrometheusExporter::AddRuntimeSummaryLabel(
         {{"type", "exec_time"},
