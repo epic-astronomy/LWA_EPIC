@@ -154,6 +154,67 @@ class TestConditions(unittest.TestCase):
             httpd.server_close()
 
 
+class TestDisturbedThresholds(unittest.TestCase):
+    def test_rfi_rate_relative_to_the_usual_level_and_sky_fraction_over_a_minute(self):
+        from types import SimpleNamespace as NS
+        from skymon.conditions import Conditions
+
+        c = Conditions(interval_s=10.0, rfi_rate_max=2.0, sky_fraction_max=0.01)
+        npix = 100
+        var = np.ones((4, npix), np.float32)
+        age = np.full(npix, 1000)
+        live = np.ones(npix, np.uint8)
+        t = 1_000_000.0
+        c.due(t)
+
+        def interval(n_rfi, hit_slots=()):
+            nonlocal t
+            for _ in range(n_rfi):
+                c.note_candidate("rfi")
+            if hit_slots:
+                c.note_block(NS(calibrating=False, hits=[NS(slot=k) for k in hit_slots]))
+            t += 10.0
+            c.due(t)
+            return c.sample(var, age, live, 0, npix)
+
+        # the site's usual level: 7 per 10 s, 42 per minute; after the first
+        # five minutes it is no longer "disturbed"
+        recs = [interval(7) for _ in range(60)]
+        self.assertTrue(recs[5]["disturbed"])  # before the usual level is known
+        self.assertFalse(any(r["disturbed"] for r in recs[40:]), [r["reasons"] for r in recs[40:]])
+        self.assertAlmostEqual(recs[-1]["rfi_rate_threshold"], 3 * 42.0, delta=3.0)
+        # four times the usual level for a minute is
+        recs = [interval(28) for _ in range(6)]
+        self.assertIn("rfi_rate", recs[-1]["reasons"])
+        recs = [interval(7) for _ in range(12)]
+        self.assertFalse(recs[-1]["disturbed"])
+        # one flash over most of the sky is one sample: not a disturbed minute
+        r = interval(7, hit_slots=range(60))
+        self.assertNotIn("sky_triggered", r["reasons"])
+        # flashes through most of a minute are
+        recs = [interval(7, hit_slots=range(60)) for _ in range(6)]
+        self.assertIn("sky_triggered", recs[-1]["reasons"])
+        self.assertEqual(c.thresholds()["rfi_factor"], 3.0)
+
+
+class TestSolarWindow(unittest.TestCase):
+    def test_near_a_solar_burst(self):
+        import collections
+        from types import SimpleNamespace as NS
+        from skymon.monitor import Monitor
+
+        m = NS(cfg=NS(solar_window_s=30.0), _solar_times=collections.deque([1000.0, 5000.0]))
+        near = lambda t: Monitor._near_solar_burst(m, t)
+        self.assertTrue(near(1020.0))
+        self.assertTrue(near(5000.0 - 30.0))
+        self.assertFalse(near(1100.0))
+        # bursts older than an hour are forgotten
+        self.assertFalse(near(4700.0 + 3600.0))
+        self.assertEqual(list(m._solar_times), [5000.0])
+        m.cfg.solar_window_s = 0.0
+        self.assertFalse(near(5000.0))
+
+
 class TestCombinerConditions(unittest.TestCase):
     def test_event_carries_the_bands_conditions(self):
         from test_combiner import BANDS, FakeMonitor, make, zenith_ish

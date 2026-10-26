@@ -141,6 +141,12 @@ class CombinerConfig:
     context_refresh_s: float = 24 * 3600.0  # update the context of events decided this recently
 
 
+def needs_confirmation(c) -> str:
+    """Why a monitor holds this record for confirmation in another band ("" if it does not)"""
+    q = c.get("quality") or {}
+    return str(q.get("needs_confirmation") or "") if c.get("cls") == "rfi" else ""
+
+
 def utc(unix: float) -> str:
     return datetime.fromtimestamp(unix, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
@@ -402,7 +408,8 @@ class Combiner:
                   injection_id=inj, status="pending", ra=c["ra"], dec=c["dec"], dm=c["dm"],
                   dm_err=c["dm_step"], t_inf=c["t_inf"], utc_inf=utc(c["t_inf"]),
                   ref_f_lo=c["f_lo_mhz"], ref_beam=beam_fwhm_deg(c["f_lo_mhz"]), refits=0,
-                  combined_snr=None, n_seen=0, bands={}, notes=[])
+                  combined_snr=None, n_seen=0, bands={}, notes=[],
+                  needs_confirmation=needs_confirmation(c) or None)
         self.events[eid] = ev
         print(f"combiner: event {eid} from {node} S/N {c['snr']:.1f} DM {c['dm']:.1f} "
               f"RA {c['ra']:.2f} Dec {c['dec']:.2f}", flush=True)
@@ -642,6 +649,12 @@ class Combiner:
                 cond[name] = c
         if len(seen) >= self.cfg.min_bands:
             status = "confirmed"
+        elif ev.get("needs_confirmation"):
+            # made during a solar burst: a single band is not enough
+            status = "implausible"
+            note = f"held for confirmation ({ev['needs_confirmation']}); not seen in another band"
+            if note not in ev["notes"]:
+                ev["notes"].append(note)
         elif len(seen) >= 1 and len(could) >= 2:
             status = "band_limited" if spectrum.get("plausible") else "implausible"
         else:
@@ -839,9 +852,11 @@ class Combiner:
                 if c["cls"] in ("candidate", "rfi"):
                     self.recent.append((now, name, {k: c.get(k) for k in COINC_KEYS}))
                 # only plain candidates open events: not RFI, not candidates at
-                # known sources ("known"), and of injections only coordinated ones
-                if c["cls"] == "candidate" or (c["cls"] == "injection" and
-                                               str(c.get("injection_id", "")).startswith("cinj-")):
+                # known sources ("known"), and of injections only coordinated ones;
+                # and candidates a monitor holds for confirmation in another band
+                # (made during a solar burst), which only such a detection confirms
+                if c["cls"] == "candidate" or needs_confirmation(c) or (
+                        c["cls"] == "injection" and str(c.get("injection_id", "")).startswith("cinj-")):
                     new.append((name, c))
         with self.lock:
             changed = set()

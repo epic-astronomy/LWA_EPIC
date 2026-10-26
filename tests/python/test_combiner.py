@@ -47,7 +47,7 @@ class FakeMonitor:
                     tiers=[dict(dm_max=3000.0, latency_s=60.0)])
 
     def candidate(self, cid, snr, dm, t_inf, ra, dec, cls="candidate", injection_id=None,
-                  true_dm=None):
+                  true_dm=None, quality=None):
         """true_dm: the burst's DM, which sets the measured arrival; dm is the reported one"""
         f_lo, f_hi = self.band
         t_bottom = t_inf + K_DM * (dm if true_dm is None else true_dm) / f_lo ** 2
@@ -55,7 +55,7 @@ class FakeMonitor:
                                t_inf=t_bottom - K_DM * dm / f_lo ** 2,
                                t_bottom=t_bottom, ra=ra, dec=dec, el=80.0,
                                tier=1, tier_dt=0.167, width_s=0.167, f_lo_mhz=f_lo,
-                               f_hi_mhz=f_hi, injection_id=injection_id))
+                               f_hi_mhz=f_hi, injection_id=injection_id, quality=quality or {}))
 
     def get(self, path):
         if not self.up:
@@ -221,6 +221,25 @@ class TestConsensus(unittest.TestCase):
             self.assertEqual(ev["best_snr"], 12.0)
         finally:
             shutil.rmtree(out, ignore_errors=True)
+
+    def test_solar_time_candidate_needs_another_band(self):
+        """A detection a monitor held during a solar burst opens an event that only another band confirms"""
+        held = dict(needs_confirmation="solar burst")
+        for followup, want in ((0.5, "implausible"), (9.0, "confirmed")):
+            nodes = {n: FakeMonitor(n, b, followup_snr=followup) for n, b in BANDS.items()}
+            nodes["mid"].candidate("c1", 12.0, 120.0, T0, self.ra, self.dec, cls="rfi", quality=held)
+            # plain RFI opens nothing
+            nodes["hi"].candidate("r1", 30.0, 400.0, T0 + 50, self.ra, self.dec, cls="rfi")
+            comb, out = make(nodes)
+            try:
+                self.run_until_decided(comb, T0 + 200)
+                (ev,) = comb.events.values()
+                self.assertEqual(ev["needs_confirmation"], "solar burst")
+                self.assertEqual(ev["status"], want)
+                if want == "implausible":
+                    self.assertTrue(any("held for confirmation" in n for n in ev["notes"]))
+            finally:
+                shutil.rmtree(out, ignore_errors=True)
 
     def test_bright_burst_missing_from_the_next_band_is_still_band_limited(self):
         """

@@ -30,10 +30,17 @@ monitor records a sample:
   el_cyg_a, el_cas_a      elevations (deg) of Cyg A and Cas A, whose
                           scintillation and passage through the beam raise the
                           noise at those widths
-  disturbed               noise_ratio > noise_ratio_max, rfi_rate >
-                          rfi_rate_max, solar_rate > rfi_rate_max (reason
-                          "solar") or sky_fraction_triggered >
-                          sky_fraction_max; the reasons are listed
+  disturbed               noise_ratio > noise_ratio_max; rfi_rate above
+                          rfi_rate_threshold, the larger of rfi_rate_max
+                          and rfi_factor times the median rate of the
+                          samples in memory (the site's usual level of
+                          interference: on live data it was tens per
+                          minute, so a fixed 2 per minute held all the
+                          time); solar_rate > rfi_rate_max (reason
+                          "solar"); or the median over the last minute of
+                          sky_fraction_triggered > sky_fraction_max (one
+                          flash over the sky lasts one sample). The
+                          reasons are listed
 
 The samples of the last `hours` stay in memory (status, HTTP) and are queued
 for the node's database, which the monitor's database thread drains; the
@@ -58,11 +65,14 @@ BLIND_CLASSES = ("candidate", "injection", "rfi")
 class Conditions:
     def __init__(self, interval_s=10.0, baseline_tau_s=3600.0, hours=6.0, noise_ratio_max=1.5,
                  rfi_rate_max=2.0, sky_fraction_max=0.01, npix=1024, rate_window_s=60.0,
-                 rng=None):
+                 rng=None, rfi_factor=3.0, rfi_baseline_min_samples=30):
         self.interval = float(interval_s)
         self.a_base = 1.0 - math.exp(-self.interval / baseline_tau_s)
         self.noise_ratio_max = noise_ratio_max
         self.rfi_rate_max = rfi_rate_max
+        self.rfi_factor = rfi_factor
+        self.rfi_baseline_min = rfi_baseline_min_samples
+        self.rfi_threshold = rfi_rate_max
         self.sky_fraction_max = sky_fraction_max
         self.npix = npix
         self.rate_window = rate_window_s
@@ -155,14 +165,22 @@ class Conditions:
         n_solar = self.n_solar + sum(s.get("solar", 0) for s in recent)
         rec.update(rfi_rate=n_rfi / minutes, cand_rate=n_cand / minutes,
                    solar_rate=n_solar / minutes)
+        # the usual level of interference: the median rate of the samples in memory
+        with self.lock:
+            past = [s["rfi_rate"] for s in self.series if s.get("rfi_rate") is not None]
+        if len(past) >= self.rfi_baseline_min:
+            self.rfi_threshold = max(self.rfi_rate_max, self.rfi_factor * float(np.median(past)))
+        rec["rfi_rate_threshold"] = self.rfi_threshold
+        frac_minute = float(np.median([s["sky_fraction_triggered"] for s in recent
+                                       if s.get("sky_fraction_triggered") is not None] + [frac_trig]))
         reasons = []
         if noise_ratio is not None and noise_ratio > self.noise_ratio_max:
             reasons.append("noise")
-        if rec["rfi_rate"] > self.rfi_rate_max:
+        if rec["rfi_rate"] > self.rfi_threshold:
             reasons.append("rfi_rate")
         if rec["solar_rate"] > self.rfi_rate_max:
             reasons.append("solar")
-        if frac_trig > self.sky_fraction_max:
+        if frac_minute > self.sky_fraction_max:
             reasons.append("sky_triggered")
         rec.update(disturbed=bool(reasons), reasons=reasons)
         with self.lock:
@@ -257,7 +275,8 @@ class Conditions:
                     unwritten=len(self.unwritten))
 
     def thresholds(self):
-        return dict(noise_ratio=self.noise_ratio_max, rfi_rate=self.rfi_rate_max,
+        return dict(noise_ratio=self.noise_ratio_max, rfi_rate=self.rfi_threshold,
+                    rfi_rate_min=self.rfi_rate_max, rfi_factor=self.rfi_factor,
                     sky_fraction_triggered=self.sky_fraction_max, interval_s=self.interval)
 
     # ------------------------------------------------------------ the database

@@ -34,7 +34,14 @@ def add_monitor_args(p):
                         "dbname=skymon' (default $SKYMON_DB; none: files only)")
     p.add_argument("--port", type=int, default=8095, help="HTTP port, 0 to disable")
     p.add_argument("--nside", type=int, default=0, help="HEALPix nside (0: from the beam)")
-    p.add_argument("--el-min", type=float, default=d.el_min)
+    p.add_argument("--el-min", type=float, default=d.el_min,
+                   help="pixels above this elevation are tracked and searched (deg)")
+    p.add_argument("--el-guard", type=float, default=d.el_guard,
+                   help="candidates are reported only this many degrees above --el-min; the "
+                        "pixels between are tracked for their history (deg)")
+    p.add_argument("--solar-window", type=float, default=d.solar_window_s,
+                   help="a candidate within this many seconds of a solar burst needs another "
+                        "band to confirm it (0: off)")
     p.add_argument("--dm-max", type=float, default=d.dm_max)
     p.add_argument("--threshold", type=float, default=d.threshold,
                    help="S/N threshold of the reference search (boxcars 1, 2, 4, 8); wider "
@@ -127,7 +134,7 @@ def add_monitor_args(p):
 
 
 def make_config(a) -> Config:
-    return Config(out_dir=a.out, db_dsn=a.db, nside=a.nside, el_min=a.el_min, dm_max=a.dm_max,
+    return Config(out_dir=a.out, db_dsn=a.db, nside=a.nside, el_min=a.el_min, el_guard=a.el_guard, solar_window_s=a.solar_window, dm_max=a.dm_max,
                   threshold=a.threshold, nthreads=a.threads, block0=a.block,
                   delay_factor=a.max_delay_factor,
                   accum_interval_s=a.accum_interval, accum_hours=a.accum_hours,

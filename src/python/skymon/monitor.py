@@ -54,6 +54,11 @@ class Config:
     db_dsn: str | None = None  # the node's local PostgreSQL (localdb.py); None: files only
     nside: int = 0  # 0: from the beam at the band centre
     el_min: float = 10.0
+    # candidates are reported only this many degrees above el_min: the pixels
+    # between are tracked and searched for their history, which a pixel that
+    # has just risen above the limit lacks. On live data (2026-10-23/24) 73% of
+    # the candidates lay within 5 deg of el_min, whether it was 14 or 20 deg
+    el_guard: float = 0.0
     dm_max: float = 3000.0
     # S/N threshold of the reference search (boxcars 1, 2, 4, 8 in every
     # tier); with far_matched the threshold applied is raised for the extra
@@ -160,6 +165,14 @@ class Config:
     pixel_table: bool = True
     fixed_dir_repeats: int = 2
     fixed_dir_hours: float = 6.0
+    # a candidate within this many seconds of a solar burst (a burst at the
+    # Sun, in this band) is not reported as a candidate but as RFI pending
+    # confirmation (data kept): the combiner opens an event for it, which only
+    # a detection in another band confirms. Type III bursts drift like a
+    # dispersed pulse and are seen through the sidelobes over the whole sky;
+    # 68% of the daytime candidates of 2026-10-23/24 lay within 30 s of one.
+    # 0 disables
+    solar_window_s: float = 30.0
     # a candidate whose signal is in fewer effective channels than this, or
     # with more than narrowband_top2 of it in two channels, is narrowband RFI
     narrowband_min_channels: float = 6.0
@@ -226,6 +239,7 @@ class Monitor:
         self._fit_times = collections.deque()
         # the peaks of the sources the imager peels from the pixels (shm.PEEL_NAMES), per image
         self._peel_peaks = collections.deque(maxlen=4096)
+        self._solar_times = collections.deque(maxlen=20000)  # t_bottom of recent solar bursts
         self._term, self._term_table = None, None  # the display's peeled-source term (_display_term)
         # burst fits running in the worker processes: (future, candidate, tier level, submitted)
         self._fit_pool = None
@@ -254,6 +268,7 @@ class Monitor:
         self.unix0 = meta.unix
         nside = cfg.nside or auto_nside(self.band.f_centre, meta.grid_res)
         self.grid = SkyGrid(nside, cfg.el_min, meta.grid, meta.grid_res, meta.phase_mode)
+        self.grid.el_report = cfg.el_min + cfg.el_guard  # injections go above it
         self.beam_tab = None  # the primary beam of this band (flux.py)
         if cfg.beam_model != "record":
             try:
@@ -487,6 +502,15 @@ class Monitor:
                                         self.band.centres_mhz(), self.wcs, self.cfg_pix_deg(meta))
                 kernels.regrid(image, self.grid.idx, self.grid.w, self.raw, self.cfg.nthreads)
         return dict(item=item, unix=unix, dt_s=time.perf_counter() - t0)
+
+    def _near_solar_burst(self, t: float) -> bool:
+        """A solar burst in this band within solar_window_s of t (recent bursts only)"""
+        w = self.cfg.solar_window_s
+        if w <= 0:
+            return False
+        while self._solar_times and self._solar_times[0] < t - 3600.0:
+            self._solar_times.popleft()
+        return any(abs(t - s) <= w for s in self._solar_times)
 
     def _display_term(self, meta):
         """The peeled sources at each pixel for the display accumulation. The imager
@@ -767,6 +791,8 @@ class Monitor:
                   self.known.body_beams * elevation_radius(self.beam, el_hits[heads])) & \
             self.known.body_up("Sun", hits[0].t_bottom)
         solar_time = np.zeros(len(groups), bool)
+        for gi in np.nonzero(at_sun)[0]:
+            self._solar_times.append(float(hits[groups[gi][0]].t_bottom))
         if at_sun.any():
             solar_time = ((h_lo[:, None] <= h_hi[at_sun][None, :]) &
                           (h_hi[:, None] >= h_lo[at_sun][None, :])).any(1)
@@ -787,9 +813,14 @@ class Monitor:
             if b.dm < self.cfg.dm_min:
                 reasons.append("DM near zero")
             el, az = altaz(ra[g[0]], dec[g[0]], b.t_bottom)
+            if el < self.cfg.el_min + self.cfg.el_guard:
+                # tracked for its history only: below the reporting limit
+                self.metrics["below_report_limit"] = self.metrics.get("below_report_limit", 0) + 1
+                continue
             # a pixel near the elevation limit brightens quickly through the
             # primary beam, which a wide boxcar at low DM takes for a pulse
-            if b.width > tier.narrow_max and el < self.cfg.el_min + self.cfg.wide_el_margin:
+            if b.width > tier.narrow_max and \
+                    el < self.cfg.el_min + self.cfg.el_guard + self.cfg.wide_el_margin:
                 reasons.append("wide pulse near the horizon")
             solar = bool(at_sun[gi])
             sidelobe = not solar and bool(solar_time[gi]) and (
@@ -866,6 +897,11 @@ class Monitor:
                             f"{n_rep} detections there before, with the sky elsewhere")
                         cls = c.cls = "rfi"
                 self.fixed_dirs.add(c.t_bottom, c.az, c.el, c.ra, c.dec)
+                if c.cls == "candidate" and self._near_solar_burst(c.t_bottom):
+                    c.rfi_reasons.append(f"during a solar burst (within {self.cfg.solar_window_s:.0f} s): "
+                                         "a detection in another band is needed")
+                    c.quality["needs_confirmation"] = "solar burst"
+                    cls = c.cls = "rfi"
             if not certain and not solar:
                 self._label_known(c)
             ks = c.known_source or {}

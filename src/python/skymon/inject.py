@@ -37,7 +37,7 @@ import numpy as np
 from .burst import Burst, amplitude_for_snr, channel_fractions, effective_samples, stamp
 from .candidates import separation_deg
 from .dedisp import K_DM
-from .geometry import beam_fwhm_deg, time_to_set
+from .geometry import altaz, beam_fwhm_deg, time_to_set
 
 
 class LiveInjector:
@@ -90,7 +90,10 @@ class LiveInjector:
             s = int(self.rng.choice(slots))
             h = int(grid.hpix_of[s])
             ra, dec = float(grid.ra[h]), float(grid.dec[h])
-            left = float(time_to_set(dec, ra, now, grid.el_min))
+            el_report = getattr(grid, "el_report", grid.el_min)
+            if float(altaz(np.array([ra]), np.array([dec]), now)[0][0]) < el_report:
+                continue  # below the reporting limit: tracked for history only
+            left = float(time_to_set(dec, ra, now, el_report))
             dm_hi = min(self.dm[1], (left - self.lead - 60.0 - tail) / sweep,
                         searcher.tiers[-1].dm_max)
             if dm_hi > self.dm[0]:
