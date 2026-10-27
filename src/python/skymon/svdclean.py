@@ -82,8 +82,11 @@ def components(z: np.ndarray, margin: float = 1.05, max_k: int = 64) -> tuple[np
     return v.astype(np.float32), info
 
 
+Z_CLIP = 20.0  # standardised sub-band means are clipped to this before the components are found
+
+
 def clean_block(raw: np.ndarray, mu: np.ndarray, var: np.ndarray, groups, margin: float = 1.05,
-                max_k: int = 64, nthreads: int = 1) -> list[dict]:
+                max_k: int = 64, nthreads: int = 1, usable: np.ndarray | None = None) -> list[dict]:
     """
     Clean a block of images in place with the components of the block itself.
     raw: [W][nchan][P] float32; mu, var: [nchan][P] (running statistics at the block's
@@ -93,6 +96,12 @@ def clean_block(raw: np.ndarray, mu: np.ndarray, var: np.ndarray, groups, margin
     channel's own units (interference broad over a sub-band of a few hundred kHz;
     narrowband interference is classified separately). The element-wise passes run in
     the compiled kernels (kernels.svd_submeans, svd_apply), the rest in BLAS.
+    Only pixels with sound statistics take part (finite mean and variance, positive
+    variance, and usable [P] when given, e.g. past the warm-up): a pixel that has just
+    started has a tiny variance, its standardised values are enormous, and through the
+    components the correction would spread them over the sky (live on 2026-10-27 this
+    overflowed the search's variances to NaN, and one NaN pixel then stopped the cut).
+    The standardised sub-band means are clipped to +-Z_CLIP for the components.
     A flash is only removed by components that include it: interference fixed to the
     ground drifts across sky-fixed pixels, so patterns learned from earlier images do
     not match new flashes (on the 2026-10-26 recording, patterns from the previous
@@ -101,16 +110,25 @@ def clean_block(raw: np.ndarray, mu: np.ndarray, var: np.ndarray, groups, margin
     from . import kernels
 
     W, C, P = raw.shape
-    sd = np.sqrt(np.maximum(var, 0)).astype(np.float32)
-    isd = np.where(sd > 0, 1.0 / np.where(sd > 0, sd, 1), 0).astype(np.float32)
+    good = np.isfinite(mu) & np.isfinite(var) & (var > 0)
+    if usable is not None:
+        good &= usable[None, :]
+    good_pix = good.all(axis=0)  # every channel sound
+    good &= good_pix[None, :]
+    with np.errstate(invalid="ignore", divide="ignore"):
+        sd = np.where(good, np.sqrt(np.where(good, var, 1)), 0).astype(np.float32)
+        isd = np.where(good, 1.0 / np.where(good, sd, 1), 0).astype(np.float32)
+    mu0 = np.where(good, mu, 0).astype(np.float32)
     gstart = np.array([g[0] for g in groups] + [groups[-1][1]], np.int32)
-    zsub = kernels.svd_submeans(raw, mu, isd, gstart, nthreads)  # S, W, P
+    zsub = kernels.svd_submeans(raw, mu0, isd, gstart, nthreads)  # S, W, P
+    np.clip(zsub, -Z_CLIP, Z_CLIP, out=zsub)
+    zsub[~np.isfinite(zsub)] = 0
     corr = np.zeros_like(zsub)
     infos = []
     any_k = False
     for s in range(len(groups)):
         zs = zsub[s]
-        live = np.any(zs != 0, axis=0)
+        live = good_pix & np.any(zs != 0, axis=0)
         info = dict(k=0)
         if live.sum() > 2 * W:
             zl = zs[:, live]
@@ -120,7 +138,8 @@ def clean_block(raw: np.ndarray, mu: np.ndarray, var: np.ndarray, groups, margin
                 any_k = True
         infos.append(info)
     if any_k:
-        kernels.svd_apply(raw, sd, corr, gstart, nthreads)
+        corr[~np.isfinite(corr)] = 0
+        kernels.svd_apply(raw, sd, corr, gstart, nthreads)  # sd is 0 where unsound: untouched
     return infos
 
 
@@ -139,10 +158,12 @@ class SvdCleaner:
         self.last: list[dict] = []
         self.seconds = 0.0
 
-    def clean(self, raw: np.ndarray, mu: np.ndarray, var: np.ndarray) -> None:
+    def clean(self, raw: np.ndarray, mu: np.ndarray, var: np.ndarray,
+              usable: np.ndarray | None = None) -> None:
         """Clean a block raw [W][nchan][P] in place (clean_block)"""
         t0 = time.perf_counter()
-        self.last = clean_block(raw, mu, var, self.groups, self.margin, self.max_k, self.nthreads)
+        self.last = clean_block(raw, mu, var, self.groups, self.margin, self.max_k, self.nthreads,
+                                usable)
         self.blocks += 1
         self.images += len(raw)
         self.seconds += time.perf_counter() - t0

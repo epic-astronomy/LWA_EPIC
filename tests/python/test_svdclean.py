@@ -46,6 +46,42 @@ class TestCleanBlock(unittest.TestCase):
         self.assertGreater(after_burst, 0.9 * before_burst, (before_burst, after_burst))
         self.assertEqual(cl.status()["images"], W)
 
+    def test_unsound_pixels_neither_stop_nor_spread(self):
+        """A pixel with a NaN variance and one with a tiny variance (just started), as on
+        epic6 on 2026-10-27: the flash is still removed, nothing becomes non-finite, the
+        broken pixels are left as they are and the tiny one barely changes"""
+        from skymon.svdclean import clean_block
+
+        rng = np.random.default_rng(6)
+        W, C, P = 256, 8, 3000
+        mu = np.zeros((C, P), np.float32)
+        var = np.ones((C, P), np.float32)
+        raw = rng.standard_normal((W, C, P)).astype(np.float32)
+        pattern = np.where(rng.random(P) < 0.4, rng.standard_normal(P), 0).astype(np.float32)
+        for t in (40, 41, 120, 200):
+            raw[t] += 3.0 * pattern[None, :]
+        var[:, 10] = np.nan            # broken statistics
+        mu[:, 11] = np.inf
+        var[:, 12] = 1e-12             # a pixel that has just started: enormous standardised values
+        ref = raw.copy()
+        before = np.abs(raw[[40, 41, 120, 200]].mean(1)[:, pattern != 0]).mean()
+        info = clean_block(raw, mu, var, [(0, 4), (4, 8)])
+        after = np.abs(raw[[40, 41, 120, 200]].mean(1)[:, pattern != 0]).mean()
+        self.assertTrue(np.isfinite(raw).all())
+        self.assertGreater(min(i["k"] for i in info), 0)
+        self.assertTrue(all(np.isfinite(i["edge"]) for i in info))
+        self.assertLess(after, 0.3 * before, (before, after))
+        np.testing.assert_array_equal(raw[:, :, 10], ref[:, :, 10])
+        # the tiny-variance pixel takes part, clipped to +-Z_CLIP sigma: it cannot dominate
+        # the components, and its own correction is scaled by its tiny noise
+        self.assertLess(float(np.abs(raw[:, :, 12] - ref[:, :, 12]).max()), 1e-3)
+        # and a pixel outside "usable" (still warming up) is left alone too
+        raw2 = ref.copy()
+        usable = np.ones(P, bool)
+        usable[20] = False
+        clean_block(raw2, mu, var, [(0, 4), (4, 8)], usable=usable)
+        np.testing.assert_array_equal(raw2[:, :, 20], ref[:, :, 20])
+
     def test_pure_noise_is_left_alone(self):
         from skymon.svdclean import clean_block
 

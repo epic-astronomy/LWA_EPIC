@@ -340,6 +340,13 @@ class Monitor:
     def _update_grid(self, unix):
         with self.grid_lock:
             added, removed = self.grid.update(unix, self.cfg.regrid_interval_s)
+            # a pixel whose statistics broke (non-finite mean or variance, e.g. after an
+            # overflow) can never recover by itself: start it anew
+            broken = np.nonzero(~(np.isfinite(self.searcher.mu).all(0) &
+                                  np.isfinite(self.searcher.var).all(0)))[0]
+            if len(broken):
+                self.metrics["broken_pixels_reset"] = self.metrics.get("broken_pixels_reset", 0) + len(broken)
+                removed = np.union1d(np.asarray(removed, np.int64), broken)
             # state starts zeroed, so only a slot whose pixel set needs clearing
             # before another pixel can rise into it
             self.searcher.reset_slots(removed)
@@ -493,7 +500,8 @@ class Monitor:
         idx = [i for i, (_, r) in enumerate(buf) if r is not None]
         if len(idx) >= 32:  # too few images for the components: searched as they are
             blk = np.stack([buf[i][1] for i in idx])
-            self.svd.clean(blk, self.searcher.mu, self.searcher.var)
+            usable = (self.searcher.age > self.searcher.warmup) & (self.searcher.live > 0)
+            self.svd.clean(blk, self.searcher.mu, self.searcher.var, usable)
             for j, i in enumerate(idx):
                 buf[i] = (buf[i][0], blk[j])
         out = []
