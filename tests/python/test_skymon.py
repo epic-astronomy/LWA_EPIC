@@ -901,18 +901,18 @@ class TestSharedFrbList(unittest.TestCase):
 
 
 def _sim_and_monitor(out, duration, frb_per_hour, inject_every_s, snr=(25, 40), dm=(10, 120),
-                     seed=5, chan0=2336, nchan=64, **cfg):
+                     seed=5, chan0=2336, nchan=64, rfi_per_hour=20, inject_dm=(10, 120), **cfg):
     from skymon.monitor import Config, Monitor
     from skymon.simulate import SkySimulator, tier_dt_function
 
     sim = SkySimulator(chan0=chan0, nchan=nchan, start_unix=T0, frb_per_hour=frb_per_hour,
-                       snr=snr, dm=dm, rfi_per_hour=20, truth_path=os.path.join(out, "truth.jsonl"),
+                       snr=snr, dm=dm, rfi_per_hour=rfi_per_hour, truth_path=os.path.join(out, "truth.jsonl"),
                        seed=seed, el_min=25.0,
                        tier_dt=tier_dt_function(Band(chan0, nchan).edges_mhz(), 0.083592, nchan,
                                                 300.0, 64))
     mon = Monitor(Config(out_dir=out, nside=32, dm_max=300.0, block0=64, nthreads=4,
                          warmup_images=32, inject_interval_s=inject_every_s,
-                         inject_snr=(25, 40), inject_dm=(10, 120), seed=seed,
+                         inject_snr=(25, 40), inject_dm=inject_dm, seed=seed,
                          accum_hours=0.5, **cfg))
     for _ in range(int(duration / sim.dt)):
         meta, img = sim.next_image()
@@ -1154,6 +1154,38 @@ class TestEndToEnd(unittest.TestCase):
             self.assertIn("recovered", events)
             inj = [c for c in mon.store.list() if c.cls == "injection"]
             self.assertGreaterEqual(len(inj), s["recovered"])
+        finally:
+            shutil.rmtree(out, ignore_errors=True)
+
+
+class TestBurstsAmongFlashes(unittest.TestCase):
+    def test_injections_survive_frequent_flashes(self):
+        """
+        Thousands of sky-wide flashes an hour (as on site): a dispersed burst
+        above flash_dm_max whose sweep overlaps a flash elsewhere is not taken
+        for that flash. Above it the flash rules match hits in DM, time and
+        width, not by overlapping spans alone (with spans alone, 29 of 31 live
+        injections were lost on epic6); below it the spans still decide, so
+        that the flashes' residues stay interference.
+        """
+        out = tempfile.mkdtemp()
+        try:
+            sim, mon = _sim_and_monitor(out, 600, frb_per_hour=0, inject_every_s=30,
+                                        inject_scatter=False, rfi_per_hour=3000,
+                                        inject_dm=(60, 250))
+            mon.injector.expire(math.inf)
+            s = mon.injector.stats
+            self.assertGreaterEqual(s["injected"], 8)
+            self.assertGreaterEqual(s["recovered"], 0.7 * s["injected"], s)
+            # the flashes are still interference
+            c = mon.store.counts
+            self.assertGreater(c["rfi"] + int(mon.metrics.get("rfi_unrecorded", 0)), 20)
+            # flash residues that pass as candidates: 37 with spans alone on the same
+            # simulation (while 10 of the 18 injections were recovered); the residues are
+            # wide boxcars, for the Marchenko-Pastur cut (svdclean.py) to remove
+            cand = [x for x in mon.store.list() if x.cls == "candidate"]
+            self.assertLessEqual(len(cand), 60)
+            self.assertGreaterEqual(s["recovered"], 0.85 * s["injected"], s)
         finally:
             shutil.rmtree(out, ignore_errors=True)
 

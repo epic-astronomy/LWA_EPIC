@@ -173,6 +173,10 @@ class Config:
     # 68% of the daytime candidates of 2026-10-23/24 lay within 30 s of one.
     # 0 disables
     solar_window_s: float = 30.0
+    # above this DM the flash rules (much of the sky, several positions,
+    # sidelobes) count only hits that match in DM, time and width; below it,
+    # hits whose spans overlap (monitor._candidates)
+    flash_dm_max: float = 50.0
     # the Marchenko-Pastur cut (svdclean.py): remove the components shared by
     # many pixels before the search, in blocks of at most svd_window images
     # (ended at every update of the tracked pixels), with the components of
@@ -796,23 +800,50 @@ class Monitor:
         n_all = len(hits)
         n_certain = 0
         # moments when much of the sky triggers at once (RFI seen through the
-        # sidelobes). A broadband flash at T answers trial delay d at times
-        # T..T + d, so each hit stands for the span [t_end - row, t_end]; a
-        # span shared by more pixels than a few beams' worth is RFI.
+        # sidelobes). Hits are the same signal seen elsewhere when they match in
+        # delay row (DM), end time (within the boxcars) and boxcar width (a
+        # factor of 2): a flash seen through the sidelobes answers alike at every
+        # position. Overlapping time spans alone are not enough: at thousands of
+        # flashes an hour every dispersed burst's sweep overlaps some flash, and
+        # 29 of 31 live injections on epic6 (2026-10-23/26) were lost so; a flash
+        # answers a burst's high delay row only with a wide, smeared boxcar.
+        # Below flash_dm_max the overlapping spans still decide: flashes leave
+        # residues at low DM and in wide boxcars whose rows and times differ from
+        # pixel to pixel, and a burst at such a DM during a flash cannot be told
+        # from it anyway.
+        # t_lo, t_hi (each hit's span [t_end - row, t_end]) remain for the
+        # solar-burst test, a burst at the Sun being seen through the sidelobes
+        # at any DM while it lasts.
         t_hi = np.array([h.t_end for h in hits]) + 2
         t_lo = np.array([h.t_end - h.row for h in hits]) - 2
+        rows = np.array([h.row for h in hits])
+        tend = np.array([h.t_end for h in hits])
+        wid = np.array([h.width for h in hits])
         slots = np.array([h.slot for h in hits])
         n_wide = max(3 * self.rfi_max_pix,
                      int(self.cfg.rfi_sky_fraction * max(1, self.metrics["tracked"])))
+
+        dms = np.array([h.dm for h in hits])
+        low = self.cfg.flash_dm_max
+
+        def same_signal(r, t, w, lo, hi, r0, t0, w0, lo0, hi0, dm0):
+            """hits matching hits (r0, t0, w0) as the same signal (broadcast): above
+            flash_dm_max in row, end time and width; below it by overlapping spans"""
+            strict = (np.abs(r - r0) <= np.maximum(3, 0.15 * r0)) & (np.abs(t - t0) <= w + w0 + 2) & \
+                (w <= 2 * w0) & (2 * w >= w0)
+            spans = (lo <= hi0) & (hi >= lo0)
+            return np.where(dm0 <= low, spans, strict)
+
         busy = np.zeros(len(hits), bool)
-        for k in np.argsort(t_hi):
+        for k in np.argsort(tend):
             if busy[k]:
                 continue
-            ov = (t_lo <= t_hi[k]) & (t_hi >= t_lo[k])
+            ov = same_signal(rows, tend, wid, t_lo, t_hi, rows[k], tend[k], wid[k], t_lo[k], t_hi[k],
+                             dms[k])
             if len(np.unique(slots[ov])) > n_wide:
                 busy |= ov
         # a burst comes from one place: clusters at several well-separated
-        # positions with overlapping time spans are one flash of RFI
+        # positions seeing the same signal (same_signal) are one flash of RFI
         # (all pairs of group heads at once, in row chunks to bound memory)
         # The same pairs give, for each group, the brightest group elsewhere at
         # the same time, in image units (S/N times the pixel's raw noise), for
@@ -821,6 +852,7 @@ class Monitor:
         sites = np.zeros(len(groups), int)
         hv = unit_vectors(ra[heads], dec[heads])
         h_lo, h_hi, h_r = t_lo[heads], t_hi[heads], radius[heads]
+        h_row, h_t, h_w, h_dm = rows[heads], tend[heads], wid[heads], dms[heads]
         h_slot = slots[heads]
         amp = np.array([hits[k].snr for k in heads]) * \
             np.sqrt(np.maximum(self.searcher.var[:, h_slot], 0).mean(0))
@@ -830,7 +862,9 @@ class Monitor:
             b = slice(a, a + 1024)
             sep = np.degrees(np.arccos(np.clip(hv[b] @ hv.T, -1, 1)))
             apart = sep > 2 * np.maximum(h_r[b, None], h_r[None, :])
-            overlap = (h_lo[None, :] <= h_hi[b, None]) & (h_hi[None, :] >= h_lo[b, None])
+            overlap = same_signal(h_row[None, :], h_t[None, :], h_w[None, :], h_lo[None, :],
+                                  h_hi[None, :], h_row[b, None], h_t[b, None], h_w[b, None],
+                                  h_lo[b, None], h_hi[b, None], h_dm[b, None])
             other = np.where(overlap & apart, amp[None, :], 0.0)
             brighter[b] = other.max(1)
             brighter_at[b] = other.argmax(1)
