@@ -1228,3 +1228,50 @@ void skymon_tier_cascade(const float* x, int C, int P, int ntier, float** base, 
     }
   }
 }
+
+/*
+ * The Marchenko-Pastur cut (svdclean.py), the element-wise passes over a block.
+ *
+ * skymon_svd_submeans: the standardised sub-band means of a block,
+ *   out[s][t][p] = mean over channels c of group s of (raw[t][c][p] - mu[c][p]) * isd[c][p],
+ * with isd = 1 / sqrt(var) (0 for a pixel without statistics); gstart [S + 1]
+ * are the groups' first channels.
+ *
+ * skymon_svd_apply: raw[t][c][p] -= sd[c][p] * corr[s(c)][t][p], the correction
+ * of each sub-band (its components' part of the sub-band mean, in standardised
+ * units) applied to every channel of the group in the channel's own units.
+ */
+void skymon_svd_submeans(const float* raw, int W, int C, int P, const float* mu, const float* isd,
+                         const int* gstart, int S, float* out, int nthreads) {
+#pragma omp parallel for num_threads(nthreads) schedule(static) collapse(2)
+  for (int s = 0; s < S; ++s) {
+    for (int t = 0; t < W; ++t) {
+      float* o = out + ((size_t)s * W + t) * P;
+      for (int p = 0; p < P; ++p) o[p] = 0.f;
+      const int c0 = gstart[s], c1 = gstart[s + 1];
+      for (int c = c0; c < c1; ++c) {
+        const float* r = raw + ((size_t)t * C + c) * P;
+        const float* m = mu + (size_t)c * P;
+        const float* k = isd + (size_t)c * P;
+        for (int p = 0; p < P; ++p) o[p] += (r[p] - m[p]) * k[p];
+      }
+      const float inv = c1 > c0 ? 1.f / (float)(c1 - c0) : 0.f;
+      for (int p = 0; p < P; ++p) o[p] *= inv;
+    }
+  }
+}
+
+void skymon_svd_apply(float* raw, int W, int C, int P, const float* sd, const float* corr,
+                      const int* gstart, int S, int nthreads) {
+#pragma omp parallel for num_threads(nthreads) schedule(static) collapse(2)
+  for (int t = 0; t < W; ++t) {
+    for (int s = 0; s < S; ++s) {
+      const float* k = corr + ((size_t)s * W + t) * P;
+      for (int c = gstart[s]; c < gstart[s + 1]; ++c) {
+        float* r = raw + ((size_t)t * C + c) * P;
+        const float* d = sd + (size_t)c * P;
+        for (int p = 0; p < P; ++p) r[p] -= d[p] * k[p];
+      }
+    }
+  }
+}

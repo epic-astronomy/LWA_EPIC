@@ -89,8 +89,31 @@ def lib():
                                           i32p, i32p, pp, f32p, ctypes.c_float, ctypes.c_int,
                                           ctypes.c_int]
         L.skymon_tier_cascade.restype = None
+        L.skymon_svd_submeans.argtypes = [f32p, ctypes.c_int, ctypes.c_int, ctypes.c_int, f32p, f32p,
+                                          i32p, ctypes.c_int, f32p, ctypes.c_int]
+        L.skymon_svd_submeans.restype = None
+        L.skymon_svd_apply.argtypes = [f32p, ctypes.c_int, ctypes.c_int, ctypes.c_int, f32p, f32p,
+                                       i32p, ctypes.c_int, ctypes.c_int]
+        L.skymon_svd_apply.restype = None
         _lib = L
     return _lib
+
+
+def svd_submeans(raw, mu, isd, gstart, nthreads=1):
+    """Standardised sub-band means [S][W][P] of a block raw [W][C][P]; see skymon_svd_submeans"""
+    W, C, P = raw.shape
+    S = len(gstart) - 1
+    out = np.empty((S, W, P), np.float32)
+    lib().skymon_svd_submeans(raw, W, C, P, mu, isd, np.ascontiguousarray(gstart, np.int32), S, out,
+                              int(nthreads))
+    return out
+
+
+def svd_apply(raw, sd, corr, gstart, nthreads=1):
+    """raw [W][C][P] -= sd [C][P] * corr [S][W][P] of each channel's group, in place"""
+    W, C, P = raw.shape
+    lib().skymon_svd_apply(raw, W, C, P, sd, corr, np.ascontiguousarray(gstart, np.int32),
+                           len(gstart) - 1, int(nthreads))
 
 
 def flatten_plan(plan) -> np.ndarray:

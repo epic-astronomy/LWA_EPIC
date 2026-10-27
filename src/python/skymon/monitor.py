@@ -173,6 +173,13 @@ class Config:
     # 68% of the daytime candidates of 2026-10-23/24 lay within 30 s of one.
     # 0 disables
     solar_window_s: float = 30.0
+    # the Marchenko-Pastur cut (svdclean.py): remove the components shared by
+    # many pixels before the search, in blocks of at most svd_window images
+    # (ended at every update of the tracked pixels), with the components of
+    # svd_subbands groups of channels. The search runs that many images late
+    svd_clean: bool = False
+    svd_subbands: int = 8
+    svd_window: int = 256
     # a candidate whose signal is in fewer effective channels than this, or
     # with more than narrowband_top2 of it in two channels, is narrowband RFI
     narrowband_min_channels: float = 6.0
@@ -295,6 +302,12 @@ class Monitor:
         self.accum = Accumulator(self.band.nchan, self.grid.capacity, self.dt,
                                  cfg.accum_interval_s, cfg.accum_hours)
         self.raw = np.zeros((self.band.nchan, self.grid.capacity), np.float32)
+        self.svd = None
+        self._svd_buf, self._svd_out = [], []
+        if cfg.svd_clean:
+            from .svdclean import SvdCleaner
+            self.svd = SvdCleaner(self.band.nchan, cfg.svd_subbands, cfg.svd_window,
+                                  nthreads=cfg.nthreads)
         self.beam = beam_fwhm_deg(self.band.f_centre)
         self.radius = max(2.0 * self.beam, 2.5 * self.grid.pix_deg)
         try:
@@ -418,7 +431,9 @@ class Monitor:
             last = getattr(self, "_gv_last", None)
             self._gv_last = v
             if last is not None and v != last:
-                out = self._release() if getattr(self, "_held", None) is not None else []
+                # images before the change are searched before the new baselines
+                out = self._svd_flush()
+                out += self._release() if getattr(self, "_held", None) is not None else []
                 self._held = []
                 self._held_sum = np.zeros_like(self.raw, dtype=np.float64)
                 self._held_n = np.zeros(self.raw.shape[1], np.int32)
@@ -452,11 +467,41 @@ class Monitor:
         for prep, raw in held:
             if raw is not None:
                 np.copyto(self.raw, raw)
-            out += self._search(prep)
+            out += self._searchq(prep)
         return out
 
     def _push(self, item, n):
-        return self._search(self._prepare(item, n))
+        return self._searchq(self._prepare(item, n))
+
+    def _searchq(self, prep):
+        """_search, through the block buffer of the Marchenko-Pastur cut when it is on.
+        prep's values are in self.raw. Returns the results of every image searched now"""
+        out, self._svd_out = self._svd_out, []
+        if self.svd is None:
+            return out + self._search(prep)
+        self._svd_buf.append((prep, self.raw.copy() if prep["item"] is not None else None))
+        if len(self._svd_buf) >= self.svd.window:
+            out += self._svd_flush()
+        return out
+
+    def _svd_flush(self):
+        """Clean the buffered block with its own components (after the injections, so the
+        measured efficiency includes the cleaning), then search it in order"""
+        buf, self._svd_buf = self._svd_buf, []
+        if not buf:
+            return []
+        idx = [i for i, (_, r) in enumerate(buf) if r is not None]
+        if len(idx) >= 32:  # too few images for the components: searched as they are
+            blk = np.stack([buf[i][1] for i in idx])
+            self.svd.clean(blk, self.searcher.mu, self.searcher.var)
+            for j, i in enumerate(idx):
+                buf[i] = (buf[i][0], blk[j])
+        out = []
+        for prep, raw in buf:
+            if raw is not None:
+                np.copyto(self.raw, raw)
+            out += self._search(prep)
+        return out
 
     def _prepare(self, item, n):
         """Everything of one image before the search: the pixels' values in self.raw"""
@@ -466,6 +511,8 @@ class Monitor:
             self._sample_conditions()
         self.cond.note_image(item is None)
         if self.grid_next is None or unix >= self.grid_next:
+            # a cleaning block never spans two pixel sets: search what is buffered first
+            self._svd_out += self._svd_flush()
             self._update_grid(unix)
         else:
             self.grid.taps(unix, self.cfg.nthreads)
@@ -1439,6 +1486,7 @@ class Monitor:
                                 nbin=self.band.nbin, dt=self.dt),
                       nside=self.grid.nside, pix_deg=self.grid.pix_deg, beam_deg=self.beam,
                       tiers=self.searcher.describe(), el_min=self.cfg.el_min,
+                      svd_clean=self.svd.status() if self.svd is not None else None,
                       threshold=self.searcher.threshold,
                       threshold_reference=self.searcher.threshold_ref,
                       memory_gib=(self.searcher.memory_bytes() +

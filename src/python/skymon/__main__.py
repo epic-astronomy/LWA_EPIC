@@ -39,6 +39,12 @@ def add_monitor_args(p):
     p.add_argument("--el-guard", type=float, default=d.el_guard,
                    help="candidates are reported only this many degrees above --el-min; the "
                         "pixels between are tracked for their history (deg)")
+    p.add_argument("--svd-clean", action="store_true",
+                   help="remove the components shared by many pixels (Marchenko-Pastur cut, svdclean.py) "
+                        "before the search; for faint bursts (bright ones can be removed)")
+    p.add_argument("--svd-subbands", type=int, default=d.svd_subbands)
+    p.add_argument("--svd-window", type=int, default=d.svd_window,
+                   help="most images in a cleaning block; the search runs that many late")
     p.add_argument("--solar-window", type=float, default=d.solar_window_s,
                    help="a candidate within this many seconds of a solar burst needs another "
                         "band to confirm it (0: off)")
@@ -134,7 +140,7 @@ def add_monitor_args(p):
 
 
 def make_config(a) -> Config:
-    return Config(out_dir=a.out, db_dsn=a.db, nside=a.nside, el_min=a.el_min, el_guard=a.el_guard, solar_window_s=a.solar_window, dm_max=a.dm_max,
+    return Config(out_dir=a.out, db_dsn=a.db, nside=a.nside, el_min=a.el_min, el_guard=a.el_guard, solar_window_s=a.solar_window, svd_clean=a.svd_clean, svd_subbands=a.svd_subbands, svd_window=a.svd_window, dm_max=a.dm_max,
                   threshold=a.threshold, nthreads=a.threads, block0=a.block,
                   delay_factor=a.max_delay_factor,
                   accum_interval_s=a.accum_interval, accum_hours=a.accum_hours,

@@ -125,6 +125,12 @@ With the exemption, bursts of S/N 120 are found at their position (fitted 0.04°
 
 Flagged channels and cells beyond the clip do not update the running statistics, except that a cell withheld for 30 s in succession updates them again with its deviation limited to 5σ, so that a lasting change of level is followed. `/api/status` reports `rfi_flagging` (fraction zeroed over the last minute, masked channels, flags per channel); each candidate carries `quality.flagged_fraction` along its sweep.
 
+### 3.1b Removal of interference shared by many pixels (optional, `--svd-clean`)
+
+Interference seen through the sidelobes, gain steps and the scintillation of bright sources change many pixels together. In a block of W images (at most `--svd-window`, 256 by default, and ended at every update of the tracked pixels and before a calibration hold), the monitor standardises each pixel, averages the channels into `--svd-subbands` groups (8), and takes the eigenvalues of Z Z^T / P (W images by P pixels) of each group. Noise alone keeps them below the upper edge of the Marchenko-Pastur law, sigma^2 (1 + sqrt(c))^2 with c = W / P; because neighbouring pixels share the beam and the dirty image's sidelobes spread noise over the sky, sigma^2 and c are fitted to the lower 70% of the eigenvalues. The components above 1.05 times the fitted edge are removed from every channel of the group, in the channel's own units, and the block is then searched (`src/python/skymon/svdclean.py`; the element-wise passes in `_kernels.c`). A burst confined to a beam adds about amplitude^2 / P to an eigenvalue and stays below the edge; bursts brighter than about S/N 200 can be removed, and are left to other detection. The components must come from the block being cleaned: interference fixed to the ground drifts across the sky-fixed pixels, so components learned from earlier images do not match new flashes. The search runs one block (about 10 s) late.
+
+On 10 minutes of 192-channel data at 75-80 MHz (2026-10-26), with 256-image blocks: false triggers of a dedispersion search 21,695 -> 502 (the rest nearly all undispersed flash residue, DM below 4), injected bursts of S/N 12 found 34% -> 46% of the time, S/N 8.5-85 kept in full. Cost 1.35 ms per image with 12 threads.
+
 ### 3.2 Hierarchical dedispersion in octave tiers
 
 ![Octave tiers of the dedispersion search](figures/skymon-tiers.svg)
