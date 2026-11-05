@@ -11,7 +11,9 @@ bursts that are not FRBs:
                   ephemeris (no download), cached for 60 s, and converted to
                   FK5 J2000, the frame of the image WCS.
   bright_source   The brightest radio sources (Cyg A, Cas A, Tau A, Vir A,
-                  Her A, Hya A). Ionospheric scintillation modulates them
+                  Her A, Hya A, and the 3C sources of tens to hundreds of Jy
+                  at 74 MHz, such as 3C 123, which on 2026-11-05 gave most of
+                  the remaining candidates at DM 3-41 and 5 s). Ionospheric scintillation modulates them
                   strongly at these frequencies, and a residual of the
                   normalisation can trigger the search.
   pulsar          Bright low-frequency pulsars. A single pulse is a genuine
@@ -46,6 +48,26 @@ BRIGHT_SOURCES = [  # name, RA, Dec (J2000, deg)
     ("Vir A", 187.706, 12.391),
     ("Her A", 252.784, 4.993),
     ("Hya A", 139.524, -12.096),
+    # the next brightest at 74 MHz (VLSS, about 50-500 Jy) above 25 deg at LWA-SV
+    ("3C 123", 69.268, 29.671),
+    ("3C 98", 59.727, 10.434),
+    ("3C 147", 85.651, 49.852),
+    ("3C 196", 123.400, 48.217),
+    ("3C 286", 202.784, 30.509),
+    ("3C 295", 212.836, 52.203),
+    ("3C 380", 277.382, 48.746),
+    ("3C 48", 24.422, 33.160),
+    ("3C 111", 64.589, 38.027),
+    ("Per A", 49.951, 41.512),
+    ("3C 353", 260.117, -0.979),
+    ("3C 409", 303.615, 23.581),
+    ("3C 452", 341.453, 39.693),
+    ("3C 390.3", 280.537, 79.771),
+    ("3C 33", 17.220, 13.320),
+    ("3C 20", 10.192, 52.055),
+    ("IC 443", 94.250, 22.530),
+    ("3C 58", 31.400, 64.830),
+    ("Tycho", 6.330, 64.140),
 ]
 
 # Bright pulsars at low frequencies (ATNF catalogue): name, RA, Dec (J2000,

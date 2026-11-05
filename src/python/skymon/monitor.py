@@ -1120,9 +1120,12 @@ class Monitor:
         least broadband_fraction of the total S/N (a flat burst puts S/N / sqrt(n)
         in each of n sub-bands: half of it in each of 4)? Undecided without sub-bands"""
         sub = [x for x in (q.get("subband_snr") or []) if x is not None]
-        if len(sub) < self.cfg.broadband_min:
+        if not sub:
             return True
-        return self._broadband_count(q, snr) >= self.cfg.broadband_min
+        # sub-bands outside the stored data are not counted against it, but at least
+        # two must be measured
+        need = min(self.cfg.broadband_min, max(2, len(sub)))
+        return len(sub) >= 2 and self._broadband_count(q, snr) >= need
 
     def _narrowband(self, q: dict) -> bool:
         """Is the signal confined to a few channels (quality.spread_measures)?"""
