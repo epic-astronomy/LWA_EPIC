@@ -146,5 +146,31 @@ class TestMinimumObservation(unittest.TestCase):
             shutil.rmtree(out, ignore_errors=True)
 
 
+
+class TestLowNoiseReset(unittest.TestCase):
+    def test_pixel_with_a_collapsed_variance_starts_anew(self):
+        """A tracked pixel whose variance is far below its neighbours' (learned from
+        near-constant values) is reset at the next update of the pixels, and only it"""
+        out = tempfile.mkdtemp()
+        try:
+            sim, mon = _sim_and_monitor(out, 60, frb_per_hour=0, inject_every_s=0,
+                                        rfi_per_hour=0)
+            sr = mon.searcher
+            ok = np.nonzero((sr.age > sr.warmup) & (sr.live > 0) &
+                            ((mon.grid.nbr >= 0).sum(1) == 8))[0]
+            s = int(ok[len(ok) // 2])
+            self.assertEqual(len(mon._stale_noise()), 0)
+            age_before = sr.age.copy()
+            sr.var[:, s] *= 1e-4
+            mon._update_grid(mon.grid_next)
+            self.assertEqual(int(sr.age[s]), 0)
+            self.assertEqual(mon.metrics["low_noise_pixels_reset"], 1)
+            others = np.setdiff1d(ok, [s])
+            self.assertTrue((sr.age[others] >= age_before[others]).all())
+            self.assertEqual(mon.status()["pixels_reset"]["low_noise"], 1)
+        finally:
+            shutil.rmtree(out, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()

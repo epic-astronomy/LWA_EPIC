@@ -26,6 +26,7 @@ import socket
 import threading
 import time
 import uuid
+import warnings
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -355,6 +356,8 @@ class Monitor:
 
     def _update_grid(self, unix):
         with self.grid_lock:
+            # checked against the neighbours of the pixel set the statistics belong to
+            stale = self._stale_noise()
             added, removed = self.grid.update(unix, self.cfg.regrid_interval_s)
             # a pixel whose statistics broke (non-finite mean or variance, e.g. after an
             # overflow) can never recover by itself: start it anew
@@ -363,6 +366,18 @@ class Monitor:
             if len(broken):
                 self.metrics["broken_pixels_reset"] = self.metrics.get("broken_pixels_reset", 0) + len(broken)
                 removed = np.union1d(np.asarray(removed, np.int64), broken)
+            # a pixel whose noise was learned from near-constant values (live on
+            # 2026-11-05, pixels rising into tracking at 25-27 deg: a variance
+            # thousands of times below their neighbours'): every later value lies
+            # beyond the clip and is withheld from the statistics, so the variance
+            # never recovers and the pixel triggers at every block. Neighbours share
+            # the beam and their noise agrees within a small factor: start such a
+            # pixel anew; the minimum observation time keeps it out of the search
+            # until it has learned again
+            if len(stale):
+                self.metrics["low_noise_pixels_reset"] = \
+                    self.metrics.get("low_noise_pixels_reset", 0) + len(stale)
+                removed = np.union1d(np.asarray(removed, np.int64), stale)
             # state starts zeroed, so only a slot whose pixel set needs clearing
             # before another pixel can rise into it
             self.searcher.reset_slots(removed)
@@ -376,6 +391,25 @@ class Monitor:
         if self.table_writer is not None:
             self._write_table(unix)
         self.metrics["tracked"] = int(self.grid.active().sum())
+
+    def _stale_noise(self, ratio: float = 0.1, min_nbr: int = 3) -> np.ndarray:
+        """Slots past warm-up whose median variance over the channels is below ratio
+        times the median of their neighbours' (at least min_nbr of them past warm-up)"""
+        sr = self.searcher
+        ok = (sr.age > sr.warmup) & (sr.live > 0)
+        if not ok.any():
+            return np.zeros(0, np.int64)
+        with np.errstate(invalid="ignore"):
+            v = np.median(sr.var, axis=0)
+        v = np.where(ok & np.isfinite(v), v, np.nan)
+        nb = self.grid.nbr
+        vn = np.where(nb >= 0, v[np.maximum(nb, 0)], np.nan)
+        n_ok = np.isfinite(vn).sum(1)
+        with np.errstate(invalid="ignore"), warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            ref = np.nanmedian(vn, axis=1)
+            low = ok & (n_ok >= min_nbr) & (v < ratio * ref)
+        return np.nonzero(low)[0].astype(np.int64)
 
     def _write_table(self, unix):
         """
@@ -1513,6 +1547,8 @@ class Monitor:
                   rfi_unrecorded=int(m.get("rfi_unrecorded", 0)),
                   solar_unrecorded=int(m.get("solar_unrecorded", 0)),
                   tracked=int(m.get("tracked", 0)),
+                  pixels_reset=dict(broken=int(m.get("broken_pixels_reset", 0)),
+                                    low_noise=int(m.get("low_noise_pixels_reset", 0))),
                   last_image_unix=self.last_image_unix,
                   lag_s=(time.time() - self.last_image_unix) if self.last_image_unix else None,
                   cpu_fraction=(m.get("process_s", 0) / (m.get("images", 1) * self.dt))
