@@ -192,6 +192,10 @@ class Config:
     # (ended at every update of the tracked pixels), with the components of
     # svd_subbands groups of channels. The search runs that many images late
     svd_clean: bool = False
+    # multi-scale clipping of each sub-band before the search (clipclean.py), in
+    # the same block buffer; at this many robust sigmas
+    clip_clean: bool = False
+    clip_sigma: float = 6.0
     svd_subbands: int = 8
     svd_window: int = 256
     # a candidate whose signal is in fewer effective channels than this, or
@@ -323,7 +327,11 @@ class Monitor:
         self.raw = np.zeros((self.band.nchan, self.grid.capacity), np.float32)
         self.svd = None
         self._svd_buf, self._svd_out = [], []
-        if cfg.svd_clean:
+        if cfg.clip_clean:
+            from .clipclean import BlockClipper
+            self.svd = BlockClipper(self.band.nchan, cfg.svd_subbands, cfg.svd_window,
+                                    cfg.clip_sigma, nthreads=cfg.nthreads)
+        elif cfg.svd_clean:
             from .svdclean import SvdCleaner
             self.svd = SvdCleaner(self.band.nchan, cfg.svd_subbands, cfg.svd_window,
                                   nthreads=cfg.nthreads)

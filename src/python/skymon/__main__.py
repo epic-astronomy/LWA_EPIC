@@ -42,6 +42,9 @@ def add_monitor_args(p):
     p.add_argument("--svd-clean", action="store_true",
                    help="remove the components shared by many pixels (Marchenko-Pastur cut, svdclean.py) "
                         "before the search; for faint bursts (bright ones can be removed)")
+    p.add_argument("--clip-clean", action="store_true",
+                   help="clip each sub-band at 1-256 image scales before the search (clipclean.py)")
+    p.add_argument("--clip-sigma", type=float, default=d.clip_sigma)
     p.add_argument("--svd-subbands", type=int, default=d.svd_subbands)
     p.add_argument("--svd-window", type=int, default=d.svd_window,
                    help="most images in a cleaning block; the search runs that many late")
@@ -143,7 +146,7 @@ def add_monitor_args(p):
 
 
 def make_config(a) -> Config:
-    return Config(out_dir=a.out, db_dsn=a.db, nside=a.nside, el_min=a.el_min, el_guard=a.el_guard, solar_window_s=a.solar_window, svd_clean=a.svd_clean, svd_subbands=a.svd_subbands, svd_window=a.svd_window, dm_max=a.dm_max,
+    return Config(out_dir=a.out, db_dsn=a.db, nside=a.nside, el_min=a.el_min, el_guard=a.el_guard, solar_window_s=a.solar_window, svd_clean=a.svd_clean, clip_clean=a.clip_clean, clip_sigma=a.clip_sigma, svd_subbands=a.svd_subbands, svd_window=a.svd_window, dm_max=a.dm_max,
                   min_obs_s=-1.0 if a.min_obs == "auto" else float(a.min_obs),
                   threshold=a.threshold, nthreads=a.threads, block0=a.block,
                   delay_factor=a.max_delay_factor,
