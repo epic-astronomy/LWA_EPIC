@@ -67,6 +67,9 @@ class Config:
     # Negative: the sweep at dm_max across the band plus norm_tau_s (270 s at
     # DM 1500 for 70.4-75.0 MHz); 0: only each tier's own settling
     min_obs_s: float = 0.0
+    # hits whose data lie within this many seconds (plus twice their width) of a
+    # change of the gain table are not reported: the change steps every pixel
+    cal_margin_s: float = 60.0
     # S/N threshold of the reference search (boxcars 1, 2, 4, 8 in every
     # tier); with far_matched the threshold applied is raised for the extra
     # trials of wider boxcars, at the same Gaussian false-alarm rate
@@ -391,6 +394,18 @@ class Monitor:
         if self.table_writer is not None:
             self._write_table(unix)
         self.metrics["tracked"] = int(self.grid.active().sum())
+
+    def _near_gain_change(self, t_top: float, t_bottom: float, width_s: float) -> bool:
+        """Whether a gain-table change falls in the data of a hit: its sweep from t_top to
+        t_bottom, widened by cal_margin_s and twice its width on each side"""
+        m = self.cfg.cal_margin_s + 2 * width_s
+        lo, hi = t_top - m, t_bottom + m
+        for g in reversed(self.gain_changes):
+            if g[0] < lo:
+                return False
+            if g[0] <= hi:
+                return True
+        return False
 
     def _stale_noise(self, ratio: float = 0.1, min_nbr: int = 3) -> np.ndarray:
         """Slots past warm-up whose median variance over the channels is below ratio
@@ -952,6 +967,16 @@ class Monitor:
             if el < self.cfg.el_min + self.cfg.el_guard:
                 # tracked for its history only: below the reporting limit
                 self.metrics["below_report_limit"] = self.metrics.get("below_report_limit", 0) + 1
+                continue
+            if b.dm > self.cfg.dm_max:
+                # the top tier reaches up to twice its lowest DM, beyond dm_max
+                self.metrics["above_dm_max"] = self.metrics.get("above_dm_max", 0) + 1
+                continue
+            if self._near_gain_change(b.t_bottom - b.row * tier.dt, b.t_bottom, b.width_s):
+                # a new gain table steps every pixel at once; the step, smoothed by
+                # the high-pass, is a wide pulse at every trial DM (live on
+                # 2026-11-05: 35 "FRBs" on epic5 in the 2.5 min after one table)
+                self.metrics["calibration_step"] = self.metrics.get("calibration_step", 0) + 1
                 continue
             # a pixel near the elevation limit brightens quickly through the
             # primary beam, which a wide boxcar at low DM takes for a pulse
@@ -1608,12 +1633,23 @@ class Monitor:
                 out.update(times=[], data=[])
                 return out
             if fine:
-                tier = self.searcher.tiers[0]
+                # the pixel's data in memory are the tiers' windows: tier k holds
+                # its last W samples at 2^k images each. The finest tier whose
+                # window covers the requested span (all of the longest otherwise)
+                tiers = self.searcher.tiers
+                tier = tiers[0]
+                if since is not None and self.last_image_unix:
+                    want = self.last_image_unix - since
+                    for t_ in tiers:
+                        tier = t_
+                        if t_.pos * t_.dt >= want:
+                            break
                 n = tier.pos
                 win = tier.history[:, :n, slot].T.astype(np.float32)
                 first = tier.pushed - n
                 t = self.searcher.tier_time(tier, first + np.arange(n))
-                out.update(kind="fine", units="normalised", times=t, data=win)
+                out.update(kind="fine", units="normalised", times=t, data=win, tier=tier.level,
+                           interval_s=tier.dt)
             else:
                 t, d = self.accum.pixel(slot, since)
                 out.update(kind="accumulation", units="raw", interval_s=self.accum.interval,
