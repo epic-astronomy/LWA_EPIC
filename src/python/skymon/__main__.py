@@ -49,6 +49,9 @@ def add_monitor_args(p):
                    help="a candidate within this many seconds of a solar burst needs another "
                         "band to confirm it (0: off)")
     p.add_argument("--dm-max", type=float, default=d.dm_max)
+    p.add_argument("--min-obs", default=str(d.min_obs_s),
+                   help="seconds a pixel is tracked before it is searched; 'auto': the sweep at "
+                        "--dm-max across the band plus the running mean's time constant")
     p.add_argument("--threshold", type=float, default=d.threshold,
                    help="S/N threshold of the reference search (boxcars 1, 2, 4, 8); wider "
                         "boxcars raise the threshold applied for their extra trials, at the same "
@@ -141,6 +144,7 @@ def add_monitor_args(p):
 
 def make_config(a) -> Config:
     return Config(out_dir=a.out, db_dsn=a.db, nside=a.nside, el_min=a.el_min, el_guard=a.el_guard, solar_window_s=a.solar_window, svd_clean=a.svd_clean, svd_subbands=a.svd_subbands, svd_window=a.svd_window, dm_max=a.dm_max,
+                  min_obs_s=-1.0 if a.min_obs == "auto" else float(a.min_obs),
                   threshold=a.threshold, nthreads=a.threads, block0=a.block,
                   delay_factor=a.max_delay_factor,
                   accum_interval_s=a.accum_interval, accum_hours=a.accum_hours,

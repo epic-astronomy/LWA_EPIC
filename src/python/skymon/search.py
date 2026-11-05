@@ -174,7 +174,7 @@ class Searcher:
                  hold_s=30.0, clip_nbr_min=3, clip_nbr_frac=0.3, hp_factor=4.0,
                  detrend_len=0, detrend_factor=0.0, detrend="linear", far_matched=False,
                  stride_div=0, noise_every=1, settle_hp=3.0, narrow_max=8,
-                 history_dtype="float32"):
+                 history_dtype="float32", min_age_images=0):
         """
         widths: boxcar widths in tier samples, for every tier (a sequence of
         ints), per tier (a sequence of sequences, the last repeated for the
@@ -206,6 +206,10 @@ class Searcher:
         a sweep across the start of its data is taken for a dispersed pulse
         (in a live run, 50 of 72 candidates lay within 2 deg above the
         elevation limit, mostly where the sky was rising).
+        min_age_images: no tier reports a pixel before it has been tracked for
+        this many images, whatever the tier's own settling: the pixel's
+        running mean and variance have converged and its history holds a whole
+        sweep at the highest DM (Config.min_obs_s).
         noise_every: the noise of every row and width is measured in one
         block of this many (always until a tier is calibrated); the noise
         sums take about a third of the boxcar search.
@@ -252,6 +256,7 @@ class Searcher:
         self.noise_every = max(1, int(noise_every))
         self.nthreads = nthreads
         self.warmup = warmup_images
+        self.min_age = int(min_age_images)
         self.a_mu = dt_img / norm_tau_s
         self.a_var = dt_img / var_tau_s
         self.clip = clip
@@ -478,7 +483,8 @@ class Searcher:
             for p, sg in zip(ps, segs):
                 row, t, wi = info[p, sg]
                 w = int(tier.widths[wi])
-                if self.age[p] < (tier.settle if w > tier.narrow_max else tier.settle_narrow):
+                if self.age[p] < max(self.min_age, tier.settle if w > tier.narrow_max
+                                     else tier.settle_narrow):
                     continue  # a pixel that has just risen
                 t_end = first + tier.f0 + int(t)
                 dm = row * tier.dm_per_delay

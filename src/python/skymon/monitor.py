@@ -60,6 +60,12 @@ class Config:
     # the candidates lay within 5 deg of el_min, whether it was 14 or 20 deg
     el_guard: float = 0.0
     dm_max: float = 3000.0
+    # a pixel is searched only once it has been tracked this long (s): its
+    # history then holds the whole sweep at dm_max and its running mean has
+    # settled, so a pixel that has just risen is not taken for a burst.
+    # Negative: the sweep at dm_max across the band plus norm_tau_s (270 s at
+    # DM 1500 for 70.4-75.0 MHz); 0: only each tier's own settling
+    min_obs_s: float = 0.0
     # S/N threshold of the reference search (boxcars 1, 2, 4, 8 in every
     # tier); with far_matched the threshold applied is raised for the extra
     # trials of wider boxcars, at the same Gaussian false-alarm rate
@@ -287,6 +293,10 @@ class Monitor:
                 self.beam_tab = beam_table([e[0], self.band.f_centre, e[-1]], cfg.beam_model)
             except Exception as ex:  # no lsl: the calibration record's beam, if any
                 print(f"skymon: primary beam ({cfg.beam_model}) unavailable: {ex!r}", flush=True)
+        min_obs = cfg.min_obs_s
+        if min_obs < 0:
+            min_obs = K_DM * cfg.dm_max * (self.band.f_lo ** -2 - self.band.f_hi ** -2) + cfg.norm_tau_s
+        self.min_obs_s = min_obs
         self.searcher = Searcher(self.band.edges_mhz(), self.dt, self.grid.capacity,
                                  dm_max=cfg.dm_max, widths=cfg.widths, block0=cfg.block0,
                                  max_delay=max(1, int(round(cfg.delay_factor * self.band.nchan))),
@@ -302,7 +312,8 @@ class Monitor:
                                  detrend=cfg.detrend, far_matched=cfg.far_matched,
                                  stride_div=cfg.boxcar_stride_div,
                                  noise_every=cfg.noise_every,
-                                 history_dtype=cfg.history_dtype)
+                                 history_dtype=cfg.history_dtype,
+                                 min_age_images=int(math.ceil(min_obs / self.dt)))
         self.accum = Accumulator(self.band.nchan, self.grid.capacity, self.dt,
                                  cfg.accum_interval_s, cfg.accum_hours)
         self.raw = np.zeros((self.band.nchan, self.grid.capacity), np.float32)
@@ -330,7 +341,8 @@ class Monitor:
         self.cond.restart((self.band.nchan, self.grid.capacity))
         print(f"skymon: band {self.band.f_lo:.3f}-{self.band.f_hi:.3f} MHz, {self.band.nchan} ch, "
               f"dt {self.dt * 1e3:.1f} ms, nside {nside} ({self.grid.pix_deg:.2f} deg), "
-              f"capacity {self.grid.capacity} px, beam {self.beam:.2f} deg", flush=True)
+              f"capacity {self.grid.capacity} px, beam {self.beam:.2f} deg; pixels searched after "
+              f"{self.min_obs_s:.0f} s of tracking", flush=True)
         for t in self.searcher.describe():
             print(f"skymon:   tier {t['level']}: dt {t['dt_s']:.3f} s, DM {t['dm_min']:.1f}-"
                   f"{t['dm_max']:.1f} step {t['dm_step']:.2f}, latency {t['latency_s']:.0f} s, "
@@ -538,7 +550,8 @@ class Monitor:
             meta, image = item
             self._note_gains(meta.gain_version, unix)
             self.injector.schedule(unix, self.grid, self.searcher,
-                                   self.cfg.warmup_images + 4 * self.cfg.block0)
+                                   max(self.searcher.min_age,
+                                       self.cfg.warmup_images + 4 * self.cfg.block0))
             self.injector.prepare(unix, self.grid, self.searcher)
             if meta.layout == 1:
                 # regridded on the GPU by the imager (FX imaging); injections

@@ -115,5 +115,36 @@ class TestMonitorWithCleaning(unittest.TestCase):
             shutil.rmtree(out, ignore_errors=True)
 
 
+class TestMinimumObservation(unittest.TestCase):
+    def test_pixels_searched_only_after_the_minimum_time(self):
+        """With the cut and min_obs_s 'auto' (the sweep at dm_max plus the running mean's
+        time constant) injections into pixels past that time are recovered; with a minimum
+        longer than the run no pixel is searched, so nothing is reported"""
+        from skymon.dedisp import K_DM
+
+        out = tempfile.mkdtemp()
+        try:
+            sim, mon = _sim_and_monitor(out, 600, frb_per_hour=0, inject_every_s=40,
+                                        inject_scatter=False, svd_clean=True, svd_window=128,
+                                        min_obs_s=-1.0)
+            b = mon.band
+            want = K_DM * 300.0 * (b.f_lo ** -2 - b.f_hi ** -2) + mon.cfg.norm_tau_s
+            self.assertAlmostEqual(mon.min_obs_s, want, places=3)
+            self.assertEqual(mon.searcher.min_age, math.ceil(want / mon.dt))
+            mon.injector.expire(math.inf)
+            s = mon.injector.stats
+            self.assertGreaterEqual(s["injected"], 3)
+            self.assertGreaterEqual(s["recovered"], 0.7 * s["injected"], s)
+        finally:
+            shutil.rmtree(out, ignore_errors=True)
+        out = tempfile.mkdtemp()
+        try:
+            sim, mon = _sim_and_monitor(out, 240, frb_per_hour=30, inject_every_s=0,
+                                        inject_scatter=False, min_obs_s=1000.0)
+            self.assertEqual(mon.store.counts["stored"], 0, mon.store.counts)
+        finally:
+            shutil.rmtree(out, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()
