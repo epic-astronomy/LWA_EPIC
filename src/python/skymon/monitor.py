@@ -196,6 +196,10 @@ class Config:
     # the same block buffer; at this many robust sigmas
     clip_clean: bool = False
     clip_sigma: float = 6.0
+    # a candidate must reach at least broadband_min sub-bands (of quality's 4),
+    # each with broadband_fraction of its S/N; otherwise it is RFI
+    broadband_min: int = 3
+    broadband_fraction: float = 0.25
     svd_subbands: int = 8
     svd_window: int = 256
     # a candidate whose signal is in fewer effective channels than this, or
@@ -1043,6 +1047,16 @@ class Monitor:
                 if not self.cfg.store_rfi:
                     self.cond.note_candidate(cls)
                     continue
+            if cls != "rfi" and not self._broadband(c.quality, c.snr):
+                # below 100 MHz scintillation is far finer than a channel and a burst
+                # is smooth over the band: one that is not in most sub-bands is not one
+                n = self._broadband_count(c.quality, c.snr)
+                c.rfi_reasons.append(f"not broadband ({n} of {len(c.quality.get('subband_snr') or [])} "
+                                     f"sub-bands)")
+                cls = c.cls = "rfi"
+                if not self.cfg.store_rfi:
+                    self.cond.note_candidate(cls)
+                    continue
             if solar:
                 c.known_source = dict(kind="solar", name="Sun", burst=True,
                                       sep_deg=round(float(separation_deg(c.ra, c.dec, sun_ra,
@@ -1096,6 +1110,19 @@ class Monitor:
                       f"RA {stored.ra:.2f} Dec {stored.dec:.2f} tier {tier.level} "
                       f"({len(pix)} px, {n_all} hits)", flush=True)
         return found
+
+    def _broadband_count(self, q: dict, snr: float) -> int:
+        sub = [x for x in (q.get("subband_snr") or []) if x is not None]
+        return sum(x >= self.cfg.broadband_fraction * snr for x in sub)
+
+    def _broadband(self, q: dict, snr: float) -> bool:
+        """Does the signal reach at least broadband_min of the sub-bands, each with at
+        least broadband_fraction of the total S/N (a flat burst puts S/N / sqrt(n)
+        in each of n sub-bands: half of it in each of 4)? Undecided without sub-bands"""
+        sub = [x for x in (q.get("subband_snr") or []) if x is not None]
+        if len(sub) < self.cfg.broadband_min:
+            return True
+        return self._broadband_count(q, snr) >= self.cfg.broadband_min
 
     def _narrowband(self, q: dict) -> bool:
         """Is the signal confined to a few channels (quality.spread_measures)?"""
